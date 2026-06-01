@@ -1103,6 +1103,10 @@ static void fts_fwres_work(struct work_struct *work)
 void fts_fwresume_work(void)
 {
     FTS_INFO("call.");
+    if (!fts_data || !fts_data->ts_workqueue) {
+        FTS_ERROR("touch driver is not ready for firmware resume");
+        return;
+    }
     queue_work(fts_data->ts_workqueue, &fts_data->fwres_work);
 }
 
