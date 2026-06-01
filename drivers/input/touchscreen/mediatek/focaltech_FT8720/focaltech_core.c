@@ -1593,6 +1593,10 @@ static void fts_suspend_work(struct work_struct *work)
 int fts_suspend(void)
 {
     FTS_INFO("fts_suspend start\n");
+    if (!fts_data || !fts_data->ts_workqueue) {
+        FTS_ERROR("touch driver is not ready for suspend");
+        return -ENODEV;
+    }
     queue_work(fts_data->ts_workqueue, &fts_data->suspend_work);
     FTS_INFO("fts_suspend end\n");
     return 0;
@@ -1601,6 +1605,10 @@ int fts_suspend(void)
 int fts_resume(void)
 {
     FTS_INFO("resume start\n");
+    if (!fts_data || !fts_data->ts_workqueue) {
+        FTS_ERROR("touch driver is not ready for resume");
+        return -ENODEV;
+    }
     queue_work(fts_data->ts_workqueue, &fts_data->resume_work);
     FTS_INFO("resume end\n");
     return 0;
@@ -2340,6 +2348,7 @@ static int fts_ts_probe(struct spi_device *spi)
     ret = fts_ts_probe_entry(ts_data);
     if (ret) {
         FTS_ERROR("Touch Screen(SPI BUS) driver probe fail");
+        fts_data = NULL;
         kfree_safe(ts_data);
         return ret;
     }
