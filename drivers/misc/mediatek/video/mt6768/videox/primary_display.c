@@ -103,8 +103,6 @@
 #define _DEBUG_DITHER_HANG_
 
 #define FRM_UPDATE_SEQ_CACHE_NUM (DISP_INTERNAL_BUFFER_COUNT+1)
-#define FIRE_AOD_BACKLIGHT_PERCENT 40
-#define FIRE_AOD_BACKLIGHT_FALLBACK_LEVEL 64
 
 static struct disp_internal_buffer_info
 	*decouple_buffer_info[DISP_INTERNAL_BUFFER_COUNT];
@@ -141,55 +139,6 @@ bool primary_display_is_aod_backlight_allowed(void)
 	return primary_display_aod_backlight_allowed;
 }
 
-static unsigned int primary_display_get_aod_backlight_level(
-	unsigned int *normal_level)
-{
-	unsigned int level = lm3697_get_last_brightness();
-
-	if (!level)
-		level = primary_display_last_normal_backlight;
-	if (!level)
-		level = primary_display_last_sent_backlight;
-	if (normal_level)
-		*normal_level = level;
-
-	level = level * FIRE_AOD_BACKLIGHT_PERCENT / 100;
-	if (!level && normal_level && *normal_level)
-		level = 1;
-	if (!level)
-		level = FIRE_AOD_BACKLIGHT_FALLBACK_LEVEL;
-
-	return level;
-}
-
-static int primary_display_set_aod_backlight(void)
-{
-	int ret;
-	unsigned int aod_level;
-	unsigned int normal_level;
-	enum mtkfb_power_mode power_mode;
-
-	power_mode = primary_display_get_power_mode_nolock();
-	if (power_mode != DOZE && power_mode != DOZE_SUSPEND) {
-		DISPCHECK("AOD: skip LM3697 backlight, power mode %s\n",
-			power_mode_to_string(power_mode));
-		return 0;
-	}
-
-	if (!primary_display_is_aod_backlight_allowed()) {
-		DISPCHECK("AOD: skip LM3697 backlight, gate disabled\n");
-		return 0;
-	}
-
-	aod_level = primary_display_get_aod_backlight_level(&normal_level);
-	ret = lm3697_set_aod_brightness(aod_level);
-	DISPCHECK("AOD: set LM3697 backlight level %u (%u%% of %u) ret %d\n",
-		aod_level, FIRE_AOD_BACKLIGHT_PERCENT, normal_level, ret);
-	if (!ret)
-		primary_display_restore_backlight_on_resume = true;
-
-	return ret;
-}
 /* 0: normal, 1: lcd only, 2: none of lcd and lcm */
 unsigned int gTriggerDispMode;
 static unsigned int g_keep;
@@ -4965,11 +4914,6 @@ int primary_display_suspend(void)
 #endif
 
 	DISPCHECK("[POWER]dpmanager path power off[end]\n");
-	if (primary_display_get_power_mode_nolock() == DOZE_SUSPEND &&
-		primary_display_get_lcm_power_state_nolock() ==
-			LCM_ON_LOW_POWER &&
-		pgc->plcm->drv->aod)
-		primary_display_set_aod_backlight();
 	mmprofile_log_ex(ddp_mmp_get_events()->primary_suspend,
 		MMPROFILE_FLAG_PULSE, 0, 8);
 
@@ -5085,7 +5029,6 @@ int primary_display_lcm_power_on_state(int alive)
 
 			if (pgc->plcm->drv->aod) {
 				disp_lcm_aod(pgc->plcm, 1);
-				primary_display_set_aod_backlight();
 			} else if (!alive)
 				disp_lcm_resume(pgc->plcm);
 
@@ -8524,8 +8467,16 @@ int primary_display_hbm_wait(bool en)
 static int primary_display_setbacklight_internal(unsigned int level,
 	bool save_level, bool force, bool track_sent_level)
 {
+	enum mtkfb_power_mode power_mode;
+	bool aod_backlight;
+
 	DISPFUNC();
-	if (save_level && level)
+
+	power_mode = primary_display_get_power_mode_nolock();
+	aod_backlight = primary_display_is_aod_backlight_allowed() &&
+		(power_mode == DOZE || power_mode == DOZE_SUSPEND);
+
+	if (save_level && level && !aod_backlight)
 		primary_display_last_normal_backlight = level;
 
 	if (disp_helper_get_stage() != DISP_HELPER_STAGE_NORMAL) {
@@ -8562,11 +8513,13 @@ static int primary_display_setbacklight_internal(unsigned int level,
 		} else {
 			_set_backlight_by_cpu(level);
 		}
-		if (track_sent_level) {
+		if (track_sent_level && !aod_backlight) {
 			primary_display_last_sent_backlight = level;
 			primary_display_aod_backlight_active = false;
 		} else {
 			primary_display_aod_backlight_active = true;
+			if (aod_backlight)
+				primary_display_restore_backlight_on_resume = true;
 		}
 	}
 
