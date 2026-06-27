@@ -581,14 +581,6 @@ int lm3697_set_brightness(int brightness)
 	return ti_lmu_backlight_set_brightness(brightness);
 }
 
-int lm3697_set_aod_brightness(int brightness)
-{
-	if (!bl_chip || !bl_chip->lmu_bl)
-		return -ENODEV;
-
-	return ti_lmu_backlight_set_brightness(brightness);
-}
-
 unsigned int lm3697_get_last_brightness(void)
 {
 	if (lm3697_session_peak_brightness)
