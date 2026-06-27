@@ -653,7 +653,7 @@ page_owner=on loop.max_part=7";
 			< 700000	900000	0xff	0x2 0x8	330	4>,
 			< 800000	900000	0xff	0x3 0xc	416	6>;
 
-		gpio = <&pio 1 0>;
+		gpio = <&gpio 1>;
 		gpio-feature = "gpio-mode";
 		gpio-feature-cfg = <1>;
 		gpio-mode-reg = <0x430 0x7 8 1>;
@@ -4018,9 +4018,6 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 };
 
 &i2c7 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-
 	speaker_amp: speaker_amp@34 {
 		compatible = "mediatek,speaker_amp";
 		#sound-dai-cells = <0>;
