@@ -41,6 +41,7 @@
 static int lcd_id = 2; /* 2 is default num */
 static struct ti_lmu_bl_chip *bl_chip;
 static unsigned int lm3697_last_normal_brightness;
+static unsigned int lm3697_session_peak_brightness;
 int bl_mapping_table1[2048] = {0, 405, 405, 424, 449, 474, 494, 513, 533, 550, 567, 581, 597, 611, 622, 635, 646, 658, 669, 679, 690, 700, 709,\
 												719, 727, 734, 744, 751, 759, 766, 773, 782, 790, 797, 803, 808, 815, 822, 828, 834, 841, 846, 852, 857, 864, 869, 874, 879, \
 												884, 890, 896, 901, 907, 912, 917, 922, 927, 932, 937, 942, 947, 952, 957, 962, 966, 971,  976, 981, 986, 991, 996, 1002, 1006, \
@@ -567,8 +568,15 @@ int lm3697_set_brightness(int brightness)
 	if (!bl_chip || !bl_chip->lmu_bl)
 		return -ENODEV;
 
-	if (brightness > 0)
-		lm3697_last_normal_brightness = brightness;
+	if (brightness > 0) {
+		if (brightness > lm3697_session_peak_brightness)
+			lm3697_session_peak_brightness = brightness;
+	} else {
+		if (lm3697_session_peak_brightness)
+			lm3697_last_normal_brightness =
+				lm3697_session_peak_brightness;
+		lm3697_session_peak_brightness = 0;
+	}
 
 	return ti_lmu_backlight_set_brightness(brightness);
 }
@@ -583,6 +591,9 @@ int lm3697_set_aod_brightness(int brightness)
 
 unsigned int lm3697_get_last_brightness(void)
 {
+	if (lm3697_session_peak_brightness)
+		return lm3697_session_peak_brightness;
+
 	return lm3697_last_normal_brightness;
 }
 

@@ -122,18 +122,34 @@ static unsigned int primary_display_last_normal_backlight;
 static unsigned int primary_display_last_sent_backlight;
 static bool primary_display_restore_backlight_on_resume;
 static bool primary_display_aod_backlight_active;
+static bool primary_display_aod_backlight_allowed;
 static int primary_display_setbacklight_internal(unsigned int level,
 	bool save_level, bool force, bool track_sent_level);
+enum mtkfb_power_mode primary_display_get_power_mode_nolock(void);
+
+void primary_display_set_aod_backlight_allowed(bool allowed)
+{
+	if (primary_display_aod_backlight_allowed != allowed)
+		DISPCHECK("AOD: backlight gate %s\n",
+			allowed ? "enabled" : "disabled");
+
+	primary_display_aod_backlight_allowed = allowed;
+}
+
+bool primary_display_is_aod_backlight_allowed(void)
+{
+	return primary_display_aod_backlight_allowed;
+}
 
 static unsigned int primary_display_get_aod_backlight_level(
 	unsigned int *normal_level)
 {
-	unsigned int level = primary_display_last_normal_backlight;
+	unsigned int level = lm3697_get_last_brightness();
 
 	if (!level)
-		level = primary_display_last_sent_backlight;
+		level = primary_display_last_normal_backlight;
 	if (!level)
-		level = lm3697_get_last_brightness();
+		level = primary_display_last_sent_backlight;
 	if (normal_level)
 		*normal_level = level;
 
@@ -151,6 +167,19 @@ static int primary_display_set_aod_backlight(void)
 	int ret;
 	unsigned int aod_level;
 	unsigned int normal_level;
+	enum mtkfb_power_mode power_mode;
+
+	power_mode = primary_display_get_power_mode_nolock();
+	if (power_mode != DOZE && power_mode != DOZE_SUSPEND) {
+		DISPCHECK("AOD: skip LM3697 backlight, power mode %s\n",
+			power_mode_to_string(power_mode));
+		return 0;
+	}
+
+	if (!primary_display_is_aod_backlight_allowed()) {
+		DISPCHECK("AOD: skip LM3697 backlight, gate disabled\n");
+		return 0;
+	}
 
 	aod_level = primary_display_get_aod_backlight_level(&normal_level);
 	ret = lm3697_set_aod_brightness(aod_level);
@@ -5512,8 +5541,22 @@ int primary_display_aod_backlight(int level)
 {
 	int ret;
 	unsigned int restore_backlight;
+	enum mtkfb_power_mode cur_pm;
 
 	_primary_path_lock(__func__);
+
+	cur_pm = primary_display_get_power_mode_nolock();
+	if (cur_pm != DOZE_SUSPEND && cur_pm != DOZE) {
+		DISPCHECK("%s not in AOD, skip it\n", __func__);
+		_primary_path_unlock(__func__);
+		return 0;
+	}
+
+	if (!primary_display_is_aod_backlight_allowed()) {
+		DISPCHECK("%s AOD gate disabled, skip it\n", __func__);
+		_primary_path_unlock(__func__);
+		return 0;
+	}
 
 	lock_primary_wake_lock(1);
 

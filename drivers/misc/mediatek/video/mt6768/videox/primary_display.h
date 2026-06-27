@@ -464,6 +464,8 @@ enum mtkfb_power_mode primary_display_check_power_mode(void);
 void debug_print_power_mode_check(enum mtkfb_power_mode prev,
 	enum mtkfb_power_mode cur);
 bool primary_is_aod_supported(void);
+void primary_display_set_aod_backlight_allowed(bool allowed);
+bool primary_display_is_aod_backlight_allowed(void);
 
 /* legancy */
 struct LCM_PARAMS *DISP_GetLcmPara(void);
