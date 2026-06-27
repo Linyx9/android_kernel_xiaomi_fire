@@ -79,7 +79,6 @@ static u32 MTK_FB_PAGES;
 static u32 fb_xres_update;
 static u32 fb_yres_update;
 static int mtkfb_aod_mode_switch(enum mtkfb_aod_power_mode aod_pm);
-#define FIRE_AOD_BACKLIGHT_LEVEL 64
 static size_t mtkfb_log_on = true;
 
 static int sem_flipping_cnt = 1;
@@ -403,7 +402,6 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
-	case FB_BLANK_NORMAL:
 		DISPDBG("%s mtkfb_late_resume\n", __func__);
 		if (bypass_blank) {
 			DISPWARN("FB_BLANK_UNBLANK bypass_blank %d\n",
@@ -416,8 +414,39 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 
 		debug_print_power_mode_check(prev_pm, FB_RESUME);
 		break;
+	case FB_BLANK_NORMAL:
+		DISPDBG("%s mtkfb_aod_doze\n", __func__);
+		if (bypass_blank) {
+			DISPWARN("FB_BLANK_NORMAL bypass_blank %d\n",
+				bypass_blank);
+			break;
+		}
+
+		if (primary_is_aod_supported()) {
+			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE);
+			debug_print_power_mode_check(prev_pm,
+				primary_display_get_power_mode());
+		} else {
+			primary_display_set_power_mode(FB_RESUME);
+			mtkfb_late_resume();
+			debug_print_power_mode_check(prev_pm, FB_RESUME);
+		}
+		break;
 	case FB_BLANK_VSYNC_SUSPEND:
 	case FB_BLANK_HSYNC_SUSPEND:
+		DISPDBG("%s mtkfb_aod_doze_suspend\n", __func__);
+		if (bypass_blank) {
+			DISPWARN("FB_BLANK_%sSUSPEND bypass_blank %d\n",
+				(blank_mode == FB_BLANK_VSYNC_SUSPEND) ?
+				"VSYNC_" : "HSYNC_", bypass_blank);
+			break;
+		}
+
+		if (primary_is_aod_supported()) {
+			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE_SUSPEND);
+			debug_print_power_mode_check(prev_pm,
+				primary_display_get_power_mode());
+		}
 		break;
 	case FB_BLANK_POWERDOWN:
 		DISPDBG("%s mtkfb_early_suspend\n", __func__);
@@ -427,17 +456,10 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 			break;
 		}
 
-		if (primary_is_aod_supported()) {
-			DISPCHECK("AOD: route FB_BLANK_POWERDOWN to DOZE_SUSPEND\n");
-			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE_SUSPEND);
-			primary_display_aod_backlight(FIRE_AOD_BACKLIGHT_LEVEL);
-		} else {
-			primary_display_set_power_mode(FB_SUSPEND);
-			mtkfb_early_suspend();
-		}
+		primary_display_set_power_mode(FB_SUSPEND);
+		mtkfb_early_suspend();
 
-		debug_print_power_mode_check(prev_pm,
-			primary_display_get_power_mode());
+		debug_print_power_mode_check(prev_pm, FB_SUSPEND);
 
 		break;
 	default:
