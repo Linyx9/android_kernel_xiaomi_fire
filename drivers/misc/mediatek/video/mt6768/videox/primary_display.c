@@ -5432,14 +5432,16 @@ int primary_display_resume(void)
 			DISP_PATH_EVENT_IF_VSYNC, DDP_IRQ_DSI0_EXT_TE);
 		dpmgr_enable_event(pgc->dpmgr_handle, DISP_PATH_EVENT_IF_VSYNC);
 
-		if (((primary_display_get_power_mode_nolock() == FB_RESUME) ||
-			(primary_display_get_power_mode_nolock() == DOZE)) &&
+		if (primary_display_get_power_mode_nolock() == FB_RESUME &&
 			!skip_update) {
 			/* refresh black picture of ovl bg */
 			_trigger_display_interface(1, NULL, 0);
 			DISPINFO("[POWER]triggger cmdq[end]\n");
 			/* wait for one frame for pms workarround!!!! */
 			mdelay(33);
+		} else if (primary_display_get_power_mode_nolock() == DOZE &&
+			!skip_update) {
+			DISPINFO("[POWER]skip black ovl refresh for AOD doze\n");
 		}
 	}
 	mmprofile_log_ex(ddp_mmp_get_events()->primary_resume,
