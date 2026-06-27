@@ -456,10 +456,16 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 			break;
 		}
 
-		primary_display_set_power_mode(FB_SUSPEND);
-		mtkfb_early_suspend();
-
-		debug_print_power_mode_check(prev_pm, FB_SUSPEND);
+		if (primary_is_aod_supported()) {
+			DISPCHECK("AOD: route FB_BLANK_POWERDOWN to DOZE_SUSPEND\n");
+			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE_SUSPEND);
+			debug_print_power_mode_check(prev_pm,
+				primary_display_get_power_mode());
+		} else {
+			primary_display_set_power_mode(FB_SUSPEND);
+			mtkfb_early_suspend();
+			debug_print_power_mode_check(prev_pm, FB_SUSPEND);
+		}
 
 		break;
 	default:
