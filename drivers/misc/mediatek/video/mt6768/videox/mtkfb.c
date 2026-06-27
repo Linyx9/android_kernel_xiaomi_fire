@@ -409,6 +409,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 			break;
 		}
 
+		primary_display_set_aod_backlight_allowed(false);
 		primary_display_set_power_mode(FB_RESUME);
 		mtkfb_late_resume();
 
@@ -423,6 +424,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 		}
 
 		if (primary_is_aod_supported()) {
+			primary_display_set_aod_backlight_allowed(true);
 			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE);
 			debug_print_power_mode_check(prev_pm,
 				primary_display_get_power_mode());
@@ -443,6 +445,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 		}
 
 		if (primary_is_aod_supported()) {
+			primary_display_set_aod_backlight_allowed(true);
 			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE_SUSPEND);
 			debug_print_power_mode_check(prev_pm,
 				primary_display_get_power_mode());
@@ -457,11 +460,13 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 		}
 
 		if (primary_is_aod_supported()) {
+			primary_display_set_aod_backlight_allowed(true);
 			DISPCHECK("AOD: route FB_BLANK_POWERDOWN to DOZE_SUSPEND\n");
 			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE_SUSPEND);
 			debug_print_power_mode_check(prev_pm,
 				primary_display_get_power_mode());
 		} else {
+			primary_display_set_aod_backlight_allowed(false);
 			primary_display_set_power_mode(FB_SUSPEND);
 			mtkfb_early_suspend();
 			debug_print_power_mode_check(prev_pm, FB_SUSPEND);
@@ -1200,8 +1205,7 @@ static int mtkfb_aod_mode_switch(enum mtkfb_aod_power_mode aod_pm)
 		 * First DOZE to power on dispsys and LCM(low power mode);
 		 * then DOZE_SUSPEND to power off dispsys.
 		 */
-		if (primary_display_is_sleepd() &&
-			primary_display_get_lcm_power_state()) {
+		if (prev_pm != DOZE && primary_display_get_lcm_power_state()) {
 			primary_display_set_power_mode(DOZE);
 			primary_display_resume();
 
@@ -1288,6 +1292,9 @@ static int mtkfb_ioctl(struct fb_info *info, unsigned int cmd,
 		enum mtkfb_aod_power_mode aod_pm = MTKFB_AOD_POWER_MODE_ERROR;
 
 		aod_pm = (enum mtkfb_aod_power_mode)arg;
+		primary_display_set_aod_backlight_allowed(
+			aod_pm == MTKFB_AOD_DOZE ||
+			aod_pm == MTKFB_AOD_DOZE_SUSPEND);
 		ret = mtkfb_aod_mode_switch(arg);
 
 		break;
