@@ -1,0 +1,6 @@
+id=fire_aod_system_fix
+name=Fire AOD System Fix
+version=0.1
+versionCode=1
+author=1VicTim1 <122aaa121@gmail.com>
+description=Best-effort Magisk/KSU module that adds Xiaomi fire framework AOD resources and boot fallback settings.
