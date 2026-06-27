@@ -16,6 +16,7 @@
 #include <linux/of_irq.h>
 #include <linux/slab.h>
 #include <linux/device.h>
+#include <linux/mfd/ti-lmu-backlight.h>
 #include <linux/pm_wakeup.h>
 #include <linux/sched/clock.h>
 #include <uapi/linux/sched/types.h>
@@ -102,6 +103,8 @@
 #define _DEBUG_DITHER_HANG_
 
 #define FRM_UPDATE_SEQ_CACHE_NUM (DISP_INTERNAL_BUFFER_COUNT+1)
+#define FIRE_AOD_BACKLIGHT_PERCENT 40
+#define FIRE_AOD_BACKLIGHT_FALLBACK_LEVEL 64
 
 static struct disp_internal_buffer_info
 	*decouple_buffer_info[DISP_INTERNAL_BUFFER_COUNT];
@@ -121,6 +124,25 @@ static bool primary_display_restore_backlight_on_resume;
 static bool primary_display_aod_backlight_active;
 static int primary_display_setbacklight_internal(unsigned int level,
 	bool save_level, bool force, bool track_sent_level);
+
+static unsigned int primary_display_get_aod_backlight_level(
+	unsigned int *normal_level)
+{
+	unsigned int level = primary_display_last_normal_backlight;
+
+	if (!level)
+		level = primary_display_last_sent_backlight;
+	if (normal_level)
+		*normal_level = level;
+
+	level = level * FIRE_AOD_BACKLIGHT_PERCENT / 100;
+	if (!level && normal_level && *normal_level)
+		level = 1;
+	if (!level)
+		level = FIRE_AOD_BACKLIGHT_FALLBACK_LEVEL;
+
+	return level;
+}
 /* 0: normal, 1: lcd only, 2: none of lcd and lcm */
 unsigned int gTriggerDispMode;
 static unsigned int g_keep;
@@ -4853,8 +4875,23 @@ int primary_display_suspend(void)
 	if (primary_display_get_power_mode_nolock() == DOZE_SUSPEND) {
 		if (primary_display_get_lcm_power_state_nolock() !=
 			LCM_ON_LOW_POWER) {
-			if (pgc->plcm->drv->aod)
+			if (pgc->plcm->drv->aod) {
+				int ret;
+				unsigned int aod_level;
+				unsigned int normal_level;
+
 				disp_lcm_aod(pgc->plcm, 1);
+
+				aod_level = primary_display_get_aod_backlight_level(
+					&normal_level);
+				ret = lm3697_set_brightness(aod_level);
+				DISPCHECK("AOD: set LM3697 backlight level %u (%u%% of %u) ret %d\n",
+					aod_level, FIRE_AOD_BACKLIGHT_PERCENT,
+					normal_level, ret);
+				if (!ret)
+					primary_display_restore_backlight_on_resume =
+						true;
+			}
 
 			primary_display_set_lcm_power_state_nolock(
 				LCM_ON_LOW_POWER);
@@ -5009,9 +5046,23 @@ int primary_display_lcm_power_on_state(int alive)
 		if (primary_display_get_lcm_power_state_nolock() !=
 			LCM_ON_LOW_POWER) {
 
-			if (pgc->plcm->drv->aod)
+			if (pgc->plcm->drv->aod) {
+				int ret;
+				unsigned int aod_level;
+				unsigned int normal_level;
+
 				disp_lcm_aod(pgc->plcm, 1);
-			else if (!alive)
+
+				aod_level = primary_display_get_aod_backlight_level(
+					&normal_level);
+				ret = lm3697_set_brightness(aod_level);
+				DISPCHECK("AOD: set LM3697 backlight level %u (%u%% of %u) ret %d\n",
+					aod_level, FIRE_AOD_BACKLIGHT_PERCENT,
+					normal_level, ret);
+				if (!ret)
+					primary_display_restore_backlight_on_resume =
+						true;
+			} else if (!alive)
 				disp_lcm_resume(pgc->plcm);
 
 			primary_display_set_lcm_power_state_nolock(

@@ -563,6 +563,9 @@ static int ti_lmu_backlight_set_brightness(int brightness)
 
 int lm3697_set_brightness(int brightness)
 {
+	if (!bl_chip || !bl_chip->lmu_bl)
+		return -ENODEV;
+
 	return ti_lmu_backlight_set_brightness(brightness);
 }
 

@@ -319,4 +319,5 @@ struct ti_lmu_bl {
 };
 
 extern struct ti_lmu_bl_cfg lmu_bl_cfg[LMU_MAX_ID];
+int lm3697_set_brightness(int brightness);
 #endif
