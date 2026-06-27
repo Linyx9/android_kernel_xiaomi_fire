@@ -4,9 +4,6 @@
  */
 
 &i2c5 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-
 	rt1711_typec@4e {
 		compatible = "mediatek,usb_type_c";
 		reg = <0x4e>;
