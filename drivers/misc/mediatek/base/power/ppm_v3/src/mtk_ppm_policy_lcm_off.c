@@ -11,10 +11,37 @@
 
 #include "mtk_ppm_internal.h"
 
+#define LCMOFF_DEFAULT_MIN_FREQ		(-1)
+#define LCMOFF_L_MAX_FREQ		1175000
+#define LCMOFF_B_MAX_FREQ		1176000
+#define LCMOFF_SUGOV_UP_RATE_US	4000
+#define LCMOFF_SUGOV_DOWN_RATE_US	1000
+#define LCMON_SUGOV_RATE_US		1000
+
+#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+extern int schedutil_set_up_rate_limit_us(int cpu, unsigned int rate_limit_us);
+extern int schedutil_set_down_rate_limit_us(int cpu, unsigned int rate_limit_us);
+#else
+static inline int schedutil_set_up_rate_limit_us(int cpu,
+	unsigned int rate_limit_us)
+{
+	return 0;
+}
+
+static inline int schedutil_set_down_rate_limit_us(int cpu,
+	unsigned int rate_limit_us)
+{
+	return 0;
+}
+#endif
 
 static void ppm_lcmoff_update_limit_cb(void);
 static void ppm_lcmoff_status_change_cb(bool enable);
-static int lcmoff_min_freq;
+static int lcmoff_min_freq = LCMOFF_DEFAULT_MIN_FREQ;
+static int lcmoff_max_freq[NR_PPM_CLUSTERS] = {
+	[PPM_CLUSTER_L] = LCMOFF_L_MAX_FREQ,
+	[PPM_CLUSTER_B] = LCMOFF_B_MAX_FREQ,
+};
 
 /* other members will init by ppm_main */
 static struct ppm_policy_data lcmoff_policy = {
@@ -45,10 +72,9 @@ static void ppm_lcmoff_update_limit_cb(void)
 
 	ppm_clear_policy_limit(&lcmoff_policy);
 
-	/* only apply min freq for LL cluster */
-	for (i = 0; i < 1; i++) {
-	/* for (i = 0; i < lcmoff_policy.req.cluster_num; i++) { */
-		if (lcmoff_policy.req.limit[i].min_cpufreq_idx != -1) {
+	for_each_ppm_clusters(i) {
+		if (i == PPM_CLUSTER_L && lcmoff_min_freq > 0 &&
+			lcmoff_policy.req.limit[i].min_cpufreq_idx != -1) {
 			int idx = ppm_main_freq_to_idx(i,
 				lcmoff_min_freq,
 				CPUFREQ_RELATION_L);
@@ -57,6 +83,22 @@ static void ppm_lcmoff_update_limit_cb(void)
 				MIN(lcmoff_policy.req.limit[i].min_cpufreq_idx,
 				idx);
 		}
+
+		if (lcmoff_max_freq[i] > 0 &&
+			lcmoff_policy.req.limit[i].max_cpufreq_idx != -1) {
+			int idx = ppm_main_freq_to_idx(i,
+				lcmoff_max_freq[i],
+				CPUFREQ_RELATION_H);
+
+			lcmoff_policy.req.limit[i].max_cpufreq_idx =
+				MAX(lcmoff_policy.req.limit[i].max_cpufreq_idx,
+				idx);
+		}
+
+		if (lcmoff_policy.req.limit[i].max_cpufreq_idx >
+			lcmoff_policy.req.limit[i].min_cpufreq_idx)
+			lcmoff_policy.req.limit[i].min_cpufreq_idx =
+				lcmoff_policy.req.limit[i].max_cpufreq_idx;
 	}
 
 	FUNC_EXIT(FUNC_LV_POLICY);
@@ -71,9 +113,26 @@ static void ppm_lcmoff_status_change_cb(bool enable)
 	FUNC_EXIT(FUNC_LV_POLICY);
 }
 
+static void ppm_lcmoff_update_schedutil(bool lcm_off)
+{
+	unsigned int i;
+	unsigned int up_rate = lcm_off ?
+		LCMOFF_SUGOV_UP_RATE_US : LCMON_SUGOV_RATE_US;
+	unsigned int down_rate = lcm_off ?
+		LCMOFF_SUGOV_DOWN_RATE_US : LCMON_SUGOV_RATE_US;
+
+	for_each_ppm_clusters(i) {
+		int cpu = ppm_main_info.cluster_info[i].cpu_id;
+
+		schedutil_set_up_rate_limit_us(cpu, up_rate);
+		schedutil_set_down_rate_limit_us(cpu, down_rate);
+	}
+}
+
 static void ppm_lcmoff_switch(int onoff)
 {
 	unsigned int i;
+	bool changed = false;
 
 	FUNC_ENTER(FUNC_LV_POLICY);
 
@@ -87,6 +146,7 @@ static void ppm_lcmoff_switch(int onoff)
 		/* deactivate lcmoff policy */
 		if (lcmoff_policy.is_activated) {
 			lcmoff_policy.is_activated = false;
+			changed = true;
 			for (i = 0; i < lcmoff_policy.req.cluster_num; i++) {
 				lcmoff_policy.req.limit[i].min_cpufreq_idx =
 					get_cluster_min_cpufreq_idx(i);
@@ -96,11 +156,19 @@ static void ppm_lcmoff_switch(int onoff)
 		}
 	} else {
 		/* activate lcmoff policy */
-		if (lcmoff_policy.is_enabled)
+		if (lcmoff_policy.is_enabled &&
+			!lcmoff_policy.is_activated) {
 			lcmoff_policy.is_activated = true;
+			changed = true;
+		}
 	}
 
 	ppm_unlock(&lcmoff_policy.lock);
+
+	if (changed) {
+		ppm_lcmoff_update_schedutil(!onoff);
+		mt_ppm_main();
+	}
 
 	FUNC_EXIT(FUNC_LV_POLICY);
 }
@@ -126,6 +194,9 @@ static int ppm_lcmoff_fb_notifier_callback(struct notifier_block *self,
 		ppm_lcmoff_switch(1);
 		break;
 	/* LCM OFF */
+	case FB_BLANK_NORMAL:
+	case FB_BLANK_VSYNC_SUSPEND:
+	case FB_BLANK_HSYNC_SUSPEND:
 	case FB_BLANK_POWERDOWN:
 		ppm_lcmoff_switch(0);
 		break;
@@ -142,6 +213,49 @@ static struct notifier_block ppm_lcmoff_fb_notifier = {
 	.notifier_call = ppm_lcmoff_fb_notifier_callback,
 };
 
+static int ppm_lcmoff_max_freq_proc_show(struct seq_file *m, void *v)
+{
+	unsigned int i;
+
+	for_each_ppm_clusters(i)
+		seq_printf(m, "cluster%d_max_freq = %d KHz\n",
+			i, lcmoff_max_freq[i]);
+
+	return 0;
+}
+
+static ssize_t ppm_lcmoff_max_freq_proc_write(struct file *file,
+		const char __user *buffer, size_t count, loff_t *pos)
+{
+	int id, freq;
+
+	char *buf = ppm_copy_from_user_for_proc(buffer, count);
+
+	if (!buf)
+		return -EINVAL;
+
+	if (sscanf(buf, "%d %d", &id, &freq) == 2) {
+		if (id < 0 || id >= ppm_main_info.cluster_num ||
+			freq < -1) {
+			ppm_err("@%s: Invalid input!\n", __func__);
+			goto out;
+		}
+
+		ppm_lock(&lcmoff_policy.lock);
+		lcmoff_max_freq[id] = freq;
+		ppm_unlock(&lcmoff_policy.lock);
+
+		if (ppm_lcmoff_is_policy_activated())
+			mt_ppm_main();
+	} else {
+		ppm_err("@%s: Invalid input!\n", __func__);
+	}
+
+out:
+	free_page((unsigned long)buf);
+	return count;
+}
+
 static int ppm_lcmoff_min_freq_proc_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "lcmoff_min_freq = %d KHz\n", lcmoff_min_freq);
@@ -152,22 +266,29 @@ static int ppm_lcmoff_min_freq_proc_show(struct seq_file *m, void *v)
 static ssize_t ppm_lcmoff_min_freq_proc_write(struct file *file,
 		const char __user *buffer, size_t count, loff_t *pos)
 {
-	unsigned int freq = 0;
+	int freq = 0;
 
 	char *buf = ppm_copy_from_user_for_proc(buffer, count);
 
 	if (!buf)
 		return -EINVAL;
 
-	if (!kstrtouint(buf, 10, &freq))
+	if (!kstrtoint(buf, 10, &freq) && freq >= -1) {
+		ppm_lock(&lcmoff_policy.lock);
 		lcmoff_min_freq = freq;
-	else
+		ppm_unlock(&lcmoff_policy.lock);
+
+		if (ppm_lcmoff_is_policy_activated())
+			mt_ppm_main();
+	} else {
 		ppm_err("@%s: Invalid input!\n", __func__);
+	}
 
 	free_page((unsigned long)buf);
 	return count;
 }
 
+PROC_FOPS_RW(lcmoff_max_freq);
 PROC_FOPS_RW(lcmoff_min_freq);
 static int __init ppm_lcmoff_policy_init(void)
 {
@@ -179,6 +300,7 @@ static int __init ppm_lcmoff_policy_init(void)
 	};
 
 	const struct pentry entries[] = {
+		PROC_ENTRY(lcmoff_max_freq),
 		PROC_ENTRY(lcmoff_min_freq),
 	};
 
@@ -210,8 +332,6 @@ static int __init ppm_lcmoff_policy_init(void)
 
 #ifdef LCMOFF_MIN_FREQ
 	lcmoff_min_freq = LCMOFF_MIN_FREQ;
-#else
-	lcmoff_policy.is_enabled = false;
 #endif
 
 	ppm_info("@%s: register %s done!\n", __func__, lcmoff_policy.name);
@@ -236,4 +356,3 @@ static void __exit ppm_lcmoff_policy_exit(void)
 /* Cannot init before FB driver */
 late_initcall(ppm_lcmoff_policy_init);
 module_exit(ppm_lcmoff_policy_exit);
-

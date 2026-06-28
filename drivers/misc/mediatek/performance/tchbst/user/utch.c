@@ -359,10 +359,14 @@ int init_utch(struct proc_dir_entry *parent)
 			sizeof(int), GFP_KERNEL);
 
 	for (i = 0; i < perfmgr_clusters; i++) {
-		target_freq[i].min =
-			mt_cpufreq_get_freq_by_idx(i, touch_boost_opp);
+		cluster_opp[i] = (i == 0) ?
+			TOUCH_BOOST_OPP_L : TOUCH_BOOST_OPP_B;
+		if (cluster_opp[i] == -2)
+			target_freq[i].min = -1;
+		else
+			target_freq[i].min =
+				mt_cpufreq_get_freq_by_idx(i, cluster_opp[i]);
 		target_freq[i].max = reset_freq[i].min = reset_freq[i].max = -1;
-		cluster_opp[i] = -1; /* depend on touch_boost_opp */
 	}
 	mutex_init(&notify_lock);
 
