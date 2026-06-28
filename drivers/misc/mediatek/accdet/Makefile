@@ -15,4 +15,6 @@ obj-$(CONFIG_MTK_PMIC_CHIP_MT6358) += mt6358/
 obj-$(CONFIG_MTK_PMIC_CHIP_MT6359) += mt6359/
 obj-$(CONFIG_MTK_PMIC_CHIP_MT6359P) += mt6359/
 obj-$(CONFIG_MTK_PMIC_CHIP_MT6390) += mt6357/
+ifneq ($(wildcard $(srctree)/drivers/misc/mediatek/accdet/mt8167/Makefile),)
 obj-$(CONFIG_MACH_MT8167) += mt8167/
+endif
