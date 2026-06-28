@@ -56,6 +56,12 @@ static void kpd_memory_setting(void)
 	kpd_init_keymap_state(kpd_keymap_state);
 }
 
+bool kpd_is_call_active(void)
+{
+	return call_status == 3;
+}
+EXPORT_SYMBOL_GPL(kpd_is_call_active);
+
 #if 1
 static ssize_t kpd_call_state_store(struct device_driver *ddri,
 		const char *buf, size_t count)

@@ -81,6 +81,15 @@ static u32 fb_yres_update;
 static int mtkfb_aod_mode_switch(enum mtkfb_aod_power_mode aod_pm);
 static size_t mtkfb_log_on = true;
 
+#ifdef CONFIG_KEYBOARD_MTK
+extern bool kpd_is_call_active(void);
+#else
+static inline bool kpd_is_call_active(void)
+{
+	return false;
+}
+#endif
+
 static int sem_flipping_cnt = 1;
 static int sem_early_suspend_cnt = 1;
 static int vsync_cnt;
@@ -190,6 +199,23 @@ static int _parse_tag_videolfb(void);
 
 static void mtkfb_late_resume(void);
 static void mtkfb_early_suspend(void);
+
+static bool mtkfb_should_suppress_aod(void)
+{
+	return kpd_is_call_active();
+}
+
+static int mtkfb_suspend_without_aod(enum mtkfb_power_mode prev_pm,
+	const char *reason)
+{
+	DISPCHECK("AOD: suppressed during active call (%s)\n", reason);
+	primary_display_set_aod_backlight_allowed(false);
+	primary_display_set_power_mode(FB_SUSPEND);
+	mtkfb_early_suspend();
+	debug_print_power_mode_check(prev_pm, FB_SUSPEND);
+
+	return 0;
+}
 
 #define WAIT_RESUME_TIMEOUT 200
 #define WAIT_SUSPEND_TIMEOUT 1500
@@ -423,11 +449,13 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 			break;
 		}
 
-		if (primary_is_aod_supported()) {
+		if (primary_is_aod_supported() && !mtkfb_should_suppress_aod()) {
 			primary_display_set_aod_backlight_allowed(true);
 			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE);
 			debug_print_power_mode_check(prev_pm,
 				primary_display_get_power_mode());
+		} else if (primary_is_aod_supported()) {
+			mtkfb_suspend_without_aod(prev_pm, "blank normal");
 		} else {
 			primary_display_set_power_mode(FB_RESUME);
 			mtkfb_late_resume();
@@ -444,11 +472,13 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 			break;
 		}
 
-		if (primary_is_aod_supported()) {
+		if (primary_is_aod_supported() && !mtkfb_should_suppress_aod()) {
 			primary_display_set_aod_backlight_allowed(true);
 			mtkfb_aod_mode_switch(MTKFB_AOD_DOZE_SUSPEND);
 			debug_print_power_mode_check(prev_pm,
 				primary_display_get_power_mode());
+		} else if (primary_is_aod_supported()) {
+			mtkfb_suspend_without_aod(prev_pm, "blank suspend");
 		}
 		break;
 	case FB_BLANK_POWERDOWN:
@@ -1191,6 +1221,9 @@ static int mtkfb_aod_mode_switch(enum mtkfb_aod_power_mode aod_pm)
 		DISPCHECK("AOD: feature not support\n");
 		return ret;
 	}
+	if (mtkfb_should_suppress_aod()) {
+		return mtkfb_suspend_without_aod(prev_pm, "ioctl");
+	}
 
 	if (aod_pm == MTKFB_AOD_DOZE_SUSPEND) {
 		/*
@@ -1285,8 +1318,9 @@ static int mtkfb_ioctl(struct fb_info *info, unsigned int cmd,
 
 		aod_pm = (enum mtkfb_aod_power_mode)arg;
 		primary_display_set_aod_backlight_allowed(
-			aod_pm == MTKFB_AOD_DOZE ||
-			aod_pm == MTKFB_AOD_DOZE_SUSPEND);
+			!mtkfb_should_suppress_aod() &&
+			(aod_pm == MTKFB_AOD_DOZE ||
+			 aod_pm == MTKFB_AOD_DOZE_SUSPEND));
 		ret = mtkfb_aod_mode_switch(arg);
 
 		break;
