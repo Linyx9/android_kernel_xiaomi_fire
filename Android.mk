@@ -59,6 +59,10 @@ clean-kernel:
 MTK_DTBIMAGE_DTS := $(addsuffix .dts,$(addprefix $(KERNEL_DIR)/arch/$(KERNEL_TARGET_ARCH)/boot/dts/,$(PLATFORM_DTB_NAME)))
 include device/mediatek/build/core/build_dtbimage.mk
 
+# boot.img embeds mtk_dtb; keep it in lockstep with kernel source/output.
+$(INSTALLED_MTK_DTB_TARGET): $(KERNEL_ZIMAGE_OUT) $(KERNEL_MAKE_DEPENDENCIES)
+$(INSTALLED_KERNEL_TARGET): $(INSTALLED_MTK_DTB_TARGET)
+
 MTK_DTBOIMAGE_DTS := $(addsuffix .dts,$(addprefix $(KERNEL_DIR)/arch/$(KERNEL_TARGET_ARCH)/boot/dts/,$(PROJECT_DTB_NAMES)))
 include device/mediatek/build/core/build_dtboimage.mk
 
