@@ -278,7 +278,6 @@ static ssize_t f2fs_sbi_show(struct f2fs_attr *a,
 
 	return __sbi_show_value(a, sbi, buf, ptr + a->offset);
 }
-
 static void __sbi_store_value(struct f2fs_attr *a,
 			struct f2fs_sb_info *sbi,
 			unsigned char *ui, unsigned long value)
