@@ -2071,6 +2071,8 @@ release_quota:
 
 __printf(2, 3)
 void f2fs_printk(struct f2fs_sb_info *sbi, const char *fmt, ...);
+__printf(3, 4)
+void f2fs_msg(struct super_block *sb, const char *level, const char *fmt, ...);
 
 #define f2fs_err(sbi, fmt, ...)						\
 	f2fs_printk(sbi, KERN_ERR fmt, ##__VA_ARGS__)

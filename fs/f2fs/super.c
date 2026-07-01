@@ -232,6 +232,18 @@ void f2fs_printk(struct f2fs_sb_info *sbi, const char *fmt, ...)
 	va_end(args);
 }
 
+void f2fs_msg(struct super_block *sb, const char *level, const char *fmt, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	va_start(args, fmt);
+	vaf.fmt = fmt;
+	vaf.va = &args;
+	printk_ratelimited("%sF2FS-fs (%s): %pV\n", level, sb->s_id, &vaf);
+	va_end(args);
+}
+
 #ifdef CONFIG_UNICODE
 static const struct f2fs_sb_encodings {
 	__u16 magic;
