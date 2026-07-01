@@ -3762,15 +3762,19 @@ try_onemore:
 				 err);
 			goto free_meta;
 		}
-	} else {
-		err = f2fs_recover_fsync_data(sbi, true);
-
-		if (!f2fs_readonly(sb) && err > 0) {
-			err = -EINVAL;
-			f2fs_err(sbi, "Need to recover fsync data");
-			goto free_meta;
+		} else {
+			err = f2fs_recover_fsync_data(sbi, true);
+			if (err > 0) {
+				if (!f2fs_readonly(sb)) {
+					f2fs_err(sbi, "Need to recover fsync data");
+					err = -EINVAL;
+					goto free_meta;
+				} else {
+					f2fs_info(sbi, "drop all fsynced data");
+					err = 0;
+				}
+			}
 		}
-	}
 reset_checkpoint:
 	/* f2fs_recover_fsync_data() cleared this already */
 	clear_sbi_flag(sbi, SBI_POR_DOING);
@@ -4055,4 +4059,3 @@ MODULE_AUTHOR("Samsung Electronics's Praesto Team");
 MODULE_DESCRIPTION("Flash Friendly File System");
 MODULE_LICENSE("GPL");
 MODULE_SOFTDEP("pre: crc32");
-
