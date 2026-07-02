@@ -10,6 +10,12 @@ config PROJECT_LAMU
 	help
 	  config oem project name.
 
+config PROJECT_FIRE
+	bool "oem project fire"
+	default n
+	help
+	  config oem project name.
+
 config PROJECT_P325A
        bool "oem project p325a"
        default n

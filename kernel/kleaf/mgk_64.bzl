@@ -2217,6 +2217,10 @@ def get_overlay_modules_list():
         mgk_64_platform_device_modules.pop("drivers/soc/mediatek/devapc/device-apc-mt6989.ko")
         mgk_64_platform_device_modules.pop("drivers/soc/mediatek/devapc/device-apc-mt6991.ko")
 
+    if "fire_overlay.config" in DEFCONFIG_OVERLAYS:
+        mgk_64_device_modules.append("oem/devinfo/oem_devinfo.ko")
+
+
     if "lamu_overlay.config" in DEFCONFIG_OVERLAYS:
         mgk_64_device_modules.append("oem/devinfo/oem_devinfo.ko")
         mgk_64_device_modules.append("oem/panel/ocp2131_i2c.ko")

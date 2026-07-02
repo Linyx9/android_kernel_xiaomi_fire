@@ -13,6 +13,9 @@ DTC_INCLUDE += $(dir $(src))
 # for devicetree overlay
 DTC_FLAGS += -@
 
+dtb-$(CONFIG_ARCH_MEDIATEK) += mt6768.dtb
+dtb-$(CONFIG_PROJECT_FIRE) += fire.dtbo
+
 dtb-$(CONFIG_ARCH_MEDIATEK) += mt2712-evb.dtb
 dtb-$(CONFIG_ARCH_MEDIATEK) += mt6755-evb.dtb
 dtb-$(CONFIG_ARCH_MEDIATEK) += mt6779-evb.dtb
