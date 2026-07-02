@@ -21,4 +21,7 @@ filegroup(
 
 define_mgk_ko(
     name = "btif_drv",
+    outs = [
+        "common/btif_drv.ko",
+    ],
 )

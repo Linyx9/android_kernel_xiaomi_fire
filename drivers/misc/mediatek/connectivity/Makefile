@@ -93,8 +93,9 @@ ifneq ($(KERNELRELEASE),)
 # Otherwise we were called directly from the command line;
 # invoke the kernel build system.
 else
-    KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-    PWD  := $(shell pwd)
-default:
-	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
+    KERNELDIR ?= $(if $(KERNEL_SRC),$(KERNEL_SRC),/lib/modules/$(shell uname -r)/build)
+    M ?= $(shell pwd)
+default: modules
+modules modules_install:
+	$(MAKE) -C $(KERNELDIR) O=$(O) M=$(M) $@
 endif
