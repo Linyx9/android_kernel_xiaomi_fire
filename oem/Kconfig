@@ -56,6 +56,13 @@ config OEM_LAMU_TOUCHSCREEN
 	help
 	  support oem_touch
 
+config OEM_FIRE_TOUCHSCREEN
+	tristate "oem fire touch"
+	depends on PROJECT_FIRE
+	default m
+	help
+	  support fire oem_touch
+
 config OEM_LAMU_PANEL
 	tristate "oem panel"
 	depends on PROJECT_LAMU
@@ -69,6 +76,13 @@ config OEM_LAMU_FINGERPRINT
 	default m
 	help
 	  support oem_touch
+
+config OEM_FIRE_FINGERPRINT
+	tristate "oem fire fingerprint"
+	depends on PROJECT_FIRE
+	default m
+	help
+	  support fire oem_fingerprint
 
 config SND_SOC_FS1815
 	tristate "oem aduiopa"

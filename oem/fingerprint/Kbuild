@@ -1,4 +1,7 @@
 ifdef CONFIG_OEM_LAMU_FINGERPRINT
 	obj-y += fpc1560/
+endif
+
+ifneq ($(filter y m,$(CONFIG_OEM_LAMU_FINGERPRINT) $(CONFIG_OEM_FIRE_FINGERPRINT)),)
 	obj-y += goodix/
 endif

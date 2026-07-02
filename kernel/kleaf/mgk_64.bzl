@@ -2219,6 +2219,9 @@ def get_overlay_modules_list():
 
     if "fire_overlay.config" in DEFCONFIG_OVERLAYS:
         mgk_64_device_modules.append("oem/devinfo/oem_devinfo.ko")
+        mgk_64_device_modules.append("oem/fingerprint/goodix/gf_tee.ko")
+        mgk_64_device_modules.append("oem/tinno_charger/typec/husb320/husb320.ko")
+        mgk_64_device_modules.append("oem/touchscreen/nt36xxx/nt36xxx_tp.ko")
 
 
     if "lamu_overlay.config" in DEFCONFIG_OVERLAYS:

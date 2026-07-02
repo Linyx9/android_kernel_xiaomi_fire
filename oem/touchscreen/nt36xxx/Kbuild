@@ -1,4 +1,4 @@
-ifdef CONFIG_OEM_LAMU_TOUCHSCREEN
+ifneq ($(filter y m,$(CONFIG_OEM_LAMU_TOUCHSCREEN) $(CONFIG_OEM_FIRE_TOUCHSCREEN)),)
 	NVT_OBJS += nt36xxx.o \
 		nt36xxx_fw_update.o \
 		nt36xxx_ext_proc.o \
@@ -6,5 +6,5 @@ ifdef CONFIG_OEM_LAMU_TOUCHSCREEN
 endif
 
 obj-$(CONFIG_OEM_LAMU_TOUCHSCREEN) += nt36xxx_tp.o
+obj-$(CONFIG_OEM_FIRE_TOUCHSCREEN) += nt36xxx_tp.o
 nt36xxx_tp-y := $(NVT_OBJS)
-

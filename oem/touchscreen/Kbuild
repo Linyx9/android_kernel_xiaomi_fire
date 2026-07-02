@@ -5,7 +5,10 @@ endif
 
 ifdef CONFIG_OEM_LAMU_TOUCHSCREEN
 	obj-y += chipone_tddi/
-	obj-y += nt36xxx/
 	obj-y += ILITEK9883C/
 	obj-y += omnivision_tcm/
+endif
+
+ifneq ($(filter y m,$(CONFIG_OEM_LAMU_TOUCHSCREEN) $(CONFIG_OEM_FIRE_TOUCHSCREEN)),)
+	obj-y += nt36xxx/
 endif
