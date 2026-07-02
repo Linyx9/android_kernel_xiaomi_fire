@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2016 MediaTek Inc.
  * Author: Honghui Zhang <honghui.zhang@mediatek.com>
@@ -11,116 +11,191 @@
 #include <linux/component.h>
 #include <linux/device.h>
 #include <linux/io.h>
+#include <linux/io-pgtable.h>
 #include <linux/iommu.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
+#include <linux/dma-mapping.h>
 #include <soc/mediatek/smi.h>
+#include <dt-bindings/memory/mtk-memory-port.h>
 
-#include "io-pgtable.h"
+#define MTK_LARB_COM_MAX	16
+#define MTK_LARB_SUBCOM_MAX	4
+
+#define MTK_IOMMU_GROUP_MAX	MTK_M4U_DOM_NR_MAX
 
 struct mtk_iommu_suspend_reg {
-	u32				standard_axi_mode;
+	union {
+		u32			standard_axi_mode;/* v1 */
+		u32			misc_ctrl;/* v2 */
+	};
 	u32				dcm_dis;
 	u32				ctrl_reg;
 	u32				int_control0;
 	u32				int_main_control;
 	u32				ivrp_paddr;
-	u32				vld_pa_range;
-	u32				pt_base;
-	u32				wr_ctrl;
+	u32				vld_pa_rng;
+	u32				wr_len_ctrl;
+	u32				tbw_id;
+	u32				mau_real_size;
+	u32				*mau;
 };
 
 enum mtk_iommu_plat {
 	M4U_MT2701,
 	M4U_MT2712,
+	M4U_MT6761,
+	M4U_MT6765,
+	M4U_MT6768,
+	M4U_MT6779,
+	M4U_MT6781,
+	M4U_MT6833,
+	M4U_MT6853,
+	M4U_MT6855,
+	M4U_MT6873,
+	M4U_MT6877,
+	M4U_MT6879,
+	M4U_MT6886,
+	M4U_MT6895,
+	M4U_MT6897,
+	M4U_MT6899,
+	M4U_MT6983,
+	M4U_MT6985,
 	M4U_MT8167,
-	M4U_MT8168,
+	M4U_MT6893,
 	M4U_MT8173,
 	M4U_MT8183,
-	iommu_mt6xxx_v0,
+	M4U_MT8192,
 };
 
-struct mtk_iommu_resv_iova_region;
+enum mtk_iommu_type {
+	MM_IOMMU,
+	APU_IOMMU,
+	PERI_IOMMU,
+	TYPE_NUM
+};
+
+enum mm_iommu {
+	DISP_IOMMU,
+	MDP_IOMMU,
+	MM_IOMMU_NUM
+};
+
+enum apu_iommu {
+	APU_IOMMU0,
+	APU_IOMMU1,
+	APU_IOMMU_NUM
+};
+
+enum peri_iommu {
+	PERI_IOMMU_M4,
+	PERI_IOMMU_M6,
+	PERI_IOMMU_M7,
+	PERI_IOMMU_NUM
+};
+
+enum iommu_bank {
+	IOMMU_BK0, /* normal bank */
+	IOMMU_BK1, /* protected bank1 */
+	IOMMU_BK2, /* protected bank2 */
+	IOMMU_BK3, /* protected bank3 */
+	IOMMU_BK4, /* secure bank */
+	IOMMU_BK_NUM
+};
+
+enum iommu_tab_type {
+	NS_TAB,
+	PROT_TAB,
+	SEC_TAB,
+	TAB_TYPE_NUM
+};
+
+enum iommu_tab_id {
+	MM_TABLE,
+	APU_TABLE,
+	PERI_TABLE,
+	PGTBALE_NUM
+};
+
+struct mtk_iommu_iova_region;
+
+struct mau_config_info {
+	unsigned int iommu_type;
+	unsigned int iommu_id;
+	unsigned int slave;
+	unsigned int mau;
+	unsigned int start;
+	unsigned int end;
+	unsigned int port_mask;
+	unsigned int larb_mask;
+	unsigned int wr;		/* 0:read, 1:write for each MAU set */
+	unsigned int virt;		/* 0: PA; 1: VA for each MAU set */
+	unsigned int io;		/* 0:input, 1:output for each MAU set */
+	unsigned int start_bit32;	/* bit34-32 of start address */
+	unsigned int end_bit32;		/* bit34-32 of end address */
+};
+
 struct mtk_iommu_plat_data {
 	enum mtk_iommu_plat m4u_plat;
-	bool has_4gb_mode;
-	int iommu_cnt;
-	/* The larb-id may be remapped in the smi-common. */
-	bool larbid_remap_enable;
-	unsigned int larbid_in_common[MTK_LARB_NR_MAX];
+	u32                 flags;
+	u32                 inv_sel_reg;
 
-	/* reserve/dir-mapping iova region data */
-	const char spec_device_comp[32];
-	const unsigned int spec_cnt;
-	const struct mtk_iommu_resv_iova_region *spec_region;
+	u32		    tbw_reg_val;
+	u32		    reg_val;
+	u32                 normal_dom;
+	int		    iommu_id;
+	enum mtk_iommu_type iommu_type;
+	enum iommu_tab_id			tab_id;
+	struct list_head			*hw_list;
+	unsigned int				iova_region_nr;
+	const struct mtk_iommu_iova_region	*iova_region;
+	unsigned char       larbid_remap[MTK_LARB_COM_MAX][MTK_LARB_SUBCOM_MAX];
+	unsigned int	    mau_count;
 };
 
 struct mtk_iommu_domain;
 
-#ifdef CONFIG_MTK_IOMMU_V2
-struct mtk_iommu_pgtable {
-	spinlock_t			pgtlock; /* lock for page table */
-	struct io_pgtable_cfg		cfg;
-	struct io_pgtable_ops		*iop;
-	struct list_head		m4u_dom;
-	spinlock_t	domain_lock; /* lock for page table */
-	unsigned int domain_count;
-	unsigned int init_domain_id;
-};
-
-struct mtk_iommu_domain {
-	unsigned int		id;
-	int		owner;
-	struct iommu_domain		domain;
-	struct iommu_group		*group;
-#ifndef CONFIG_ARM64
-	struct dma_iommu_mapping *mapping;
-	unsigned int		resv_status;
-#endif
-	struct mtk_iommu_pgtable	*pgtable;
-	struct mtk_iommu_data *data;
-	struct list_head list;
-};
-
-#define IOMMU_CLK_ID_COUNT (2)
-struct mtk_iommu_clks {
-	unsigned int	nr_clks;
-	struct clk *clks[IOMMU_CLK_ID_COUNT];
-	unsigned int	nr_powers;
-	struct clk *powers[IOMMU_CLK_ID_COUNT];
-};
-#endif
-
-#define MTK_IOMMU_BANK_NODE_COUNT (3)
 struct mtk_iommu_data {
-	void __iomem *base;
-	int irq;
-	void __iomem *base_sec;
-	void __iomem *base_bank[MTK_IOMMU_BANK_NODE_COUNT];
-	struct device *dev;
-	struct clk *bclk;
-	phys_addr_t protect_base; /* protect memory base */
-	struct mtk_iommu_suspend_reg reg;
-#ifdef CONFIG_MTK_IOMMU_V2
-	struct mtk_iommu_pgtable	*pgtable;
-	struct mtk_iommu_clks		*m4u_clks;
-	spinlock_t     reg_lock;
-	bool poweron;
-	unsigned long isr_ref;
-	struct timer_list iommu_isr_pause_timer;
+	void __iomem			*base;
+	int				irq;
+	int				bk_irq[IOMMU_BK_NUM];
+	struct device			*dev;
+	struct device			*bk_dev[IOMMU_BK_NUM];
+	struct clk			*bclk;
+	phys_addr_t			protect_base; /* protect memory base */
+	struct mtk_iommu_suspend_reg	reg;
+	struct mtk_iommu_domain		*m4u_dom;
+#ifdef CONFIG_ARM64
+	struct iommu_group		*m4u_group[MTK_IOMMU_GROUP_MAX];
+	struct dma_iommu_mapping	*mapping; /* For mtk_iommu_v1.c */
 #else
-	struct mtk_iommu_domain	*m4u_dom;
-	struct iommu_group *m4u_group;
-	bool tlb_flush_active;
+	struct dma_iommu_mapping	*mapping[MTK_IOMMU_GROUP_MAX];
 #endif
-	struct mtk_smi_iommu smi_imu; /* SMI larb iommu info */
-	bool enable_4GB;   /* Dram is over 4gb */
+	bool                            enable_4GB;
+	spinlock_t			tlb_lock; /* lock for tlb range flush */
 
-	struct iommu_device iommu;
+	struct iommu_device		iommu;
 	const struct mtk_iommu_plat_data *plat_data;
+	struct device			*smicomm_dev;
 
-	struct list_head list;
-	unsigned int m4uid;
+	int				isr_cnt;
+	unsigned long			first_jiffies;
+	struct timer_list		iommu_isr_pause_timer;
+
+	struct list_head		*hw_list;
+	struct list_head		hw_list_head;
+	struct list_head		list;
+	struct mtk_smi_larb_iommu	larb_imu[MTK_LARB_NR_MAX];
+};
+
+struct mtk_iommu_mm_pm_ops {
+	int (*pm_get)(void);
+	int (*pm_put)(void);
+};
+
+struct mtk_iommu_ops {
+	int (*update_pm_status)(u32 type, u32 id, bool pm_sta);
+	void (*set_pm_ops)(const struct mtk_iommu_mm_pm_ops *ops);
 };
 
 static inline int compare_of(struct device *dev, void *data)
@@ -137,14 +212,58 @@ static inline int mtk_iommu_bind(struct device *dev)
 {
 	struct mtk_iommu_data *data = dev_get_drvdata(dev);
 
-	return component_bind_all(dev, &data->smi_imu);
+	return component_bind_all(dev, &data->larb_imu);
 }
 
 static inline void mtk_iommu_unbind(struct device *dev)
 {
 	struct mtk_iommu_data *data = dev_get_drvdata(dev);
 
-	component_unbind_all(dev, &data->smi_imu);
+	component_unbind_all(dev, &data->larb_imu);
 }
+
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_IOMMU) || IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_IOMMU_ARM32)
+
+static inline int dev_is_normal_region(struct device *dev)
+{
+	struct mtk_iommu_data *data = dev_iommu_priv_get(dev);
+	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
+	int domid;
+
+	if (!data || !fwspec) {
+		pr_info("%s err, dev(%s) is not iommu-dev\n", __func__, dev_name(dev));
+		return 0;
+	}
+
+	domid = MTK_M4U_TO_DOM(fwspec->ids[0]);
+
+	pr_debug("%s, domid:%d -- %u\n", __func__, domid, data->plat_data->normal_dom);
+	return domid == data->plat_data->normal_dom;
+}
+
+void mtk_iommu_dbg_hang_detect(enum mtk_iommu_type type, int id);
+
+uint64_t mtee_iova_to_phys(unsigned long iova, u32 tab_id, u32 *sr_info,
+			   u64 *pa, u32 *type, u32 *lvl);
+
+#else
+
+static inline int dev_is_normal_region(struct device *dev)
+{
+	return 0;
+}
+
+static inline void mtk_iommu_dbg_hang_detect(enum mtk_iommu_type type, int id)
+{
+}
+
+static inline uint64_t mtee_iova_to_phys(unsigned long iova, u32 tab_id,
+					 u32 *sr_info, u64 *pa, u32 *type,
+					 u32 *lvl)
+{
+	return 0;
+}
+
+#endif
 
 #endif

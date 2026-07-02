@@ -4,16 +4,21 @@
  */
 
 #include <linux/init.h>
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/regmap.h>
-#include <linux/platform_device.h>
 #include <linux/interrupt.h>
-#include <linux/of.h>
+#include <linux/kernel.h>
 #include <linux/led-class-flash.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
+#include <linux/regmap.h>
 #include <media/v4l2-flash-led-class.h>
 
 #include <linux/mfd/mt6360-private.h>
+
+#if IS_ENABLED(CONFIG_MTK_FLASHLIGHT)
+#include "flashlight-core.h"
+#include <linux/power_supply.h>
+#endif
 
 enum {
 	MT6360_LED_ISINK1 = 0,
@@ -36,99 +41,123 @@ enum {
 	MT6360_FLED_MAX,
 };
 
-/* ILED setting/reg */
-#define MT6360_SINKCUR_MAX1	(0x0d)
-#define MT6360_SINKCUR_MAX2	(0x0d)
-#define MT6360_SINKCUR_MAX3	(0x0d)
-#define MT6360_SINKCUR_MAX4	(0x1f)
-#define MT6360_CURRSEL_REG1	(MT6360_PMU_RGB1_ISNK)
-#define MT6360_CURRSEL_REG2	(MT6360_PMU_RGB2_ISNK)
-#define MT6360_CURRSEL_REG3	(MT6360_PMU_RGB3_ISNK)
-#define MT6360_CURRSEL_REG4	(MT6360_PMU_RGB_ML_ISNK)
-#define MT6360_CURRSEL_MASK1	(0x0f)
-#define MT6360_CURRSEL_MASK2	(0x0f)
-#define MT6360_CURRSEL_MASK3	(0x0f)
-#define MT6360_CURRSEL_MASK4	(0x1f)
-#define MT6360_LEDMODE_REG1	(MT6360_PMU_RGB1_ISNK)
-#define MT6360_LEDMODE_REG2	(MT6360_PMU_RGB2_ISNK)
-#define MT6360_LEDMODE_REG3	(MT6360_PMU_RGB3_ISNK)
-#define MT6360_LEDMODE_REG4	(0)
-#define MT6360_LEDMODE_MASK1	(0xc0)
-#define MT6360_LEDMODE_MASK2	(0xc0)
-#define MT6360_LEDMODE_MASK3	(0xc0)
-#define MT6360_LEDMODE_MASK4	(0)
-#define MT6360_PWMDUTY_REG1	(MT6360_PMU_RGB1_DIM)
-#define MT6360_PWMDUTY_REG2	(MT6360_PMU_RGB2_DIM)
-#define MT6360_PWMDUTY_REG3	(MT6360_PMU_RGB3_DIM)
-#define MT6360_PWMDUTY_REG4	(0)
-#define MT6360_PWMDUTY_MASK1	(0xff)
-#define MT6360_PWMDUTY_MASK2	(0xff)
-#define MT6360_PWMDUTY_MASK3	(0xff)
-#define MT6360_PWMDUTY_MASK4	(0)
-#define MT6360_PWMFREQ_REG1	(MT6360_PMU_RGB12_Freq)
-#define MT6360_PWMFREQ_REG2	(MT6360_PMU_RGB12_Freq)
-#define MT6360_PWMFREQ_REG3	(MT6360_PMU_RGB34_Freq)
-#define MT6360_PWMFREQ_REG4	(0)
-#define MT6360_PWMFREQ_MASK1	(0xe0)
-#define MT6360_PWMFREQ_MASK2	(0x1c)
-#define MT6360_PWMFREQ_MASK3	(0xe0)
-#define MT6360_PWMFREQ_MASK4	(0)
-#define MT6360_BREATH_REGBASE1	(MT6360_PMU_RGB1_Tr)
-#define MT6360_BREATH_REGBASE2	(MT6360_PMU_RGB2_Tr)
-#define MT6360_BREATH_REGBASE3	(MT6360_PMU_RGB3_Tr)
-#define MT6360_BREATH_REGBASE4	(0)
-#define MT6360_LEDEN_MASK1	(0x80)
-#define MT6360_LEDEN_MASK2	(0x40)
-#define MT6360_LEDEN_MASK3	(0x20)
-#define MT6360_LEDEN_MASK4	(0x10)
-#define MT6360_LEDEN_REG	(MT6360_PMU_RGB_EN)
-#define MT6360_LEDALLEN_MASK	(0xf0)
+#define MT6360_PMU_FLED_STRB_CTRL	0x373
+#define MT6360_PMU_FLED1_STRB_CTRL2	0x374
+#define MT6360_PMU_FLED1_TOR_CTRL	0x375
+#define MT6360_PMU_FLED2_STRB_CTRL2	0x378
+#define MT6360_PMU_FLED2_TOR_CTRL	0x379
+#define MT6360_PMU_FLED_EN		0x37E
+#define MT6360_PMU_RGB_EN		0x380
+#define MT6360_PMU_RGB1_ISNK		0x381
+#define MT6360_PMU_RGB2_ISNK		0x382
+#define MT6360_PMU_RGB3_ISNK		0x383
+#define MT6360_PMU_RGB_ML_ISNK		0x384
+#define MT6360_PMU_RGB1_DIM		0x385
+#define MT6360_PMU_RGB2_DIM		0x386
+#define MT6360_PMU_RGB3_DIM		0x387
+#define MT6360_PMU_RGB12_Freq		0x389
+#define MT6360_PMU_RGB34_Freq		0x38A
+#define MT6360_PMU_RGB1_Tr		0x38B
+#define MT6360_PMU_RGB2_Tr		0x38E
+#define MT6360_PMU_RGB3_Tr		0x391
 
-#define MT6360_CHRIND_MASK	(0x08)
+/* ILED setting/reg */
+#define MT6360_SINKCUR_MAX1		0x0d
+#define MT6360_SINKCUR_MAX2		0x0d
+#define MT6360_SINKCUR_MAX3		0x0d
+#define MT6360_SINKCUR_MAX4		0x1f
+#define MT6360_CURRSEL_REG1		MT6360_PMU_RGB1_ISNK
+#define MT6360_CURRSEL_REG2		MT6360_PMU_RGB2_ISNK
+#define MT6360_CURRSEL_REG3		MT6360_PMU_RGB3_ISNK
+#define MT6360_CURRSEL_REG4		MT6360_PMU_RGB_ML_ISNK
+#define MT6360_CURRSEL_MASK1		0x0f
+#define MT6360_CURRSEL_MASK2		0x0f
+#define MT6360_CURRSEL_MASK3		0x0f
+#define MT6360_CURRSEL_MASK4		0x1f
+#define MT6360_LEDMODE_REG1		MT6360_PMU_RGB1_ISNK
+#define MT6360_LEDMODE_REG2		MT6360_PMU_RGB2_ISNK
+#define MT6360_LEDMODE_REG3		MT6360_PMU_RGB3_ISNK
+#define MT6360_LEDMODE_REG4		0
+#define MT6360_LEDMODE_MASK1		0xc0
+#define MT6360_LEDMODE_MASK2		0xc0
+#define MT6360_LEDMODE_MASK3		0xc0
+#define MT6360_LEDMODE_MASK4		0
+#define MT6360_PWMDUTY_REG1		MT6360_PMU_RGB1_DIM
+#define MT6360_PWMDUTY_REG2		MT6360_PMU_RGB2_DIM
+#define MT6360_PWMDUTY_REG3		MT6360_PMU_RGB3_DIM
+#define MT6360_PWMDUTY_REG4		0
+#define MT6360_PWMDUTY_MASK1		0xff
+#define MT6360_PWMDUTY_MASK2		0xff
+#define MT6360_PWMDUTY_MASK3		0xff
+#define MT6360_PWMDUTY_MASK4		0
+#define MT6360_PWMFREQ_REG1		MT6360_PMU_RGB12_Freq
+#define MT6360_PWMFREQ_REG2		MT6360_PMU_RGB12_Freq
+#define MT6360_PWMFREQ_REG3		MT6360_PMU_RGB34_Freq
+#define MT6360_PWMFREQ_REG4		0
+#define MT6360_PWMFREQ_MASK1		0xe0
+#define MT6360_PWMFREQ_MASK2		0x1c
+#define MT6360_PWMFREQ_MASK3		0xe0
+#define MT6360_PWMFREQ_MASK4		0
+#define MT6360_BREATH_REGBASE1		MT6360_PMU_RGB1_Tr
+#define MT6360_BREATH_REGBASE2		MT6360_PMU_RGB2_Tr
+#define MT6360_BREATH_REGBASE3		MT6360_PMU_RGB3_Tr
+#define MT6360_BREATH_REGBASE4		0
+#define MT6360_LEDEN_MASK1		0x80
+#define MT6360_LEDEN_MASK2		0x40
+#define MT6360_LEDEN_MASK3		0x20
+#define MT6360_LEDEN_MASK4		0x10
+#define MT6360_LEDEN_REG		MT6360_PMU_RGB_EN
+#define MT6360_LEDALLEN_MASK		0xf0
+
+#define MT6360_CHRIND_MASK		0x08
 
 /* pattern order -> toff, tr1, tr2, ton, tf1, tf2 */
-#define MT6360_BRPATTERN_NUM	(6)
-#define MT6360_BREATHREG_NUM	(3)
+#define MT6360_BRPATTERN_NUM		6
+#define MT6360_BREATHREG_NUM		3
 
-/* FLED setting */
-#define MT6360_CSENABLE_REG1	(MT6360_PMU_FLED_EN)
-#define MT6360_CSENABLE_MASK1	(0x02)
-#define MT6360_CSENABLE_REG2	(MT6360_PMU_FLED_EN)
-#define MT6360_CSENABLE_MASK2	(0x01)
-#define MT6360_TORBRIGHT_MAX1	(0x1f)
-#define MT6360_TORBRIGHT_MAX2	(0x1f)
-#define MT6360_TORBRIGHT_REG1	(MT6360_PMU_FLED1_TOR_CTRL)
-#define MT6360_TORBRIGHT_MASK1	(0x1f)
-#define MT6360_STRBRIGHT_REG1	(MT6360_PMU_FLED1_STRB_CTRL2)
-#define MT6360_STRBRIGHT_MASK1	(0x7f)
-#define MT6360_TORBRIGHT_REG2	(MT6360_PMU_FLED2_TOR_CTRL)
-#define MT6360_TORBRIGHT_MASK2	(0x1f)
-#define MT6360_STRBRIGHT_REG2	(MT6360_PMU_FLED2_STRB_CTRL2)
-#define MT6360_STRBRIGHT_MASK2	(0x7f)
-#define MT6360_TORENABLE_REG1	(MT6360_PMU_FLED_EN)
-#define MT6360_TORENABLE_MASK1	(0x08)
-#define MT6360_TORENABLE_REG2	(MT6360_PMU_FLED_EN)
-#define MT6360_TORENABLE_MASK2	(0x08)
-#define MT6360_STRBENABLE_REG1	(MT6360_PMU_FLED_EN)
-#define MT6360_STRBENABLE_MASK1 (0x06)
-#define MT6360_STRBENABLE_REG2	(MT6360_PMU_FLED_EN)
-#define MT6360_STRBENABLE_MASK2 (0x04)
-#define MT6360_STRBTIMEOUT_REG	(MT6360_PMU_FLED_STRB_CTRL)
-#define MT6360_STRBTIMEOUT_MASK	(0x7f)
-#define MT6360_TORCHCUR_MIN	(25000)
-#define MT6360_TORCHCUR_STEP	(12500)
-#define MT6360_TORCHCUR_MAX	(400000)
-#define MT6360_STROBECUR_MIN	(50000)
-#define MT6360_STROBECUR_STEP	(12500)
-#define MT6360_STROBECUR_MAX	(1500000)
-#define MT6360_STRBTIMEOUT_MIN	(64000)
-#define MT6360_STRBTIMEOUT_STEP	(32000)
-#define MT6360_STRBTIMEOUT_MAX	(2432000)
+#define MT6360_CSENABLE_REG1		MT6360_PMU_FLED_EN
+#define MT6360_CSENABLE_MASK1		0x02
+#define MT6360_CSENABLE_REG2		MT6360_PMU_FLED_EN
+#define MT6360_CSENABLE_MASK2		0x01
+#define MT6360_TORBRIGHT_MAX1		0x1f
+#define MT6360_TORBRIGHT_MAX2		0x1f
+#define MT6360_TORBRIGHT_REG1		MT6360_PMU_FLED1_TOR_CTRL
+#define MT6360_TORBRIGHT_MASK1		0x1f
+#define MT6360_STRBRIGHT_REG1		MT6360_PMU_FLED1_STRB_CTRL2
+#define MT6360_STRBRIGHT_MASK1		0x7f
+#define MT6360_TORBRIGHT_REG2		MT6360_PMU_FLED2_TOR_CTRL
+#define MT6360_TORBRIGHT_MASK2		0x1f
+#define MT6360_STRBRIGHT_REG2		MT6360_PMU_FLED2_STRB_CTRL2
+#define MT6360_STRBRIGHT_MASK2		0x7f
+#define MT6360_TORENABLE_REG1		MT6360_PMU_FLED_EN
+#define MT6360_TORENABLE_MASK1		0x08
+#define MT6360_TORENABLE_REG2		MT6360_PMU_FLED_EN
+#define MT6360_TORENABLE_MASK2		0x08
+#define MT6360_STRBENABLE_REG1		MT6360_PMU_FLED_EN
+#define MT6360_STRBENABLE_MASK1		0x06
+#define MT6360_STRBENABLE_REG2		MT6360_PMU_FLED_EN
+#define MT6360_STRBENABLE_MASK2		0x04
+#define MT6360_STRBTIMEOUT_REG		MT6360_PMU_FLED_STRB_CTRL
+#define MT6360_STRBTIMEOUT_MASK		0x7f
+#define MT6360_TORCHCUR_MIN		25000
+#define MT6360_TORCHCUR_STEP		12500
+#define MT6360_TORCHCUR_MAX		400000
+#define MT6360_STROBECUR_MIN		50000
+#define MT6360_STROBECUR_STEP		12500
+#define MT6360_STROBECUR_MAX		1500000
+#define MT6360_STRBTIMEOUT_MIN		64000
+#define MT6360_STRBTIMEOUT_STEP		32000
+#define MT6360_STRBTIMEOUT_MAX		2432000
 
 #define MT6360_FLEDSUPPORT_FAULTS	(LED_FAULT_UNDER_VOLTAGE |\
 					 LED_FAULT_SHORT_CIRCUIT |\
 					 LED_FAULT_INPUT_VOLTAGE |\
 					 LED_FAULT_TIMEOUT)
+
+#define MT6360_PMU_CHG_CTRL1		0x311
+#define MT6360_PMU_CHG_CTRL2		0x312
+#define MT6360_MASK_HZ_EN		0x04
+#define MT6360_MASK_CFO_EN		0x02
 
 struct mt6360_led_platform_data {
 	u32 rgbon_sync;
@@ -179,7 +208,21 @@ struct mt6360_fled_classdev {
 	unsigned int strobe_external_reg;
 	unsigned int strobe_external_mask;
 	u32 faults;
+#if IS_ENABLED(CONFIG_MTK_FLASHLIGHT)
+	struct flashlight_device_id dev_id;
+#endif
 };
+
+#if IS_ENABLED(CONFIG_MTK_FLASHLIGHT)
+static struct led_classdev_flash *mt6360_flash_class[MT6360_FLED_MAX];
+
+/* is decrease voltage */
+static int is_decrease_voltage;
+static DEFINE_MUTEX(mt6360_mutex);
+
+/* define usage count */
+static int fd_use_count;
+#endif
 
 struct mt6360_led_info {
 	struct device *dev;
@@ -409,7 +452,7 @@ static int mt6360_fled_strobe_set(
 	struct led_classdev *led_cdev = &fled_cdev->led_cdev;
 	struct mt6360_led_info *mli = dev_get_drvdata(led_cdev->dev->parent);
 	struct mt6360_fled_classdev *mtfled_cdev = (void *)fled_cdev;
-	int id = mtfled_cdev->index, ret;
+	int id = mtfled_cdev->index, ret, regval = 0;
 
 	dev_dbg(led_cdev->dev, "%s: id[%d], state %d\n", __func__, id, state);
 	if (!(state ^ test_bit(id, &mli->fl_strobe_flags))) {
@@ -422,6 +465,33 @@ static int mt6360_fled_strobe_set(
 			"Disable all leds torch [%lu]\n", mli->fl_torch_flags);
 		return -EINVAL;
 	}
+
+	if (state == true) {
+		ret = regmap_read(mli->regmap, MT6360_PMU_CHG_CTRL1, &regval);
+		if (ret < 0)
+			return ret;
+		if (regval & MT6360_MASK_HZ_EN)
+			dev_notice(led_cdev->dev,
+				   "%s: strobe with hz mode\n", __func__);
+
+		ret = regmap_read(mli->regmap, MT6360_PMU_CHG_CTRL2, &regval);
+		if (ret < 0)
+			return ret;
+		if (regval & MT6360_MASK_CFO_EN)
+			dev_notice(led_cdev->dev,
+				   "%s: strobe with cfo_en=0\n", __func__);
+	}
+
+#ifdef CONFIG_MTK_FLASHLIGHT_DLPT
+	flashlight_kicker_pbm(state);
+#endif
+#ifdef CONFIG_MTK_FLASHLIGHT_PT
+	if (flashlight_pt_is_low()) {
+		dev_info(led_cdev->dev, "pt is low\n");
+		return 0;
+	}
+#endif
+
 	ret = regmap_update_bits(mli->regmap, mtfled_cdev->cs_enable_reg,
 				 mtfled_cdev->cs_enable_mask, state ? 0xff : 0);
 	if (ret < 0) {
@@ -517,6 +587,9 @@ static int mt6360_fled_brightness_set(struct led_classdev *led_cdev,
 		return -EINVAL;
 	}
 	if (brightness == LED_OFF) {
+#ifdef CONFIG_MTK_FLASHLIGHT_DLPT
+		flashlight_kicker_pbm(0);
+#endif
 		clear_bit(id, &mli->fl_torch_flags);
 		keep = mt6360_fled_check_flags_if_any(&mli->fl_torch_flags);
 		ret = regmap_update_bits(mli->regmap,
@@ -534,6 +607,17 @@ static int mt6360_fled_brightness_set(struct led_classdev *led_cdev,
 			dev_err(led_cdev->dev, "Fail to set torch disable\n");
 		goto out_bright_set;
 	}
+
+#ifdef CONFIG_MTK_FLASHLIGHT_DLPT
+	flashlight_kicker_pbm(1);
+#endif
+#ifdef CONFIG_MTK_FLASHLIGHT_PT
+	if (flashlight_pt_is_low()) {
+		dev_info(led_cdev->dev, "pt is low\n");
+		return 0;
+	}
+#endif
+
 	shift = ffs(mtfled_cdev->torch_bright_mask) - 1;
 	brightness -= 1;
 	ret = regmap_update_bits(mli->regmap, mtfled_cdev->torch_bright_reg,
@@ -662,9 +746,15 @@ static void mt6360_init_v4l2_flash_config(
 	struct led_flash_setting *torch_intensity = &config->intensity;
 	struct led_classdev *led_cdev = &(mtfled_cdev->fl_cdev.led_cdev);
 	s32 val;
+	int ret = 0;
 
-	snprintf(config->dev_name, sizeof(config->dev_name),
+	ret = snprintf(config->dev_name, sizeof(config->dev_name),
 		 "%s", mtfled_cdev->fl_cdev.led_cdev.name);
+	if ((ret < 0) || (ret >= sizeof(config->dev_name))) {
+		dev_notice(led_cdev->dev, "%s:fail,ret = %d\n", __func__, ret);
+		return;
+	}
+
 	torch_intensity->min = MT6360_TORCHCUR_MIN;
 	torch_intensity->step = MT6360_TORCHCUR_STEP;
 	val = MT6360_TORCHCUR_MIN;
@@ -774,6 +864,154 @@ static int mt6360_fled_irq_register(struct platform_device *pdev)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_MTK_FLASHLIGHT)
+/******************************************************************************
+ * Charger power supply class
+ *****************************************************************************/
+static int mt6360_high_voltage_supply(int enable)
+{
+	union power_supply_propval prop;
+	static struct power_supply *chg_psy;
+	int ret;
+
+	if (chg_psy == NULL)
+		chg_psy = power_supply_get_by_name("mtk-master-charger");
+	if (chg_psy == NULL || IS_ERR(chg_psy)) {
+		pr_notice("%s Couldn't get chg_psy\n", __func__);
+		ret = -1;
+	} else {
+		prop.intval = enable;
+		ret = power_supply_set_property(chg_psy,
+			 POWER_SUPPLY_PROP_VOLTAGE_MAX, &prop);
+		pr_notice("%s enable_hv:%d\n", __func__, prop.intval);
+		power_supply_changed(chg_psy);
+	}
+
+	return ret;
+}
+
+static int mt6360_set_scenario(int scenario)
+{
+	/* notify charger to increase or decrease voltage */
+	mutex_lock(&mt6360_mutex);
+	if (scenario & FLASHLIGHT_SCENARIO_CAMERA_MASK) {
+		if (!is_decrease_voltage) {
+			pr_info("Decrease voltage level.\n");
+			mt6360_high_voltage_supply(0);
+			is_decrease_voltage = 1;
+		}
+	} else {
+		if (is_decrease_voltage) {
+			pr_info("Increase voltage level.\n");
+			mt6360_high_voltage_supply(1);
+			is_decrease_voltage = 0;
+		}
+	}
+	mutex_unlock(&mt6360_mutex);
+
+	return 0;
+}
+
+static int mt6360_open(void)
+{
+	mutex_lock(&mt6360_mutex);
+	fd_use_count++;
+	pr_debug("open driver: %d\n", fd_use_count);
+	mutex_unlock(&mt6360_mutex);
+	return 0;
+}
+
+static int mt6360_release(void)
+{
+	mutex_lock(&mt6360_mutex);
+	fd_use_count--;
+	pr_debug("close driver: %d\n", fd_use_count);
+	/* If camera NE, we need to enable pe by ourselves*/
+	if (fd_use_count == 0 && is_decrease_voltage) {
+		pr_info("Increase voltage level.\n");
+		mt6360_high_voltage_supply(1);
+		is_decrease_voltage = 0;
+	}
+	mutex_unlock(&mt6360_mutex);
+	return 0;
+}
+
+static int mt6360_ioctl(unsigned int cmd, unsigned long arg)
+{
+	struct flashlight_dev_arg *fl_arg;
+	int channel;
+	struct led_classdev_flash *flcdev;
+	struct led_classdev *lcdev;
+
+	fl_arg = (struct flashlight_dev_arg *)arg;
+	channel = fl_arg->channel;
+
+	if (channel >= MT6360_FLED_MAX || channel < 0) {
+		pr_info("Failed with error channel\n");
+		return -EINVAL;
+	}
+
+	flcdev = mt6360_flash_class[channel];
+	if (flcdev == NULL) {
+		pr_info("Get flcdev failed\n");
+		return -EINVAL;
+	}
+
+	lcdev = &flcdev->led_cdev;
+	if (lcdev == NULL) {
+		pr_info("Get lcdev failed\n");
+		return -EINVAL;
+	}
+
+	switch (cmd) {
+	case FLASH_IOC_SET_ONOFF:
+		pr_info("FLASH_IOC_SET_ONOFF(%d): %d\n",
+				channel, (int)fl_arg->arg);
+		mt6360_fled_brightness_set(lcdev, (int)fl_arg->arg);
+		break;
+
+	case FLASH_IOC_SET_SCENARIO:
+		pr_debug("FLASH_IOC_SET_SCENARIO(%d): %d\n",
+				channel, (int)fl_arg->arg);
+		mt6360_set_scenario(fl_arg->arg);
+		break;
+
+	default:
+		dev_info(lcdev->dev, "No such command and arg(%d): (%d, %d)\n",
+				channel, _IOC_NR(cmd), (int)fl_arg->arg);
+		return -ENOTTY;
+
+	}
+	return 0;
+}
+
+static ssize_t mt6360_strobe_store(struct flashlight_arg arg)
+{
+	struct led_classdev_flash *flcdev;
+	struct led_classdev *lcdev;
+
+	flcdev = mt6360_flash_class[arg.channel];
+	lcdev = &flcdev->led_cdev;
+	mt6360_fled_brightness_set(lcdev, 1);
+	msleep(arg.dur);
+	mt6360_fled_brightness_set(lcdev, 0);
+	return 0;
+}
+
+static int mt6360_set_driver(int set)
+{
+	return 0;
+}
+
+static struct flashlight_operations mt6360_ops = {
+	mt6360_open,
+	mt6360_release,
+	mt6360_ioctl,
+	mt6360_strobe_store,
+	mt6360_set_driver
+};
+#endif
+
 static int mt6360_iled_parse_dt(struct device *dev,
 				struct mt6360_led_info *mli)
 {
@@ -828,6 +1066,8 @@ static int mt6360_fled_parse_dt(struct device *dev,
 	if (!fled_np)
 		return 0;
 	for_each_available_child_of_node(fled_np, child) {
+		u32 reg = 0;
+
 		ret = of_property_read_u32(child, "reg", &val);
 		if (ret) {
 			dev_err(dev, "Fail to read reg property\n");
@@ -839,6 +1079,7 @@ static int mt6360_fled_parse_dt(struct device *dev,
 			goto out_fled_dt;
 		}
 		mtfled_cdev = mli->mtfled_cdev + val;
+		reg = val;
 
 		of_property_read_string(child, "label",
 					&(mtfled_cdev->fl_cdev.led_cdev.name));
@@ -871,6 +1112,24 @@ static int mt6360_fled_parse_dt(struct device *dev,
 		fs = &(mtfled_cdev->fl_cdev.timeout);
 		fs->val = fs->max = min(fs->max, val);
 		mtfled_cdev->np = child;
+#if IS_ENABLED(CONFIG_MTK_FLASHLIGHT)
+		of_property_read_u32(child, "type", &mtfled_cdev->dev_id.type);
+		of_property_read_u32(child, "ct", &mtfled_cdev->dev_id.ct);
+		of_property_read_u32(child, "part", &mtfled_cdev->dev_id.part);
+		snprintf(mtfled_cdev->dev_id.name, FLASHLIGHT_NAME_SIZE,
+				"%s", mtfled_cdev->fl_cdev.led_cdev.name);
+		mtfled_cdev->dev_id.channel = reg;
+		mt6360_flash_class[reg] = &mtfled_cdev->fl_cdev;
+		mtfled_cdev->dev_id.decouple = 0;
+		dev_info(dev, "Parse dt (type,ct,part,name,channel,decouple)=(%d,%d,%d,%s,%d,%d).\n",
+				mtfled_cdev->dev_id.type, mtfled_cdev->dev_id.ct,
+				mtfled_cdev->dev_id.part, mtfled_cdev->dev_id.name,
+				mtfled_cdev->dev_id.channel,
+				mtfled_cdev->dev_id.decouple);
+		if (flashlight_dev_register_by_device_id(&mtfled_cdev->dev_id,
+			&mt6360_ops))
+			return -EFAULT;
+#endif
 	}
 	return 0;
 out_fled_dt:
@@ -925,7 +1184,7 @@ static int mt6360_led_probe(struct platform_device *pdev)
 	struct v4l2_flash_config v4l2_config;
 	int i, ret;
 
-	dev_dbg(&pdev->dev, "%s\n", __func__);
+	dev_info(&pdev->dev, "%s\n", __func__);
 	mli = devm_kzalloc(&pdev->dev, sizeof(*mli), GFP_KERNEL);
 	if (!mli)
 		return -ENOMEM;
@@ -947,19 +1206,18 @@ static int mt6360_led_probe(struct platform_device *pdev)
 	mli->pdata = pdata;
 	platform_set_drvdata(pdev, mli);
 
-	/* get parent regmap */
 	mli->regmap = dev_get_regmap(pdev->dev.parent, NULL);
 	if (!mli->regmap) {
 		dev_err(&pdev->dev, "Failed to get parent regmap\n");
 		return -ENODEV;
 	}
-	/* apply platform data */
+
 	ret = mt6360_led_apply_pdata(mli, pdata);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "apply pdata fail\n");
 		return ret;
 	}
-	/* iled register */
+
 	memcpy(mli->mtled_cdev, def_led_classdev, sizeof(def_led_classdev));
 	ret = mt6360_iled_parse_dt(&pdev->dev, mli);
 	if (ret < 0) {
@@ -976,7 +1234,7 @@ static int mt6360_led_probe(struct platform_device *pdev)
 		}
 		mtled_cdev->cdev.dev->of_node = mtled_cdev->np;
 	}
-	/* fled register */
+
 	memcpy(mli->mtfled_cdev, def_fled_classdev, sizeof(def_fled_classdev));
 	ret = mt6360_fled_parse_dt(&pdev->dev, mli);
 	if (ret < 0) {
@@ -1006,6 +1264,12 @@ static int mt6360_led_probe(struct platform_device *pdev)
 			goto out_v4l2_sd;
 		}
 	}
+
+#if IS_ENABLED(CONFIG_MTK_FLASHLIGHT)
+	fd_use_count = 0;
+	is_decrease_voltage = 0;
+#endif
+
 	ret = mt6360_fled_irq_register(pdev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to register irqs\n");
@@ -1035,6 +1299,9 @@ static int mt6360_led_remove(struct platform_device *pdev)
 
 	for (i = 0; i < MT6360_FLED_MAX; i++) {
 		mtfled_cdev = mli->mtfled_cdev + i;
+#if IS_ENABLED(CONFIG_MTK_FLASHLIGHT)
+		flashlight_dev_unregister_by_device_id(&mtfled_cdev->dev_id);
+#endif
 		v4l2_flash_release(mtfled_cdev->v4l2_flash);
 		led_classdev_flash_unregister(&mtfled_cdev->fl_cdev);
 	}
@@ -1042,20 +1309,20 @@ static int mt6360_led_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id __maybe_unused mt6360_led_of_id[] = {
-	{ .compatible = "mediatek,mt6360_led", },
+	{ .compatible = "mediatek,mt6360-led", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, mt6360_led_of_id);
 
 static const struct platform_device_id mt6360_led_id[] = {
-	{ "mt6360_led", 0 },
+	{ "mt6360-led", 0 },
 	{},
 };
 MODULE_DEVICE_TABLE(platform, mt6360_led_id);
 
 static struct platform_driver mt6360_led_driver = {
 	.driver = {
-		.name = "mt6360_led",
+		.name = "mt6360-led",
 		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(mt6360_led_of_id),
 	},

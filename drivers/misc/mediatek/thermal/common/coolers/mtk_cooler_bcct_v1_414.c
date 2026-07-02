@@ -17,7 +17,6 @@
 #include "mt-plat/mtk_thermal_monitor.h"
 #include <linux/uidgid.h>
 #include <linux/notifier.h>
-#include <linux/fb.h>
 #include "mach/mtk_thermal.h"
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
 #include <charger_type.h>
@@ -27,6 +26,9 @@
 #include <tmp_battery.h>
 #include <charging.h>
 #endif
+#include "mtk_disp_notify.h"
+#include <linux/fb.h>
+
 /* ************************************ */
 /* Weak functions */
 /* ************************************ */
@@ -121,7 +123,7 @@ charger_manager_get_current_charging_type(struct charger_consumer *consumer)
 	pr_notice("E_WF: %s doesn't exist\n", __func__);
 	return -1;
 }
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT)
 	int __attribute__ ((weak))
 charger_manager_get_pe30_input_current_limit(
 struct charger_consumer *consumer, int idx, int *input_current_uA,
@@ -347,7 +349,7 @@ static void chrlmt_set_limit_handler(struct work_struct *work)
 		mtk_cooler_bcct_dprintk_always("%s %d\n", __func__
 				, chrlmt_pep30_input_curr_limit);
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT)
 		charger_manager_set_pe30_input_current_limit(pthermal_consumer,
 				0, chrlmt_pep30_input_curr_limit * 1000);
 #endif /* CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT */
@@ -380,7 +382,7 @@ static void chrlmt_set_limit_handler(struct work_struct *work)
 						pthermal_consumer, true);
 
 #else
-#ifdef CONFIG_MTK_SWITCH_INPUT_OUTPUT_CURRENT_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_SWITCH_INPUT_OUTPUT_CURRENT_SUPPORT)
 		set_chr_input_current_limit(chrlmt_chr_input_curr_limit);
 #endif
 		set_bat_charging_current_limit(chrlmt_bat_chr_curr_limit);
@@ -637,7 +639,7 @@ static void bat_chg_info_update(void)
 			mtk_cooler_bcct_dprintk("bat_info_aicr: %d err: %d\n",
 							bat_info_aicr, ret);
 	}
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT)
 	charger_manager_get_pe30_input_current_limit(pthermal_consumer, 0,
 						&bat_info_pep30_curr_limit,
 						&pep30_min_input_curr_limit_uA,
@@ -1172,7 +1174,7 @@ static int _cl_bcct_read(struct seq_file *m, void *v)
 
 static int _cl_bcct_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_bcct_read, PDE_DATA(inode));
+	return single_open(file, _cl_bcct_read, pde_data(inode));
 }
 
 static const struct file_operations _cl_bcct_fops = {
@@ -1300,7 +1302,7 @@ static int _cl_abcct_read(struct seq_file *m, void *v)
 
 static int _cl_abcct_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_abcct_read, PDE_DATA(inode));
+	return single_open(file, _cl_abcct_read, pde_data(inode));
 }
 
 static const struct file_operations _cl_abcct_fops = {
@@ -1406,7 +1408,7 @@ static int _cl_abcct_lcmoff_read(struct seq_file *m, void *v)
 
 static int _cl_abcct_lcmoff_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_abcct_lcmoff_read, PDE_DATA(inode));
+	return single_open(file, _cl_abcct_lcmoff_read, pde_data(inode));
 }
 
 static const struct file_operations _cl_abcct_lcmoff_fops = {
@@ -1446,7 +1448,7 @@ struct notifier_block *self, unsigned long event, void *data)
 	/* skip if policy is not enable */
 	if (!chrlmt_lcmoff_policy_enable)
 		return 0;
-
+	pr_info("enter bcct_lcmoff_fb_notifier_callback fun\n");
 	blank = *(int *)evdata->data;
 	mtk_cooler_bcct_dprintk("%s: blank = %d, event = %lu\n",
 						__func__, blank, event);
@@ -1463,7 +1465,7 @@ struct notifier_block *self, unsigned long event, void *data)
 	default:
 		break;
 	}
-
+	pr_info("exit bcct_lcmoff_fb_notifier_callback fun\n");
 	return 0;
 }
 
@@ -1498,7 +1500,7 @@ static int _cl_chrlmt_read(struct seq_file *m, void *v)
 
 static int _cl_chrlmt_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_chrlmt_read, PDE_DATA(inode));
+	return single_open(file, _cl_chrlmt_read, pde_data(inode));
 }
 
 static const struct file_operations _cl_chrlmt_fops = {
@@ -1524,7 +1526,7 @@ static int _cl_battery_status_read(struct seq_file *m, void *v)
 
 static int _cl_battery_status_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_battery_status_read, PDE_DATA(inode));
+	return single_open(file, _cl_battery_status_read, pde_data(inode));
 }
 
 static const struct file_operations _cl_battery_status_fops = {
@@ -1627,7 +1629,7 @@ static int __init mtk_cooler_bcct_init(void)
 	if (err)
 		goto err_unreg;
 
-	if (fb_register_client(&bcct_lcmoff_fb_notifier)) {
+	if (mtk_disp_notifier_register("thermal_bcct_v14", &bcct_lcmoff_fb_notifier)) {
 		mtk_cooler_bcct_dprintk_always(
 					"%s: register FB client failed!\n",
 					__func__);
@@ -1711,7 +1713,7 @@ static void __exit mtk_cooler_bcct_exit(void)
 	mtk_cooler_abcct_unregister_ltf();
 	mtk_cooler_abcct_lcmoff_unregister_ltf();
 
-	fb_unregister_client(&bcct_lcmoff_fb_notifier);
+	mtk_disp_notifier_unregister(&bcct_lcmoff_fb_notifier);
 
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
 	platform_driver_unregister(&mtk_cooler_bcct_driver);

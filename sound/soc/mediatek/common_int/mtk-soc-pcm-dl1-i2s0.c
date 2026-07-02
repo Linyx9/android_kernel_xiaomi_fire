@@ -57,10 +57,12 @@ static struct device *mDev;
  */
 
 static int mtk_i2s0_probe(struct platform_device *pdev);
-static int mtk_pcm_i2s0_close(struct snd_pcm_substream *substream);
+static int mtk_pcm_i2s0_close(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream);
 static int mtk_afe_i2s0_component_probe(struct snd_soc_component *component);
 
 int mtk_soc_always_hd;
+EXPORT_SYMBOL(mtk_soc_always_hd);
 int extcodec_echoref_control;
 static int mi2s0_sidegen_control;
 static int hdoutput_control;
@@ -87,7 +89,7 @@ static int Audio_i2s0_SideGen_Get(struct snd_kcontrol *kcontrol,
 static int Audio_i2s0_SideGen_Set(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
-	bool ret = false;
+	bool ret __maybe_unused = false;
 	static int samplerate;
 	unsigned int u32AudioI2sOut = 0;
 	unsigned int u32Audio2ndI2sIn = 0;
@@ -352,18 +354,18 @@ static int Audio_i2s0_hdoutput_Set(struct snd_kcontrol *kcontrol,
 
 	hdoutput_control = ucontrol->value.integer.value[0];
 	/*
-	if (hdoutput_control) {
-		EnableApll1(true);
-		EnableApll2(true);
-		EnableI2SDivPower(AUDIO_APLL1_DIV0, true);
-		EnableI2SDivPower(AUDIO_APLL2_DIV0, true);
-	} else {
-		EnableApll1(false);
-		EnableApll2(false);
-		EnableI2SDivPower(AUDIO_APLL1_DIV0, false);
-		EnableI2SDivPower(AUDIO_APLL2_DIV0, false);
-	}
-	*/
+	 * if (hdoutput_control) {
+	 *	EnableApll1(true);
+	 *	EnableApll2(true);
+	 *	EnableI2SDivPower(AUDIO_APLL1_DIV0, true);
+	 *	EnableI2SDivPower(AUDIO_APLL2_DIV0, true);
+	 *} else {
+	 *	EnableApll1(false);
+	 *	EnableApll2(false);
+	 *	EnableI2SDivPower(AUDIO_APLL1_DIV0, false);
+	 *	EnableI2SDivPower(AUDIO_APLL2_DIV0, false);
+	 *}
+	 */
 	return 0;
 }
 
@@ -380,7 +382,6 @@ static int Audio_i2s0_ExtCodec_EchoRef_Get(struct snd_kcontrol *kcontrol,
 static int Audio_i2s0_ExtCodec_EchoRef_Set(struct snd_kcontrol *kcontrol,
 					   struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	if (ucontrol->value.enumerated.item[0] >
 	    ARRAY_SIZE(ExtCodec_EchoRef_Routing)) {
 		pr_err("return -EINVAL\n");
@@ -422,7 +423,6 @@ static int mtk_pcm_i2s0_stop(struct snd_pcm_substream *substream)
 {
 	struct afe_block_t *Afe_Block = &(pI2s0MemControl->rBlock);
 
-	pr_debug("%s()\n", __func__);
 	irq_remove_user(substream,
 			irq_request_number(Soc_Aud_Digital_Block_MEM_DL1));
 
@@ -445,13 +445,15 @@ static int mtk_pcm_i2s0_stop(struct snd_pcm_substream *substream)
 }
 
 static snd_pcm_uframes_t
-mtk_pcm_i2s0_pointer(struct snd_pcm_substream *substream)
+mtk_pcm_i2s0_pointer(struct snd_soc_component *component,
+		     struct snd_pcm_substream *substream)
 {
 	return get_mem_frame_index(substream, pI2s0MemControl,
 				   Soc_Aud_Digital_Block_MEM_DL1);
 }
 
-static int mtk_pcm_i2s0_hw_params(struct snd_pcm_substream *substream,
+static int mtk_pcm_i2s0_hw_params(struct snd_soc_component *component,
+				  struct snd_pcm_substream *substream,
 				  struct snd_pcm_hw_params *hw_params)
 {
 	int ret = 0;
@@ -481,7 +483,8 @@ static int mtk_pcm_i2s0_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_pcm_i2s0_hw_free(struct snd_pcm_substream *substream)
+static int mtk_pcm_i2s0_hw_free(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	AudDrv_Emi_Clk_Off();
 	return 0;
@@ -494,7 +497,8 @@ static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 };
 
 static unsigned int mPlaybackDramState;
-static int mtk_pcm_i2s0_open(struct snd_pcm_substream *substream)
+static int mtk_pcm_i2s0_open(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -529,16 +533,16 @@ static int mtk_pcm_i2s0_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_err("mtk_pcm_i2s0_close\n");
-		mtk_pcm_i2s0_close(substream);
+		mtk_pcm_i2s0_close(component, substream);
 		return ret;
 	}
 	pr_debug("%s(), return\n", __func__);
 	return 0;
 }
 
-static int mtk_pcm_i2s0_close(struct snd_pcm_substream *substream)
+static int mtk_pcm_i2s0_close(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 	AfeControlSramLock();
 	ClearSramState(mPlaybackDramState);
 	mPlaybackDramState = GetSramState();
@@ -547,7 +551,8 @@ static int mtk_pcm_i2s0_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_i2s0_prepare(struct snd_pcm_substream *substream)
+static int mtk_pcm_i2s0_prepare(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	return 0;
 }
@@ -602,7 +607,8 @@ static int mtk_pcm_i2s0_start(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_i2s0_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_pcm_i2s0_trigger(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream, int cmd)
 {
 	pr_debug("%s(), cmd = %d\n", __func__, cmd);
 
@@ -617,53 +623,42 @@ static int mtk_pcm_i2s0_trigger(struct snd_pcm_substream *substream, int cmd)
 	return -EINVAL;
 }
 
-static int mtk_pcm_i2s0_copy(struct snd_pcm_substream *substream, int channel,
-			     unsigned long pos, void __user *dst,
+static int mtk_pcm_i2s0_copy(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream, int channel,
+			     unsigned long pos, struct iov_iter *dst,
 			     unsigned long count)
 {
 	return mtk_memblk_copy(substream, channel, pos, dst, count,
 			       pI2s0MemControl, Soc_Aud_Digital_Block_MEM_DL1);
 }
 
-static int mtk_pcm_i2s0_silence(struct snd_pcm_substream *substream,
-				int channel,
-				unsigned long pos,
-				unsigned long bytes)
-{
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
-static struct page *mtk_i2s0_pcm_page(struct snd_pcm_substream *substream,
+static struct page *mtk_i2s0_pcm_page(struct snd_soc_component *component,
+				      struct snd_pcm_substream *substream,
 				      unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_i2s0_ops = {
+static const struct snd_soc_component_driver mtk_i2s0_soc_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_afe_i2s0_component_probe,
 	.open = mtk_pcm_i2s0_open,
 	.close = mtk_pcm_i2s0_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_pcm_i2s0_hw_params,
 	.hw_free = mtk_pcm_i2s0_hw_free,
 	.prepare = mtk_pcm_i2s0_prepare,
 	.trigger = mtk_pcm_i2s0_trigger,
 	.pointer = mtk_pcm_i2s0_pointer,
-	.copy_user = mtk_pcm_i2s0_copy,
-	.fill_silence = mtk_pcm_i2s0_silence,
+	.copy = mtk_pcm_i2s0_copy,
 	.page = mtk_i2s0_pcm_page,
-};
 
-static const struct snd_soc_component_driver mtk_i2s0_soc_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_i2s0_ops,
-	.probe = mtk_afe_i2s0_component_probe,
 };
 
 static int mtk_i2s0_probe(struct platform_device *pdev)
 {
-	pr_debug("%s\n", __func__);
 
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -685,7 +680,6 @@ static int mtk_i2s0_probe(struct platform_device *pdev)
 
 static int mtk_afe_i2s0_component_probe(struct snd_soc_component *component)
 {
-	pr_debug("%s\n", __func__);
 	snd_soc_add_component_controls(component, Audio_snd_i2s0_controls,
 				      ARRAY_SIZE(Audio_snd_i2s0_controls));
 	return 0;
@@ -697,7 +691,7 @@ static int mtk_i2s0_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_dl1_i2s0_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_dl1_i2s0",
@@ -710,7 +704,7 @@ static struct platform_driver mtk_i2s0_driver = {
 
 			.name = MT_SOC_I2S0_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_dl1_i2s0_of_ids,
 #endif
 		},
@@ -722,11 +716,10 @@ static struct platform_driver mtk_i2s0_driver = {
 static struct platform_device *soc_mtki2s0_dev;
 #endif
 
-static int __init mtk_i2s0_soc_platform_init(void)
+int mtk_i2s0_soc_platform_init(void)
 {
 	int ret;
 
-	pr_debug("%s\n", __func__);
 #ifndef CONFIG_OF
 	soc_mtki2s0_dev = platform_device_alloc(MT_SOC_I2S0_PCM, -1);
 	if (!soc_mtki2s0_dev)
@@ -742,13 +735,11 @@ static int __init mtk_i2s0_soc_platform_init(void)
 	ret = platform_driver_register(&mtk_i2s0_driver);
 	return ret;
 }
-module_init(mtk_i2s0_soc_platform_init);
 
-static void __exit mtk_i2s0_soc_platform_exit(void)
+void mtk_i2s0_soc_platform_exit(void)
 {
 	platform_driver_unregister(&mtk_i2s0_driver);
 }
-module_exit(mtk_i2s0_soc_platform_exit);
 
 MODULE_DESCRIPTION("AFE PCM module platform driver");
 MODULE_LICENSE("GPL");

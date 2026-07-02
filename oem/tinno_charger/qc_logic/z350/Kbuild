@@ -1,0 +1,6 @@
+ifdef CONFIG_OEM_QC_LOGIC_Z350
+	QC_lOGIC_Z350_OBJS += qc_logic_z350.o
+endif
+
+obj-$(CONFIG_OEM_QC_LOGIC_Z350) += z350.o
+z350-y := $(QC_lOGIC_Z350_OBJS)

@@ -1,18 +1,21 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #include <linux/clk.h>
 
 #include "n3d_clk.h"
 #include "n3d_util.h"
+#include "frame-sync/frame_sync_def.h"
 
 static struct SENINF_N3D_CLK_CTRL gn3d_clk_name[N3D_CLK_IDX_SYS_MAX_NUM] = {
 	{"SCP_SYS_MDP"},
 	{"SCP_SYS_CAM"},
 	{"CAMSYS_SENINF_CGPDN"},
+	{"CAMSYS_CAM_CGPDN"},
 	{"CAMSYS_CAMTG_CGPDN"},
+	{"CAMSYS_CAMTM_SEL"},
 };
 
 void n3d_clk_init(struct SENINF_N3D_CLK *pclk)
@@ -20,7 +23,7 @@ void n3d_clk_init(struct SENINF_N3D_CLK *pclk)
 	int i;
 
 	if (pclk->pplatform_device == NULL) {
-		LOG_E("[%s] pdev is null\n", __func__);
+		LOG_PR_ERR("[%s] pdev is null\n", __func__);
 		return;
 	}
 	/* get all possible using clocks */
@@ -30,20 +33,20 @@ void n3d_clk_init(struct SENINF_N3D_CLK *pclk)
 		atomic_set(&pclk->enable_cnt[i], 0);
 
 		if (IS_ERR(pclk->clk_sel[i]))
-			LOG_D("skip get %d clock\n", i);
+			LOG_PR_ERR("cannot get %d clock, skip\n", i);
 	}
-#ifdef CONFIG_PM_SLEEP
+#if IS_ENABLED(CONFIG_PM_SLEEP)
 	pclk->n3d_wake_lock = wakeup_source_register(
 			NULL, "n3d_lock_wakelock");
 	if (!pclk->n3d_wake_lock)
-		LOG_E("failed to get n3d_wake_lock\n");
+		LOG_PR_ERR("failed to get n3d_wake_lock\n");
 #endif
 	atomic_set(&pclk->wakelock_cnt, 0);
 }
 
 void n3d_clk_exit(struct SENINF_N3D_CLK *pclk)
 {
-#ifdef CONFIG_PM_SLEEP
+#if IS_ENABLED(CONFIG_PM_SLEEP)
 	if (pclk->n3d_wake_lock)
 		wakeup_source_unregister(pclk->n3d_wake_lock);
 #endif
@@ -56,7 +59,7 @@ void n3d_clk_open(struct SENINF_N3D_CLK *pclk)
 	LOG_D("E\n");
 
 	if (atomic_inc_return(&pclk->wakelock_cnt) == 1) {
-#ifdef CONFIG_PM_SLEEP
+#if IS_ENABLED(CONFIG_PM_SLEEP)
 		if (pclk->n3d_wake_lock)
 			__pm_stay_awake(pclk->n3d_wake_lock);
 #endif
@@ -71,7 +74,7 @@ void n3d_clk_open(struct SENINF_N3D_CLK *pclk)
 			continue;
 		}
 		if (clk_prepare_enable(pclk->clk_sel[i]))
-			LOG_E("[CAMERA SENSOR N3D] failed sys idx= %d\n", i);
+			LOG_PR_ERR("[CAMERA SENSOR N3D] failed sys idx= %d\n", i);
 		else
 			atomic_inc(&pclk->enable_cnt[i]);
 	}
@@ -92,7 +95,7 @@ void n3d_clk_release(struct SENINF_N3D_CLK *pclk)
 	} while (i);
 
 	if (atomic_dec_and_test(&pclk->wakelock_cnt)) {
-#ifdef CONFIG_PM_SLEEP
+#if IS_ENABLED(CONFIG_PM_SLEEP)
 		if (pclk->n3d_wake_lock)
 			__pm_relax(pclk->n3d_wake_lock);
 #endif

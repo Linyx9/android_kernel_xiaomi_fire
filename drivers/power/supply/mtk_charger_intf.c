@@ -62,18 +62,28 @@
 
 #include "mtk_charger.h"
 
+/* TN Begin modified by hao.jia/809321 20240727 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_DEVINFO)
+#include "../../../oem/devinfo/dev_info.h"
+#endif /* CONFIG_OEM_DEVINFO */
+
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+#include "../../../oem/tinno_charger/tinno_charger.h"
+#endif /* CONFIG_OEM_TINNO_CHARGER */
+/* TN End modified by hao.jia/809321 20240727 CR/EKLAMU-202 */
+
 int get_uisoc(struct mtk_charger *info)
 {
-	union power_supply_propval prop;
+	union power_supply_propval prop = {0};
 	struct power_supply *bat_psy = NULL;
-	int ret;
+	int ret = 0;
 
-	bat_psy = info->bat_psy;
+	bat_psy = info->bat_manager_psy;
 
 	if (bat_psy == NULL || IS_ERR(bat_psy)) {
 		chr_err("%s retry to get bat_psy\n", __func__);
-		bat_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "gauge");
-		info->bat_psy = bat_psy;
+		bat_psy = power_supply_get_by_name("battery");
+		info->bat_manager_psy = bat_psy;
 	}
 
 	if (bat_psy == NULL || IS_ERR(bat_psy)) {
@@ -82,6 +92,11 @@ int get_uisoc(struct mtk_charger *info)
 	} else {
 		ret = power_supply_get_property(bat_psy,
 			POWER_SUPPLY_PROP_CAPACITY, &prop);
+		if (ret < 0) {
+			chr_err("%s Couldn't get soc\n", __func__);
+			ret = 50;
+			return ret;
+		}
 		ret = prop.intval;
 	}
 
@@ -90,17 +105,33 @@ int get_uisoc(struct mtk_charger *info)
 	return ret;
 }
 
+int get_chg_output_vbat(struct mtk_charger *info, int *vbat)
+{
+	int ret = 0;
+
+	ret = charger_dev_get_vbat(info->chg1_dev, vbat);
+	if (ret < 0)
+		chr_err("%s failed to get vbat from chgIC\n", __func__);
+	return ret;
+}
+
 int get_battery_voltage(struct mtk_charger *info)
 {
-	union power_supply_propval prop;
+	union power_supply_propval prop = {0};
 	struct power_supply *bat_psy = NULL;
-	int ret;
+	int ret = 0;
 
 	bat_psy = info->bat_psy;
 
 	if (bat_psy == NULL || IS_ERR(bat_psy)) {
 		chr_err("%s retry to get bat_psy\n", __func__);
+/* TN Begin modified by hao.jia/809321 20240723 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+		bat_psy = power_supply_get_by_name("battery");
+#else
 		bat_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "gauge");
+#endif /* CONFIG_OEM_TINNO_CHARGER */
+/* TN End modified by hao.jia/809321 20240723 CR/EKLAMU-202 */
 		info->bat_psy = bat_psy;
 	}
 
@@ -110,6 +141,11 @@ int get_battery_voltage(struct mtk_charger *info)
 	} else {
 		ret = power_supply_get_property(bat_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
+		if (ret < 0) {
+			chr_err("%s Couldn't get vbat\n", __func__);
+			ret = 3999;
+			return ret;
+		}
 		ret = prop.intval / 1000;
 	}
 
@@ -118,17 +154,60 @@ int get_battery_voltage(struct mtk_charger *info)
 	return ret;
 }
 
+int get_cs_side_battery_voltage(struct mtk_charger *info, int *vbat)
+{
+	union power_supply_propval prop = {0};
+	struct power_supply *bat_psy = NULL;
+	int ret = 0;
+	int tmp_ret = 0;
+
+	bat_psy = info->bat2_psy;
+
+	if (bat_psy == NULL || IS_ERR(bat_psy)) {
+		chr_debug("%s retry to get bat_psy\n", __func__);
+		bat_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "gauge2");
+		info->bat2_psy = bat_psy;
+	}
+
+	if (bat_psy == NULL || IS_ERR(bat_psy)) {
+		chr_debug("%s Couldn't get bat_psy\n", __func__);
+		ret = charger_dev_get_vbat(info->cschg1_dev, vbat);
+		if (ret < 0)
+			*vbat = 3999;
+		else
+			ret = FROM_CS_ADC;
+	} else {
+		tmp_ret = power_supply_get_property(bat_psy,
+			POWER_SUPPLY_PROP_VOLTAGE_NOW, &prop);
+		if (tmp_ret < 0)
+			chr_debug("%s: %d\n", __func__, tmp_ret);
+		*vbat = prop.intval / 1000;
+		ret = FROM_CHG_IC;
+	}
+
+	chr_debug("%s:%d %d\n", __func__,
+		ret, *vbat);
+	return ret;
+}
+
 int get_battery_temperature(struct mtk_charger *info)
 {
-	union power_supply_propval prop;
+	union power_supply_propval prop = {0};
 	struct power_supply *bat_psy = NULL;
-	int ret;
+	int ret = 0;
+	int tmp_ret = 0;
 
 	bat_psy = info->bat_psy;
 
 	if (bat_psy == NULL || IS_ERR(bat_psy)) {
 		chr_err("%s retry to get bat_psy\n", __func__);
+/* TN Begin modified by hao.jia/809321 20240723 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+		bat_psy = power_supply_get_by_name("battery");
+#else
 		bat_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "gauge");
+#endif /* CONFIG_OEM_TINNO_CHARGER */
+/* TN End modified by hao.jia/809321 20240723 CR/EKLAMU-202 */
 		info->bat_psy = bat_psy;
 	}
 
@@ -136,8 +215,10 @@ int get_battery_temperature(struct mtk_charger *info)
 		chr_err("%s Couldn't get bat_psy\n", __func__);
 		ret = 27;
 	} else {
-		ret = power_supply_get_property(bat_psy,
+		tmp_ret = power_supply_get_property(bat_psy,
 			POWER_SUPPLY_PROP_TEMP, &prop);
+		if (tmp_ret < 0)
+			chr_debug("%s: %d\n", __func__, tmp_ret);
 		ret = prop.intval / 10;
 	}
 
@@ -148,15 +229,22 @@ int get_battery_temperature(struct mtk_charger *info)
 
 int get_battery_current(struct mtk_charger *info)
 {
-	union power_supply_propval prop;
+	union power_supply_propval prop = {0};
 	struct power_supply *bat_psy = NULL;
-	int ret;
+	int ret = 0;
+	int tmp_ret = 0;
 
 	bat_psy = info->bat_psy;
 
 	if (bat_psy == NULL || IS_ERR(bat_psy)) {
 		chr_err("%s retry to get bat_psy\n", __func__);
+/* TN Begin modified by hao.jia/809321 20240723 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+		bat_psy = power_supply_get_by_name("battery");
+#else
 		bat_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "gauge");
+#endif /* CONFIG_OEM_TINNO_CHARGER */
+/* TN End modified by hao.jia/809321 20240723 CR/EKLAMU-202 */
 		info->bat_psy = bat_psy;
 	}
 
@@ -164,8 +252,10 @@ int get_battery_current(struct mtk_charger *info)
 		chr_err("%s Couldn't get bat_psy\n", __func__);
 		ret = 0;
 	} else {
-		ret = power_supply_get_property(bat_psy,
+		tmp_ret = power_supply_get_property(bat_psy,
 			POWER_SUPPLY_PROP_CURRENT_NOW, &prop);
+		if (tmp_ret < 0)
+			chr_debug("%s: %d\n", __func__, tmp_ret);
 		ret = prop.intval / 1000;
 	}
 
@@ -174,16 +264,51 @@ int get_battery_current(struct mtk_charger *info)
 	return ret;
 }
 
+int get_cs_side_battery_current(struct mtk_charger *info, int *ibat)
+{
+	union power_supply_propval prop = {0};
+	struct power_supply *bat_psy = NULL;
+	int ret = 0;
+	int tmp_ret = 0;
+	/* return 1: MTK ADC, return 2: SC ADC*/
+	bat_psy = info->bat2_psy;
+
+	if (bat_psy == NULL || IS_ERR(bat_psy)) {
+		chr_debug("%s retry to get bat_psy\n", __func__);
+		bat_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "gauge2");
+		info->bat2_psy = bat_psy;
+	}
+
+	if (bat_psy == NULL || IS_ERR(bat_psy)) {
+		chr_debug("%s Couldn't get bat_psy\n", __func__);
+		ret = charger_cs_get_ibat(info->cschg1_dev, ibat);
+		if (ret < 0)
+			*ibat = 0;
+		else
+			ret = FROM_CS_ADC;
+	} else {
+		tmp_ret = power_supply_get_property(bat_psy,
+			POWER_SUPPLY_PROP_CURRENT_NOW, &prop);
+		if (tmp_ret < 0)
+			chr_debug("%s: %d\n", __func__, tmp_ret);
+		*ibat = prop.intval / 1000;
+		ret = FROM_CHG_IC;
+	}
+
+	chr_debug("%s:%d %d\n", __func__,
+		ret, *ibat);
+	return ret;
+}
+
 static int get_pmic_vbus(struct mtk_charger *info, int *vchr)
 {
-	union power_supply_propval prop;
+	union power_supply_propval prop = {0};
 	static struct power_supply *chg_psy;
 	int ret;
 
-	if (chg_psy == NULL)
-		chg_psy = power_supply_get_by_name("mtk_charger_type");
+	chg_psy = power_supply_get_by_name("primary_chg");
 	if (chg_psy == NULL || IS_ERR(chg_psy)) {
-		pr_notice("%s Couldn't get chg_psy\n", __func__);
+		chr_err("%s Couldn't get chg_psy\n", __func__);
 		ret = -1;
 	} else {
 		ret = power_supply_get_property(chg_psy,
@@ -191,7 +316,7 @@ static int get_pmic_vbus(struct mtk_charger *info, int *vchr)
 	}
 	*vchr = prop.intval;
 
-	pr_notice("%s vbus:%d\n", __func__,
+	chr_debug("%s vbus:%d\n", __func__,
 		prop.intval);
 	return ret;
 }
@@ -214,6 +339,20 @@ int get_vbus(struct mtk_charger *info)
 	return vchr;
 }
 
+int get_ibat(struct mtk_charger *info)
+{
+	int ret = 0;
+	int ibat = 0;
+
+	if (info == NULL)
+		return -EINVAL;
+	ret = charger_dev_get_ibat(info->chg1_dev, &ibat);
+	if (ret < 0)
+		chr_err("%s: get ibat failed: %d\n", __func__, ret);
+
+	return ibat / 1000;
+}
+
 int get_ibus(struct mtk_charger *info)
 {
 	int ret = 0;
@@ -223,22 +362,23 @@ int get_ibus(struct mtk_charger *info)
 		return -EINVAL;
 	ret = charger_dev_get_ibus(info->chg1_dev, &ibus);
 	if (ret < 0)
-		pr_notice("%s: get ibus failed: %d\n", __func__, ret);
+		chr_err("%s: get ibus failed: %d\n", __func__, ret);
 
 	return ibus / 1000;
 }
 
 bool is_battery_exist(struct mtk_charger *info)
 {
-	union power_supply_propval prop;
+	union power_supply_propval prop = {0};
 	struct power_supply *bat_psy = NULL;
-	int ret;
+	int ret = 0;
+	int tmp_ret = 0;
 
 	bat_psy = info->bat_psy;
 
 	if (bat_psy == NULL || IS_ERR(bat_psy)) {
 		chr_err("%s retry to get bat_psy\n", __func__);
-		bat_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "gauge");
+		bat_psy = power_supply_get_by_name("battery");
 		info->bat_psy = bat_psy;
 	}
 
@@ -246,8 +386,10 @@ bool is_battery_exist(struct mtk_charger *info)
 		chr_err("%s Couldn't get bat_psy\n", __func__);
 		ret = 1;
 	} else {
-		ret = power_supply_get_property(bat_psy,
+		tmp_ret = power_supply_get_property(bat_psy,
 			POWER_SUPPLY_PROP_PRESENT, &prop);
+		if (tmp_ret < 0)
+			chr_debug("%s: %d\n", __func__, tmp_ret);
 		ret = prop.intval;
 	}
 
@@ -258,15 +400,19 @@ bool is_battery_exist(struct mtk_charger *info)
 
 bool is_charger_exist(struct mtk_charger *info)
 {
-	union power_supply_propval prop;
+	union power_supply_propval prop = {0};
 	static struct power_supply *chg_psy;
-	int ret;
+	int ret = 0;
+	int tmp_ret = 0;
 
 	chg_psy = info->chg_psy;
 
 	if (chg_psy == NULL || IS_ERR(chg_psy)) {
 		chr_err("%s retry to get chg_psy\n", __func__);
-		chg_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "charger");
+
+
+		chg_psy = power_supply_get_by_name("primary_chg");
+
 		info->chg_psy = chg_psy;
 	}
 
@@ -274,8 +420,10 @@ bool is_charger_exist(struct mtk_charger *info)
 		pr_notice("%s Couldn't get chg_psy\n", __func__);
 		ret = -1;
 	} else {
-		ret = power_supply_get_property(chg_psy,
+		tmp_ret = power_supply_get_property(chg_psy,
 			POWER_SUPPLY_PROP_ONLINE, &prop);
+		if (tmp_ret < 0)
+			chr_debug("%s: %d\n", __func__, tmp_ret);
 		ret = prop.intval;
 	}
 
@@ -284,50 +432,176 @@ bool is_charger_exist(struct mtk_charger *info)
 	return ret;
 }
 
+/* TN Begin modified by hao.jia/809321 20240727 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+int get_ext_charger_type(struct mtk_charger *info)
+{
+	union power_supply_propval prop = {0};
+	union power_supply_propval prop2 = {0};
+	static struct power_supply *qc_phy_psy;
+	int ret = 0;
+
+	qc_phy_psy = info->qc_phy_psy;
+
+	if (IS_ERR_OR_NULL(qc_phy_psy)) {
+		chr_err("%s retry to get qc_phy_psy\n", __func__);
+		qc_phy_psy = power_supply_get_by_name("qc_phy_z350");
+		if (IS_ERR_OR_NULL(qc_phy_psy)) {
+			qc_phy_psy = power_supply_get_by_name("qc_phy_wt6670f");
+			if (IS_ERR_OR_NULL(qc_phy_psy)) {
+				chr_err("%s failed to get qc_phy_psy\n", __func__);
+				return POWER_SUPPLY_TYPE_UNKNOWN;
+			} else {
+				info->qc_phy_psy = qc_phy_psy;
+			}
+		} else {
+			info->qc_phy_psy = qc_phy_psy;
+		}
+	}
+
+	ret = power_supply_get_property(qc_phy_psy,
+				POWER_SUPPLY_PROP_CHARGE_TYPE, &prop);
+	if (ret < 0) {
+		chr_err("%s: %d\n", __func__, ret);
+	}
+
+	ret = power_supply_get_property(qc_phy_psy,
+				POWER_SUPPLY_PROP_USB_TYPE, &prop2);
+	if (ret < 0) {
+		chr_err("%s: %d\n", __func__, ret);
+	}
+
+	chr_info("%s ext charger type:%d usb type:%d\n", __func__, prop.intval, prop2.intval);
+	info->ext_chr_type = prop.intval;
+
+	return info->ext_chr_type;
+}
+#endif /* CONFIG_OEM_TINNO_CHARGER */
+/* TN End modified by hao.jia/809321 20240727 CR/EKLAMU-202 */
+
 int get_charger_type(struct mtk_charger *info)
 {
-	union power_supply_propval prop, prop2, prop3;
-	static struct power_supply *chg_psy;
+	union power_supply_propval prop = {0};
+	union power_supply_propval prop2 = {0};
+	union power_supply_propval prop3 = {0};
+	static struct power_supply *bc12_psy;
 	int ret;
 
-	prop.intval = 0;
-	prop2.intval = 0;
-	prop3.intval = 0;
-	chg_psy = info->chg_psy;
+	bc12_psy = info->bc12_psy;
 
-	if (chg_psy == NULL || IS_ERR(chg_psy)) {
-		chr_err("%s retry to get chg_psy\n", __func__);
-		chg_psy = devm_power_supply_get_by_phandle(&info->pdev->dev, "charger");
-		info->chg_psy = chg_psy;
+	if (bc12_psy == NULL || IS_ERR(bc12_psy)) {
+		chr_err("%s retry to get bc12_psy\n", __func__);
+
+		bc12_psy = power_supply_get_by_name("primary_chg");
+
+		info->bc12_psy = bc12_psy;
 	}
 
-	if (chg_psy == NULL || IS_ERR(chg_psy)) {
-		pr_notice("%s Couldn't get chg_psy\n", __func__);
+	if (bc12_psy == NULL || IS_ERR(bc12_psy)) {
+		chr_err("%s Couldn't get bc12_psy\n", __func__);
 	} else {
-		ret = power_supply_get_property(chg_psy,
+		ret = power_supply_get_property(bc12_psy,
 			POWER_SUPPLY_PROP_ONLINE, &prop);
-
-		ret = power_supply_get_property(chg_psy,
+		if (ret < 0)
+			chr_debug("%s: %d\n", __func__, ret);
+		ret = power_supply_get_property(bc12_psy,
 			POWER_SUPPLY_PROP_TYPE, &prop2);
-
-		ret = power_supply_get_property(chg_psy,
+		if (ret < 0)
+			chr_debug("%s: %d\n", __func__, ret);
+		ret = power_supply_get_property(bc12_psy,
 			POWER_SUPPLY_PROP_USB_TYPE, &prop3);
+		if (ret < 0)
+			chr_debug("%s: %d\n", __func__, ret);
 
-		if (prop.intval == 0)
+		if (prop.intval == 0 ||
+		    (prop2.intval == POWER_SUPPLY_TYPE_USB &&
+		    prop3.intval == POWER_SUPPLY_USB_TYPE_UNKNOWN))
 			prop2.intval = POWER_SUPPLY_TYPE_UNKNOWN;
-		else if (prop2.intval == POWER_SUPPLY_TYPE_USB &&
-		    prop3.intval == POWER_SUPPLY_USB_TYPE_UNKNOWN)
-			prop2.intval = POWER_SUPPLY_TYPE_UNKNOWN;
-		else if (prop2.intval == POWER_SUPPLY_TYPE_USB &&
-		    prop3.intval == POWER_SUPPLY_USB_TYPE_DCP)
-			prop2.intval = POWER_SUPPLY_TYPE_USB_FLOAT;
 	}
 
-	pr_notice("%s online:%d type:%d usb_type:%d\n", __func__,
+	chr_debug("%s online:%d type:%d usb_type:%d\n", __func__,
 		prop.intval,
 		prop2.intval,
 		prop3.intval);
 
+/* TN Begin modified by hao.jia/809321 20240727 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER) && IS_ENABLED(CONFIG_OEM_DEVINFO)
+	if (prop2.intval == POWER_SUPPLY_TYPE_USB_DCP) {
+		if (prop3.intval == POWER_SUPPLY_TYPE_USB_FLOAT)
+			prop2.intval = POWER_SUPPLY_TYPE_USB_FLOAT;
+		else if (prop3.intval == POWER_SUPPLY_TYPE_USB_NON_STD)
+			prop2.intval = POWER_SUPPLY_TYPE_USB_NON_STD;
+	}
+
+	chr_info("%s chr_type:%d ext_chr_type:%d\n", __func__, prop2.intval, info->ext_chr_type);
+	if (oem_pcba_charge_power() == CHARGE_POWER_33W) {
+		if (info->ext_chr_type == POWER_SUPPLY_TYPE_USB_PDC) {
+			if (prop2.intval == POWER_SUPPLY_TYPE_UNKNOWN) {
+				return POWER_SUPPLY_TYPE_UNKNOWN;
+			} else {
+				return POWER_SUPPLY_TYPE_USB_PDC;
+			}
+		} else {
+			get_ext_charger_type(info);
+			if (info->ext_chr_type != POWER_SUPPLY_TYPE_UNKNOWN)
+				return info->ext_chr_type;
+			else
+				return prop2.intval;
+		}
+	} else {
+		if (info->ext_chr_type == POWER_SUPPLY_TYPE_USB_QC3) {
+			if (prop2.intval == POWER_SUPPLY_TYPE_UNKNOWN) {
+				return POWER_SUPPLY_TYPE_UNKNOWN;
+			} else {
+				return POWER_SUPPLY_TYPE_USB_QC3;
+			}
+		}
+		if (info->ext_chr_type == POWER_SUPPLY_TYPE_USB_PDC) {
+			if (prop2.intval == POWER_SUPPLY_TYPE_UNKNOWN) {
+				return POWER_SUPPLY_TYPE_UNKNOWN;
+			} else {
+				return POWER_SUPPLY_TYPE_USB_PDC;
+			}
+		}
+	}
+#endif /* CONFIG_OEM_TINNO_CHARGER && CONFIG_OEM_DEVINFO */
+/* TN End modified by hao.jia/809321 20240727 CR/EKLAMU-202 */
+
+	return prop2.intval;
+}
+
+int get_usb_type(struct mtk_charger *info)
+{
+	union power_supply_propval prop = {0};
+	union power_supply_propval prop2 = {0};
+	static struct power_supply *bc12_psy;
+
+	int ret = 0;
+
+	bc12_psy = info->bc12_psy;
+
+	if (bc12_psy == NULL || IS_ERR(bc12_psy)) {
+		chr_err("%s retry to get bc12_psy\n", __func__);
+
+		bc12_psy = power_supply_get_by_name("primary_chg");
+
+		info->bc12_psy = bc12_psy;
+	}
+	if (bc12_psy == NULL || IS_ERR(bc12_psy)) {
+		chr_err("%s Couldn't get bc12_psy\n", __func__);
+	} else {
+		ret = power_supply_get_property(bc12_psy,
+			POWER_SUPPLY_PROP_ONLINE, &prop);
+		if (ret < 0)
+			chr_debug("%s Couldn't get cablestat.\n", __func__);
+		ret = power_supply_get_property(bc12_psy,
+			POWER_SUPPLY_PROP_USB_TYPE, &prop2);
+		if (ret < 0)
+			chr_debug("%s Couldn't get usbtype.\n", __func__);
+	}
+	chr_debug("%s online:%d usb_type:%d\n", __func__,
+		prop.intval,
+		prop2.intval);
 	return prop2.intval;
 }
 
@@ -412,7 +686,7 @@ int get_charger_zcv(struct mtk_charger *info,
 #define PMIC_RG_VCDT_HV_EN_MASK		0x1
 #define PMIC_RG_VCDT_HV_EN_SHIFT	11
 
-static void pmic_set_register_value1(struct regmap *map,
+static void pmic_set_register_value(struct regmap *map,
 	unsigned int addr,
 	unsigned int mask,
 	unsigned int shift,
@@ -424,7 +698,7 @@ static void pmic_set_register_value1(struct regmap *map,
 		val << shift);
 }
 
-unsigned int pmic_get_register_value1(struct regmap *map,
+unsigned int pmic_get_register_value(struct regmap *map,
 	unsigned int addr,
 	unsigned int mask,
 	unsigned int shift)
@@ -466,7 +740,7 @@ int disable_hw_ovp(struct mtk_charger *info, int en)
 
 	regmap = chip->regmap;
 
-	pmic_set_register_value1(regmap,
+	pmic_set_register_value(regmap,
 		PMIC_RG_VCDT_HV_EN_ADDR,
 		PMIC_RG_VCDT_HV_EN_SHIFT,
 		PMIC_RG_VCDT_HV_EN_MASK,

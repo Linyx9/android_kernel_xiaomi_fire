@@ -1833,7 +1833,7 @@ static kal_uint32 Custom5(
 	return ERROR_NONE;
 }   /*  Custom5   */
 static kal_uint32 get_resolution(
-			MSDK_SENSOR_RESOLUTION_INFO_STRUCT * sensor_resolution)
+			MSDK_SENSOR_RESOLUTION_INFO_STRUCT *sensor_resolution)
 {
 	pr_info("E\n");
 	sensor_resolution->SensorFullWidth =
@@ -2440,7 +2440,7 @@ static kal_uint32 set_test_pattern_mode(kal_uint32 modes,
 	struct SET_SENSOR_PATTERN_SOLID_COLOR *pdata)
 {
 	kal_uint16 Color_R, Color_Gr, Color_Gb, Color_B;
-	kal_uint32 realreg;
+	kal_uint32 realreg = 0;
 
 	pr_info("set_test_pattern enum: %d\n", modes);
 	if (modes) {
@@ -2512,7 +2512,7 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	    set_shutter(*feature_data);
 	break;
 	case SENSOR_FEATURE_SET_NIGHTMODE:
-	    night_mode((BOOL) * feature_data);
+		night_mode((BOOL) *feature_data);
 	break;
 	case SENSOR_FEATURE_SET_GAIN:
 	    set_gain((UINT16) *feature_data);
@@ -2740,6 +2740,7 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 		pr_debug(
 		    "SENSOR_FEATURE_SET_STREAMING_RESUME\n");
 		streaming_control(KAL_TRUE);
+		break;
 	default:
 		break;
 	}

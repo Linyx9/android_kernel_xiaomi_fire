@@ -21,7 +21,6 @@
 #include <linux/io.h>
 #include <linux/types.h>
 #include <linux/atomic.h>
-#include <mt-plat/sync_write.h>
 #include "sspm_define.h"
 #include "sspm_ipi_id.h"
 #include "sspm_helper.h"
@@ -206,7 +205,7 @@ static ssize_t sspm_mobile_log_store(struct device *kobj,
 	return n;
 }
 
-DEVICE_ATTR(sspm_mobile_log, 0644, sspm_mobile_log_show, sspm_mobile_log_store);
+DEVICE_ATTR_RW(sspm_mobile_log);
 
 unsigned int __init sspm_logger_init(phys_addr_t start, phys_addr_t limit)
 {

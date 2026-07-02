@@ -1,12 +1,15 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2024 MediaTek Inc.
+ */
 
-#include <drm/drmP.h>
-#include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_mipi_dsi.h>
+#include <drm/drm_connector.h>
 #include <linux/backlight.h>
+#include <linux/delay.h>
+#include <drm/drm_device.h>
+#include <drm/drm_modes.h>
 
 #include <linux/gpio/consumer.h>
 #include <linux/regulator/consumer.h>
@@ -22,13 +25,12 @@
 
 #define CONFIG_MTK_PANEL_EXT
 #if defined(CONFIG_MTK_PANEL_EXT)
-#include "../mediatek/mtk_drm_graphics_base.h"
-#include "../mediatek/mtk_log.h"
-#include "../mediatek/mtk_panel_ext.h"
+#include "../mediatek/mediatek_v2/mtk_drm_graphics_base.h"
+#include "../mediatek/mediatek_v2/mtk_panel_ext.h"
 #endif
 
 #ifdef CONFIG_MTK_ROUND_CORNER_SUPPORT
-#include "../mediatek/mtk_corner_pattern/mtk_data_hw_roundedpattern.h"
+#include "../mediatek/mediatek_v2/mtk_corner_pattern/mtk_data_hw_roundedpattern.h"
 #endif
 
 struct lcm {
@@ -78,7 +80,7 @@ static void lcm_dcs_write(struct lcm *ctx, const void *data, size_t len)
 	else
 		ret = mipi_dsi_generic_write(dsi, data, len);
 	if (ret < 0) {
-		dev_err(ctx->dev, "error %zd writing seq: %ph\n", ret, data);
+		dev_info(ctx->dev, "error %zd writing seq: %ph\n", ret, data);
 		ctx->error = ret;
 	}
 }
@@ -94,7 +96,7 @@ static int lcm_dcs_read(struct lcm *ctx, u8 cmd, void *data, size_t len)
 
 	ret = mipi_dsi_dcs_read(dsi, cmd, data, len);
 	if (ret < 0) {
-		dev_err(ctx->dev, "error %d reading dcs seq:(%#x)\n", ret, cmd);
+		dev_info(ctx->dev, "[error]error %d reading dcs seq:(%#x)\n", ret, cmd);
 		ctx->error = ret;
 	}
 
@@ -114,11 +116,11 @@ static void lcm_panel_get_data(struct lcm *ctx)
 }
 #endif
 
-#if defined(CONFIG_RT5081_PMU_DSV) || defined(CONFIG_MT6370_PMU_DSV)
+#if IS_ENABLED(CONFIG_RT5081_PMU_DSV) || IS_ENABLED(CONFIG_DEVICE_MODULES_REGULATOR_MT6370)
 static struct regulator *disp_bias_pos;
 static struct regulator *disp_bias_neg;
 
-static int lcm_panel_bias_regulator_init(void)
+static int lcm_panel_bias_regulator_init(struct lcm *ctx)
 {
 	static int regulator_inited;
 	int ret = 0;
@@ -130,14 +132,14 @@ static int lcm_panel_bias_regulator_init(void)
 	disp_bias_pos = regulator_get(NULL, "dsv_pos");
 	if (IS_ERR(disp_bias_pos)) { /* handle return value */
 		ret = PTR_ERR(disp_bias_pos);
-		pr_err("get dsv_pos fail, error: %d\n", ret);
+		dev_info(ctx->dev, "get dsv_pos fail, error: %d\n", ret);
 		return ret;
 	}
 
 	disp_bias_neg = regulator_get(NULL, "dsv_neg");
 	if (IS_ERR(disp_bias_neg)) { /* handle return value */
 		ret = PTR_ERR(disp_bias_neg);
-		pr_err("get dsv_neg fail, error: %d\n", ret);
+		dev_info(ctx->dev, "get dsv_neg fail, error: %d\n", ret);
 		return ret;
 	}
 
@@ -145,53 +147,57 @@ static int lcm_panel_bias_regulator_init(void)
 	return ret; /* must be 0 */
 }
 
-static int lcm_panel_bias_enable(void)
+static int lcm_panel_bias_enable(struct lcm *ctx)
 {
 	int ret = 0;
 	int retval = 0;
 
-	lcm_panel_bias_regulator_init();
+	lcm_panel_bias_regulator_init(ctx);
 
 	/* set voltage with min & max*/
 	ret = regulator_set_voltage(disp_bias_pos, 5400000, 5400000);
 	if (ret < 0)
-		pr_err("set voltage disp_bias_pos fail, ret = %d\n", ret);
+		dev_info(ctx->dev, "set voltage disp_bias_pos fail, ret = %d\n", ret);
 	retval |= ret;
 
 	ret = regulator_set_voltage(disp_bias_neg, 5400000, 5400000);
 	if (ret < 0)
-		pr_err("set voltage disp_bias_neg fail, ret = %d\n", ret);
+		dev_info(ctx->dev, "set voltage disp_bias_neg fail, ret = %d\n", ret);
 	retval |= ret;
 
 	/* enable regulator */
 	ret = regulator_enable(disp_bias_pos);
 	if (ret < 0)
-		pr_err("enable regulator disp_bias_pos fail, ret = %d\n", ret);
+		dev_info(ctx->dev, "enable regulator disp_bias_pos fail, ret = %d\n",
+			ret);
 	retval |= ret;
 
 	ret = regulator_enable(disp_bias_neg);
 	if (ret < 0)
-		pr_err("enable regulator disp_bias_neg fail, ret = %d\n", ret);
+		dev_info(ctx->dev, "enable regulator disp_bias_neg fail, ret = %d\n",
+			ret);
 	retval |= ret;
 
 	return retval;
 }
 
-static int lcm_panel_bias_disable(void)
+static int lcm_panel_bias_disable(struct lcm *ctx)
 {
 	int ret = 0;
 	int retval = 0;
 
-	lcm_panel_bias_regulator_init();
+	lcm_panel_bias_regulator_init(ctx);
 
 	ret = regulator_disable(disp_bias_neg);
 	if (ret < 0)
-		pr_err("disable regulator disp_bias_neg fail, ret = %d\n", ret);
+		dev_info(ctx->dev, "disable regulator disp_bias_neg fail, ret = %d\n",
+			ret);
 	retval |= ret;
 
 	ret = regulator_disable(disp_bias_pos);
 	if (ret < 0)
-		pr_err("disable regulator disp_bias_pos fail, ret = %d\n", ret);
+		dev_info(ctx->dev, "disable regulator disp_bias_pos fail, ret = %d\n",
+			ret);
 	retval |= ret;
 
 	return retval;
@@ -200,10 +206,10 @@ static int lcm_panel_bias_disable(void)
 
 static void lcm_panel_init(struct lcm *ctx)
 {
-	ctx->reset_gpio =
-		devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
+	pr_info("%s+\n", __func__);
+	ctx->reset_gpio = devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(ctx->dev, "%s: cannot get reset_gpio %ld\n",
+		dev_info(ctx->dev, "[error]%s: cannot get reset_gpio %ld\n",
 			__func__, PTR_ERR(ctx->reset_gpio));
 		return;
 	}
@@ -427,13 +433,13 @@ static int lcm_unprepare(struct drm_panel *panel)
 
 	ctx->error = 0;
 	ctx->prepared = false;
-#if defined(CONFIG_RT5081_PMU_DSV) || defined(CONFIG_MT6370_PMU_DSV)
-	lcm_panel_bias_disable();
+#if IS_ENABLED(CONFIG_RT5081_PMU_DSV) || IS_ENABLED(CONFIG_DEVICE_MODULES_REGULATOR_MT6370)
+	lcm_panel_bias_disable(ctx);
 #else
 	ctx->reset_gpio =
 		devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(ctx->dev, "%s: cannot get reset_gpio %ld\n",
+		dev_info(ctx->dev, "[error]%s: cannot get reset_gpio %ld\n",
 			__func__, PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
@@ -444,7 +450,7 @@ static int lcm_unprepare(struct drm_panel *panel)
 	ctx->bias_neg = devm_gpiod_get_index(ctx->dev,
 		"bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(ctx->dev, "%s: cannot get bias_neg %ld\n",
+		dev_info(ctx->dev, "[error]%s: cannot get bias_neg %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
@@ -456,7 +462,7 @@ static int lcm_unprepare(struct drm_panel *panel)
 	ctx->bias_pos = devm_gpiod_get_index(ctx->dev,
 		"bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(ctx->dev, "%s: cannot get bias_pos %ld\n",
+		dev_info(ctx->dev, "[error]%s: cannot get bias_pos %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -472,17 +478,17 @@ static int lcm_prepare(struct drm_panel *panel)
 	struct lcm *ctx = panel_to_lcm(panel);
 	int ret;
 
-	pr_info("%s\n", __func__);
+	pr_info("%s+\n", __func__);
 	if (ctx->prepared)
 		return 0;
 
-#if defined(CONFIG_RT5081_PMU_DSV) || defined(CONFIG_MT6370_PMU_DSV)
-	lcm_panel_bias_enable();
+#if IS_ENABLED(CONFIG_RT5081_PMU_DSV) || IS_ENABLED(CONFIG_DEVICE_MODULES_REGULATOR_MT6370)
+	lcm_panel_bias_enable(ctx);
 #else
 	ctx->bias_pos = devm_gpiod_get_index(ctx->dev,
 		"bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(ctx->dev, "%s: cannot get bias_pos %ld\n",
+		dev_info(ctx->dev, "[error]%s: cannot get bias_pos %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -494,7 +500,7 @@ static int lcm_prepare(struct drm_panel *panel)
 	ctx->bias_neg = devm_gpiod_get_index(ctx->dev,
 		"bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(ctx->dev, "%s: cannot get bias_neg %ld\n",
+		dev_info(ctx->dev, "[error]%s: cannot get bias_neg %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
@@ -558,7 +564,6 @@ static struct drm_display_mode default_mode = {
 	.vsync_start = VAC + VFP_60HZ,
 	.vsync_end = VAC + VFP_60HZ + VSA,
 	.vtotal = VAC + VFP_60HZ + VSA + VBP,
-	.vrefresh = 60,
 };
 
 static const struct drm_display_mode performance_mode = {
@@ -571,7 +576,6 @@ static const struct drm_display_mode performance_mode = {
 	.vsync_start = VAC + VFP_90HZ,
 	.vsync_end = VAC + VFP_90HZ + VSA,
 	.vtotal = VAC + VFP_90HZ + VSA + VBP,
-	.vrefresh = 90,
 };
 
 #if defined(CONFIG_MTK_PANEL_EXT)
@@ -618,7 +622,7 @@ static int panel_ext_reset(struct drm_panel *panel, int on)
 	ctx->reset_gpio =
 		devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(ctx->dev, "%s: cannot get reset_gpio %ld\n",
+		dev_info(ctx->dev, "[error]%s: cannot get reset_gpio %ld\n",
 			__func__, PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
@@ -638,7 +642,7 @@ static int panel_ata_check(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_read(dsi, 0x4, data, 3);
 	if (ret < 0) {
-		pr_err("%s error\n", __func__);
+		pr_info("%s error\n", __func__);
 		return 0;
 	}
 
@@ -679,15 +683,35 @@ static int lcm_get_virtual_width(void)
 	return HAC;
 }
 
+static struct drm_display_mode *get_mode_by_id(struct drm_connector *connector,
+	unsigned int mode)
+{
+	struct drm_display_mode *m;
+	unsigned int i = 0;
 
-static int mtk_panel_ext_param_set(struct drm_panel *panel, unsigned int mode)
+	list_for_each_entry(m, &connector->modes, head) {
+		if (i == mode)
+			return m;
+		i++;
+	}
+	return NULL;
+}
+
+
+static int mtk_panel_ext_param_set(struct drm_panel *panel,
+			 struct drm_connector *connector, unsigned int mode)
 {
 	struct mtk_panel_ext *ext = find_panel_ext(panel);
 	int ret = 0;
+	struct drm_display_mode *m = get_mode_by_id(connector, mode);
 
-	if (mode == 0)
+	if (m == NULL) {
+		pr_info("%s:%d invalid display_mode\n", __func__, __LINE__);
+		return -1;
+	}
+	if (drm_mode_vrefresh(m) == 60)
 		ext->params = &ext_params;
-	else if (mode == 1)
+	else if (drm_mode_vrefresh(m) == 90)
 		ext->params = &ext_params_90hz;
 	else
 		ret = 1;
@@ -695,15 +719,17 @@ static int mtk_panel_ext_param_set(struct drm_panel *panel, unsigned int mode)
 	return ret;
 }
 
-static int mtk_panel_ext_param_get(struct mtk_panel_params *ext_para,
-			 unsigned int mode)
+static int mtk_panel_ext_param_get(struct drm_panel *panel,
+			struct drm_connector *connector,
+			struct mtk_panel_params **ext_para,
+			unsigned int mode)
 {
 	int ret = 0;
 
 	if (mode == 0)
-		ext_para = &ext_params;
+		*ext_para = &ext_params;
 	else if (mode == 1)
-		ext_para = &ext_params_90hz;
+		*ext_para = &ext_params_90hz;
 	else
 		ret = 1;
 
@@ -740,37 +766,38 @@ struct panel_desc {
 	} delay;
 };
 
-static int lcm_get_modes(struct drm_panel *panel)
+static int lcm_get_modes(struct drm_panel *panel,
+			struct drm_connector *connector)
 {
 	struct drm_display_mode *mode;
 	struct drm_display_mode *mode2;
 
-	mode = drm_mode_duplicate(panel->drm, &default_mode);
+	mode = drm_mode_duplicate(connector->dev, &default_mode);
 	if (!mode) {
-		dev_err(panel->drm->dev, "failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "[error]failed to add mode %ux%ux@%u\n",
 			default_mode.hdisplay, default_mode.vdisplay,
-			default_mode.vrefresh);
+			drm_mode_vrefresh(&default_mode));
 		return -ENOMEM;
 	}
 
 	drm_mode_set_name(mode);
 	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	drm_mode_probed_add(panel->connector, mode);
+	drm_mode_probed_add(connector, mode);
 
-	mode2 = drm_mode_duplicate(panel->drm, &performance_mode);
+	mode2 = drm_mode_duplicate(connector->dev, &performance_mode);
 	if (!mode2) {
-		dev_info(panel->drm->dev, "failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			 performance_mode.hdisplay, performance_mode.vdisplay,
-			 performance_mode.vrefresh);
+			 drm_mode_vrefresh(&performance_mode));
 		return -ENOMEM;
 	}
 
 	drm_mode_set_name(mode2);
 	mode2->type = DRM_MODE_TYPE_DRIVER;
-	drm_mode_probed_add(panel->connector, mode2);
+	drm_mode_probed_add(connector, mode2);
 
-	panel->connector->display_info.width_mm = 65;
-	panel->connector->display_info.height_mm = 129;
+	connector->display_info.width_mm = 65;
+	connector->display_info.height_mm = 129;
 
 	return 2;
 }
@@ -791,6 +818,7 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 	int ret;
 	struct device_node *dsi_node, *remote_node = NULL, *endpoint = NULL;
 
+	pr_info("%s+\n", __func__);
 	dsi_node = of_get_parent(dev->of_node);
 	if (dsi_node) {
 		endpoint = of_graph_get_next_endpoint(dsi_node, NULL);
@@ -819,7 +847,7 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE
-			 | MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_EOT_PACKET
+			 | MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_NO_EOT_PACKET
 			 | MIPI_DSI_CLOCK_NON_CONTINUOUS;
 
 	backlight = of_parse_phandle(dev->of_node, "backlight", 0);
@@ -833,15 +861,19 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 
 	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(dev, "%s: cannot get reset-gpios %ld\n",
+		dev_info(dev, "[error]%s: cannot get reset-gpios %ld\n",
 			__func__, PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
 	devm_gpiod_put(dev, ctx->reset_gpio);
 
+#ifndef CONFIG_RT4831A_I2C
+#if IS_ENABLED(CONFIG_RT5081_PMU_DSV) || IS_ENABLED(CONFIG_DEVICE_MODULES_REGULATOR_MT6370)
+	lcm_panel_bias_enable(ctx);
+#else
 	ctx->bias_pos = devm_gpiod_get_index(dev, "bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(dev, "%s: cannot get bias-pos 0 %ld\n",
+		dev_info(dev, "[error]%s: cannot get bias-pos 0 %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -849,22 +881,22 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 
 	ctx->bias_neg = devm_gpiod_get_index(dev, "bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(dev, "%s: cannot get bias-neg 1 %ld\n",
+		dev_info(dev, "[error]%s: cannot get bias-neg 1 %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
 	devm_gpiod_put(dev, ctx->bias_neg);
+#endif
+#endif
 
 	ctx->prepared = true;
 	ctx->enabled = true;
 
-	drm_panel_init(&ctx->panel);
+	drm_panel_init(&ctx->panel, dev, &lcm_drm_funcs, DRM_MODE_CONNECTOR_DSI);
 	ctx->panel.dev = dev;
 	ctx->panel.funcs = &lcm_drm_funcs;
 
-	ret = drm_panel_add(&ctx->panel);
-	if (ret < 0)
-		return ret;
+	drm_panel_add(&ctx->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
@@ -882,14 +914,18 @@ static int lcm_probe(struct mipi_dsi_device *dsi)
 	return ret;
 }
 
-static int lcm_remove(struct mipi_dsi_device *dsi)
+static void lcm_remove(struct mipi_dsi_device *dsi)
 {
 	struct lcm *ctx = mipi_dsi_get_drvdata(dsi);
-
+#if defined(CONFIG_MTK_PANEL_EXT)
+	struct mtk_panel_ctx *ext_ctx = find_panel_ctx(&ctx->panel);
+#endif
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
-
-	return 0;
+#if defined(CONFIG_MTK_PANEL_EXT)
+	mtk_panel_detach(ext_ctx);
+	mtk_panel_remove(ext_ctx);
+#endif
 }
 
 static const struct of_device_id lcm_of_match[] = {
@@ -913,4 +949,4 @@ module_mipi_dsi_driver(lcm_driver);
 
 MODULE_AUTHOR("Cui Zhang <cui.zhang@mediatek.com>");
 MODULE_DESCRIPTION("truly ili9882n VDO LCD Panel Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

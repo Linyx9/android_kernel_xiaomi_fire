@@ -43,50 +43,44 @@
 static int
 fl_async_bound(struct v4l2_async_notifier *notifier,
 		 struct v4l2_subdev *subdev,
-		 struct v4l2_async_subdev *asd)
+		 struct v4l2_async_connection *asd)
 {
+#if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
 	struct mtk_composite_v4l2_device *pfdev =
 			container_of(notifier->v4l2_dev,
 			struct mtk_composite_v4l2_device, v4l2_dev);
-	bool found = false;
-	int i;
 
-	for (i = 0; i < ARRAY_SIZE(pfdev->asd); i++) {
-		if (pfdev->asd[i]->match.fwnode ==
-			asd[0].match.fwnode) {
-			pfdev->sd[i] = subdev;
-			found = true;
-			break;
-		}
-	}
+	pr_info("%s v4l2 subdev entity name:%s\n", __func__,
+		subdev->entity.name);
 
-	if (!found) {
-		pr_info("sub device (%s) not matched\n", subdev->name);
-		return -EINVAL;
-	}
+	/* add for media_create_ancillary_link */
+	notifier->sd = &pfdev->nf_sd;
+	INIT_LIST_HEAD(&notifier->sd->entity.links);
+	notifier->sd->entity.graph_obj.mdev = pfdev->v4l2_dev.mdev;
+	pr_info("%s %d\n", __func__, __LINE__);
+#endif
 
 	return 0;
 }
 
-static int fl_probe_complete(struct mtk_composite_v4l2_device *vpfe)
+static int fl_probe_complete(struct mtk_composite_v4l2_device *pfdev)
 {
 	int err;
 	struct v4l2_subdev *sd;
 
-	/* set first sub device as current one */
-	vpfe->v4l2_dev.ctrl_handler = vpfe->sd[0]->ctrl_handler;
+	pr_info("%s\n", __func__);
 
-	err = v4l2_device_register_subdev_nodes(&vpfe->v4l2_dev);
+	err = v4l2_device_register_subdev_nodes(&pfdev->v4l2_dev);
 	if (err) {
 		pr_info("Unable to v4l2_device_register_subdev_nodes\n");
 		goto probe_out;
 	}
 
-	list_for_each_entry(sd, &vpfe->v4l2_dev.subdevs, list) {
+	list_for_each_entry(sd, &pfdev->v4l2_dev.subdevs, list) {
 		if (!(sd->flags & V4L2_SUBDEV_FL_HAS_DEVNODE))
 			continue;
 
-#if defined(CONFIG_MEDIA_CONTROLLER)
+#if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
 		pr_info("%s v4l2:%s\n", __func__, sd->entity.name);
 #endif
 	}
@@ -95,7 +89,7 @@ static int fl_probe_complete(struct mtk_composite_v4l2_device *vpfe)
 	return 0;
 
 probe_out:
-	v4l2_device_unregister(&vpfe->v4l2_dev);
+	v4l2_device_unregister(&pfdev->v4l2_dev);
 	return err;
 }
 
@@ -105,16 +99,15 @@ static int fl_async_complete(struct v4l2_async_notifier *notifier)
 		container_of(notifier->v4l2_dev,
 			struct mtk_composite_v4l2_device, v4l2_dev);
 
+	pr_info("%s %d\n", __func__, __LINE__);
 	return fl_probe_complete(pfdev);
 }
 
-
-static struct v4l2_async_subdev *
+static struct v4l2_async_connection *
 mtk_get_pdata(struct platform_device *pdev,
 	struct mtk_composite_v4l2_device *pfdev)
 {
 	struct device_node *endpoint = NULL;
-	struct v4l2_async_subdev *pdata[MISC_MAX_SUBDEVS] = {0};
 	struct v4l2_async_notifier *notifier;
 	unsigned int i;
 
@@ -140,25 +133,16 @@ mtk_get_pdata(struct platform_device *pdev,
 			goto done;
 		}
 
-		pdata[i] = devm_kzalloc(&pdev->dev,
-				sizeof(struct v4l2_async_subdev),
-				GFP_KERNEL);
-		if (!pdata[i]) {
-			of_node_put(rem);
-		pr_info("i %d, pdata %p\n", i, pdata[i]);
-			goto done;
-		}
-		pr_debug("rem %p, pdata[i] %p, name %s, full_name %s\n",
-				rem, pdata[i], rem->name, rem->full_name);
-		pdata[i]->match_type = V4L2_ASYNC_MATCH_FWNODE;
-		pdata[i]->match.fwnode = of_fwnode_handle(rem);
-		of_node_put(rem);
-		notifier->num_subdevs++;
-		pfdev->asd[i] = pdata[i];
+		pr_info("rem name %s, full_name %s\n",
+				rem->name, rem->full_name);
+		pfdev->dnode[i] = rem;
+		pfdev->asd[i] = __v4l2_async_nf_add_fwnode(notifier,
+				of_fwnode_handle(pfdev->dnode[i]),
+				sizeof(struct v4l2_async_connection));
 	}
 
 	of_node_put(endpoint);
-	return pdata[0];
+	return pfdev->asd[0];
 
 done:
 	of_node_put(endpoint);
@@ -166,10 +150,10 @@ done:
 }
 
 static void mtk_composite_unregister_entities(
-		struct mtk_composite_v4l2_device *isp)
+		struct mtk_composite_v4l2_device *pfdev)
 {
-	v4l2_device_unregister(&isp->v4l2_dev);
-	media_device_unregister(&isp->media_dev);
+	media_device_unregister(pfdev->v4l2_dev.mdev);
+	v4l2_device_unregister(&pfdev->v4l2_dev);
 }
 
 static const struct v4l2_async_notifier_operations fl_async_notify_ops = {
@@ -196,12 +180,7 @@ static int mtk_composite_probe(struct platform_device *dev)
 		goto vdec_end;
 	}
 
-	pfdev->asd[0] = mtk_get_pdata(dev, pfdev);
-	pr_debug("asd %p %p %p\n", pfdev->asd[0], pfdev->asd[1],
-		pfdev->asd[2]);
-
-
-#if defined(CONFIG_MEDIA_CONTROLLER)
+#if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
 	pfdev->v4l2_dev.mdev = kzalloc(sizeof(struct media_device),
 		GFP_KERNEL);
 	if (!pfdev->v4l2_dev.mdev) {
@@ -209,7 +188,7 @@ static int mtk_composite_probe(struct platform_device *dev)
 		pr_info("failed to allocate  media_device\n");
 		goto mdev_end;
 	}
-	strlcpy(pfdev->v4l2_dev.mdev->model, "mtk_V4L2_misc_core",
+	strlcpy(pfdev->v4l2_dev.mdev->model, "mtk-camera-flash",
 			sizeof(pfdev->v4l2_dev.mdev->model));
 	pfdev->v4l2_dev.mdev->dev = &(dev->dev);
 
@@ -239,31 +218,23 @@ static int mtk_composite_probe(struct platform_device *dev)
 	}
 	platform_set_drvdata(dev, pfdev);
 
-	pr_debug("platform_set_drvdata num_subdevs %d\n",
-		pfdev->notifier.num_subdevs);
+	v4l2_async_nf_init(&pfdev->notifier, &pfdev->v4l2_dev);
 
-	pfdev->sd = devm_kzalloc(&dev->dev, sizeof(struct v4l2_subdev *) *
-		ARRAY_SIZE(pfdev->asd), GFP_KERNEL);
-	if (!pfdev->sd) {
-		rc = -ENOMEM;
-		pr_info("Unable to devm_kzalloc.\n");
-		goto mdev_end;
-	}
-
-	pfdev->notifier.subdevs = pfdev->asd;
+	mtk_get_pdata(dev, pfdev);
 	pfdev->notifier.ops = &fl_async_notify_ops;
 
-	rc = v4l2_async_notifier_register(&pfdev->v4l2_dev, &pfdev->notifier);
+	rc = v4l2_async_nf_register(&pfdev->notifier);
 	if (rc) {
 		pr_info("Error registering async notifier\n");
 		rc = -EINVAL;
 		goto mdev_end;
 	}
 
+	pr_info("%s: Probe done.\n", __func__);
 	return 0;
 
 mdev_end:
-	kzfree(pfdev->vdev);
+	kfree_sensitive(pfdev->vdev);
 vdec_end:
 	kfree(pfdev);
 
@@ -272,10 +243,11 @@ vdec_end:
 
 static int mtk_composite_remove(struct platform_device *dev)
 {
-	struct mtk_composite_v4l2_device *isp = platform_get_drvdata(dev);
+	struct mtk_composite_v4l2_device *pfdev = platform_get_drvdata(dev);
 
-	v4l2_async_notifier_unregister(&isp->notifier);
-	mtk_composite_unregister_entities(isp);
+	v4l2_async_nf_unregister(&pfdev->notifier);
+	v4l2_async_nf_cleanup(&pfdev->notifier);
+	mtk_composite_unregister_entities(pfdev);
 
 	return 0;
 }
@@ -345,6 +317,9 @@ static int __init mtk_composite_init(void)
 static void __exit mtk_composite_exit(void)
 {
 	platform_driver_unregister(&mtk_composite_platform_driver);
+#ifndef CONFIG_OF
+	platform_device_unregister(&mtk_composite_platform_device);
+#endif
 }
 
 late_initcall(mtk_composite_init);

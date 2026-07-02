@@ -11,7 +11,6 @@
 #include <linux/fs.h>
 #include <linux/hardirq.h>
 #include <linux/highmem.h>
-#include <linux/hrtimer.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/kallsyms.h>
@@ -19,6 +18,7 @@
 #include <linux/kthread.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/poll.h>
 #include <linux/proc_fs.h>
 #if IS_ENABLED(CONFIG_RTC_LIB)
@@ -36,17 +36,11 @@
 #include <linux/vmalloc.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
-#include <linux/rwsem.h>
 
-#if IS_ENABLED(CONFIG_MTK_FB_SUPPORT_ASSERTION_LAYER) || IS_ENABLED(CONFIG_MTK_LCM)
-#include <disp_assert_layer.h>
-#elif IS_ENABLED(CONFIG_DRM_MEDIATEK)
-#include <mtk_drm_assert_ext.h>
-#endif
 #include <mt-plat/aee.h>
+#include <mt-plat/slog.h>
 
 #include "aed.h"
-#include "mrdump_helper.h"
 
 struct aee_req_queue {
 	struct list_head list;
@@ -73,12 +67,9 @@ static int ke_log_available = 1;
 
 static struct proc_dir_entry *aed_proc_dir;
 
-static DECLARE_RWSEM(ee_rw_ops_sem);
-static DECLARE_RWSEM(ke_rw_ops_sem);
-#define MAX_PROCTITLE_AUDIT_LEN 128
-
 #define MaxStackSize 8100
 #define MaxMapsSize 65536
+#define MAX_PROCTITLE_AUDIT_LEN 128
 
 static int ee_num;
 static int kernelapi_num;
@@ -169,11 +160,13 @@ void msg_show(const char *prefix, struct AE_Msg *msg)
 		msg->len);
 }
 
+
 int aee_get_mode(void)
 {
 	return aee_mode;
 }
 EXPORT_SYMBOL(aee_get_mode);
+
 
 /******************************************************************************
  * CONSTANT DEFINITIONS
@@ -210,9 +203,11 @@ struct aed_kerec {		/* TODO: kernel exception record */
 struct aed_dev {
 	struct aed_eerec *eerec;
 	wait_queue_head_t eewait;
+	struct mutex ee_mutex;
 
 	struct aed_kerec kerec;
 	wait_queue_head_t kewait;
+	struct mutex ke_mutex;
 };
 
 
@@ -226,6 +221,7 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
  * GLOBAL DATA
  *****************************************************************************/
 static struct aed_dev aed_dev;
+
 
 /******************************************************************************
  * Message Utilities
@@ -455,7 +451,6 @@ static void ke_gen_userbacktrace_msg(void)
 
 	if (aed_dev.kerec.lastlog->userthread_stack.StackLength < 0)
 		return;
-
 	userinfo_len = aed_dev.kerec.lastlog->userthread_stack.StackLength +
 		sizeof(pid_t)+sizeof(int);
 	rep_msg = msg_create(&aed_dev.kerec.msg, MaxStackSize);
@@ -490,7 +485,6 @@ static void ke_gen_usermaps_msg(void)
 
 	if (aed_dev.kerec.lastlog->userthread_maps.Userthread_mapsLength < 0)
 		return;
-
 	userinfo_len =
 		aed_dev.kerec.lastlog->userthread_maps.Userthread_mapsLength +
 		sizeof(pid_t)+sizeof(int);
@@ -540,6 +534,9 @@ static void ke_gen_user_reg_msg(void)
 static int ke_gen_ind_msg(struct aee_oops *oops)
 {
 	unsigned long flags;
+	long ret;
+	unsigned long expire;
+	unsigned long timeout;
 
 	if (!oops)
 		return -1;
@@ -607,10 +604,24 @@ static int ke_gen_ind_msg(struct aee_oops *oops)
 		 * available, add a 60s timeout in case of debuggerd quit
 		 * abnormally
 		 */
-		if (!wait_for_completion_timeout(&aed_ke_com,
-					msecs_to_jiffies(5 * 60 * 1000)))
-			pr_info("%s: TIMEOUT, not receive close event, skip\n",
-					__func__);
+		timeout = msecs_to_jiffies(5 * 60 * 1000);
+		expire = jiffies + timeout;
+		for (;;) {
+			ret = wait_for_completion_interruptible_timeout(&aed_ke_com, timeout);
+			if (ret == 0) {
+				pr_info("%s: TIMEOUT, not receive close event, skip\n",
+						__func__);
+				break;
+			}
+			if (ret > 0)
+				break;
+			if ((ret == -ERESTARTSYS) && (time_before(jiffies, expire))) {
+				pr_info("%s: INTERRUPTED, continue waiting for completion\n",
+						__func__);
+				timeout = expire - jiffies;
+				continue;
+			}
+		}
 	}
 	return 0;
 }
@@ -619,30 +630,28 @@ static void ke_destroy_log(void)
 {
 	struct aee_oops *lastlog = aed_dev.kerec.lastlog;
 
+	mutex_lock(&aed_dev.ke_mutex);
 	msg_destroy(&aed_dev.kerec.msg);
 
 	if (aed_dev.kerec.lastlog) {
 		aed_dev.kerec.lastlog = NULL;
 		aee_oops_free(lastlog);
 	}
+	mutex_unlock(&aed_dev.ke_mutex);
 }
 
 static int ke_log_avail(void)
 {
+	mutex_lock(&aed_dev.ke_mutex);
 	if (aed_dev.kerec.lastlog) {
-#ifdef __aarch64__
-		if (is_compat_task() !=
-			((aed_dev.kerec.lastlog->dump_option & DB_OPT_AARCH64)
-			 == 0))
-			return 0;
-#endif
+		mutex_unlock(&aed_dev.ke_mutex);
 		return 1;
 	}
-
+	mutex_unlock(&aed_dev.ke_mutex);
 	return 0;
 }
 
-static void aee_kapi_tasklet_handler(unsigned long data)
+static void aee_kapi_tasklet_handler(struct tasklet_struct *data)
 {
 	int ret;
 
@@ -650,7 +659,7 @@ static void aee_kapi_tasklet_handler(unsigned long data)
 	if (!ret)
 		pr_info("%s: ke work was already on a queue\n", __func__);
 }
-DECLARE_TASKLET(aee_kapi_tasklet, aee_kapi_tasklet_handler, 0);
+DECLARE_TASKLET(aee_kapi_tasklet, aee_kapi_tasklet_handler);
 
 static void ke_queue_request(struct aee_oops *oops)
 {
@@ -888,6 +897,7 @@ static void ee_destroy_log(void)
 	if (!eerec)
 		return;
 
+	mutex_lock(&aed_dev.ee_mutex);
 	aed_dev.eerec = NULL;
 	msg_destroy(&eerec->msg);
 
@@ -902,24 +912,48 @@ static void ee_destroy_log(void)
 	/*after this, another ee can enter */
 	eerec->ee_log = NULL;
 	kfree(eerec);
+	mutex_unlock(&aed_dev.ee_mutex);
 }
 
 static int ee_log_avail(void)
 {
-	return (aed_dev.eerec != NULL);
+	int ret = 0;
+
+	mutex_lock(&aed_dev.ee_mutex);
+
+	if (aed_dev.eerec != NULL)
+		ret = 1;
+	else
+		ret = 0;
+
+	mutex_unlock(&aed_dev.ee_mutex);
+	return ret;
 }
 
-static char *ee_msg_avail(void)
+static int ee_msg_avail(void)
 {
-	if (aed_dev.eerec)
-		return aed_dev.eerec->msg;
-	return NULL;
+	int ret = 0;
+
+	mutex_lock(&aed_dev.ee_mutex);
+
+	if (aed_dev.eerec) {
+		if (aed_dev.eerec->msg != NULL)
+			ret = 1;
+		else
+			ret = 0;
+	}
+
+	mutex_unlock(&aed_dev.ee_mutex);
+	return ret;
 }
 
 static void ee_gen_ind_msg(struct aed_eerec *eerec)
 {
 	unsigned long flags;
 	struct AE_Msg *rep_msg;
+	long ret;
+	unsigned long expire;
+	unsigned long timeout;
 
 	if (!eerec)
 		return;
@@ -952,10 +986,24 @@ static void ee_gen_ind_msg(struct aed_eerec *eerec)
 
 	init_completion(&aed_ee_com);
 	wake_up(&aed_dev.eewait);
-	if (wait_for_completion_timeout(&aed_ee_com,
-					msecs_to_jiffies(5 * 60 * 1000)))
-		pr_info("%s: TIMEOUT, not receive close event, skip\n",
-			__func__);
+	timeout = msecs_to_jiffies(5 * 60 * 1000);
+	expire = jiffies + timeout;
+	for (;;) {
+		ret = wait_for_completion_interruptible_timeout(&aed_ee_com, timeout);
+		if (ret == 0) {
+			pr_info("%s: TIMEOUT, not receive close event, skip\n",
+						__func__);
+			break;
+		}
+		if (ret > 0)
+			break;
+		if ((ret == -ERESTARTSYS) && (time_before(jiffies, expire))) {
+			pr_info("%s: INTERRUPTED, continue waiting for completion\n",
+						__func__);
+			timeout = expire - jiffies;
+			continue;
+		}
+	}
 }
 
 static void ee_queue_request(struct aed_eerec *eerec)
@@ -1054,8 +1102,13 @@ static int compare_cmdline(void)
 
 	if (strncmp(buf, "/system_ext/bin/aee_aed", 23) &&
 		strncmp(buf, "/system/system_ext/bin/aee_aed", 30) &&
-		strncmp(buf,  "/vendor/bin/aee_aed", 19)) {
-		pr_debug("%s:open failed!\n", __func__);
+		strncmp(buf, "/vendor/bin/aee_aed", 19)
+#if IS_ENABLED(CONFIG_MTK_AEE_YOCTO)
+		&& strncmp(buf, "/usr/bin/aee_aed", 16) &&
+		strncmp(buf, "/usr/bin/aee_aed64", 18)
+#endif
+		) {
+		pr_debug("%s: open failed!\n", __func__);
 		return -1;
 	}
 	return 0;
@@ -1092,18 +1145,12 @@ static unsigned int aed_ee_poll(struct file *file,
 static ssize_t aed_ee_read(struct file *filp, char __user *buf,
 						size_t count, loff_t *f_pos)
 {
-	ssize_t ret = 0;
-
-	down_read(&ee_rw_ops_sem);
 	if (!aed_dev.eerec) {
 		pr_info("%s fail for invalid kerec\n", __func__);
-		up_read(&ee_rw_ops_sem);
 		return 0;
 	}
-	ret = msg_copy_to_user(__func__, aed_dev.eerec->msg, buf, count,
+	return msg_copy_to_user(__func__, aed_dev.eerec->msg, buf, count,
 				f_pos);
-	up_read(&ee_rw_ops_sem);
-	return ret;
 }
 
 static ssize_t aed_ee_write(struct file *filp, const char __user *buf,
@@ -1113,37 +1160,28 @@ static ssize_t aed_ee_write(struct file *filp, const char __user *buf,
 	int rsize;
 	struct aed_eerec *eerec = aed_dev.eerec;
 
-	down_write(&ee_rw_ops_sem);
-
-	/* recevied a new request means the previous response is unavilable */
+	/* received a new request means the previous response is unavilable */
 	/* 1. set position to be zero */
 	/* 2. destroy the previous response message */
 	*f_pos = 0;
 
-	if (!eerec) {
-		up_write(&ee_rw_ops_sem);
+	if (!eerec)
 		return -1;
-	}
 
 	msg_destroy(&eerec->msg);
 
 	/* the request must be an *struct AE_Msg buffer */
 	if (count != sizeof(struct AE_Msg)) {
 		pr_info("%s: ERR, aed_write count=%zx\n", __func__, count);
-		up_write(&ee_rw_ops_sem);
 		return -1;
 	}
-
 	if (!buf) {
 		pr_info("%s: ERR, aed_write buf=NULL\n", __func__);
-		up_write(&ee_rw_ops_sem);
 		return -1;
 	}
-
 	rsize = copy_from_user(&msg, buf, count);
 	if (rsize) {
 		pr_info("%s: ERR, copy_from_user rsize=%d\n", __func__, rsize);
-		up_write(&ee_rw_ops_sem);
 		return -1;
 	}
 
@@ -1154,7 +1192,6 @@ static ssize_t aed_ee_write(struct file *filp, const char __user *buf,
 	if (msg.cmdType == AE_REQ) {
 		if (!ee_log_avail()) {
 			ee_gen_notavail_msg();
-			up_write(&ee_rw_ops_sem);
 			return count;
 		}
 		switch (msg.cmdId) {
@@ -1192,7 +1229,6 @@ static ssize_t aed_ee_write(struct file *filp, const char __user *buf,
 		}
 	} else if (msg.cmdType == AE_RSP) {	/* IGNORE */
 	}
-	up_write(&ee_rw_ops_sem);
 
 	return count;
 }
@@ -1323,23 +1359,18 @@ static int current_ke_##ENTRY##_open(struct inode *inode, struct file *file) \
 }
 
 #define AED_PROC_CURRENT_KE_FOPS(ENTRY) \
-static const struct file_operations proc_current_ke_##ENTRY##_fops = { \
-	.open		= current_ke_##ENTRY##_open, \
-	.read		= seq_read, \
-	.llseek		= seq_lseek, \
-	.release	= seq_release_private, \
+static const struct proc_ops proc_current_ke_##ENTRY##_fops = { \
+	.proc_open		= current_ke_##ENTRY##_open, \
+	.proc_read		= seq_read, \
+	.proc_lseek		= seq_lseek, \
+	.proc_release	= seq_release_private, \
 }
 
 
 static ssize_t aed_ke_read(struct file *filp, char __user *buf, size_t count,
 			loff_t *f_pos)
 {
-	ssize_t ret = 0;
-
-	down_read(&ke_rw_ops_sem);
-	ret = msg_copy_to_user(__func__, aed_dev.kerec.msg, buf, count, f_pos);
-	up_read(&ke_rw_ops_sem);
-	return ret;
+	return msg_copy_to_user(__func__, aed_dev.kerec.msg, buf, count, f_pos);
 }
 
 static ssize_t aed_ke_write(struct file *filp, const char __user *buf,
@@ -1348,30 +1379,24 @@ static ssize_t aed_ke_write(struct file *filp, const char __user *buf,
 	struct AE_Msg msg;
 	int rsize;
 
-	/* recevied a new request means the previous response is unavilable */
+	/* received a new request means the previous response is unavilable */
 	/* 1. set position to be zero */
 	/* 2. destroy the previous response message */
-	down_write(&ke_rw_ops_sem);
 	*f_pos = 0;
 	msg_destroy(&aed_dev.kerec.msg);
 
 	/* the request must be an * AE_Msg buffer */
 	if (count != sizeof(struct AE_Msg)) {
 		pr_info("ERR: aed_write count=%zx\n", count);
-		up_write(&ke_rw_ops_sem);
 		return -1;
 	}
-
 	if (!buf) {
 		pr_info("ERR: aed_write buf=NULL\n");
-		up_write(&ke_rw_ops_sem);
 		return -1;
 	}
-
 	rsize = copy_from_user(&msg, buf, count);
 	if (rsize) {
 		pr_info("copy_from_user rsize=%d\n", rsize);
-		up_write(&ke_rw_ops_sem);
 		return -1;
 	}
 
@@ -1382,7 +1407,7 @@ static ssize_t aed_ke_write(struct file *filp, const char __user *buf,
 	if (msg.cmdType == AE_REQ) {
 		if (!ke_log_avail()) {
 			ke_gen_notavail_msg();
-			up_write(&ke_rw_ops_sem);
+
 			return count;
 		}
 
@@ -1430,13 +1455,11 @@ static ssize_t aed_ke_write(struct file *filp, const char __user *buf,
 		}
 	} else if (msg.cmdType == AE_RSP) {	/* IGNORE */
 	}
-	up_write(&ke_rw_ops_sem);
 
 	return count;
 }
 
-
-#if IS_ENABLED(CONFIG_MTK_AEE_UT)
+#if IS_ENABLED(CONFIG_MTK_AVOID_TRUNCATE_COREDUMP)
 void Maps2Buffer(unsigned char *Userthread_maps, int *Userthread_mapsLength,
 	const char *fmt, ...)
 {
@@ -1454,72 +1477,6 @@ void Maps2Buffer(unsigned char *Userthread_maps, int *Userthread_mapsLength,
 			*Userthread_mapsLength = len + n;
 	}
 	va_end(ap);
-}
-
-static void print_vma_name(unsigned char *Userthread_maps,
-	int *Userthread_mapsLength, struct vm_area_struct *vma, char *str)
-{
-	const char __user *name = vma_get_anon_name(vma);
-	struct mm_struct *mm = vma->vm_mm;
-
-	unsigned long page_start_vaddr;
-	unsigned long page_offset;
-	unsigned long num_pages;
-	unsigned long max_len = NAME_MAX;
-	int i;
-
-	page_start_vaddr = (unsigned long)name & PAGE_MASK;
-	page_offset = (unsigned long)name - page_start_vaddr;
-	num_pages = DIV_ROUND_UP(page_offset + max_len, PAGE_SIZE);
-
-	for (i = 0; i < num_pages; i++) {
-		int len;
-		int write_len;
-		const char *kaddr;
-		long pages_pinned;
-		struct page *page = NULL;
-
-		pages_pinned = get_user_pages_remote(current, mm,
-				page_start_vaddr, 1, 0, &page, NULL, NULL);
-		if (pages_pinned < 1)
-			return;
-
-		if (!page) {
-			pr_info("%s: page is null\n", __func__);
-			return;
-		}
-
-		kaddr = (const char *)kmap(page);
-		len = min(max_len, PAGE_SIZE - page_offset);
-		write_len = strnlen(kaddr + page_offset, len);
-		if (strnstr((kaddr + page_offset), "signal stack", write_len)) {
-			char *name = vmalloc(write_len + 1);
-
-			if (!name) {
-				Maps2Buffer(Userthread_maps,
-					Userthread_mapsLength,
-					"%s[anon:%s]\n", str, "NULL");
-			} else {
-				memcpy(name, kaddr + page_offset, write_len);
-				name[write_len] = '\0';
-				Maps2Buffer(Userthread_maps,
-					Userthread_mapsLength,
-					"%s[anon:%s]\n", str, name);
-				vfree(name);
-			}
-		}
-
-		kunmap(page);
-		put_page(page);
-
-		/* if strnlen hit a null terminator then we're done */
-		if (write_len != len)
-			break;
-
-		max_len -= len;
-		page_offset = 0;
-		page_start_vaddr += PAGE_SIZE;
-	}
 }
 
 static int is_stack(struct vm_area_struct *vma)
@@ -1542,8 +1499,8 @@ static void show_map_vma(unsigned char *Userthread_maps,
 	struct path base_path;
 	char tpath[512];
 	char *path_p = NULL;
-	char str[512];
-	int len;
+	//char str[512];
+	//int len;
 
 	if (file) {
 		struct inode *inode = file_inode(vma->vm_file);
@@ -1572,38 +1529,21 @@ static void show_map_vma(unsigned char *Userthread_maps,
 		if (name)
 			goto done;
 	}
-	name = aee_arch_vma_name(vma);
-	if (!name) {
-		if (!mm) {
-			name = "[vdso]";
-			goto done;
-		}
 
-		if (vma->vm_start <= mm->brk &&
-			vma->vm_end >= mm->start_brk) {
-			name = "[heap]";
-			goto done;
-		}
+	if (!mm) {
+		name = "[vdso]";
+		goto done;
+	}
 
-		if (is_stack(vma)) {
-			name = "[stack]";
-			goto done;
-		}
+	if (vma->vm_start <= mm->brk &&
+	    vma->vm_end >= mm->start_brk) {
+		name = "[heap]";
+		goto done;
+	}
 
-		if (vma_get_anon_name(vma)) {
-			len = snprintf(str, sizeof(str),
-				"%08lx-%08lx %c%c%c%c %08llx %02x:%02x %lu ",
-				start, end, flags & VM_READ ? 'r' : '-',
-				flags & VM_WRITE ? 'w' : '-',
-				flags & VM_EXEC ? 'x' : '-',
-				flags & VM_MAYSHARE ? 's' : 'p',
-				pgoff, MAJOR(dev), MINOR(dev), ino);
-			if (len < 0)
-				pr_info("%s: snprintf failed\n", __func__);
-			print_vma_name(Userthread_maps, Userthread_mapsLength,
-				vma, str);
-			return;
-		}
+	if (is_stack(vma)) {
+		name = "[stack]";
+		goto done;
 	}
 
 done:
@@ -1629,23 +1569,21 @@ done:
 			pgoff, MAJOR(dev), MINOR(dev), ino, name);
 	}
 }
-#endif
 
+#endif
 /*
  * aed process daemon and other command line may access me
  * concurrently
  */
-DEFINE_SEMAPHORE(aed_dal_sem);
+DEFINE_SEMAPHORE(aed_dal_sem,1);
 static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
 	int aee_mode_tmp = 0;
 	int aee_force_exp_tmp = 0;
-	struct aee_dal_show *dal_show;
-	struct aee_dal_setcolor dal_setcolor;
 	int pid;
 	struct aee_siginfo aee_si;
-#if IS_ENABLED(CONFIG_MTK_AEE_UT)
+#if IS_ENABLED(CONFIG_MTK_AVOID_TRUNCATE_COREDUMP)
 	struct aee_thread_reg *tmp;
 #endif
 
@@ -1653,7 +1591,6 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		pr_info("ERR: %s arg=NULL\n", __func__);
 		return -EINVAL;
 	}
-
 	if (down_interruptible(&aed_dal_sem) < 0)
 		return -ERESTARTSYS;
 
@@ -1698,81 +1635,7 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		pr_debug("set aee force_exp = %d\n", aee_force_exp);
 		break;
-	case AEEIOCTL_DAL_SHOW:
-		/* It's troublesome to allocate more than
-		 * 1KB size on stack
-		 */
-		dal_show = kzalloc(sizeof(struct aee_dal_show), GFP_KERNEL);
-		if (!dal_show) {
-			ret = -EFAULT;
-			goto EXIT;
-		}
-
-		if (copy_from_user(dal_show,
-				(struct aee_dal_show __user *)arg,
-				sizeof(struct aee_dal_show))) {
-			ret = -EFAULT;
-			goto OUT;
-		}
-
-		if (aee_mode >= AEE_MODE_CUSTOMER_ENG) {
-			pr_info("DAL_SHOW not allowed (mode %d)\n",
-					aee_mode);
-			goto OUT;
-		}
-
-		/* Try to prevent overrun */
-		dal_show->msg[sizeof(dal_show->msg) - 1] = 0;
-#if IS_ENABLED(CONFIG_MTK_FB_SUPPORT_ASSERTION_LAYER) || IS_ENABLED(CONFIG_DRM_MEDIATEK) \
-		|| IS_ENABLED(CONFIG_MTK_LCM)
-		pr_debug("AEE CALL DAL_Printf now\n");
-		DAL_Printf("%s", dal_show->msg);
-#endif
-
- OUT:
-		kfree(dal_show);
-		dal_show = NULL;
-		goto EXIT;
-	case AEEIOCTL_DAL_CLEAN:
-		/* set default bgcolor to red,
-		 * it will be used in DAL_Clean
-		 */
-		dal_setcolor.foreground = 0x00ff00;	/*green */
-		dal_setcolor.background = 0xff0000;	/*red */
-
-#if IS_ENABLED(CONFIG_MTK_FB_SUPPORT_ASSERTION_LAYER) || IS_ENABLED(CONFIG_DRM_MEDIATEK) \
-		|| IS_ENABLED(CONFIG_MTK_LCM)
-		pr_debug("AEE CALL DAL_SetColor now\n");
-		DAL_SetColor(dal_setcolor.foreground,
-				dal_setcolor.background);
-		pr_debug("AEE CALL DAL_Clean now\n");
-		DAL_Clean();
-#endif
-		break;
-	case AEEIOCTL_SETCOLOR:
-		if (aee_mode >= AEE_MODE_CUSTOMER_ENG) {
-			pr_info("SETCOLOR not allowed (mode %d)\n",
-					aee_mode);
-			goto EXIT;
-		}
-
-		if (copy_from_user(&dal_setcolor,
-				(struct aee_dal_setcolor __user *)arg,
-				sizeof(struct aee_dal_setcolor))) {
-			ret = -EFAULT;
-			goto EXIT;
-		}
-#if IS_ENABLED(CONFIG_MTK_FB_SUPPORT_ASSERTION_LAYER) || IS_ENABLED(CONFIG_DRM_MEDIATEK) \
-		|| IS_ENABLED(CONFIG_MTK_LCM)
-		pr_debug("AEE CALL DAL_SetColor now\n");
-		DAL_SetColor(dal_setcolor.foreground,
-				dal_setcolor.background);
-		pr_debug("AEE CALL DAL_SetScreenColor now\n");
-		DAL_SetScreenColor(dal_setcolor.screencolor);
-#endif
-		break;
-
-#if IS_ENABLED(CONFIG_MTK_AEE_UT)
+#if IS_ENABLED(CONFIG_MTK_AVOID_TRUNCATE_COREDUMP)
 	case AEEIOCTL_GET_THREAD_REG:
 		pr_debug("%s: get thread registers ioctl\n", __func__);
 
@@ -1807,29 +1670,16 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				goto EXIT;
 			}
 
-			get_task_struct(task);
-			rcu_read_unlock();
-
-			if (!try_get_task_stack(task)) {
-				ret = -EINVAL;
-				put_task_struct(task);
-				goto EXIT;
-			}
-
 			user_ret = task_pt_regs(task);
 			memcpy(&(tmp->regs), user_ret,
 					sizeof(struct pt_regs));
+			rcu_read_unlock();
 			if (copy_to_user((struct aee_thread_reg __user *)arg,
 					tmp, sizeof(struct aee_thread_reg))) {
 				kfree(tmp);
 				ret = -EFAULT;
-				put_task_stack(task);
-				put_task_struct(task);
 				goto EXIT;
 			}
-			put_task_stack(task);
-			put_task_struct(task);
-
 		} else {
 			pr_info("%s: get thread registers ioctl tid invalid\n",
 				__func__);
@@ -1850,7 +1700,7 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		unsigned long end = 0, length = 0;
 		unsigned char *stack;
 		int copied;
-		struct mm_struct *raw_mm;
+		MA_STATE(mas, 0, 0, 0);
 
 		pr_info("Get direct unwind backtrace stack");
 
@@ -1871,43 +1721,23 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			ret = -EFAULT;
 			goto EXIT;
 		}
-		get_task_struct(task);
 		rcu_read_unlock();
-		if (!try_get_task_stack(task)) {
-			ret = -EINVAL;
-			put_task_struct(task);
-			goto EXIT;
-		}
-
-		raw_mm = get_task_mm(task);
-		if (!raw_mm) {
-			ret = -EINVAL;
-			put_task_stack(task);
-			put_task_struct(task);
-			goto EXIT;
-		}
 
 		start = stack_raw.sp;
-		mmap_read_lock(raw_mm);
-		vma = raw_mm->mmap;
-		while (vma) {
+		down_read(&task->mm->mmap_lock);
+		mas.tree = &task->mm->mm_mt;
+		mas_for_each(&mas, vma, ULONG_MAX) {
 			if (vma->vm_start <= start &&
 				vma->vm_end >= start) {
 				end = vma->vm_end;
 				break;
 			}
-			vma = vma->vm_next;
-			if (vma == raw_mm->mmap)
-				break;
 		}
-		mmap_read_unlock(raw_mm);
-		mmput(raw_mm);
+		up_read(&task->mm->mmap_lock);
 
 		if (end == 0) {
 			pr_info("Dump native stack failed:\n");
 			ret = -EFAULT;
-			put_task_stack(task);
-			put_task_struct(task);
 			goto EXIT;
 		}
 
@@ -1918,15 +1748,11 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		stack = vmalloc(MaxStackSize);
 		if (!stack) {
 			ret = -ENOMEM;
-			put_task_stack(task);
-			put_task_struct(task);
 			goto EXIT;
 		}
 
 		copied = access_process_vm(task, start, stack,
 				length, 0);
-		put_task_stack(task);
-		put_task_struct(task);
 		if (copied != length) {
 			pr_info("Access stack error");
 			vfree(stack);
@@ -1958,10 +1784,13 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		unsigned long start = 0;
 		unsigned long end = 0, length = 0;
 		unsigned char *maps;
-		int mapsLength;
+		int mapsLength = 0;
 		unsigned char *stack;
 		int copied;
 		struct mm_struct *rms_mm;
+		MA_STATE(mas1, 0, 0, 0);
+		MA_STATE(mas2, 0, 0, 0);
+
 
 		pr_info("Get direct unwind backtrace info");
 
@@ -1991,27 +1820,19 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 			rcu_read_unlock();
 
-			if (!try_get_task_stack(task)) {
-				ret = -EINVAL;
-				put_task_struct(task);
-				goto EXIT;
-			}
-
 			// 1. get registers
 			user_ret = task_pt_regs(task);
 
 			if (copy_to_user((void *)thread_info.regs, user_ret,
 				sizeof(struct pt_regs))) {
 				ret = -EFAULT;
-				put_task_stack(task);
 				put_task_struct(task);
 				goto EXIT;
 			}
 
 			// 2. get maps
-			if ((!user_mode(user_ret)) || !task->mm) {
+			if ((!user_mode(user_ret))) {
 				ret = -EFAULT;
-				put_task_stack(task);
 				put_task_struct(task);
 				goto EXIT;
 			}
@@ -2019,7 +1840,6 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			rms_mm = get_task_mm(task);
 			if (!rms_mm) {
 				ret = -EFAULT;
-				put_task_stack(task);
 				put_task_struct(task);
 				goto EXIT;
 			}
@@ -2028,16 +1848,17 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			if (!maps) {
 				ret = -ENOMEM;
 				mmput(rms_mm);
-				put_task_stack(task);
 				put_task_struct(task);
 				goto EXIT;
 			}
 			memset(maps, 0, MaxMapsSize);
+
 			mmap_read_lock(rms_mm);
-			vma = rms_mm->mmap;
-			while (vma && (mapcount < rms_mm->map_count)) {
+			mas1.tree = &rms_mm->mm_mt;
+			mas_for_each(&mas1, vma, ULONG_MAX) {
+				if(mapcount >= rms_mm->map_count)
+					break;
 				show_map_vma(maps, &mapsLength, vma);
-				vma = vma->vm_next;
 				mapcount++;
 			}
 
@@ -2050,16 +1871,13 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			else //K64+U64
 				start = (ulong)user_ret->user_regs.sp;
 #endif
-			vma = rms_mm->mmap;
-			while (vma) {
+			mas2.tree = &rms_mm->mm_mt;
+			mas_for_each(&mas2, vma, ULONG_MAX) {
 				if (vma->vm_start <= start &&
 					vma->vm_end >= start) {
 					end = vma->vm_end;
 					break;
 				}
-				vma = vma->vm_next;
-				if (vma == rms_mm->mmap)
-					break;
 			}
 
 			mmap_read_unlock(rms_mm);
@@ -2068,16 +1886,15 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				maps, mapsLength)) {
 				vfree(maps);
 				ret = -EFAULT;
-				put_task_stack(task);
 				put_task_struct(task);
 				goto EXIT;
 			}
+
 			vfree(maps);
 			thread_info.Userthread_mapsLength = mapsLength;
 			if (end == 0) {
 				pr_info("Dump native stack failed:\n");
 				ret = -EFAULT;
-				put_task_stack(task);
 				put_task_struct(task);
 				goto EXIT;
 			}
@@ -2089,19 +1906,17 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			stack = vmalloc(MaxStackSize);
 			if (!stack) {
 				ret = -ENOMEM;
-				put_task_stack(task);
 				put_task_struct(task);
 				goto EXIT;
 			}
 
 			copied = access_process_vm(task, start,
 				stack, length, 0);
+			put_task_struct(task);
 			if (copied != length) {
 				pr_info("Access stack error");
 				vfree(stack);
 				ret = -EIO;
-				put_task_stack(task);
-				put_task_struct(task);
 				goto EXIT;
 			}
 
@@ -2109,8 +1924,6 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				stack, length)) {
 				vfree(stack);
 				ret = -EFAULT;
-				put_task_stack(task);
-				put_task_struct(task);
 				goto EXIT;
 			}
 
@@ -2118,33 +1931,14 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				&thread_info, sizeof(struct unwind_info_rms))) {
 				vfree(stack);
 				ret = -EFAULT;
-				put_task_stack(task);
-				put_task_struct(task);
 				goto EXIT;
 			}
 			vfree(stack);
-			put_task_stack(task);
-			put_task_struct(task);
 		}
 		break;
 	}
-	case  AEEIOCTL_USER_IOCTL_TO_KERNEL_WANING:
-		/* get current user space reg when call
-		 * aee_kernel_warning_api
-		 */
-		pr_debug("%s: AEEIOCTL_USER_IOCTL_TO_KERNEL_WANING,call kthread create ,is ok\n"
-			, __func__);
-
-		aee_kernel_warning_api(__FILE__, __LINE__,
-				DB_OPT_DEFAULT|DB_OPT_NATIVE_BACKTRACE,
-				"AEEIOCTL_USER_IOCTL_TO_KERNEL_WANING",
-				"Trigger Kernel warning");
-		break;
 #endif
-
 	case AEEIOCTL_CHECK_SUID_DUMPABLE:
-	{
-		struct mm_struct *t_mm;
 		pr_debug("%s: check suid dumpable ioctl\n", __func__);
 
 		if (copy_from_user(&pid, (void __user *)arg, sizeof(int))) {
@@ -2168,26 +1962,18 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				ret = -EINVAL;
 				goto EXIT;
 			}
-			get_task_struct(task);
-			rcu_read_unlock();
 
-			if (!try_get_task_stack(task)) {
-				ret = -EINVAL;
-				put_task_struct(task);
-				goto EXIT;
-			}
-
-			t_mm = get_task_mm(task);
-			if (!t_mm) {
+			task_lock(task);
+			if (!task->mm) {
 				pr_info("%s: process:%d task mm null\n",
 					__func__, pid);
-				put_task_stack(task);
-				put_task_struct(task);
+				task_unlock(task);
+				rcu_read_unlock();
 				ret = -EINVAL;
 				goto EXIT;
 			}
 
-			dumpable = get_dumpable(t_mm);
+			dumpable = get_dumpable(task->mm);
 			if (!dumpable) {
 				pr_info("%s: %d no need set dumpable\n",
 					__func__, pid);
@@ -2195,9 +1981,8 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				pr_info("%s: get process:%d dumpable:%d\n",
 					__func__, pid, dumpable);
 			}
-			mmput(t_mm);
-			put_task_stack(task);
-			put_task_struct(task);
+			task_unlock(task);
+			rcu_read_unlock();
 		} else {
 			pr_info("%s: check suid dumpable ioctl pid invalid\n",
 				__func__);
@@ -2205,7 +1990,6 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 
 		break;
-	}
 	case AEEIOCTL_SET_FORECE_RED_SCREEN:
 		if (copy_from_user(
 				&force_red_screen, (void __user *)arg,
@@ -2227,7 +2011,7 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		if (aee_si.tid > 0) {
 			struct task_struct *task;
-			siginfo_t *psi;
+			kernel_siginfo_t *psi;
 
 			rcu_read_lock();
 			task = pid_task(
@@ -2239,14 +2023,7 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				ret = -EINVAL;
 				goto EXIT;
 			}
-			get_task_struct(task);
 			rcu_read_unlock();
-			if (!try_get_task_stack(task)) {
-				ret = -EINVAL;
-				put_task_struct(task);
-				goto EXIT;
-			}
-
 
 			psi = task->last_siginfo;
 			if (psi) {
@@ -2258,13 +2035,9 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 						(struct aee_siginfo __user *)arg
 						, &aee_si, sizeof(aee_si))) {
 					ret = -EFAULT;
-					put_task_stack(task);
-					put_task_struct(task);
 					goto EXIT;
 				}
 			}
-			put_task_stack(task);
-			put_task_struct(task);
 		} else {
 			pr_info("%s: get aee_siginfo ioctl tid invalid\n",
 				__func__);
@@ -2285,216 +2058,21 @@ static long aed_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 static void aed_get_traces(char *msg)
 {
 #ifdef CONFIG_STACKTRACE
-	struct stack_trace trace;
 	unsigned long stacks[32];
+	int nr_entries;
 	int i;
 	int offset;
 
-	trace.entries = stacks;
-	/*save backtraces */
-	trace.nr_entries = 0;
-	trace.max_entries = 32;
-	trace.skip = 2;
-	save_stack_trace_tsk(current, &trace);
+	nr_entries = stack_trace_save(stacks, ARRAY_SIZE(stacks), 2);
 	offset = strlen(msg);
-	for (i = 0; i < trace.nr_entries; i++) {
+	for (i = 0; i < nr_entries; i++) {
 		offset += snprintf(msg + offset, AEE_BACKTRACE_LENGTH - offset,
-				"[<%px>] %pS\n", (void *)trace.entries[i],
-				(void *)trace.entries[i]);
+				"[<%px>] %pS\n", (void *)stacks[i],
+				(void *)stacks[i]);
 	}
 #else
 	pr_info("kernel config of STACKTRACE is disabled\n");
 #endif
-}
-
-void Log2Buffer(struct aee_oops *oops, const char *fmt, ...)
-{
-	int max = 256;
-	int len;
-	int n;
-	va_list ap;
-
-	va_start(ap, fmt);
-	len = strlen(oops->userthread_maps.Userthread_maps);
-
-	if ((len + max) < MaxMapsSize) {
-		n = vsnprintf(&oops->userthread_maps.Userthread_maps[len],
-				max, fmt, ap);
-		if (n > 0)
-			oops->userthread_maps.Userthread_mapsLength = len + n;
-	}
-	va_end(ap);
-}
-
-int DumpThreadNativeInfo(struct aee_oops *oops)
-{
-	struct task_struct *current_task;
-	struct pt_regs *user_ret;
-	struct vm_area_struct *vma;
-	unsigned long userstack_start = 0;
-	unsigned long userstack_end = 0, length = 0;
-	int mapcount = 0;
-	struct file *file;
-	unsigned long flags;
-	struct mm_struct *mm;
-	int ret = 0;
-
-	current_task = get_current();
-	user_ret = task_pt_regs(current_task);
-	/* CurrentUserPid=current_task->pid; //Thread id */
-	oops->userthread_reg.tid = current_task->tgid;
-	oops->userthread_stack.tid = current_task->tgid;
-	oops->userthread_maps.tid = current_task->tgid;
-
-	memcpy(&oops->userthread_reg.regs, user_ret, sizeof(struct pt_regs));
-	pr_debug(" pid:%d /// tgid:%d, stack:0x%08lx\n",
-			current_task->pid, current_task->tgid,
-			(long)oops->userthread_stack.Userthread_Stack);
-	if (!user_mode(user_ret))
-		return 0;
-
-	if (!current_task->mm)
-		return 0;
-
-	mmap_read_lock(current_task->mm);
-	vma = current_task->mm->mmap;
-	while (vma && (mapcount < current_task->mm->map_count)) {
-		file = vma->vm_file;
-		flags = vma->vm_flags;
-		if (file) {
-			Log2Buffer(oops, "%08lx-%08lx %c%c%c%c    %s\n",
-			  vma->vm_start, vma->vm_end,
-			  flags & VM_READ ? 'r' : '-',
-			  flags & VM_WRITE ? 'w' : '-',
-			  flags & VM_EXEC ? 'x' : '-',
-			  flags & VM_MAYSHARE ? 's' : 'p',
-			  (unsigned char *)(file->f_path.dentry->d_iname));
-		} else {
-			const char *name = aee_arch_vma_name(vma);
-
-			mm = vma->vm_mm;
-			if (!name) {
-				if (mm) {
-					if (vma->vm_start <= mm->start_brk &&
-					    vma->vm_end >= mm->brk) {
-						name = "[heap]";
-					} else if (vma->vm_start <=
-							mm->start_stack &&
-						   vma->vm_end >=
-							mm->start_stack) {
-						name = "[stack]";
-					}
-				} else {
-					name = "[vdso]";
-				}
-			}
-			Log2Buffer(oops, "%08lx-%08lx %c%c%c%c    %s\n",
-					vma->vm_start, vma->vm_end,
-					flags & VM_READ ? 'r' : '-',
-					flags & VM_WRITE ? 'w' : '-',
-					flags & VM_EXEC ? 'x' : '-',
-					flags & VM_MAYSHARE ? 's' : 'p',
-					name);
-		}
-		vma = vma->vm_next;
-		mapcount++;
-
-	}
-	mmap_read_unlock(current_task->mm);
-
-#ifndef __aarch64__ /* 32bit */
-	userstack_start = (unsigned long)user_ret->ARM_sp;
-
-	vma = current_task->mm->mmap;
-	while (vma) {
-		if (vma->vm_start <= userstack_start &&
-			vma->vm_end >= userstack_start) {
-			userstack_end = vma->vm_end;
-			break;
-		}
-		vma = vma->vm_next;
-		if (vma == current_task->mm->mmap)
-			break;
-	}
-	if (!userstack_end) {
-		pr_info("Dump native stack failed:\n");
-		return 0;
-	}
-	length = ((userstack_end - userstack_start) <
-		     (MaxStackSize-1)) ? (userstack_end - userstack_start) :
-							(MaxStackSize-1);
-	oops->userthread_stack.StackLength = length;
-
-	if (!userstack_start) {
-		pr_info("ERR: %s userstack_start = NULL\n", __func__);
-		return 0;
-	}
-
-	ret = copy_from_user((void *)(oops->userthread_stack.Userthread_Stack),
-			(const void __user *)(userstack_start), length);
-#else /* 64bit, First deal with K64+U64, the last time to deal with K64+U32 */
-
-	if (is_compat_task()) {	/* K64_U32 */
-		userstack_start = (unsigned long)user_ret->user_regs.regs[13];
-		vma = current_task->mm->mmap;
-		while (vma) {
-			if (vma->vm_start <= userstack_start &&
-				vma->vm_end >= userstack_start) {
-				userstack_end = vma->vm_end;
-				break;
-			}
-		vma = vma->vm_next;
-		if (vma == current_task->mm->mmap)
-			break;
-	}
-	if (!userstack_end) {
-		pr_info("Dump native stack failed:\n");
-		return 0;
-	}
-		length = ((userstack_end - userstack_start) <
-		     (MaxStackSize-1)) ? (userstack_end - userstack_start) :
-							(MaxStackSize-1);
-		oops->userthread_stack.StackLength = length;
-		if (!userstack_start) {
-			pr_info("ERR: %s userstack_start=NULL\n", __func__);
-			return 0;
-		}
-		ret = copy_from_user(
-			(void *)(oops->userthread_stack.Userthread_Stack),
-			(const void __user *)(userstack_start), length);
-	} else {	/*K64+U64*/
-		userstack_start = (unsigned long)user_ret->user_regs.sp;
-		vma = current_task->mm->mmap;
-		while (vma) {
-			if (vma->vm_start <= userstack_start &&
-				vma->vm_end >= userstack_start) {
-				userstack_end = vma->vm_end;
-				break;
-			}
-			vma = vma->vm_next;
-			if (vma == current_task->mm->mmap)
-				break;
-		}
-		if (!userstack_end) {
-			pr_info("Dump native stack failed:\n");
-			return 0;
-		}
-
-		length = ((userstack_end - userstack_start) <
-		     (MaxStackSize-1)) ? (userstack_end - userstack_start) :
-			(MaxStackSize-1);
-		oops->userthread_stack.StackLength = length;
-		if (!userstack_start) {
-			pr_info("ERR: %s userstack_start = NULL\n", __func__);
-			return 0;
-		}
-		ret = copy_from_user(
-			(void *)(oops->userthread_stack.Userthread_Stack),
-			(const void __user *)(userstack_start), length);
-	}
-
-#endif
-	return 0;
 }
 
 static void kernel_reportAPI(const enum AE_DEFECT_ATTR attr, const int db_opt,
@@ -2504,8 +2082,12 @@ static void kernel_reportAPI(const enum AE_DEFECT_ATTR attr, const int db_opt,
 	int n = 0;
 #ifdef CONFIG_RTC_LIB
 	struct rtc_time tm;
-	struct timeval tv = { 0 };
+	struct timespec64 tv;
 #endif
+
+	if ((attr == AE_DEFECT_EXCEPTION) && (strstr(msg, "GPUHS") ||
+		strstr(module, "cache parity") || strstr(module, "DEVMPU")))
+		slog("#$#kernel#@#%s#:%s", module, msg);
 
 	if ((aee_mode >= AEE_MODE_CUSTOMER_USER || (aee_mode ==
 		AEE_MODE_CUSTOMER_ENG && attr == AE_DEFECT_WARNING))
@@ -2517,15 +2099,15 @@ static void kernel_reportAPI(const enum AE_DEFECT_ATTR attr, const int db_opt,
 	}
 	oops = aee_oops_create(attr, AE_KERNEL_PROBLEM_REPORT, module);
 	if (oops) {
-		n += snprintf(oops->backtrace, AEE_BACKTRACE_LENGTH, msg);
+		n += snprintf(oops->backtrace, AEE_BACKTRACE_LENGTH, "%s", msg);
 #ifdef CONFIG_RTC_LIB
-		do_gettimeofday(&tv);
-		rtc_time_to_tm(tv.tv_sec - sys_tz.tz_minuteswest * 60, &tm);
+		ktime_get_real_ts64(&tv);
+		rtc_time64_to_tm(tv.tv_sec - sys_tz.tz_minuteswest * 60, &tm);
 		n += snprintf(oops->backtrace + n, AEE_BACKTRACE_LENGTH - n,
 			"\nTrigger time:[%d-%02d-%02d %02d:%02d:%02d.%03d]\n",
 			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 			tm.tm_hour, tm.tm_min, tm.tm_sec,
-			(unsigned int)tv.tv_usec);
+			(unsigned int)(tv.tv_nsec / 1000));
 #endif
 		n += snprintf(oops->backtrace + n, AEE_BACKTRACE_LENGTH - n,
 				"\nBacktrace:\n");
@@ -2535,35 +2117,7 @@ static void kernel_reportAPI(const enum AE_DEFECT_ATTR attr, const int db_opt,
 		oops->detail = (char *)(oops->backtrace);
 		oops->detail_len = strlen(oops->backtrace) + 1;
 		oops->dump_option = db_opt;
-#ifdef __aarch64__
-		if ((db_opt & DB_OPT_NATIVE_BACKTRACE)  && !is_compat_task())
-			oops->dump_option |= DB_OPT_AARCH64;
-#endif
-		if (db_opt & DB_OPT_NATIVE_BACKTRACE) {
-			oops->userthread_stack.Userthread_Stack =
-							vzalloc(MaxStackSize);
-			if (!oops->userthread_stack.Userthread_Stack) {
-				pr_info(
-				  "%s: oops->userthread_stack.Userthread_Stack Vmalloc fail"
-				  , __func__);
-				kfree(oops);
-				return;
-			}
-			oops->userthread_maps.Userthread_maps =
-							vzalloc(MaxMapsSize);
-			if (!oops->userthread_maps.Userthread_maps) {
-				pr_info(
-				  "%s: oops->userthread_maps.Userthread_maps Vmalloc fail"
-				  , __func__);
-				kfree(oops);
-				return;
-			}
-			oops->userthread_stack.StackLength = MaxStackSize;
-			oops->userthread_maps.Userthread_mapsLength =
-								MaxMapsSize;
-			DumpThreadNativeInfo(oops);
 
-		}
 		pr_debug("%s,%s,%s,0x%x\n", __func__, module, msg, db_opt);
 		ke_queue_request(oops);
 	}
@@ -2577,10 +2131,13 @@ static void external_exception(const char *assert_type, const int *log,
 	struct aed_eerec *eerec;
 #ifdef CONFIG_RTC_LIB
 	struct rtc_time tm;
-	struct timeval tv = { 0 };
+	struct timespec64 tv = { 0 };
 	char trigger_time[60];
 	int n;
 #endif
+
+	if (strstr(assert_type, "combo_bt") || strstr(assert_type, "combo_wifi"))
+		slog("#$#external#@#%s#%s", assert_type, detail);
 
 	if ((aee_mode >= AEE_MODE_CUSTOMER_USER) &&
 		(aee_force_exp == AEE_FORCE_EXP_NOT_SET)) {
@@ -2617,13 +2174,13 @@ static void external_exception(const char *assert_type, const int *log,
 			sizeof(eerec->assert_type) - 1);
 	memset(eerec->exp_filename, 0, sizeof(eerec->exp_filename));
 #ifdef CONFIG_RTC_LIB
-	do_gettimeofday(&tv);
-	rtc_time_to_tm(tv.tv_sec - sys_tz.tz_minuteswest * 60, &tm);
+	ktime_get_real_ts64(&tv);
+	rtc_time64_to_tm(tv.tv_sec - sys_tz.tz_minuteswest * 60, &tm);
 	n = snprintf(trigger_time, sizeof(trigger_time),
 			"Trigger time:[%d-%02d-%02d %02d:%02d:%02d.%03d]\n",
 			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 			tm.tm_hour, tm.tm_min, tm.tm_sec,
-			(unsigned int)tv.tv_usec);
+			(unsigned int)(tv.tv_nsec / 1000));
 	if (n < 0)
 		pr_info("%s: snprintf failed\n", __func__);
 	strncpy(eerec->exp_filename, trigger_time,
@@ -2707,31 +2264,13 @@ AED_PROC_CURRENT_KE_FOPS(ee_coredump);
 
 static int aed_proc_init(void)
 {
-	aed_proc_dir = proc_mkdir("aed", NULL);
-	if (!aed_proc_dir) {
-		pr_info("aed proc_mkdir failed\n");
-		return -ENOMEM;
-	}
 	/* 0400: S_IRUSR */
-	AED_PROC_ENTRY(current-ee-coredump, current_ke_ee_coredump, 0400);
+	AED_PROC_ENTRY(aed/current-ee-coredump, current_ke_ee_coredump, 0400);
 
-	aee_rr_proc_init(aed_proc_dir);
-#if defined(CONFIG_MTK_AEE_UT)
-	aed_proc_debug_init(aed_proc_dir);
+#if IS_ENABLED(CONFIG_MTK_AEE_UT)
+	aed_proc_debug_init(NULL);
 #endif
 
-	return 0;
-}
-
-static int aed_proc_done(void)
-{
-	remove_proc_entry(CURRENT_EE_COREDUMP, aed_proc_dir);
-
-#if defined(CONFIG_MTK_AEE_UT)
-	aed_proc_debug_done(aed_proc_dir);
-#endif
-
-	remove_proc_entry("aed", NULL);
 	return 0;
 }
 
@@ -2779,50 +2318,27 @@ static struct miscdevice aed_ke_dev = {
 	.fops = &aed_ke_fops,
 };
 
-/* UTC time sync */
-static struct hrtimer aed_hrtimer;
-
-static u64 period_ms = 20 * 1000; /* 20 sec */
-
-static enum hrtimer_restart aed_timer_fn(struct hrtimer *hrtimer)
+static int aee_is_enable(void)
 {
-	struct rtc_time tm;
-	struct timeval tv = { 0 };
-	/* android time */
-	struct rtc_time tm_android;
-	struct timeval tv_android = { 0 };
+	struct device_node *node;
+	const char *aee_enable;
+	int ret = 0;
 
-	do_gettimeofday(&tv);
-	tv_android = tv;
-	rtc_time_to_tm(tv.tv_sec, &tm);
-	tv_android.tv_sec -= sys_tz.tz_minuteswest * 60;
-	rtc_time_to_tm(tv_android.tv_sec, &tm_android);
-	pr_info("[thread:%d] %d-%02d-%02d %02d:%02d:%02d.%u UTC;"
-		"android time %d-%02d-%02d %02d:%02d:%02d.%03d\n",
-		current->pid, tm.tm_year + 1900, tm.tm_mon + 1,
-		tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
-		(unsigned int)tv.tv_usec, tm_android.tm_year + 1900,
-		tm_android.tm_mon + 1, tm_android.tm_mday, tm_android.tm_hour,
-		tm_android.tm_min, tm_android.tm_sec,
-		(unsigned int)tv_android.tv_usec);
-	hrtimer_forward_now(&aed_hrtimer, ms_to_ktime(period_ms));
+	node = of_find_node_by_path("/chosen");
+	if (node) {
+		if (of_property_read_string(node, "aee,enable", &aee_enable) == 0) {
+			if (strnstr(aee_enable, "mini", 4))
+				ret = 1;
+			else if (strnstr(aee_enable, "full", 4))
+				ret = 2;
+		}
+		of_node_put(node);
+	} else {
+		pr_notice("%s: Can't find chosen node\n", __func__);
+	}
 
-	return HRTIMER_RESTART;
+	return ret;
 }
-
-static void aed_hrtimer_init(void)
-{
-	hrtimer_init(&aed_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	aed_hrtimer.function = aed_timer_fn;
-	hrtimer_start(&aed_hrtimer, ms_to_ktime(period_ms),
-		      HRTIMER_MODE_REL_PINNED);
-}
-
-static void aed_hrtimer_exit(void)
-{
-	hrtimer_cancel(&aed_hrtimer);
-}
-/* UTC time sync end */
 
 static int __init aed_init(void)
 {
@@ -2834,10 +2350,6 @@ static int __init aed_init(void)
 	}
 
 	err = aed_proc_init();
-	if (err != 0)
-		return err;
-
-	err = ksysfs_bootinfo_init();
 	if (err != 0)
 		return err;
 
@@ -2853,6 +2365,9 @@ static int __init aed_init(void)
 	INIT_WORK(&ke_work, ke_worker);
 	INIT_WORK(&ee_work, ee_worker);
 
+	mutex_init(&aed_dev.ee_mutex);
+	mutex_init(&aed_dev.ke_mutex);
+
 	aee_register_api(&kernel_api);
 
 	spin_lock_init(&aed_device_lock);
@@ -2867,23 +2382,25 @@ static int __init aed_init(void)
 		pr_info("aee: failed to register aed1(ke) device!\n");
 		return err;
 	}
-	aed_hrtimer_init();
 	pr_notice("aee kernel api ready");
+
+	mtk_slog_init();
 
 	return err;
 }
 
 static void __exit aed_exit(void)
 {
+	if (!aee_is_enable())
+		return;
+
 	misc_deregister(&aed_ee_dev);
 	misc_deregister(&aed_ke_dev);
 
 	ee_destroy_log();
 	ke_destroy_log();
 
-	aed_proc_done();
-	ksysfs_bootinfo_exit();
-	aed_hrtimer_exit();
+	mtk_slog_exit();
 }
 module_init(aed_init);
 module_exit(aed_exit);

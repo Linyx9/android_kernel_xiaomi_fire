@@ -17,15 +17,21 @@
 #include "ccci_modem.h"
 #include "ccci_port.h"
 #include "ccci_hif.h"
-#ifdef FEATURE_SCP_CCCI_SUPPORT
-/*need scp owner review,browse.zhang*/
-#include <scp.h>
+#if IS_ENABLED(CONFIG_OF)
+#include <linux/of.h>
+#include <linux/of_fdt.h>
+#include <linux/of_irq.h>
+#include <linux/of_address.h>
 #endif
 
+struct ccci_tag_bootmode {
+	u32 size;
+	u32 tag;
+	u32 bootmode;
+	u32 boottype;
+};
+
 static void *dev_class;
-#ifdef FEATURE_SCP_CCCI_SUPPORT
-static int scp_stop;
-#endif
 /*
  * for debug log:
  * 0 to disable; 1 for print to ram; 2 for print to uart
@@ -34,7 +40,56 @@ static int scp_stop;
 #ifndef CCCI_LOG_LEVEL /* for platform override */
 #define CCCI_LOG_LEVEL CCCI_LOG_CRITICAL_UART
 #endif
+
+//#define CCCI_LOG_LEVEL CCCI_LOG_ALL_UART
+
 unsigned int ccci_debug_enable = CCCI_LOG_LEVEL;
+
+unsigned int ccci_get_boot_mode_from_dts(void)
+{
+	struct device_node *np_chosen = NULL;
+	struct ccci_tag_bootmode *tag = NULL;
+	u32 bootmode = NORMAL_BOOT_ID;
+	static int ap_boot_mode = -1;
+
+	if (ap_boot_mode >= 0)
+		return ap_boot_mode;
+
+	np_chosen = of_find_node_by_path("/chosen");
+	if (!np_chosen) {
+		CCCI_ERROR_LOG(-1, CORE, "warning: not find node: '/chosen'\n");
+
+		np_chosen = of_find_node_by_path("/chosen@0");
+		if (!np_chosen) {
+			CCCI_ERROR_LOG(-1, CORE,
+				"[%s] error: not find node: '/chosen@0'\n",
+				__func__);
+			return NORMAL_BOOT_ID;
+		}
+	}
+
+	tag = (struct ccci_tag_bootmode *)
+			of_get_property(np_chosen, "atag,boot", NULL);
+	if (!tag) {
+		CCCI_ERROR_LOG(-1, CORE,
+			"[%s] error: not find tag: 'atag,boot';\n", __func__);
+		return NORMAL_BOOT_ID;
+	}
+
+	if (tag->bootmode == META_BOOT || tag->bootmode == ADVMETA_BOOT)
+		bootmode = META_BOOT_ID;
+
+	else if (tag->bootmode == FACTORY_BOOT ||
+			tag->bootmode == ATE_FACTORY_BOOT)
+		bootmode = FACTORY_BOOT_ID;
+
+	CCCI_NORMAL_LOG(-1, CORE,
+		"[%s] bootmode: 0x%x boottype: 0x%x; return: 0x%x\n",
+		__func__, tag->bootmode, tag->boottype, bootmode);
+	ap_boot_mode = bootmode;
+
+	return bootmode;
+}
 
 int ccci_register_dev_node(const char *name, int major_id, int minor)
 {
@@ -50,44 +105,14 @@ int ccci_register_dev_node(const char *name, int major_id, int minor)
 
 	return ret;
 }
-EXPORT_SYMBOL(ccci_register_dev_node);
+//EXPORT_SYMBOL(ccci_register_dev_node);
 
-#ifdef FEATURE_SCP_CCCI_SUPPORT
-static int apsync_event(struct notifier_block *this,
-	unsigned long event, void *ptr)
-{
-	switch (event) {
-	case SCP_EVENT_READY:
-		fsm_scp_init0();
-		if (scp_stop == 1) {
-			ccci_port_send_msg_to_md(MD_SYS1,
-				CCCI_SYSTEM_TX, CCISM_SHM_INIT, 0, 1);
-			CCCI_NORMAL_LOG(0, CORE, "SCP reboot---\n");
-			scp_stop = 0;
-		}
-		break;
-	case SCP_EVENT_STOP:
-		scp_stop = 1;
-		CCCI_NORMAL_LOG(0, CORE, "SCP stop---\n");
-		break;
-	}
-
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block apsync_notifier = {
-	.notifier_call = apsync_event,
-};
-#endif
 #ifndef CCCI_KMODULE_ENABLE
 static int __init ccci_init(void)
 {
 	CCCI_INIT_LOG(-1, CORE, "ccci core init\n");
-	dev_class = class_create(THIS_MODULE, "ccci_node");
+	dev_class = class_create("ccci_node");
 	ccci_subsys_bm_init();
-#ifdef FEATURE_SCP_CCCI_SUPPORT
-	scp_A_register_notify(&apsync_notifier);
-#endif
 	return 0;
 }
 
@@ -101,11 +126,8 @@ MODULE_LICENSE("GPL");
 int ccci_init(void)
 {
 	CCCI_INIT_LOG(-1, CORE, "ccci core init\n");
-	dev_class = class_create(THIS_MODULE, "ccci_node");
+	dev_class = class_create("ccci_node");
 	ccci_subsys_bm_init();
-#ifdef FEATURE_SCP_CCCI_SUPPORT
-	scp_A_register_notify(&apsync_notifier);
-#endif
 	return 0;
 }
 #endif

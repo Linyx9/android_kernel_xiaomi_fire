@@ -323,11 +323,11 @@ struct thermal_zone_device *thermal, unsigned long *t)
 	*t = tsbuck_get_hw_temp();
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -502,7 +502,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 	}
 	return 0;
 }
@@ -754,3 +754,6 @@ static void __exit tsbuck_exit(void)
 }
 module_init(tsbuck_init);
 module_exit(tsbuck_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");
+

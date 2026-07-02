@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
+#include <dt-bindings/mfd/mt6362.h>
+#include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/spmi.h>
-#include <linux/regmap.h>
-#include <linux/of_platform.h>
-#include <linux/interrupt.h>
 #include <linux/of_irq.h>
-
-#include <dt-bindings/mfd/mt6362.h>
+#include <linux/of_platform.h>
+#include <linux/regmap.h>
+#include <linux/spmi.h>
 
 #define MT6362_IRQ_SET			(0x0D)
 #define MT6362_REG_TM_PASCODE1		(0x07)
@@ -27,7 +26,6 @@
 #define MT6362_REGMAP_IRQ_REG(_irq_evt) \
 	REGMAP_IRQ_REG(_irq_evt, (_irq_evt) / 8, BIT((_irq_evt) % 8))
 
-#define MT6362_SPMIMST_RCSCLR
 #define MT6362_SPMIMST_STARTADDR	(0x10029000)
 #define MT6362_SPMIMST_ENDADDR		(0x100290FF)
 #define MT6362_REG_SPMIMST_RCSCLR	(0x28)
@@ -42,29 +40,26 @@ struct mt6362_data {
 	unsigned int last_access_reg;
 	ktime_t last_access_time;
 	int irq;
-#ifdef MT6362_SPMIMST_RCSCLR
 	__iomem void *spmimst_base;
-#endif /* MT6362_SPMIMST_RCSCLR */
 };
 
 struct init_table {
 	u16 addr;
 	u8 mask;
 	u8 val;
-	bool hidden_flag;
 };
 
 static const struct init_table mt6362_init_table[] = {
 	/* PMIC PART */
-	{0X120, 0X77, 0X55, false},
-	{0X130, 0X77, 0X55, false},
-	{0X140, 0X77, 0X22, false},
+	{0X120, 0X77, 0X55},
+	{0X130, 0X77, 0X55},
+	{0X140, 0X77, 0X22},
 	/* BUCK PART */
-	{0X21D, 0X77, 0X55, false},
-	{0X221, 0X77, 0X55, false},
-	{0X223, 0X77, 0X55, false},
+	{0X21D, 0X77, 0X55},
+	{0X221, 0X77, 0X55},
+	{0X223, 0X77, 0X55},
 	/* LDO PART */
-	{0X310, 0X77, 0X11, false},
+	{0X310, 0X77, 0X11},
 };
 
 static const struct regmap_irq spmi_regmap_irqs[] = {
@@ -159,22 +154,18 @@ static const struct regmap_irq spmi_regmap_irqs[] = {
 	MT6362_REGMAP_IRQ_REG(MT6362_PD_EVT),
 };
 
-#ifdef MT6362_SPMIMST_RCSCLR
 static inline void mt6362_clear_spmimst_rcs(struct mt6362_data *data)
 {
 	writel(MT6362_MSK_SPMIMST_RCSCLR,
 	       (data->spmimst_base + MT6362_REG_SPMIMST_RCSCLR));
 }
-#endif /* MT6362_SPMIMST_RCSCLR */
 
 static int mt6362_handle_post_irq(void *irq_drv_data)
 {
 	struct mt6362_data *data = irq_drv_data;
 	struct regmap *regmap = data->regmap;
 
-#ifdef MT6362_SPMIMST_RCSCLR
 	mt6362_clear_spmimst_rcs(data);
-#endif /* MT6362_SPMIMST_RCSCLR */
 	return regmap_update_bits(regmap, MT6362_IRQ_SET, MT6362_INT_RETRIG,
 				  MT6362_INT_RETRIG);
 }
@@ -196,19 +187,15 @@ static int mt6362_spmi_reg_read(void *context,
 				unsigned int reg, unsigned int *val)
 {
 	struct mt6362_data *data = context;
-	ktime_t current_time, avail_access_time;
-	u8 regval = 0;
+	u8 regval;
 	int ret;
+	s64 lapse_us;
 
 	if (reg == data->last_access_reg) {
-		avail_access_time = ktime_add_us(data->last_access_time, 3);
-		current_time = ktime_get();
-		if (ktime_before(current_time, avail_access_time)) {
-			/* used for usec time ceil */
-			avail_access_time = ktime_add_ns(avail_access_time,
-							     NSEC_PER_USEC - 1);
-			udelay(ktime_us_delta(avail_access_time, current_time));
-		}
+		lapse_us = ktime_us_delta(ktime_get(), data->last_access_time);
+		if (lapse_us < 3)
+			udelay(3 - lapse_us);
+		data->last_access_reg = U32_MAX;
 	}
 	ret = spmi_ext_register_readl(data->sdev, reg, &regval, 1);
 	if (ret < 0)
@@ -236,32 +223,11 @@ static const struct regmap_config spmi_regmap_config = {
 	.val_bits	= 8,
 	.max_register	= 0x7ff,
 	.fast_io	= true,
-	.use_single_rw  = true,
+	.use_single_read  = true,
+	.use_single_write  = true,
 	.reg_read	= mt6362_spmi_reg_read,
 	.reg_write	= mt6362_spmi_reg_write,
 };
-
-#ifdef CONFIG_FPGA_EARLY_PORTING
-static int mt6362_spmi_rcs_init(struct mt6362_data *data)
-{
-	struct regmap *regmap = data->regmap;
-	int ret;
-
-	dev_info(dev, "%s\n", __func__);
-	/* rcs_enable[7], rcs_a[6], rcs_cmd[5:4], rcs_id[3:0] */
-	ret = regmap_write(regmap, MT6362_REG_SPMIM_RCS1, 0x91);
-	if (ret < 0)
-		return ret;
-	/* rcs_addr */
-	return regmap_write(regmap, MT6362_REG_SPMIM_RCS2, 0x09);
-}
-#endif /* CONFIG_FPGA_EARLY_PORTING */
-
-static int mt6362_enable_hidden_mode(struct mt6362_data *data, bool en)
-{
-	return regmap_write(data->regmap,
-			    MT6362_REG_TM_PASCODE1, en ? 0x69 : 0);
-}
 
 static int mt6362_init_setting(struct mt6362_data *data)
 {
@@ -269,31 +235,22 @@ static int mt6362_init_setting(struct mt6362_data *data)
 
 	/* initial setting */
 	for (i = 0; i < ARRAY_SIZE(mt6362_init_table); i++) {
-		if (mt6362_init_table[i].hidden_flag) {
-			ret = mt6362_enable_hidden_mode(data, true);
-			if (ret < 0)
-				return ret;
-		}
 		ret = regmap_update_bits(data->regmap,
 					 mt6362_init_table[i].addr,
 					 mt6362_init_table[i].mask,
 					 mt6362_init_table[i].val);
-		if (mt6362_init_table[i].hidden_flag)
-			mt6362_enable_hidden_mode(data, false);
 		if (ret < 0)
 			return ret;
 	}
 	return ret;
 }
 
-#ifdef MT6362_SPMIMST_RCSCLR
 static struct resource spmimst_resource = {
 	.start = MT6362_SPMIMST_STARTADDR,
 	.end = MT6362_SPMIMST_ENDADDR,
 	.flags = IORESOURCE_MEM,
 	.name = "spmimst",
 };
-#endif /* MT6362_SPMIMST_RCSCLR */
 
 static int mt6362_probe(struct spmi_device *sdev)
 {
@@ -316,21 +273,12 @@ static int mt6362_probe(struct spmi_device *sdev)
 		return PTR_ERR(regmap);
 	data->regmap = regmap;
 
-#ifdef CONFIG_FPGA_EARLY_PORTING
-	rv = mt6362_spmi_rcs_init(data);
-	if (rv < 0) {
-		dev_err(&sdev->dev, "%s: spmi rcs init failed\n", __func__);
-		return rv;
-	}
-#endif /* CONFIG_FPGA_EARLY_PORTING */
-
 	rv = mt6362_init_setting(data);
 	if (rv) {
 		dev_err(&sdev->dev, "Failed to set initial setting(%d)\n", rv);
 		return rv;
 	}
 
-#ifdef MT6362_SPMIMST_RCSCLR
 	data->spmimst_base = devm_ioremap(&sdev->dev, spmimst_resource.start,
 					  resource_size(&spmimst_resource));
 	if (!data->spmimst_base) {
@@ -339,7 +287,6 @@ static int mt6362_probe(struct spmi_device *sdev)
 		return -EINVAL;
 	}
 	mt6362_clear_spmimst_rcs(data);
-#endif /* MT6362_SPMIMST_RCSCLR */
 
 	data->irq = of_irq_get(np, 0);
 	if (data->irq < 0) {
@@ -396,16 +343,16 @@ static int __maybe_unused mt6362_resume(struct device *dev)
 
 static SIMPLE_DEV_PM_OPS(mt6362_pm_ops, mt6362_suspend, mt6362_resume);
 
-static const struct of_device_id __maybe_unused mt6362_ofid_tbls[] = {
+static const struct of_device_id __maybe_unused mt6362_of_id_tbls[] = {
 	{ .compatible = "mediatek,mt6362", },
 	{ },
 };
-MODULE_DEVICE_TABLE(of, mt6362_of_id);
+MODULE_DEVICE_TABLE(of, mt6362_of_id_tbls);
 
 static struct spmi_driver mt6362_driver = {
 	.driver = {
 		.name = "mt6362",
-		.of_match_table = of_match_ptr(mt6362_ofid_tbls),
+		.of_match_table = of_match_ptr(mt6362_of_id_tbls),
 		.pm = &mt6362_pm_ops,
 	},
 	.probe = mt6362_probe,

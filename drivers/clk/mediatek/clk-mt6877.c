@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 
 #include <linux/clk.h>
@@ -19,7 +19,7 @@
 #include "clk-mt6877.h"
 
 #include <dt-bindings/clock/mt6877-clk.h>
-#include <memory/mediatek/dramc.h>
+#include <soc/mediatek/dramc.h>
 
 /* bringup config */
 #define MT_CCF_BRINGUP		1
@@ -2347,6 +2347,7 @@ int clk_mt6877_pll_registration(enum subsys_id id,
 
 	return r;
 }
+EXPORT_SYMBOL_GPL(clk_mt6877_pll_registration);
 
 static int clk_mt6877_apmixed_probe(struct platform_device *pdev)
 {
@@ -2450,44 +2451,6 @@ static int clk_mt6877_top_probe(struct platform_device *pdev)
 	return r;
 }
 
-/* for suspend LDVT only */
-void pll_force_off_internal(const struct mtk_pll_data *plls,
-		void __iomem *base)
-{
-	void __iomem *rst_reg, *en_reg, *pwr_reg;
-
-	for (; plls->name; plls++) {
-		/* do not pwrdn the AO PLLs */
-		if ((plls->flags & PLL_AO) == PLL_AO)
-			continue;
-
-		if ((plls->flags & HAVE_RST_BAR) == HAVE_RST_BAR) {
-			rst_reg = base + plls->rst_bar_reg;
-			writel(readl(rst_reg) & ~plls->rst_bar_mask,
-				rst_reg);
-		}
-
-		en_reg = base + plls->en_reg;
-
-		pwr_reg = base + plls->pwr_reg;
-
-		writel(readl(en_reg) & ~plls->en_mask,
-				en_reg);
-		writel(readl(pwr_reg) | plls->iso_mask,
-				pwr_reg);
-		writel(readl(pwr_reg) & ~plls->pwron_mask,
-				pwr_reg);
-	}
-}
-
-void pll_force_off(void)
-{
-	int i;
-
-	for (i = 0; i < PLL_SYS_NUM; i++)
-		pll_force_off_internal(plls_data[i], plls_base[i]);
-}
-
 static const struct of_device_id of_match_clk_mt6877[] = {
 	{
 		.compatible = "mediatek,mt6877-apmixedsys",
@@ -2535,5 +2498,6 @@ static int __init clk_mt6877_init(void)
 	return platform_driver_register(&clk_mt6877_drv);
 }
 
-arch_initcall_sync(clk_mt6877_init);
+subsys_initcall(clk_mt6877_init);
+MODULE_LICENSE("GPL");
 

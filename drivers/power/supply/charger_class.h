@@ -19,6 +19,8 @@ enum adc_channel {
 	ADC_CHANNEL_TEMP_JC,
 	ADC_CHANNEL_USBID,
 	ADC_CHANNEL_TS,
+	ADC_CHANNEL_TBAT,
+	ADC_CHANNEL_VOUT,
 };
 
 struct charger_properties {
@@ -28,6 +30,7 @@ struct charger_properties {
 /* Data of notifier from charger device */
 struct chgdev_notify {
 	bool vbusov_stat;
+	bool dpdmov_stat;
 };
 
 /* charger_dev notify */
@@ -37,6 +40,15 @@ enum {
 	CHARGER_DEV_NOTIFY_EOC,
 	CHARGER_DEV_NOTIFY_RECHG,
 	CHARGER_DEV_NOTIFY_SAFETY_TIMEOUT,
+	CHARGER_DEV_NOTIFY_VBATOVP_ALARM,
+	CHARGER_DEV_NOTIFY_VBUSOVP_ALARM,
+	CHARGER_DEV_NOTIFY_IBATOCP,
+	CHARGER_DEV_NOTIFY_IBUSOCP,
+	CHARGER_DEV_NOTIFY_IBUSUCP_FALL,
+	CHARGER_DEV_NOTIFY_VOUTOVP,
+	CHARGER_DEV_NOTIFY_VDROVP,
+	CHARGER_DEV_NOTIFY_BATPRO_DONE,
+	CHARGER_DEV_NOTIFY_DPDM_OVP,
 };
 
 struct charger_device {
@@ -48,6 +60,26 @@ struct charger_device {
 	struct srcu_notifier_head evt_nh;
 	void	*driver_data;
 	bool is_polling_mode;
+};
+
+enum charger_property {
+	CHARGER_PROP_BLEED_DISCHARGE,
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+	CHARGER_PROP_CHARGER_ENABLED,
+	CHARGER_PROP_CHARGER_EXIST,
+	CHARGER_PROP_CHARGER_VOLTAGE,
+	CHARGER_PROP_CHARGER_PROP_STATUS,
+	CHARGER_PROP_CHARGER_TYPE,
+	CHARGER_PROP_VBAT,
+	CHARGER_PROP_IBAT,
+	CHARGER_PROP_VBUS,
+	CHARGER_PROP_IBUS,
+ #endif
+};
+
+union charger_propval {
+	int intval;
+	const char *strval;
 };
 
 struct charger_ops {
@@ -71,14 +103,45 @@ struct charger_ops {
 	int (*set_charging_current)(struct charger_device *dev, u32 uA);
 	int (*get_min_charging_current)(struct charger_device *dev, u32 *uA);
 
+/* TN Begin modified by hao.jia/809321 20240701 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_CHARGER_PUMP)
+	int (*enable_adc)(struct charger_device *dev, bool enable);
+	int (*enable_ovpgate)(struct charger_device *dev, bool enable);
+	int (*is_adc_enabled)(struct charger_device *dev, bool *enable);
+#endif /* CONFIG_OEM_CHARGER_PUMP */
+/* TN End modified by hao.jia/809321 20240701 CR/EKLAMU-202 */
+
+/* TN Begin modified by hao.jia/809321 20240702 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER)
+	int (*is_vbushigher)(struct charger_device *dev, bool *err);
+	int (*is_vbat_present)(struct charger_device *dev, bool *present);
+	int (*is_vbus_present)(struct charger_device *dev, bool *present);
+	int (*enable_dpdm_hz)(struct charger_device *dev);
+#endif /* CONFIG_OEM_TURBO_CHARGER */
+/* TN End modified by hao.jia/809321 20240702 CR/EKLAMU-202 */
+
 	/* set cv */
 	int (*set_constant_voltage)(struct charger_device *dev, u32 uV);
 	int (*get_constant_voltage)(struct charger_device *dev, u32 *uV);
+
+/* TN Begin modified by xinjun.lu/860715 20240710 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_HVDCP_ALGO)
+	int (*set_dp)(struct charger_device *dev, u32 uV);
+	int (*set_dm)(struct charger_device *dev, u32 uV);
+#endif
+/* TN End modified by xinjun.lu/860715 20240710 CR/EKLAMU-202 */
+
+	int (*check_cs_temp)(struct charger_device *dev);
+	int (*cs_status_control)(struct charger_device *chg_dev, bool enable);
+	int (*cs_enable_lowpower)(struct charger_device *chg_dev, bool enable);
 
 	/* set input_current */
 	int (*get_input_current)(struct charger_device *dev, u32 *uA);
 	int (*set_input_current)(struct charger_device *dev, u32 uA);
 	int (*get_min_input_current)(struct charger_device *dev, u32 *uA);
+
+	/* set boot volt times */
+	int (*set_boot_volt_times)(struct charger_device *dev, u32 val);
 
 	/* set termination current */
 	int (*get_eoc_current)(struct charger_device *dev, u32 *uA);
@@ -88,6 +151,10 @@ struct charger_ops {
 	int (*kick_wdt)(struct charger_device *dev);
 
 	int (*event)(struct charger_device *dev, u32 event, u32 args);
+
+	/* 6-pin battery */
+	int (*enable_6pin_battery_charging)(struct charger_device *dev,
+					    bool en);
 
 	/* PE+/PE+2.0 */
 	int (*send_ta_current_pattern)(struct charger_device *dev, bool is_inc);
@@ -119,9 +186,28 @@ struct charger_ops {
 	int (*set_direct_charging_ibusoc)(struct charger_device *dev, u32 uA);
 	int (*set_direct_charging_vbusov)(struct charger_device *dev, u32 uV);
 
+	int (*set_ibusocp)(struct charger_device *dev, u32 uA);
+	int (*set_vbusovp)(struct charger_device *dev, u32 uV);
+	int (*set_ibatocp)(struct charger_device *dev, u32 uA);
+	int (*set_vbatovp)(struct charger_device *dev, u32 uV);
+	int (*set_vbatovp_alarm)(struct charger_device *dev, u32 uV);
+	int (*reset_vbatovp_alarm)(struct charger_device *dev);
+	int (*set_vbusovp_alarm)(struct charger_device *dev, u32 uV);
+	int (*reset_vbusovp_alarm)(struct charger_device *dev);
+	int (*is_vbuslowerr)(struct charger_device *dev, bool *err);
+	int (*init_chip)(struct charger_device *dev);
+	int (*enable_auto_trans)(struct charger_device *dev, bool en);
+	int (*set_auto_trans)(struct charger_device *dev, uint32_t uV, bool en);
+	int (*set_operation_mode)(struct charger_device *dev, bool div2);
+
 	/* OTG */
 	int (*enable_otg)(struct charger_device *dev, bool en);
 	int (*enable_discharge)(struct charger_device *dev, bool en);
+/* TN Begin modified by jirui.li/860702 20240724 CR/EKLAMU-834 */
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+	int (*set_boost_voltage_limit)(struct charger_device *dev, u32 uV);
+#endif /* CONFIG_OEM_TINNO_CHARGER */
+/* TN End modified by jirui.li/860702 20240724 CR/EKLAMU-834 */
 	int (*set_boost_current_limit)(struct charger_device *dev, u32 uA);
 
 	/* charger type detection */
@@ -136,14 +222,22 @@ struct charger_ops {
 	int (*safety_check)(struct charger_device *dev, u32 polling_ieoc);
 
 	int (*is_charging_done)(struct charger_device *dev, bool *done);
+	int (*set_cs_regVal)(struct charger_device *dev, int setVal);
 	int (*set_pe20_efficiency_table)(struct charger_device *dev);
 	int (*dump_registers)(struct charger_device *dev);
+	int (*dump_init_setting)(struct charger_device *dev);
 
 	int (*get_adc)(struct charger_device *dev, enum adc_channel chan,
 		       int *min, int *max);
+	int (*get_adc_accuracy)(struct charger_device *dev,
+				enum adc_channel chan, int *min, int *max);
 	int (*get_vbus_adc)(struct charger_device *dev, u32 *vbus);
+	int (*get_vbat_adc)(struct charger_device *dev, u32 *vbat);
 	int (*get_ibus_adc)(struct charger_device *dev, u32 *ibus);
 	int (*get_ibat_adc)(struct charger_device *dev, u32 *ibat);
+	int (*get_cs_current)(struct charger_device *chg_dev, int *ibat);
+	int (*parallel_mode_setting)(struct charger_device *chg_dev, int mode);
+	int (*cs_init_setting)(struct charger_device *chg_dev);
 	int (*get_tchg_adc)(struct charger_device *dev, int *tchg_min,
 		int *tchg_max);
 	int (*get_zcv)(struct charger_device *dev, u32 *uV);
@@ -156,6 +250,15 @@ struct charger_ops {
 	int (*enable_force_typec_otp)(struct charger_device *dev, bool en);
 	int (*enable_hidden_mode)(struct charger_device *dev, bool en);
 	int (*get_ctd_dischg_status)(struct charger_device *dev, u8 *status);
+	int (*enable_hz)(struct charger_device *dev, bool en);
+	int (*set_vac_ovp)(struct charger_device *dev, u32 uV);
+
+	int (*set_property)(struct charger_device *dev,
+			    enum charger_property prop,
+			    union charger_propval *val);
+	int (*get_property)(struct charger_device *dev,
+			    enum charger_property prop,
+			    union charger_propval *val);
 };
 
 static inline void *charger_dev_get_drvdata(
@@ -203,6 +306,8 @@ extern int charger_dev_get_input_current(
 	struct charger_device *charger_dev, u32 *uA);
 extern int charger_dev_get_min_input_current(
 	struct charger_device *charger_dev, u32 *uA);
+extern int charger_dev_set_boot_volt_times(
+	struct charger_device *charger_dev, u32 val);
 extern int charger_dev_set_eoc_current(
 	struct charger_device *charger_dev, u32 uA);
 extern int charger_dev_get_eoc_current(
@@ -213,6 +318,16 @@ extern int charger_dev_set_constant_voltage(
 	struct charger_device *charger_dev, u32 uV);
 extern int charger_dev_get_constant_voltage(
 	struct charger_device *charger_dev, u32 *uV);
+/* TN Begin modified by xinjun.lu/860715 20240710 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_HVDCP_ALGO)
+	extern int charger_dev_set_dp_voltage(
+		struct charger_device *charger_dev, u32 uV);
+	extern int charger_dev_set_dm_voltage(
+		struct charger_device *charger_dev, u32 uV);
+#endif
+/* TN End modified by xinjun.lu/860715 20240710 CR/EKLAMU-202 */
+extern int charger_dev_dump_init_setting(
+	struct charger_device *charger_dev);
 extern int charger_dev_dump_registers(
 	struct charger_device *charger_dev);
 extern int charger_dev_enable_vbus_ovp(
@@ -225,6 +340,12 @@ extern int charger_dev_get_mivr_state(
 	struct charger_device *charger_dev, bool *in_loop);
 extern int charger_dev_do_event(
 	struct charger_device *charger_dev, u32 event, u32 args);
+extern int cs_dev_do_event(
+	struct charger_device *charger_dev, u32 event, u32 args);
+extern int charger_dev_enable_6pin_battery_charging(
+	struct charger_device *charger_dev, bool en);
+extern int cs_dev_check_cs_temp(
+	struct charger_device *chg_dev);
 extern int charger_dev_is_powerpath_enabled(
 	struct charger_device *charger_dev, bool *en);
 extern int charger_dev_is_safety_timer_enabled(
@@ -233,16 +354,30 @@ extern int charger_dev_enable_termination(
 	struct charger_device *charger_dev, bool en);
 extern int charger_dev_is_charging_done(
 	struct charger_device *charger_dev, bool *done);
+extern int cs_dev_is_charging_done(
+	struct charger_device *charger_dev, bool *done);
 extern int charger_dev_enable_powerpath(
 	struct charger_device *charger_dev, bool en);
 extern int charger_dev_enable_safety_timer(
 	struct charger_device *charger_dev, bool en);
+extern int charger_dev_enable_auto_trans(
+	struct charger_device *chg_dev, bool en);
+extern int charger_dev_set_auto_trans(
+	struct charger_device *chg_dev, u32 uV, bool en);
+extern int charger_dev_set_operation_mode(
+	struct charger_device *chg_dev, bool div2);
 extern int charger_dev_enable_chg_type_det(
 	struct charger_device *charger_dev, bool en);
 extern int charger_dev_enable_otg(
 	struct charger_device *charger_dev, bool en);
 extern int charger_dev_enable_discharge(
 	struct charger_device *charger_dev, bool en);
+/* TN Begin modified by jirui.li/860702 20240724 CR/EKLAMU-834 */
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+extern int charger_dev_set_boost_voltage_limit(
+	struct charger_device *charger_dev, u32 uV);
+#endif /* CONFIG_OEM_TINNO_CHARGER */
+/* TN End modified by jirui.li/860702 20240724 CR/EKLAMU-834 */
 extern int charger_dev_set_boost_current_limit(
 	struct charger_device *charger_dev, u32 uA);
 extern int charger_dev_get_zcv(
@@ -253,6 +388,10 @@ extern int charger_dev_reset_eoc_state(
 	struct charger_device *charger_dev);
 extern int charger_dev_safety_check(
 	struct charger_device *charger_dev, u32 polling_ieoc);
+extern int charger_dev_enable_hz(
+	struct charger_device *charger_dev, bool en);
+extern int charger_dev_set_vac_ovp(
+	struct charger_device *charger_dev, u32 uV);
 
 /* PE+/PE+2.0 */
 extern int charger_dev_send_ta_current_pattern(
@@ -277,13 +416,27 @@ extern int charger_dev_kick_direct_charging_wdt(
 	struct charger_device *charger_dev);
 extern int charger_dev_get_adc(struct charger_device *charger_dev,
 	enum adc_channel chan, int *min, int *max);
+extern int charger_dev_get_adc_accuracy(struct charger_device *charger_dev,
+	enum adc_channel chan, int *min, int *max);
 /* Prefer use charger_dev_get_adc api */
 extern int charger_dev_get_vbus(
 	struct charger_device *charger_dev, u32 *vbus);
+extern int charger_dev_get_vbat(
+	struct charger_device *charger_dev, u32 *vbat);
 extern int charger_dev_get_ibus(
 	struct charger_device *charger_dev, u32 *ibus);
 extern int charger_dev_get_ibat(
 	struct charger_device *charger_dev, u32 *ibat);
+extern int charger_cs_get_ibat(
+	struct charger_device *chg_dev, int *ibat);
+extern int charger_cs_parallel_mode_setting(
+	struct charger_device *chg_dev, int mode);
+extern int charger_cs_init_setting(
+	struct charger_device *chg_dev);
+extern int charger_cs_status_control(
+	struct charger_device *charger_dev, bool enable);
+extern int charger_cs_enable_lowpower(
+	struct charger_device *charger_dev, bool enable);
 extern int charger_dev_get_temperature(
 	struct charger_device *charger_dev, int *tchg_min,
 		int *tchg_max);
@@ -291,6 +444,19 @@ extern int charger_dev_set_direct_charging_ibusoc(
 	struct charger_device *charger_dev, u32 ua);
 extern int charger_dev_set_direct_charging_vbusov(
 	struct charger_device *charger_dev, u32 uv);
+
+extern int charger_dev_set_ibusocp(struct charger_device *chg_dev, u32 uA);
+extern int charger_dev_set_vbusovp(struct charger_device *chg_dev, u32 uV);
+extern int charger_dev_set_ibatocp(struct charger_device *chg_dev, u32 uA);
+extern int charger_dev_set_vbatovp(struct charger_device *chg_dev, u32 uV);
+extern int charger_dev_set_vbatovp_alarm(struct charger_device *chg_dev,
+					 u32 uV);
+extern int charger_dev_reset_vbatovp_alarm(struct charger_device *chg_dev);
+extern int charger_dev_set_vbusovp_alarm(struct charger_device *chg_dev,
+					 u32 uV);
+extern int charger_dev_reset_vbusovp_alarm(struct charger_device *chg_dev);
+extern int charger_dev_is_vbuslowerr(struct charger_device *chg_dev, bool *err);
+extern int charger_dev_init_chip(struct charger_device *chg_dev);
 
 /* TypeC */
 extern int charger_dev_enable_usbid(struct charger_device *dev, bool en);
@@ -304,6 +470,13 @@ extern int charger_dev_enable_force_typec_otp(struct charger_device *dev,
 extern int charger_dev_get_ctd_dischg_status(struct charger_device *dev,
 					     u8 *status);
 
+extern int charger_dev_set_property(struct charger_device *dev,
+				    enum charger_property prop,
+				    union charger_propval *val);
+extern int charger_dev_get_property(struct charger_device *dev,
+				    enum charger_property prop,
+				    union charger_propval *val);
+
 /* For buck1 FPWM */
 extern int charger_dev_enable_hidden_mode(struct charger_device *dev, bool en);
 
@@ -316,5 +489,21 @@ extern int unregister_charger_device_notifier(
 extern int charger_dev_notify(
 	struct charger_device *charger_dev, int event);
 
+/* TN Begin modified by hao.jia/809321 20240701 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_CHARGER_PUMP)
+extern int charger_dev_enable_adc(struct charger_device *charger_dev, bool enable);
+extern int charger_dev_enable_ovpgate(struct charger_device *charger_dev, bool enable);
+extern int charger_dev_is_adc_enabled(struct charger_device *charger_dev, bool *enable);
+#endif /* CONFIG_OEM_CHARGER_PUMP */
+/* TN End modified by hao.jia/809321 20240701 CR/EKLAMU-202 */
+
+/* TN Begin modified by hao.jia/809321 20240702 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER)
+extern int charger_dev_is_vbushigher(struct charger_device *chg_dev, bool *err);
+extern int charger_dev_is_vbat_present(struct charger_device *chg_dev, bool *present);
+extern int charger_dev_is_vbus_present(struct charger_device *chg_dev, bool *present);
+extern int charger_dev_enable_dpdm_hz(struct charger_device *chg_dev);
+#endif /* CONFIG_OEM_TURBO_CHARGER */
+/* TN End modified by hao.jia/809321 20240702 CR/EKLAMU-202 */
 
 #endif /*LINUX_POWER_CHARGER_CLASS_H*/

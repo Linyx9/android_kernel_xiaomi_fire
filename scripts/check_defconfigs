@@ -123,7 +123,7 @@ TOOLCHAIN_CLANG_PATH='prebuilts/clang/host'
 TOOLCHAIN_GCC_PATH='prebuilts/gcc/linux-x86/aarch64/aarch64-linux-gnu-6.3.1'
 TOOLCHAIN_CLANG_REPO='platform/prebuilts/clang/host/linux-x86'
 TOOLCHAIN_GCC_REPO='alps/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-gnu-6.3.1'
-TOOLCHAIN_CLANG_COMMIT='252aba16f513a857bc923172f67b0e55e23de35f'
+TOOLCHAIN_CLANG_COMMIT='0014e4514e0c2cffb2338f47710f9a3d44275c8d'
 KERNEL_PATH=${PWD}
 build_config_read
 
@@ -156,12 +156,13 @@ while getopts "cuh" opt; do
 	KCONFIG=`git show ${CHECK_COMMIT} --stat | gawk '/\/Kconfig.* +\| +[0-9]*/{print $1}'`
 	if [ ".$KCONFIG" != "." ]; then
 		echo From git commit: Checking all defconfig due to Kconfig is changed.
-		CONFIGS=`grep -rl "CONFIG_MTK_PLATFORM" arch/arm/configs arch/arm64/configs`
+		CONFIGS=`ls -d arch/arm/configs/* arch/arm64/configs/* | grep _defconfig | grep gki`
 	fi
 
 	CONFIGS+=" `git show ${CHECK_COMMIT} --stat-width=500 | gawk '/arch\/(arm64|arm)\/configs\/.*_defconfig +\| +[0-9]*/{print $1}'`"
 	CONFIGS=`echo $CONFIGS | xargs -n1 | sort -u | xargs`
 	if [ ".$CONFIGS" != "." ]; then
+		CONFIGS="${CONFIGS//_defconfig/.config}"
 		echo From git commit: Checking $CONFIGS
 	else
 		echo "Nothing to check"
@@ -184,6 +185,7 @@ fi
 if [ $CHECK_COMMIT == 0 ]; then
 	shift $((OPTIND-1))
 	CONFIGS="${CONFIGS} $*"
+	CONFIGS="${CONFIGS//_defconfig/.config}"
 fi
 
 check_defconfig() {
@@ -201,13 +203,15 @@ check_defconfig() {
 	LD_UBSAN=${12}
 	NM_ARM64=${13}
 	OBJCOPY_ARM64=${14}
+	TYPE=${15}
 	FAIL=0
-	echo "Checking ${CONFIG}"
 
 	if [ ! -e ${CONFIG} ]; then
-		echo warning: defconfig file $CONFIG not found
-		return $FAIL
+#		echo warning: defconfig file $CONFIG not found
+		return
 	fi
+
+	echo "Checking ${CONFIG} ${TYPE}"
 
 	echo $CONFIG | grep arch/arm64 > /dev/null
 	RETVAL=$?
@@ -258,7 +262,19 @@ check_defconfig() {
 		ARGS+=("OBJCOPY=${OBJCOPY}")
 	fi
 
-	CMD="make ARCH=${ARCH} ${ARGS[@]} O=${OUT} `basename ${CONFIG}` savedefconfig 2>&1"
+	case ${TYPE} in
+		eng)
+		TYPE="eng.config"
+		;;
+		userdebug)
+		TYPE="userdebug.config"
+		;;
+		user)
+		TYPE=""
+		;;
+	esac
+
+	CMD="make ARCH=${ARCH} ${ARGS[@]} O=${OUT} gki_defconfig `basename ${CONFIG}` ${TYPE} savedefconfig 2>&1"
 	echo $CMD
 
 	OUTPUT="$(${CMD})"
@@ -296,40 +312,32 @@ check_defconfig() {
 		return $FAIL
 	fi
 
-	if [ $UPDATE == 0 ]; then
-		# Compare output, make sure format is correct
-		OUTPUT="$(diff -u ${OUT}/defconfig ${CONFIG} 2>&1)"
-		RETVAL=$?
-		if [ $RETVAL != 0 ]; then
-			echo error: ${CONFIG} compare error. Please follow SOP to update _defconfig
-			echo "$OUTPUT"
-			rm -rf ${OUT}
-			FAIL=1
-			return $FAIL
-		fi
-	else
-		cp ${OUT}/defconfig ${CONFIG}
-	fi
-
 	rm -rf ${OUT}
 	return $FAIL
 }
 export -f check_defconfig
 
-toolchain_check
-parallel check_defconfig ::: $CONFIGS ::: $UPDATE ::: $CC_ARM ::: $CC_ARM64 ::: $CC_ARM64_GCC ::: $CC_KASAN ::: $CC_UBSAN ::: $LD_ARM ::: $LD_ARM64 ::: $LD_ARM64_GCC ::: $LD_KASAN ::: $LD_UBSAN ::: $NM_ARM64 ::: $OBJCOPY_ARM64
-RETVAL=$?
-
-if [ $RETVAL != 0 ]; then
-	echo
-	echo Please check the following wiki for detail, thanks!
-	echo http://wiki.mediatek.inc/display/KernelStandardization/Check+defconfig+in+kernel+preflight
-	echo http://wiki.mediatek.inc/display/KernelStandardization/SOP+to+update+kernel+config
-fi
-
 if [ ${CHECK_SERVICE} == 1 ]; then
-	rm -rf /tmp/prebuilts
-	echo Remove toolchain in check service
+toolchain_check
 fi
 
-exit $RETVAL
+#for TYPE in "eng userdebug user"
+for TYPE in "user"
+do
+	parallel check_defconfig ::: $CONFIGS ::: $UPDATE ::: $CC_ARM ::: $CC_ARM64 ::: $CC_ARM64_GCC ::: $CC_KASAN ::: $CC_UBSAN ::: $LD_ARM ::: $LD_ARM64 ::: $LD_ARM64_GCC ::: $LD_KASAN ::: $LD_UBSAN ::: $NM_ARM64 ::: $OBJCOPY_ARM64 ::: $TYPE
+	RETVAL=$?
+
+	if [ $RETVAL != 0 ]; then
+		echo
+		echo Please check the following wiki for detail, thanks!
+		echo http://wiki.mediatek.inc/display/KernelStandardization/Check+defconfig+in+kernel+preflight
+		echo http://wiki.mediatek.inc/display/KernelStandardization/SOP+to+update+kernel+config
+	fi
+
+	if [ ${CHECK_SERVICE} == 1 ]; then
+		rm -rf /tmp/prebuilts
+		echo Remove toolchain in check service
+	fi
+
+	exit $RETVAL
+done

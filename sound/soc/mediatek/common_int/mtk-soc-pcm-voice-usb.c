@@ -57,7 +57,6 @@ struct usb_dbg_log {
 };
 
 static struct usb_dbg_log dbg_log[NUM_DBG_LOG];
-static unsigned int dbg_log_idx;
 
 static void print_usb_dbg_log(void)
 {
@@ -450,7 +449,8 @@ static void usb_md2_enable(bool enable, struct snd_pcm_runtime *runtime)
 	}
 }
 
-static int mtk_voice_usb_close(struct snd_pcm_substream *substream)
+static int mtk_voice_usb_close(struct snd_soc_component *component,
+			       struct snd_pcm_substream *substream)
 {
 	int stream = substream->stream;
 
@@ -515,14 +515,13 @@ static int mtk_voice_usb_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_voice_usb_open(struct snd_pcm_substream *substream)
+static int mtk_voice_usb_open(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
 
 	AudDrv_Clk_On();
-
-	pr_debug("%s()\n", __func__);
 
 	runtime->hw = mtk_pcm_hardware;
 	memcpy((void *)(&(runtime->hw)), (void *)&mtk_pcm_hardware,
@@ -533,7 +532,7 @@ static int mtk_voice_usb_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_warn("voice_usb_close\n");
-		mtk_voice_usb_close(substream);
+		mtk_voice_usb_close(component, substream);
 		return ret;
 	}
 
@@ -541,7 +540,8 @@ static int mtk_voice_usb_open(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_voice_usb_prepare(struct snd_pcm_substream *substream)
+static int mtk_voice_usb_prepare(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int stream = substream->stream;
@@ -647,7 +647,8 @@ static int mtk_voice_usb_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_voice_usb_hw_params(struct snd_pcm_substream *substream,
+static int mtk_voice_usb_hw_params(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream,
 				   struct snd_pcm_hw_params *hw_params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -677,7 +678,8 @@ static int mtk_voice_usb_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_voice_usb_hw_free(struct snd_pcm_substream *substream)
+static int mtk_voice_usb_hw_free(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	pr_debug("%s(), substream = %p, stream %d\n", __func__, substream,
 		substream->stream);
@@ -730,7 +732,8 @@ static int mtk_voice_usb_stop(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_voice_usb_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_voice_usb_trigger(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream, int cmd)
 {
 
 	switch (cmd) {
@@ -861,23 +864,8 @@ mtk_voice_usb_pointer_cap(struct snd_pcm_substream *substream)
 		 *	__func__, HW_Cur_ReadIdx, HW_memory_index);
 		 */
 
-		if (usb_debug_enable & USB_DBG_ASSERT_AT_STOP) {
-			struct timespec time;
 
-			getrawmonotonic(&time);
-			dbg_log[dbg_log_idx % NUM_DBG_LOG].idx = dbg_log_idx;
-			snprintf(
-				dbg_log[dbg_log_idx % NUM_DBG_LOG].log,
-				DBG_LOG_LENGTH,
-				"%ld.%09ld, %s(), ReadIdx 0x%x, WriteIdx 0x%x, Remained 0x%x, BufferSize 0x%x, Get_bytes 0x%x, HW_Cur_ReadIdx 0x%x, HW_memory_index 0x%x",
-				time.tv_sec, time.tv_nsec, __func__,
-				Awb_Block->u4DMAReadIdx, Awb_Block->u4WriteIdx,
-				Awb_Block->u4DataRemained,
-				Awb_Block->u4BufferSize, Hw_Get_bytes,
-				HW_Cur_ReadIdx, HW_memory_index);
 
-			dbg_log_idx++;
-		}
 
 		return audio_bytes_to_frame(substream, HW_memory_index);
 	}
@@ -885,7 +873,8 @@ mtk_voice_usb_pointer_cap(struct snd_pcm_substream *substream)
 }
 
 static snd_pcm_uframes_t
-mtk_voice_usb_pointer(struct snd_pcm_substream *substream)
+mtk_voice_usb_pointer(struct snd_soc_component *component,
+		      struct snd_pcm_substream *substream)
 {
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		return mtk_voice_usb_pointer_play(substream);
@@ -893,10 +882,11 @@ mtk_voice_usb_pointer(struct snd_pcm_substream *substream)
 		return mtk_voice_usb_pointer_cap(substream);
 }
 
-static int mtk_voice_usb_copy(struct snd_pcm_substream *substream,
+static int mtk_voice_usb_copy(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream,
 			      int channel,
 			      unsigned long pos,
-			      void __user *buf,
+			      struct iov_iter *buf,
 			      unsigned long bytes)
 {
 	int stream = substream->stream;
@@ -906,17 +896,6 @@ static int mtk_voice_usb_copy(struct snd_pcm_substream *substream,
 			       usb_mem_blk[stream]);
 }
 
-static struct snd_pcm_ops mtk_voice_usb_ops = {
-	.open = mtk_voice_usb_open,
-	.close = mtk_voice_usb_close,
-	.ioctl = snd_pcm_lib_ioctl,
-	.hw_params = mtk_voice_usb_hw_params,
-	.hw_free = mtk_voice_usb_hw_free,
-	.prepare = mtk_voice_usb_prepare,
-	.trigger = mtk_voice_usb_trigger,
-	.pointer = mtk_voice_usb_pointer,
-	.copy_user = mtk_voice_usb_copy,
-};
 
 static int mtk_voice_usb_component_probe(struct snd_soc_component *component)
 {
@@ -925,29 +904,39 @@ static int mtk_voice_usb_component_probe(struct snd_soc_component *component)
 	return 0;
 }
 
-static int mtk_voice_usb_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int mtk_voice_usb_pcm_new(struct snd_soc_component *component,
+				 struct snd_soc_pcm_runtime *rtd)
 {
-	size_t size;
+	size_t size = 0;
 	struct snd_card *card = rtd->card->snd_card;
 	struct snd_pcm *pcm = rtd->pcm;
 
 	size = mtk_pcm_hardware.buffer_bytes_max;
 
-	return snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
+	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
 						     card->dev, size, size);
+	return 0;
 }
 
-static void mtk_voice_usb_pcm_free(struct snd_pcm *pcm)
+static void mtk_voice_usb_pcm_free(struct snd_soc_component *component,
+				   struct snd_pcm *pcm)
 {
 	snd_pcm_lib_preallocate_free_for_all(pcm);
 }
 
-static struct snd_soc_component_driver mtk_soc_voice_usb_component = {
+static const struct snd_soc_component_driver mtk_soc_voice_usb_component = {
 	.name = AFE_PCM_NAME,
-	.ops = &mtk_voice_usb_ops,
 	.probe = mtk_voice_usb_component_probe,
-	.pcm_new = mtk_voice_usb_pcm_new,
-	.pcm_free = mtk_voice_usb_pcm_free,
+	.pcm_construct = mtk_voice_usb_pcm_new,
+	.pcm_destruct = mtk_voice_usb_pcm_free,
+	.open = mtk_voice_usb_open,
+	.close = mtk_voice_usb_close,
+	.hw_params = mtk_voice_usb_hw_params,
+	.hw_free = mtk_voice_usb_hw_free,
+	.prepare = mtk_voice_usb_prepare,
+	.trigger = mtk_voice_usb_trigger,
+	.pointer = mtk_voice_usb_pointer,
+	.copy = mtk_voice_usb_copy,
 };
 
 static int mtk_voice_usb_probe(struct platform_device *pdev)
@@ -993,7 +982,20 @@ static struct platform_driver mtk_voice_usb_driver = {
 	.remove = mtk_voice_usb_remove,
 };
 
-module_platform_driver(mtk_voice_usb_driver);
+int mtk_voice_usb_driver_init(void)
+{
+	int ret = 0;
+
+	ret = platform_driver_register(&mtk_voice_usb_driver);
+
+	return ret;
+}
+
+void mtk_voice_usb_driver_exit(void)
+{
+
+	platform_driver_unregister(&mtk_voice_usb_driver);
+}
 
 MODULE_DESCRIPTION("AFE PCM module platform driver");
 MODULE_LICENSE("GPL");

@@ -10,11 +10,7 @@ sspm-objs += sspm_reservedmem.o
 sspm-objs += sspm_sysfs.o
 sspm-objs += sspm_timesync.o
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/sspm
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/$(CONFIG_MTK_PLATFORM)
-
-ccflags-$(CONFIG_MTK_ENG_BUILD) += -DDEBUG
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/sspm/v2
 #ccflags-y += -DDEBUG
 
 #SSPM_IPI_TEST=y

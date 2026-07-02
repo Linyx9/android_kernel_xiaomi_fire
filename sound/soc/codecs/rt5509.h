@@ -7,21 +7,11 @@
 #ifndef __RT5509_H
 #define __RT5509_H
 #include <linux/atomic.h>
+#include <linux/extdev_io_class.h>
 #include <linux/semaphore.h>
-#include <mt-plat/rt-regmap.h>
 
 #define RT5509_DEVICE_NAME		"rt5509"
-#define RT5509_DRV_VER			"1.0.14_M"
-
-#ifdef CONFIG_RT_REGMAP
-#define RT5509_SIMULATE_DEVICE	0
-#if RT5509_SIMULATE_DEVICE
-int rt5509_calculate_offset(int reg);
-int rt5509_calculate_total_size(void);
-#endif /* #if RT5509_SIMULATE_DEVICE */
-#else
-#define RT5509_SIMULATE_DEVICE	0
-#endif /* #ifdef CONFIG_RT_REGMAP */
+#define RT5509_DRV_VER			"1.0.15_M"
 
 enum {
 	RT5509_CHIP_REVB = 0,
@@ -75,10 +65,8 @@ struct rt5509_chip {
 	struct snd_soc_component *component;
 	struct platform_device *pdev;
 	struct rt5509_calib_classdev calib_dev;
-	struct rt_regmap_device *rd;
-#if RT5509_SIMULATE_DEVICE
-	void *sim;
-#endif /* #if RT5509_SIMULATE_DEVICE */
+	struct extdev_desc extdev_desc;
+	struct extdev_io_device *extdev;
 	struct semaphore io_semaphore;
 	atomic_t power_count;
 	u8 chip_rev;
@@ -457,9 +445,6 @@ enum {
 /* RT5509_REG_CLKEN2: 0xF5 */
 #define RT5509_CLKEN2_MASK	0x03
 
-struct rt_regmap_device *rt5509_regmap_register(
-	struct rt_regmap_fops *regmap_ops,
-	struct device *parent, void *client, void *drvdata);
 int rt5509_calib_create(struct rt5509_chip *chip);
 void rt5509_calib_destroy(struct rt5509_chip *chip);
 int rt5509_i2c_probe(struct i2c_client *client,

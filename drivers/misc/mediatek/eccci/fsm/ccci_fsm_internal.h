@@ -78,12 +78,6 @@ enum CCCI_FSM_POLLER_STATE {
 	FSM_POLLER_RECEIVED_RESPONSE,
 };
 
-enum {
-	SCP_CCCI_STATE_INVALID = 0,
-	SCP_CCCI_STATE_BOOTING = 1,
-	SCP_CCCI_STATE_RBREADY = 2,
-	SCP_CCCI_STATE_STOP = 3,
-};
 
 enum CCCI_MD_MSG {
 	CCCI_MD_MSG_FORCE_STOP_REQUEST = 0xFAF50001,
@@ -137,12 +131,12 @@ enum ccci_ipi_op_id {
 	CCCI_OP_MD_STATE,
 	CCCI_OP_SHM_INIT,
 	CCCI_OP_SHM_RESET,
-
 	CCCI_OP_LOG_LEVEL,
 	CCCI_OP_GPIO_TEST,
 	CCCI_OP_EINT_TEST,
 	CCCI_OP_MSGSND_TEST,
 	CCCI_OP_ASSERT_TEST,
+	CCCI_OP_SHM_INIT_DONE,
 };
 
 
@@ -158,34 +152,18 @@ enum ccci_ipi_op_id {
 #define MD_EX_REC_OK_TIMEOUT 10000
 #define MD_EX_PASS_TIMEOUT 10000
 #define EE_DONE_TIMEOUT 30 /* s */
-#define SCP_BOOT_TIMEOUT (30*1000)
 
-#define GET_OTHER_MD_ID(a) (a == MD_SYS1 ? MD_SYS3 : MD_SYS1)
 
-#define MD_IMG_DUMP_SIZE  (1<<8)
+
 #define DSP_IMG_DUMP_SIZE (1<<9)
 #define CCCI_AED_DUMP_EX_MEM		(1<<0)
-#define CCCI_AED_DUMP_MD_IMG_MEM	(1<<1)
 #define CCCI_AED_DUMP_CCIF_REG		(1<<2)
 #define CCCI_AED_DUMP_EX_PKT		(1<<3)
-#define MD_EX_MPU_STR_LEN (128)
+#define MD_EX_MPU_STR_LEN (512)
 #define MD_EX_START_TIME_LEN (128)
 
 /************ structures ************/
-
-struct ccci_ipi_msg {
-	u16 md_id;
-	u16 op_id;
-	u32 data[1];
-} __packed;
-
-struct ccci_fsm_scp {
-	int md_id;
-	struct work_struct scp_md_state_sync_work;
-};
-
 struct ccci_fsm_poller {
-	int md_id;
 	enum CCCI_FSM_POLLER_STATE poller_state;
 	struct task_struct *poll_thread;
 	wait_queue_head_t status_rx_wq;
@@ -200,7 +178,6 @@ struct md_ee_ops {
 };
 
 struct ccci_fsm_ee {
-	int md_id;
 	unsigned int ee_info_flag;
 	spinlock_t ctrl_lock;
 
@@ -211,10 +188,10 @@ struct ccci_fsm_ee {
 	char ex_mpu_string[MD_EX_MPU_STR_LEN];
 	char ex_start_time[MD_EX_START_TIME_LEN];
 	unsigned int mdlog_dump_done;
+	char ex_smpu_string[MD_EX_MPU_STR_LEN];
 };
 
 struct ccci_fsm_monitor {
-	int md_id;
 	dev_t dev_n;
 	struct cdev *char_dev;
 	atomic_t usage_cnt;
@@ -223,7 +200,6 @@ struct ccci_fsm_monitor {
 };
 
 struct ccci_fsm_ctl {
-	int md_id;
 	enum MD_STATE md_state;
 
 	unsigned int curr_state;
@@ -241,7 +217,6 @@ struct ccci_fsm_ctl {
 
 	unsigned long boot_count; /* for throttling feature */
 
-	struct ccci_fsm_scp scp_ctl;
 	struct ccci_fsm_poller poller_ctl;
 	struct ccci_fsm_ee ee_ctl;
 	struct ccci_fsm_monitor monitor_ctl;
@@ -262,42 +237,69 @@ struct ccci_fsm_command {
 	wait_queue_head_t complete_wq;
 };
 
+#define ccci_write32(b, a, v)  \
+do { \
+	writel(v, (b) + (a)); \
+	mb(); /* make sure register access in order */ \
+} while (0)
+
+#define ccci_write16(b, a, v)  \
+do { \
+	writew(v, (b) + (a)); \
+	mb(); /* make sure register access in order */ \
+} while (0)
+
+#define ccci_write8(b, a, v)  \
+do { \
+	writeb(v, (b) + (a)); \
+	mb(); /* make sure register access in order */ \
+} while (0)
+
+#define ccci_read32(b, a)               ioread32((void __iomem *)((b)+(a)))
+#define ccci_read16(b, a)               ioread16((void __iomem *)((b)+(a)))
+#define ccci_read8(b, a)                ioread8((void __iomem *)((b)+(a)))
 
 /************ APIs ************/
+extern void md_cd_lock_modem_clock_src(int locked);
 
 int fsm_append_command(struct ccci_fsm_ctl *ctl,
 	enum CCCI_FSM_COMMAND cmd_id, unsigned int flag);
 int fsm_append_event(struct ccci_fsm_ctl *ctl, enum CCCI_FSM_EVENT event_id,
 	unsigned char *data, unsigned int length);
-
-int fsm_scp_init(struct ccci_fsm_scp *scp_ctl);
+void fsm_finish_event(struct ccci_fsm_ctl *ctl, struct ccci_fsm_event *event);
 int fsm_poller_init(struct ccci_fsm_poller *poller_ctl);
 int fsm_ee_init(struct ccci_fsm_ee *ee_ctl);
 int fsm_monitor_init(struct ccci_fsm_monitor *monitor_ctl);
 int fsm_sys_init(void);
 
+extern struct ccci_fsm_ctl *ccci_fsm_entries;
+
 struct ccci_fsm_ctl *fsm_get_entity_by_device_number(dev_t dev_n);
-struct ccci_fsm_ctl *fsm_get_entity_by_md_id(int md_id);
-int fsm_monitor_send_message(int md_id, enum CCCI_MD_MSG msg, u32 resv);
-int fsm_ccism_init_ack_handler(int md_id, int data);
+int fsm_monitor_send_message(enum CCCI_MD_MSG msg, u32 resv);
+int fsm_ccism_init_ack_handler(int data);
 
 void fsm_md_bootup_timeout_handler(struct ccci_fsm_ee *ee_ctl);
 void fsm_md_wdt_handler(struct ccci_fsm_ee *ee_ctl);
 void fsm_md_no_response_handler(struct ccci_fsm_ee *ee_ctl);
 void fsm_md_exception_stage(struct ccci_fsm_ee *ee_ctl, int stage);
 void fsm_ee_message_handler(struct ccci_fsm_ee *ee_ctl, struct sk_buff *skb);
+void fsm_md_normal_ee_handler(struct ccci_fsm_ctl *ctl);
+void fsm_ee_cmd_init(enum CCCI_FSM_COMMAND cmd_id);
+void fsm_ee_cmd_deinit(enum CCCI_FSM_COMMAND cmd_id);
 int fsm_check_ee_done(struct ccci_fsm_ee *ee_ctl, int timeout);
 int force_md_stop(struct ccci_fsm_monitor *monitor_ctl);
+struct ccci_fsm_ctl *fsm_get_entity(void);
 
 extern int mdee_dumper_v1_alloc(struct ccci_fsm_ee *mdee);
 extern int mdee_dumper_v2_alloc(struct ccci_fsm_ee *mdee);
 extern int mdee_dumper_v3_alloc(struct ccci_fsm_ee *mdee);
 extern int mdee_dumper_v5_alloc(struct ccci_fsm_ee *mdee);
-extern void inject_md_status_event(int md_id, int event_type, char reason[]);
-#ifdef SET_EMI_STEP_BY_STAGE
-extern void ccci_set_mem_access_protection_second_stage(int md_id);
-#endif
+extern int mdee_dumper_v6_alloc(struct ccci_fsm_ee *mdee);
+extern void inject_md_status_event(int event_type, char reason[]);
 extern void mdee_set_ex_start_str(struct ccci_fsm_ee *ee_ctl,
-	unsigned int type, char *str);
+	const unsigned int type, const char *str);
+
+extern int ccci_register_md_state_receiver(unsigned char ch_id,
+	void (*callback)(enum MD_STATE, enum MD_STATE));
 #endif /* __CCCI_FSM_INTERNAL_H__ */
 

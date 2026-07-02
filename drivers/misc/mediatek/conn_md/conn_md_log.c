@@ -11,17 +11,15 @@ int g_conn_md_dbg_lvl = CONN_MD_LOG_INFO;
 int __conn_md_log_print(const char *str, ...)
 {
 	va_list args;
-	int ret;
 	char temp_sring[DBG_LOG_STR_SIZE];
 
 	va_start(args, str);
-	ret = vsnprintf(temp_sring, DBG_LOG_STR_SIZE, str, args);
+	vsnprintf(temp_sring, DBG_LOG_STR_SIZE, str, args);
 	va_end(args);
 
-	if (ret > 0)
-		pr_info("%s", temp_sring);
+	pr_info("%s", temp_sring);
 
-	return ret;
+	return 0;
 }
 
 int __conn_md_get_log_lvl(void)

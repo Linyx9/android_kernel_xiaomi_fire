@@ -75,7 +75,6 @@ static int lpbk_in_use_lch_get(struct snd_kcontrol *kcontrol,
 static int lpbk_in_use_lch_set(struct snd_kcontrol *kcontrol,
 			       struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	if (ucontrol->value.enumerated.item[0] > ARRAY_SIZE(switch_texts)) {
 		pr_err("return -EINVAL\n");
 		return -EINVAL;
@@ -182,7 +181,8 @@ static const struct snd_kcontrol_new lpbk_controls[] = {
 };
 
 static int mtk_uldlloopback_probe(struct platform_device *pdev);
-static int mtk_uldlloopbackpcm_close(struct snd_pcm_substream *substream);
+static int mtk_uldlloopbackpcm_close(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream);
 static int mtk_afe_uldlloopback_component_probe(struct snd_soc_component *component);
 
 static struct snd_pcm_hardware mtk_uldlloopback_hardware = {
@@ -207,7 +207,8 @@ static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 	.mask = 0,
 };
 
-static int mtk_uldlloopback_open(struct snd_pcm_substream *substream)
+static int mtk_uldlloopback_open(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
@@ -229,23 +230,23 @@ static int mtk_uldlloopback_open(struct snd_pcm_substream *substream)
 					    SNDRV_PCM_HW_PARAM_PERIODS);
 
 	/* print for hw pcm information */
-	pr_debug("mtk_uldlloopback_open runtime rate = %d channels = %d\n",
-		runtime->rate, runtime->channels);
+	pr_debug("%s runtime rate = %d channels = %d\n",
+		__func__, runtime->rate, runtime->channels);
 	runtime->hw.info |= SNDRV_PCM_INFO_INTERLEAVED;
 	runtime->hw.info |= SNDRV_PCM_INFO_NONINTERLEAVED;
 
 	if (ret < 0) {
 		pr_err("mtk_uldlloopbackpcm_close\n");
-		mtk_uldlloopbackpcm_close(substream);
+		mtk_uldlloopbackpcm_close(component, substream);
 		return ret;
 	}
 
 	return 0;
 }
 
-static int mtk_uldlloopbackpcm_close(struct snd_pcm_substream *substream)
+static int mtk_uldlloopbackpcm_close(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		pr_err("%s  with SNDRV_PCM_STREAM_CAPTURE\n", __func__);
 		AudDrv_Clk_Off();
@@ -294,7 +295,8 @@ static int mtk_uldlloopbackpcm_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_uldlloopbackpcm_trigger(struct snd_pcm_substream *substream,
+static int mtk_uldlloopbackpcm_trigger(struct snd_soc_component *component,
+				       struct snd_pcm_substream *substream,
 				       int cmd)
 {
 	pr_debug("%s cmd = %d\n", __func__, cmd);
@@ -309,7 +311,8 @@ static int mtk_uldlloopbackpcm_trigger(struct snd_pcm_substream *substream,
 	return -EINVAL;
 }
 
-static int mtk_uldlloopback_pcm_copy(struct snd_pcm_substream *substream,
+static int mtk_uldlloopback_pcm_copy(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream,
 				     int channel,
 				     unsigned long pos,
 				     void __user *buf,
@@ -318,23 +321,18 @@ static int mtk_uldlloopback_pcm_copy(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int mtk_uldlloopback_silence(struct snd_pcm_substream *substream,
-				    int channel,
-				    unsigned long pos,
-				    unsigned long bytes)
-{
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
-static struct page *mtk_uldlloopback_page(struct snd_pcm_substream *substream,
+static struct page *mtk_uldlloopback_page(struct snd_soc_component *component,
+					  struct snd_pcm_substream *substream,
 					  unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static int mtk_uldlloopback_pcm_prepare(struct snd_pcm_substream *substream)
+static int mtk_uldlloopback_pcm_prepare(struct snd_soc_component *component,
+					struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	/* unsigned int eSamplingRate = SampleRateTransform(runtime->rate); */
@@ -429,40 +427,36 @@ static int mtk_uldlloopback_pcm_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_uldlloopback_pcm_hw_params(struct snd_pcm_substream *substream,
+static int mtk_uldlloopback_pcm_hw_params(struct snd_soc_component *component,
+					  struct snd_pcm_substream *substream,
 					  struct snd_pcm_hw_params *hw_params)
 {
 	int ret = 0;
 	return ret;
 }
 
-static int mtk_uldlloopback_pcm_hw_free(struct snd_pcm_substream *substream)
+static int mtk_uldlloopback_pcm_hw_free(struct snd_soc_component *component,
+					struct snd_pcm_substream *substream)
 {
 	return snd_pcm_lib_free_pages(substream);
 }
 
-static struct snd_pcm_ops mtk_afe_ops = {
+static const struct snd_soc_component_driver mtk_soc_dummy_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_afe_uldlloopback_component_probe,
 	.open = mtk_uldlloopback_open,
 	.close = mtk_uldlloopbackpcm_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_uldlloopback_pcm_hw_params,
 	.hw_free = mtk_uldlloopback_pcm_hw_free,
 	.prepare = mtk_uldlloopback_pcm_prepare,
 	.trigger = mtk_uldlloopbackpcm_trigger,
-	.copy_user = mtk_uldlloopback_pcm_copy,
-	.fill_silence = mtk_uldlloopback_silence,
+	.copy = mtk_uldlloopback_pcm_copy,
 	.page = mtk_uldlloopback_page,
-};
 
-static struct snd_soc_component_driver mtk_soc_dummy_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_afe_ops,
-	.probe = mtk_afe_uldlloopback_component_probe,
 };
 
 static int mtk_uldlloopback_probe(struct platform_device *pdev)
 {
-	pr_debug("%s\n", __func__);
 
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -481,7 +475,6 @@ static int mtk_uldlloopback_probe(struct platform_device *pdev)
 
 static int mtk_afe_uldlloopback_component_probe(struct snd_soc_component *component)
 {
-	pr_debug("%s\n", __func__);
 
 	snd_soc_add_component_controls(component, lpbk_controls,
 				      ARRAY_SIZE(lpbk_controls));
@@ -490,12 +483,11 @@ static int mtk_afe_uldlloopback_component_probe(struct snd_soc_component *compon
 
 static int mtk_afe_uldlloopback_remove(struct platform_device *pdev)
 {
-	pr_debug("%s\n", __func__);
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_uldlloopback_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_uldlloopback",
@@ -508,7 +500,7 @@ static struct platform_driver mtk_afe_uldllopback_driver = {
 
 			.name = MT_SOC_ULDLLOOPBACK_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_uldlloopback_of_ids,
 #endif
 		},
@@ -524,7 +516,6 @@ static int __init mtk_soc_uldlloopback_platform_init(void)
 {
 	int ret = 0;
 
-	pr_debug("%s\n", __func__);
 #ifndef CONFIG_OF
 	soc_mtkafe_uldlloopback_dev =
 		platform_device_alloc(MT_SOC_ULDLLOOPBACK_PCM, -1);

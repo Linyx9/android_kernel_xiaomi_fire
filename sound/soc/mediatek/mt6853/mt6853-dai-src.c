@@ -47,14 +47,13 @@ static const unsigned int src_iir_coeff_44_to_32[] = {
 };
 
 static const unsigned int src_iir_coeff_48_to_16[] = {
-	0x0296a4, 0xfd69dd, 0x0296a4, 0x209439, 0xe01ff9, 0x000002,
-	0x0f4ff3, 0xf0d6d4, 0x0f4ff3, 0x209bc9, 0xe076c3, 0x000002,
-	0x0e8490, 0xf1fe63, 0x0e8490, 0x20cfd6, 0xe12124, 0x000002,
-	0x14852f, 0xed794a, 0x14852f, 0x21503d, 0xe28b32, 0x000002,
-	0x136222, 0xf17677, 0x136222, 0x225be1, 0xe56964, 0x000002,
-	0x0a8d85, 0xfc4a97, 0x0a8d85, 0x24310c, 0xea6952, 0x000002,
-	0x05eff5, 0x043455, 0x05eff5, 0x4ced8f, 0xe134d6, 0x000001,
-	0x000000, 0x3aebe6, 0x3aebe6, 0x04f3b0, 0x000000, 0x000004
+	0x091009, 0xf68197, 0x091009, 0x26dd51, 0xe09fd1, 0x000002,
+	0x091009, 0xf6e5b0, 0x091009, 0x26e8ad, 0xe20be1, 0x000002,
+	0x091009, 0xf7e303, 0x091009, 0x27af51, 0xe407c2, 0x000002,
+	0x091009, 0xfa0fc6, 0x091009, 0x29331a, 0xe6e0ac, 0x000002,
+	0x091009, 0xfee432, 0x091009, 0x2b4be9, 0xea7ccb, 0x000002,
+	0x091009, 0x08fc54, 0x091009, 0x2d52b2, 0xede0d8, 0x000002,
+	0x000000, 0x122013, 0x122013, 0x2e3256, 0x000000, 0x000001
 };
 
 static const unsigned int src_iir_coeff_48_to_32[] = {
@@ -127,9 +126,8 @@ static unsigned int mtk_get_src_freq_mode(struct mtk_base_afe *afe, int rate)
 	case 192000:
 		return 0x00780000;
 	default:
-		dev_warn(afe->dev, "%s(), rate %d invalid!!!\n",
+		dev_info(afe->dev, "%s(), rate %d invalid!!!\n",
 			 __func__, rate);
-		AUDIO_AEE("rate invalid");
 		return 0;
 	}
 }
@@ -170,7 +168,6 @@ const unsigned int *get_iir_coeff(unsigned int rate_in,
 	return NULL;
 }
 
-#define DEBUG_COEFF
 static int mtk_set_src_1_param(struct mtk_base_afe *afe, int id)
 {
 	struct mt6853_afe_private *afe_priv = afe->platform_priv;
@@ -213,9 +210,8 @@ static int mtk_set_src_1_param(struct mtk_base_afe *afe, int id)
 							      &iir_coeff_num);
 
 		if (iir_coeff_num == 0 || !iir_coeff) {
-			dev_warn(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
+			dev_info(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
 				 __func__, iir_coeff_num, iir_coeff);
-			AUDIO_AEE("iir coeff error");
 			return -EINVAL;
 		}
 
@@ -309,9 +305,8 @@ static int mtk_set_src_2_param(struct mtk_base_afe *afe, int id)
 							      &iir_coeff_num);
 
 		if (iir_coeff_num == 0 || !iir_coeff) {
-			dev_warn(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
+			dev_info(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
 				 __func__, iir_coeff_num, iir_coeff);
-			AUDIO_AEE("iir coeff error");
 			return -EINVAL;
 		}
 
@@ -475,13 +470,13 @@ static const struct snd_kcontrol_new mtk_hw_src_2_in_ch1_mix[] = {
 				    I_DL2_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL3_CH1", AFE_CONN42,
 				    I_DL3_CH1, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH1", AFE_CONN42,
+	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH1", AFE_CONN42_1,
 				    I_DL4_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL5_CH1", AFE_CONN42_1,
 				    I_DL5_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL6_CH1", AFE_CONN42_1,
 				    I_DL6_CH1, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("HW_GAIN2_OUT_CH1", AFE_CONN42,
+	SOC_DAPM_SINGLE_AUTODISABLE("HW_GAIN_2_CH1", AFE_CONN42,
 				    I_GAIN2_OUT_CH1, 1, 0),
 };
 
@@ -492,13 +487,13 @@ static const struct snd_kcontrol_new mtk_hw_src_2_in_ch2_mix[] = {
 				    I_DL2_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL3_CH2", AFE_CONN43,
 				    I_DL3_CH2, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH2", AFE_CONN43,
+	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH2", AFE_CONN43_1,
 				    I_DL4_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL5_CH2", AFE_CONN43_1,
 				    I_DL5_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL6_CH2", AFE_CONN43_1,
 				    I_DL6_CH2, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("HW_GAIN2_OUT_CH2", AFE_CONN43,
+	SOC_DAPM_SINGLE_AUTODISABLE("HW_GAIN_2_CH2", AFE_CONN43,
 				    I_GAIN2_OUT_CH2, 1, 0),
 };
 
@@ -733,7 +728,7 @@ int mt6853_dai_src_register(struct mtk_base_afe *afe)
 	struct mtk_base_afe_dai *dai;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

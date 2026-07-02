@@ -9,6 +9,7 @@
 
 #include "apusys_device.h"
 #include <linux/cdev.h>
+#include "apusys_core.h"
 
 #define DEBUG
 
@@ -77,6 +78,8 @@ struct edma_device {
 
 	unsigned int dbgfs_reg_core;
 	unsigned int dbg_cfg;
+
+	struct wakeup_source *ws;
 };
 
 struct edma_user {
@@ -146,7 +149,6 @@ struct edma_request {
 	u8  buf_iommu_en;
 	u8  desp_iommu_en;
 	s32 cmd_result;
-	u32 cmd_status;
 };
 
 #define	EDMA_EXT_MODE_SIZE		0x60
@@ -173,5 +175,8 @@ struct edma_ext {
 
 //long edma_ioctl(struct file *flip, unsigned int cmd, unsigned long arg);
 int edma_initialize(struct edma_device *edma_device);
+
+int edma_rv_setup(struct apusys_core_info *info);
+void edma_rv_shutdown(void);
 
 #endif /* __EDMA_DRIVER_H__ */

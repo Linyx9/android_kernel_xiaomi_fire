@@ -13,9 +13,10 @@
 #include "sensor_comm.h"
 #include "custom_cmd.h"
 #include "share_memory.h"
+#include "sap_custom_cmd.h"
+#include "sap.h"
 
 static DEFINE_MUTEX(bus_user_lock);
-static atomic_t cust_cmd_sequence;
 static DECLARE_COMPLETION(cust_cmd_done);
 static DEFINE_SPINLOCK(rx_notify_lock);
 static struct sensor_comm_notify rx_notify;
@@ -70,12 +71,10 @@ static int custom_cmd_slow_seq(int sensor_type, struct share_mem_cmd *shm_cmd)
 		return ret;
 	if (!ret)
 		return -ENOMEM;
-	/* safe sequence given by atomic, round from 0 to 255 */
-	notify.sequence = atomic_inc_return(&cust_cmd_sequence);
 	notify.sensor_type = sensor_type;
 	notify.notify_cmd = SENS_COMM_NOTIFY_CUSTOM_CMD;
 	ret = share_mem_flush(&cust_cmd_shm_tx, &notify);
-	if (ret < 0)
+	if (ret < 0 || !shm_cmd->rx_len)
 		return ret;
 
 	timeout = wait_for_completion_timeout(&cust_cmd_done,
@@ -169,14 +168,12 @@ static int custom_cmd_fast_seq(int sensor_type, struct custom_cmd *cust_cmd)
 	 */
 	reinit_completion(&cust_cmd_fast_done);
 
-	/* safe sequence given by atomic, round from 0 to 255 */
-	notify.sequence = atomic_inc_return(&cust_cmd_sequence);
 	notify.sensor_type = sensor_type;
 	notify.command = SENS_COMM_NOTIFY_FAST_CUST_CMD;
 	notify.length = offsetof(typeof(*cust_cmd), data) + cust_cmd->tx_len;
 	memcpy(notify.value, cust_cmd, notify.length);
 	ret = sensor_comm_notify(&notify);
-	if (ret < 0)
+	if (ret < 0 || !cust_cmd->rx_len)
 		return ret;
 
 	timeout = wait_for_completion_timeout(&cust_cmd_fast_done,
@@ -230,6 +227,14 @@ int custom_cmd_comm_with(int sensor_type, struct custom_cmd *cust_cmd)
 	uint16_t tx_len = header_len + cust_cmd->tx_len;
 	uint16_t rx_len = header_len + cust_cmd->rx_len;
 
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SAP_SUPPORT)
+	if (sap_enabled() && (sensor_type == SENSOR_TYPE_OIS
+		|| sensor_type == SENSOR_TYPE_OIS1
+		|| sensor_type == SENSOR_TYPE_OIS2
+		|| sensor_type == SENSOR_TYPE_OIS3))
+		return sap_custom_cmd_comm(sensor_type, cust_cmd);
+#endif
+
 	if (tx_len > sizeof(rx_fast_notify.value) ||
 		rx_len > sizeof(rx_fast_notify.value))
 		ret = custom_cmd_slow_comm(sensor_type, cust_cmd);
@@ -263,8 +268,6 @@ int custom_cmd_init(void)
 {
 	unsigned long flags = 0;
 
-	atomic_set(&cust_cmd_sequence, 0);
-
 	spin_lock_irqsave(&rx_notify_lock, flags);
 	memset(&rx_notify, 0, sizeof(rx_notify));
 	spin_unlock_irqrestore(&rx_notify_lock, flags);
@@ -281,6 +284,7 @@ int custom_cmd_init(void)
 		custom_cmd_w_shm_cfg, NULL);
 	share_mem_config_handler_register(SHARE_MEM_CUSTOM_R_PAYLOAD_TYPE,
 		custom_cmd_r_shm_cfg, NULL);
+	return sap_custom_cmd_init();
 	return 0;
 }
 
@@ -290,4 +294,5 @@ void custom_cmd_exit(void)
 	sensor_comm_notify_handler_unregister(SENS_COMM_NOTIFY_FAST_CUST_CMD);
 	share_mem_config_handler_unregister(SHARE_MEM_CUSTOM_W_PAYLOAD_TYPE);
 	share_mem_config_handler_unregister(SHARE_MEM_CUSTOM_R_PAYLOAD_TYPE);
+	sap_custom_cmd_exit();
 }

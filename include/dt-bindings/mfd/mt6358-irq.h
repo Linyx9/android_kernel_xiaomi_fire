@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2021 MediaTek Inc.
-*/
+ */
 
 #ifndef _DT_BINDINGS_MT6358_IRQ_H
 #define _DT_BINDINGS_MT6358_IRQ_H

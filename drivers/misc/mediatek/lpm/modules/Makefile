@@ -1,2 +1,2 @@
-obj-y += debug/
-obj-y += platform/
+obj-$(CONFIG_MTK_LOW_POWER_MODULE) += debug/
+obj-$(CONFIG_MTK_LOW_POWER_MODULE) += platform/

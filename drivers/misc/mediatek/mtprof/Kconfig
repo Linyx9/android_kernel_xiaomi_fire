@@ -7,45 +7,38 @@ config MTPROF
 	  boot time profiling. If you are not sure about whether to
 	  enable it or not, please set n.
 
-config MTK_SCHED_MONITOR
-	bool "mtk scheduler monitor"
+config BOOTPROF_THRESHOLD_MS
+	int "Threshold of driver init duration(ms)"
+	depends on MTPROF
+	default 15
 	help
-	  MTK_SCHED_MONITOR is used to monitor ISR/SOFTIRQ/TASKLET/HRTIMER
-	  /STIMER/RCU processing duration and IRQ disabled duration. Say Y
-	  here to enable monitor. If you are not sure about whether to enable
-	  it or not, please set n.
+	  CONFIG_BOOTPROF_THRESHOLD_MS define the threshold of driver init
+	  duration.If init duration is larger than threshold, bootprof will
+	  record the driver info and init time for boot time profiling.
+	  (Unit: millisecond)
 
-config MTK_IRQ_COUNT_TRACER
-	bool "mtk irq count tracer"
-	depends on MTK_SCHED_MONITOR
+config MTK_IRQ_MONITOR
+	tristate "Enable MTK IRQ Monitor"
 	help
-	  Enable this to check the increment of irq counts in a period of
-	  time. If the increment is above a threshold, a warning message
-	  is printed for reference information. This feature is helpful
-	  to catch the irq that triggered abnormally.
+	  MTK_IRQ_MONITOR can monitor ISR/SOFTIRQ processing duration,
+	  IRQ disabled duration and burst IRQ. Say Y here to enable MTK
+	  IRQ monitor. If you are not sure about whether to enable it or not,
+	  please set n.
 
-	  If unsure, say N.
+config MTK_IRQ_MONITOR_DEBUG
+	tristate "Enable MTK IRQ Monitor Debug"
+	help
+	  MTK_IRQ_MONITOR_DEBUG if used to debug ISR/SOFTIRQ processing
+	  duration, IRQ disabled duration and burst IRQ. It is only enabled
+	  on userdebug load. Say Y here to enable MTK IRQ monitor debug.
+	  If you are not sure about whether to enable it or not,
+	  please set n.
 
-config MTK_IRQ_OFF_TRACER
-	bool "mtk irq off tracer"
-	depends on MTK_SCHED_MONITOR
+config MTK_IRQ_MONITOR_DEFAULT_ENABLED
+	bool "Enable all tracers of MTK IRQ Monitor by default"
+	depends on MTK_IRQ_MONITOR
 	select TRACE_IRQFLAGS
-	help
-	  Enable this to check the irq off time. If the time is above a
-	  threshold, a warning message is printed for reference information.
-	  This feature is helpful to catch the task that disable irq for a
-	  long time.
 
-	  If unsure, say N.
-
-config MTK_PREEMPT_TRACER
-	bool "mtk preempt off tracer"
-	depends on MTK_SCHED_MONITOR
-	select PREEMPT_TRACER
-	help
-	  Enable this to check the irq off time. If the time is above a
-	  threshold, a warning message is printed for reference information.
-	  This feature is helpful to catch the task that disable irq for a
-	  long time.
-
-	  If unsure, say N.
+config MTK_IRQ_MONITOR_IRQ_TIMER_OVERRIDE
+	bool "Override the thresholds of irq duration timer (ms)"
+	depends on MTK_IRQ_MONITOR

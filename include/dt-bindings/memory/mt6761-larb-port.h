@@ -6,14 +6,7 @@
 #ifndef _DTS_IOMMU_PORT_MT6761_H_
 #define _DTS_IOMMU_PORT_MT6761_H_
 
-#define MTK_M4U_ID(larb, port)	(((larb) << 5) | (port))
-
-/* Local arbiter ID */
-#define MTK_M4U_TO_LARB(id)		(((id) >> 5) & 0x7)
-/* PortID within the local arbiter */
-#define MTK_M4U_TO_PORT(id)		((id) & 0x1f)
-
-
+#include <dt-bindings/memory/mtk-memory-port.h>
 
 #define M4U_LARB0_ID		8
 #define M4U_LARB1_ID		11

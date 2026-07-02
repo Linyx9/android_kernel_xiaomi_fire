@@ -1166,7 +1166,7 @@ static const struct mtk_pin_field_calc mt6781_pin_eh_range[] = {
 	PIN_FIELD_BASE(163, 163, 6, 0x0040, 0x10, 21, 3),
 };
 
-static const struct mtk_pin_field_calc mt6781_pin_rsel_range[] = {
+static const struct mtk_pin_field_calc mt6781_pin_rsel_range[] __maybe_unused = {
 	PIN_FIELD_BASE(144, 144, 2, 0x0060, 0x10, 0, 2),
 	PIN_FIELD_BASE(145, 145, 2, 0x0060, 0x10, 4, 2),
 	PIN_FIELD_BASE(146, 146, 6, 0x00e0, 0x10, 16, 2),
@@ -1231,27 +1231,19 @@ static const struct mtk_eh_pin_pinmux mt6781_eh_pin_pinmux_list[] = {
 	{0xffff, 0}, /* indicate end of array */
 };
 
-static const struct mtk_eint_hw mt6781_eint_hw = {
-	.port_mask = 5,
-	.ports     = 5,
-	.ap_num    = 151,
-	.db_cnt    = 32,
-};
 
 static const struct mtk_pin_soc mt6781_data = {
 	.reg_cal = mt6781_reg_cals,
 	.pins = mtk_pins_mt6781,
 	.npins = ARRAY_SIZE(mtk_pins_mt6781),
 	.ngrps = ARRAY_SIZE(mtk_pins_mt6781),
-	.eint_hw = &mt6781_eint_hw,
 	.nfuncs = 8,
 	.gpio_m = 0,
-	.race_free_access = true,
+	.capability_flags = FLAG_RACE_FREE_ACCESS | FLAG_DRIVE_SET_RAW,
 	.eh_pin_pinmux = mt6781_eh_pin_pinmux_list,
+	.neh_pins = ARRAY_SIZE(mt6781_eh_pin_pinmux_list),
 	.bias_set_combo = mtk_pinconf_bias_set_combo,
 	.bias_get_combo = mtk_pinconf_bias_get_combo,
-	.drive_set = mtk_pinconf_drive_set_raw,
-	.drive_get = mtk_pinconf_drive_get_raw,
 	.adv_pull_get = mtk_pinconf_adv_pull_get,
 	.adv_pull_set = mtk_pinconf_adv_pull_set,
 	.adv_drive_get = mtk_pinconf_adv_drive_get,
@@ -1259,22 +1251,16 @@ static const struct mtk_pin_soc mt6781_data = {
 };
 
 static const struct of_device_id mt6781_pinctrl_of_match[] = {
-	{ .compatible = "mediatek,mt6781-pinctrl", },
+	{ .compatible = "mediatek,mt6781-pinctrl", .data = &mt6781_data },
 	{ }
 };
-
-static int mt6781_pinctrl_probe(struct platform_device *pdev)
-{
-	return mtk_paris_pinctrl_probe(pdev, &mt6781_data);
-}
 
 static struct platform_driver mt6781_pinctrl_driver = {
 	.driver = {
 		.name = "mt6781-pinctrl",
 		.of_match_table = mt6781_pinctrl_of_match,
-		.pm = &mtk_eint_pm_ops_v2,
 	},
-	.probe = mt6781_pinctrl_probe,
+	.probe = mtk_paris_pinctrl_probe,
 };
 
 static int __init mt6781_pinctrl_init(void)
@@ -1282,3 +1268,6 @@ static int __init mt6781_pinctrl_init(void)
 	return platform_driver_register(&mt6781_pinctrl_driver);
 }
 arch_initcall(mt6781_pinctrl_init);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("MediaTek MT6781 Pinctrl Driver");

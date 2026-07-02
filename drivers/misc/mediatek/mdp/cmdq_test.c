@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -24,7 +24,7 @@
 #include "cmdq_reg.h"
 #include "cmdq_virtual.h"
 #include "mdp_common.h"
-#include "mdp_cmdq_device.h"
+#include "cmdq_device.h"
 
 #ifdef CMDQ_CONFIG_SMI
 #include "smi_public.h"
@@ -37,14 +37,6 @@
 
 #define CMDQ_TESTCASE_PARAMETER_MAX		4
 #define CMDQ_MONITOR_EVENT_MAX			10
-
-#if 0
-#define CMDQ_TEST_MMSYS_DUMMY_OFFSET (0x40C)
-
-#define CMDQ_TEST_MMSYS_DUMMY_PA (0x14000000 + CMDQ_TEST_MMSYS_DUMMY_OFFSET)
-#define CMDQ_TEST_MMSYS_DUMMY_VA (cmdq_mdp_get_module_base_VA_MMSYS_CONFIG() + \
-	CMDQ_TEST_MMSYS_DUMMY_OFFSET)
-#endif
 
 #define CMDQ_TEST_MMSYS_DUMMY_PA	CMDQ_THR_SPR3_PA(3)
 #define CMDQ_TEST_MMSYS_DUMMY_VA	CMDQ_THR_SPR3(3)
@@ -135,84 +127,6 @@ static s32 _test_wait_task(struct cmdqRecStruct *handle)
 
 	return status;
 }
-
-
-
-#if 0
-static s32 _test_submit_sync(struct cmdqRecStruct *handle, bool ignore_timeout)
-{
-#if 0
-	struct cmdqCommandStruct desc = { 0 };
-	struct task_private private = {
-		.node_private_data = NULL,
-		.internal = true,
-		.ignore_timeout = ignore_timeout,
-	};
-	s32 status;
-
-	status = cmdq_op_finalize_command(handle, false);
-	if (status < 0)
-		return status;
-
-	CMDQ_MSG(
-		"Submit task scenario:%d priority:%d engine:0x%llx buffer:0x%p size:%zu\n",
-		handle->scenario, handle->pkt->priority, handle->engineFlag,
-		handle->pkt->va_base, handle->pkt->cmd_buf_size);
-
-	desc.scenario = handle->scenario;
-	desc.priority = handle->pkt->priority;
-	desc.engineFlag = handle->engineFlag;
-	desc.pVABase = (cmdqU32Ptr_t) (unsigned long)handle->pkt->va_base;
-	desc.blockSize = handle->pkt->cmd_buf_size;
-	desc.privateData = (cmdqU32Ptr_t)(unsigned long)&private;
-	/* secure path */
-	cmdq_setup_sec_data_of_command_desc_by_rec_handle(&desc, handle);
-	/* replace instuction position */
-	cmdq_setup_replace_of_command_desc_by_rec_handle(&desc, handle);
-	/* profile marker */
-	cmdq_rec_setup_profile_marker_data(&desc, handle);
-
-	return cmdqCoreSubmitTask(&desc, &handle->ext);
-#else
-	return 0;
-#endif
-
-}
-
-s32 _test_backup_instructions(struct cmdqRecStruct *task,
-	s32 **instructions_out)
-{
-	s32 *insts_buffer = NULL;
-	struct CmdBufferStruct *cmd_buffer = NULL;
-	u32 buffer_count = 0;
-
-	insts_buffer = vzalloc(task->bufferSize);
-	if (!insts_buffer)
-		return -ENOMEM;
-
-	list_for_each_entry(cmd_buffer, &task->cmd_buffer_list, listEntry) {
-		u32 buf_size = list_is_last(&cmd_buffer->listEntry,
-			&task->cmd_buffer_list) ?
-			CMDQ_CMD_BUFFER_SIZE - task->buf_available_size :
-			CMDQ_CMD_BUFFER_SIZE;
-
-		memcpy(insts_buffer + CMDQ_CMD_BUFFER_SIZE / sizeof(s32) *
-			buffer_count, cmd_buffer->pVABase, buf_size);
-		buffer_count++;
-	}
-
-	*instructions_out = insts_buffer;
-
-	return 0;
-}
-
-void _test_free_backup_instructions(s32 **instructions_out)
-{
-	if (*instructions_out)
-		vfree(*instructions_out);
-	*instructions_out = NULL;
-}
-#endif
 
 static void testcase_scenario(void)
 {
@@ -345,22 +259,6 @@ static void testcase_errors(void)
 		cmdq_op_wait(handle, CMDQ_EVENT_MDP_RSZ0_EOF);
 		cmdq_task_flush(handle);
 		cmdq_core_reset_first_dump();
-#if 0
-		CMDQ_LOG("=============== INIFINITE JUMP ===============\n");
-
-		/* HW timeout */
-		cmdqCoreClearEvent(CMDQ_EVENT_MDP_RSZ0_EOF);
-		cmdq_task_reset(handle);
-		cmdq_task_set_secure(handle, gCmdqTestSecure);
-		cmdq_op_wait(handle, CMDQ_EVENT_MDP_RSZ0_EOF);
-		cmdq_append_command(handle, CMDQ_CODE_EOC, 0, 1, 0, 0);
-		/* JUMP to connect tasks */
-		cmdq_append_command(handle, CMDQ_CODE_JUMP, 0, 8, 0, 0);
-		ret = _test_flush_async(handle);
-		msleep_interruptible(500);
-		ret = cmdq_pkt_wait_flush_ex_result(handle);
-		cmdq_core_reset_first_dump();
-#endif
 
 		CMDQ_LOG("=============== POLL INIFINITE ===============\n");
 
@@ -754,58 +652,6 @@ static void testcase_loop(void)
 	CMDQ_LOG("%s end\n", __func__);
 }
 
-#if 0
-static unsigned long gLoopCount;
-static void _testcase_trigger_func(unsigned long data)
-{
-	/* trigger sync event */
-	CMDQ_MSG("_testcase_trigger_func");
-	cmdqCoreSetEvent(CMDQ_SYNC_TOKEN_USER_0);
-	cmdqCoreSetEvent(CMDQ_SYNC_TOKEN_USER_1);
-
-	if (test_timer_stop) {
-		del_timer(&test_timer);
-		return;
-	}
-
-	/* start again */
-	mod_timer(&test_timer, jiffies + msecs_to_jiffies(1000));
-	gLoopCount++;
-}
-
-static void leave_loop_func(struct work_struct *w)
-{
-	CMDQ_MSG("%s: cancel loop");
-	cmdq_task_stop_loop(hLoopConfig);
-	hLoopConfig = NULL;
-}
-
-DECLARE_WORK(leave_loop, leave_loop_func);
-
-s32 my_irq_callback(unsigned long data)
-{
-	CMDQ_MSG("%s data=%d\n", __func__, data);
-
-	++gLoopCount;
-
-	switch (data) {
-	case 1:
-		if (gLoopCount < 20)
-			return 0;
-		else
-			return -1;
-		break;
-	case 2:
-		if (gLoopCount > 40) {
-			/* insert stopping cal */
-			schedule_work(&leave_loop);
-		}
-		break;
-	}
-	return 0;
-}
-#endif
-
 static void testcase_prefetch_scenarios(void)
 {
 	/* make sure both prefetch and non-prefetch cases */
@@ -909,8 +755,6 @@ static void testcase_dram_access(void)
 
 	result_va = cmdq_core_alloc_hw_buffer(cmdq_dev_get(),
 		sizeof(u32) * 2, &result_pa, GFP_KERNEL);
-	if (!result_va)
-		return;
 
 	/* set up intput */
 	result_va[0] = 0xdeaddead;	/* this is read-from */
@@ -1353,31 +1197,10 @@ static void testcase_read_to_data_reg(void)
 	/* [read 64 bit test] move data from GPR to GPR_Px: COLOR to
 	 * COLOR_DST (64 bit)
 	 */
-#if 1
+
 	cmdq_op_read_to_data_register(handle,
 		CMDQ_GPR_R32_PA(CMDQ_DATA_REG_PQ_COLOR),
 		CMDQ_DATA_REG_PQ_COLOR_DST);
-#else
-	/* 64 bit behavior of Read OP depends APB bus implementation
-	 * (CMDQ uses APB to access HW register, use AXI to access DRAM)
-	 * from DE's suggestion,
-	 * 1. for read HW register case, it's better to separate 1 x 64 bit
-	 * length read to 2 x 32 bit length read
-	 * 2. for GPRx each assignment case, it's better performance to use
-	 * MOVE op to read GPR_x1 to GPR_x2
-	 */
-
-	/* when Read 64 length failed, try to use move to clear up if APB
-	 * issue
-	 */
-	const u32 srcDataReg = CMDQ_DATA_REG_PQ_COLOR;
-	const u32 dstDataReg = CMDQ_DATA_REG_PQ_COLOR_DST;
-	/* arg_a, 22 bit 1: arg_b is GPR */
-	/* arg_a, 23 bit 1: arg_a is GPR */
-	cmdq_append_command(handle, CMDQ_CODE_RAW,
-		(CMDQ_CODE_MOVE << 24) | (dstDataReg << 16) | (4 << 21) |
-		(2 << 21), srcDataReg);
-#endif
 
 	/* [read 32 bit test] move data from register value to
 	 * GPR_Rx: MM_DUMMY_REG to COLOR(32 bit)
@@ -2012,17 +1835,12 @@ static void testcase_thread_dispatch(void)
 		(0x1LL << CMDQ_ENG_MDP_CAMIN);
 	const long long engineFlag2 = (0x1LL << CMDQ_ENG_MDP_RDMA0) |
 		(0x1LL << CMDQ_ENG_MDP_WROT0);
-	int len;
 
 	CMDQ_LOG("%s\n", __func__);
 	CMDQ_MSG(
 		"=============== 2 THREAD with different engines ===============\n");
 
-	len = sprintf(threadName, "cmdqKTHR_%llx", engineFlag1);
-	if (len >= 20)
-		pr_debug("%s:%d len:%d threadName:%s\n",
-			__func__, __LINE__, len, threadName);
-
+	sprintf(threadName, "cmdqKTHR_%llx", engineFlag1);
 	pKThread1 = kthread_run(_testcase_thread_dispatch,
 		(void *)(&engineFlag1), threadName);
 	if (IS_ERR(pKThread1)) {
@@ -2030,11 +1848,7 @@ static void testcase_thread_dispatch(void)
 		return;
 	}
 
-	len = sprintf(threadName, "cmdqKTHR_%llx", engineFlag2);
-	if (len >= 20)
-		pr_debug("%s:%d len:%d threadName:%s\n",
-			__func__, __LINE__, len, threadName);
-
+	sprintf(threadName, "cmdqKTHR_%llx", engineFlag2);
 	pKThread2 = kthread_run(_testcase_thread_dispatch,
 		(void *)(&engineFlag2), threadName);
 	if (IS_ERR(pKThread2)) {
@@ -2103,15 +1917,10 @@ static void testcase_full_thread_array(void)
 {
 	char threadName[20];
 	struct task_struct *pKThread;
-	int len;
 
 	CMDQ_LOG("%s\n", __func__);
 
-	len = sprintf(threadName, "cmdqKTHR");
-	if (len >= 20)
-		pr_debug("%s:%d len:%d threadName:%s\n",
-			__func__, __LINE__, len, threadName);
-
+	sprintf(threadName, "cmdqKTHR");
 	pKThread = kthread_run(_testcase_full_thread_array, NULL, threadName);
 	if (IS_ERR(pKThread)) {
 		/* create thread failed */
@@ -2752,19 +2561,6 @@ static void testcase_error_irq(void)
 
 	CMDQ_LOG("%s END\n", __func__);
 }
-
-#if 0
-static void testcase_open_buffer_dump(s32 scenario, s32 bufferSize)
-{
-	CMDQ_LOG("%s\n", __func__);
-
-	CMDQ_MSG("[TESTCASE]CONFIG: bufferSize:%d scenario:%d\n",
-		bufferSize, scenario);
-	cmdq_core_set_command_buffer_dump(scenario, bufferSize);
-
-	CMDQ_LOG("%s END\n", __func__);
-}
-#endif
 
 static void testcase_check_dts_correctness(void)
 {
@@ -3527,8 +3323,6 @@ static void testcase_end_behavior(bool test_prefetch, u32 dummy_size)
 	cmdqCoreClearEvent(CMDQ_SYNC_TOKEN_GPR_SET_4);
 	va_base = cmdq_core_alloc_hw_buffer(cmdq_dev_get(),
 		CMDQ_CMD_BUFFER_SIZE, &pa_base, GFP_KERNEL);
-	if (!va_base)
-		return;
 	cmd_end = va_base;
 	cmd_end[1] = (CMDQ_CODE_MOVE << 24) |
 		((CMDQ_DATA_REG_DEBUG_DST & 0x1f) << 16) | (4 << 21);
@@ -6152,13 +5946,6 @@ ssize_t cmdq_test_proc(struct file *fp, char __user *u, size_t s, loff_t *l)
 	case CMDQ_TEST_TYPE_SECURE:
 		testcase_general_handling((s32)testParameter[1]);
 		break;
-#if 0
-	case CMDQ_TEST_TYPE_OPEN_COMMAND_DUMP:
-		/* (scenario, buffersize) */
-		testcase_open_buffer_dump((s32)testParameter[1],
-			(s32)testParameter[2]);
-		break;
-#endif
 	case CMDQ_TEST_TYPE_MMSYS_PERFORMANCE:
 		testcase_mmsys_performance((s32)testParameter[1]);
 		break;
@@ -6182,8 +5969,8 @@ static ssize_t cmdq_write_test_proc_config(struct file *file,
 	const char __user *userBuf, size_t count, loff_t *data)
 {
 	char desc[50];
-	long long int testConfig[CMDQ_TESTCASE_PARAMETER_MAX];
-	u64 len = 0ULL;
+	long long testConfig[CMDQ_TESTCASE_PARAMETER_MAX];
+	s32 len = 0;
 
 	do {
 		/* copy user input */

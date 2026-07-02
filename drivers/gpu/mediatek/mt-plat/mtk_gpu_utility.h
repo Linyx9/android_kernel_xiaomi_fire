@@ -17,6 +17,8 @@ MTK_GPU_DVFS_TYPE_ITEM(TIMERBASED) \
 MTK_GPU_DVFS_TYPE_ITEM(FASTDVFS) \
 MTK_GPU_DVFS_TYPE_ITEM(TOUCHBOOST) \
 MTK_GPU_DVFS_TYPE_ITEM(THERMAL) \
+MTK_GPU_DVFS_TYPE_ITEM(SKIPFALLBACK) \
+MTK_GPU_DVFS_TYPE_ITEM(IDLE) \
 MTK_GPU_DVFS_TYPE_ITEM(CUSTOMIZATION)}
 
 enum MTK_GPU_DVFS_TYPE
@@ -43,42 +45,34 @@ extern "C"
 
 /* unit: x bytes */
 bool mtk_get_gpu_memory_usage(unsigned int *pMemUsage);
-bool mtk_get_gpu_page_cache(unsigned int *pPageCache);
+bool mtk_get_gpu_memory_pool(size_t *pMemPool);
 
 /* unit: 0~100 % */
 bool mtk_get_gpu_loading(unsigned int *pLoading);
-bool mtk_get_gpu_loading2(unsigned int *pLoading, int reset);
 bool mtk_get_gpu_block(unsigned int *pBlock);
 bool mtk_get_gpu_idle(unsigned int *pIlde);
-bool mtk_get_gpu_freq(unsigned int *pFreq);
-
-bool mtk_get_gpu_GP_loading(unsigned int *pLoading);
-bool mtk_get_gpu_PP_loading(unsigned int *pLoading);
-bool mtk_get_gpu_power_loading(unsigned int *pLoading);
-
-bool mtk_enable_gpu_dvfs_timer(bool bEnable);
-bool mtk_boost_gpu_freq(void);
 bool mtk_set_bottom_gpu_freq(unsigned int ui32FreqLevel);
 
 /* ui32FreqLevel: 0=>lowest freq, count-1=>highest freq */
 bool mtk_custom_get_gpu_freq_level_count(unsigned int *pui32FreqLevelCount);
 bool mtk_custom_boost_gpu_freq(unsigned int ui32FreqLevel);
 bool mtk_custom_upbound_gpu_freq(unsigned int ui32FreqLevel);
-bool mtk_get_custom_boost_gpu_freq(unsigned int *pui32FreqLevel);
-bool mtk_get_custom_upbound_gpu_freq(unsigned int *pui32FreqLevel);
 
 bool mtk_dump_gpu_memory_usage(void);
 
-bool mtk_get_gpu_dvfs_from(enum MTK_GPU_DVFS_TYPE *peType,
-	unsigned long *pulFreq);
-bool mtk_get_3D_fences_count(int *pi32Count);
-bool mtk_get_vsync_based_target_freq(unsigned long *pulFreq);
-bool mtk_get_gpu_sub_loading(unsigned int *pLoading);
 bool mtk_get_gpu_bottom_freq(unsigned long *pulFreq);
-bool mtk_get_gpu_custom_boost_freq(unsigned long *pulFreq);
-bool mtk_get_gpu_custom_upbound_freq(unsigned long *pulFreq);
-bool mtk_get_vsync_offset_event_status(unsigned int *pui32EventStatus);
-bool mtk_get_vsync_offset_debug_status(unsigned int *pui32DebugStatus);
+
+/* unit: OPP index [0 : OPP_NUM-1] */
+bool mtk_get_gpu_floor_index(int *piIndex);
+bool mtk_get_gpu_ceiling_index(int *piIndex);
+/* unit: limiter [0 : LIMIT_NUM-1] */
+bool mtk_get_gpu_floor_limiter(unsigned int *puiLimiter);
+bool mtk_get_gpu_ceiling_limiter(unsigned int *puiLimiter);
+/* unit: frequency (MHz) */
+bool mtk_get_gpu_cur_freq(unsigned int *puiFreq);
+/* unit: OPP index [0 : OPP_NUM-1] */
+bool mtk_get_gpu_cur_oppidx(int *piIndex);
+
 bool mtk_dvfs_margin_value(int i32MarginValue);
 bool mtk_get_dvfs_margin_value(int *pi32MarginValue);
 bool mtk_loading_base_dvfs_step(int i32StepValue);
@@ -87,12 +81,13 @@ bool mtk_timer_base_dvfs_margin(int i32MarginValue);
 bool mtk_get_timer_base_dvfs_margin(int *pi32MaginValue);
 bool mtk_dvfs_loading_mode(int i32LoadingMode);
 bool mtk_get_dvfs_loading_mode(unsigned int *pui32LoadingMode);
-
-/* CAP */
-bool mtk_get_gpu_dvfs_cal_freq(unsigned long *pulGpu_tar_freq);
-
-/* MET */
-bool mtk_enable_gpu_perf_monitor(bool enable);
+bool mtk_dvfs_workload_mode(int i32WorkloadMode);
+bool mtk_get_dvfs_workload_mode(unsigned int *pui32WorkloadMode);
+bool mtk_set_fastdvfs_mode(unsigned int u32Mode);
+bool mtk_get_fastdvfs_mode(void *ipi_data);
+bool mtk_set_gpu_idle(unsigned int val);
+bool mtk_adaptive_power_notify(void);
+bool mtk_get_system_timer(u64 *psys_timer);
 
 /* GPU PMU should be implemented by GPU IP-dep code */
 struct GPU_PMU {
@@ -114,17 +109,9 @@ bool mtk_unregister_gpu_power_change(const char *name);
 /* GPU POWER NOTIFY should be called by GPU only */
 void mtk_notify_gpu_power_change(int power_on);
 
-#ifdef CONFIG_MTK_GED_SUPPORT
+bool mtk_notify_gpu_freq_change(u32 clk_idx, u32 gpufreq);
 
-/* Quality Tuner */
-bool mtk_gpu_tuner_hint_set(char *packagename,
-	enum GPU_TUNER_FEATURE eFeature);
-bool mtk_gpu_tuner_hint_restore(char *packagename,
-	enum GPU_TUNER_FEATURE eFeature);
-bool mtk_gpu_tuner_get_stauts_by_packagename(char *packagename, int *feature);
-
-#endif
-
+void mtk_gpu_fence_debug_dump(int fd, int pid, int type, int timeouts);
 #ifdef __cplusplus
 }
 #endif

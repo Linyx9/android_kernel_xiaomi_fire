@@ -1,91 +1,35 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
+ * Copyright (C) 2020 MediaTek Inc.
  */
 
 #ifndef _MTK_BLOCKTAG_H
 #define _MTK_BLOCKTAG_H
 
-#include <linux/blk_types.h>
-#include <linux/proc_fs.h>
-#include <linux/sched.h>
-
-#if defined(CONFIG_MTK_BLOCK_TAG)
-
-/*
- * MTK_BTAG_FEATURE_MICTX_IOSTAT
- *
- * Shall be defined if we can provide iostat
- * produced by mini context.
- *
- * This feature is used to extend kernel
- * trace events to have more I/O information.
- */
-#define MTK_BTAG_FEATURE_MICTX_IOSTAT
-
-#define BLOCKTAG_PIDLOG_ENTRIES 50
-#define BLOCKTAG_NAME_LEN      16
-#define BLOCKTAG_PRINT_LEN     4096
-
-#define BTAG_RT(btag)     (btag ? &btag->rt : NULL)
-#define BTAG_CTX(btag)    (btag ? btag->ctx.priv : NULL)
-#define BTAG_KLOGEN(btag) (btag ? btag->klog_enable : 0)
-
-struct page_pid_logger {
-	short pid;
-	short mode;
-};
-
-#ifdef CONFIG_MTK_USE_RESERVED_EXT_MEM
-extern void *extmem_malloc_page_align(size_t bytes);
+#ifndef pr_fmt
+#define pr_fmt(fmt) "[blocktag]" fmt
 #endif
 
-enum {
-	PIDLOG_MODE_BLK_RQ_INSERT   = 0,
-	PIDLOG_MODE_FS_FUSE         = 1,
-	PIDLOG_MODE_FS_WRITE_BEGIN  = 2,
-	PIDLOG_MODE_MM_MARK_DIRTY   = 3
-};
+#include <linux/blk_types.h>
+#include <linux/mmc/core.h>
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_SCSI_UFS_MEDIATEK)
+#include <ufs/ufshcd.h>
+#include "ufs-mediatek.h"
+#endif
 
-enum {
-	BTAG_STORAGE_EMBEDDED = 0,
-	BTAG_STORAGE_EXTERNAL
-};
+#if IS_ENABLED(CONFIG_MTK_BLOCK_IO_TRACER)
 
-enum {
+enum mtk_btag_storage_type {
 	BTAG_STORAGE_UFS     = 0,
 	BTAG_STORAGE_MMC     = 1,
 	BTAG_STORAGE_UNKNOWN = 2
 };
 
-
-struct mtk_btag_workload {
-	__u64 period;  /* period time (ns) */
-	__u64 usage;   /* busy time (ns) */
-	__u32 percent; /* workload */
-	__u32 count;   /* access count */
-};
-
-struct mtk_btag_throughput_rw {
-	__u64 usage;  /* busy time (ns) */
-	__u32 size;   /* transferred bytes */
-	__u32 speed;  /* KB/s */
-};
-
-struct mtk_btag_throughput {
-	struct mtk_btag_throughput_rw r;  /* read */
-	struct mtk_btag_throughput_rw w;  /* write */
-};
-
-struct mtk_btag_req_rw {
-	__u16 count;
-	__u64 size; /* bytes */
-	__u64 size_top; /* bytes */
-};
-
-struct mtk_btag_req {
-	struct mtk_btag_req_rw r; /* read */
-	struct mtk_btag_req_rw w; /* write */
+#define BTAG_NAME_LEN           16
+struct mtk_btag_mictx_id {
+	__u64 id;
+	enum mtk_btag_storage_type storage;
+	char name[BTAG_NAME_LEN];
 };
 
 /*
@@ -105,208 +49,51 @@ struct mtk_btag_mictx_iostat_struct {
 	__u32 reqsize_w; /* request size : write (Bytes) */
 	__u32 reqcnt_r;  /* request count: read */
 	__u32 reqcnt_w;  /* request count: write */
-	__u16 wl;        /* storage device workload (%) */
+	__u16 wl;	/* storage device workload (%) */
 	__u16 top;       /* ratio of request (size) by top-app */
 	__u16 q_depth;   /* storage cmdq queue depth */
 };
 
-/*
- * mini context for integration with
- * other performance analysis tools.
- */
-struct mtk_btag_mictx_struct {
-	struct mtk_btag_throughput tp;
-	struct mtk_btag_req req;
-	__u64 window_begin;
-	__u64 tp_min_time;
-	__u64 tp_max_time;
-	__u64 idle_begin;
-	__u64 idle_begin_top;
-	__u64 idle_total;
-	__u64 weighted_qd;
-	__u32 top_r_pages;
-	__u32 top_w_pages;
-	__u16 q_depth;
-	__u16 q_depth_top;
-	spinlock_t lock;
-	bool enabled;
-	bool boosted;
-	bool earaio_enabled;
-	bool uevt_req;
-	bool uevt_state;
-	struct workqueue_struct *uevt_workq;
-	struct work_struct uevt_work;
-};
-
-struct mtk_btag_vmstat {
-	__u64 file_pages;
-	__u64 file_dirty;
-	__u64 dirtied;
-	__u64 writeback;
-	__u64 written;
-	__u64 fmflt;
-};
-
-struct mtk_btag_pidlogger_entry_rw {
-	__u16 count;
-	__u32 length;
-};
-
-struct mtk_btag_pidlogger_entry {
-	__u16 pid;
-	char comm[TASK_COMM_LEN];
-	struct mtk_btag_pidlogger_entry_rw r; /* read */
-	struct mtk_btag_pidlogger_entry_rw w; /* write */
-};
-
-struct mtk_btag_pidlogger {
-	__u16 current_pid;
-	struct mtk_btag_pidlogger_entry info[BLOCKTAG_PIDLOG_ENTRIES];
-};
-
-struct mtk_btag_cpu {
-	__u64 user;
-	__u64 nice;
-	__u64 system;
-	__u64 idle;
-	__u64 iowait;
-	__u64 irq;
-	__u64 softirq;
-};
-
-/* Trace: entry of the ring buffer */
-struct mtk_btag_trace {
-	uint64_t time;
-	pid_t pid;
-	u32 qid;
-	struct mtk_btag_workload workload;
-	struct mtk_btag_throughput throughput;
-	struct mtk_btag_vmstat vmstat;
-	struct mtk_btag_pidlogger pidlog;
-	struct mtk_btag_cpu cpu;
-};
-
-/* Ring Trace */
-struct mtk_btag_ringtrace {
-	struct mtk_btag_trace *trace;
-	spinlock_t lock;
-	int index;
-	int max;
-};
-
-struct mtk_btag_vops {
-	size_t  (*seq_show)(char **buff, unsigned long *size,
-			    struct seq_file *seq);
-	void    (*mictx_eval_wqd)(struct mtk_btag_mictx_struct *mctx,
-				  u64 t_cur);
-	bool	earaio_enabled;
-};
-
-/* BlockTag */
-struct mtk_blocktag {
-	char name[BLOCKTAG_NAME_LEN];
-	struct mtk_btag_mictx_struct mictx;
-	struct mtk_btag_ringtrace rt;
-
-	struct prbuf_t {
-		spinlock_t lock;
-		char buf[BLOCKTAG_PRINT_LEN];
-	} prbuf;
-
-	/* lock order: ctx.priv->lock => prbuf.lock */
-	struct context_t {
-		int count;
-		int size;
-		void *priv;
-	} ctx;
-
-	struct dentry_t {
-		struct proc_dir_entry *droot;
-		struct proc_dir_entry *dlog;
-		struct proc_dir_entry *dlog_mictx;
-		struct proc_dir_entry *dindex;
-	} dentry;
-
-	struct mtk_btag_vops *vops;
-
-	unsigned int klog_enable;
-	unsigned int used_mem;
-
-	struct list_head list;
-};
-
-struct mtk_blocktag *mtk_btag_alloc(const char *name,
-	unsigned int ringtrace_count, size_t ctx_size, unsigned int ctx_count,
-	struct mtk_btag_vops *vops);
-void mtk_btag_earaio_boost(bool boost);
-void mtk_btag_free(struct mtk_blocktag *btag);
-
-struct mtk_btag_trace *mtk_btag_curr_trace(struct mtk_btag_ringtrace *rt);
-struct mtk_btag_trace *mtk_btag_next_trace(struct mtk_btag_ringtrace *rt);
-
-int mtk_btag_pidlog_add_mmc(struct request_queue *q, pid_t pid, __u32 len,
-	int rw);
-#ifdef CONFIG_MTK_UFS_BLOCK_IO_LOG
-int mtk_btag_pidlog_add_ufs(struct request_queue *q, short pid, __u32 len,
-	int rw);
-#else
-#define mtk_btag_pidlog_add_ufs(...)
-#endif
-void mtk_btag_pidlog_insert(struct mtk_btag_pidlogger *pidlog, pid_t pid,
-__u32 len, int rw);
-void mtk_mq_btag_pidlog_insert(struct mtk_btag_pidlogger *pidlog, pid_t pid,
-	__u32 len, int write, bool ext_sd);
-void mtk_btag_cpu_eval(struct mtk_btag_cpu *cpu);
-void mtk_btag_pidlog_eval(struct mtk_btag_pidlogger *pl,
-	struct mtk_btag_pidlogger *ctx_pl);
-void mtk_btag_throughput_eval(struct mtk_btag_throughput *tp);
-void mtk_btag_vmstat_eval(struct mtk_btag_vmstat *vm);
-
-void mtk_btag_task_timetag(char *buf, unsigned int len, unsigned int stage,
-	unsigned int max, const char *name[], uint64_t *t, __u32 bytes);
-void mtk_btag_klog(struct mtk_blocktag *btag, struct mtk_btag_trace *tr);
-
-void mtk_btag_pidlog_map_sg(struct request_queue *q, struct bio *bio,
-	struct bio_vec *bvec);
-void mtk_btag_pidlog_copy_pid(struct page *src, struct page *dst);
-int mtk_btag_pidlog_get_mode(struct page *p);
-void mtk_btag_pidlog_submit_bio(struct bio *bio);
-void mtk_btag_pidlog_set_pid(struct page *p, int mode, bool write);
-void mtk_btag_pidlog_set_pid_pages(struct page **page, int page_cnt,
-				   int mode, bool write);
-
-
-void mtk_btag_mictx_enable(int enable);
-void mtk_btag_mictx_eval_tp(
-	struct mtk_blocktag *btag,
-	unsigned int rw, __u64 usage, __u32 size);
-void mtk_btag_mictx_eval_req(
-	struct mtk_blocktag *btag,
-	unsigned int rw, __u32 cnt, __u32 size, bool top);
 int mtk_btag_mictx_get_data(
+	struct mtk_btag_mictx_id mictx_id,
 	struct mtk_btag_mictx_iostat_struct *iostat);
-void mtk_btag_mictx_update_ctx(struct mtk_blocktag *btag, __u32 q_depth);
+int mtk_btag_mictx_enable(struct mtk_btag_mictx_id *mictx_id, bool enable);
 
-void rs_index_init(struct mtk_blocktag *btag,
-		   struct proc_dir_entry *parent);
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_SCSI_UFS_MEDIATEK)
+struct mtk_blocktag *mtk_btag_ufs_init(struct ufs_mtk_host *host,
+				       __u32 nr_queue, __u32 tag_per_queue);
+void mtk_btag_ufs_exit(struct mtk_blocktag *btag);
+void mtk_btag_ufs_send_command(struct mtk_blocktag *btag, __u16 tid, __u16 qid,
+			       struct scsi_cmnd *cmd);
+void mtk_btag_ufs_transfer_req_compl(struct mtk_blocktag *btag, __u16 tid,
+				     __u16 qid);
+#endif
+
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MMC_MTK_PRO)
+int mmc_mtk_biolog_init(struct mmc_host *mmc);
+int mmc_mtk_biolog_exit(void);
+void mmc_mtk_biolog_send_command(__u16 task_id, struct mmc_request *mrq);
+void mmc_mtk_biolog_transfer_req_compl(struct mmc_host *mmc,
+				       __u16 task_id,
+				       unsigned long req_mask);
+void mmc_mtk_biolog_check(struct mmc_host *mmc, unsigned long req_mask);
+#endif
 
 #else
 
-#define mtk_btag_pidlog_copy_pid(...)
-#define mtk_btag_pidlog_map_sg(...)
-#define mtk_btag_pidlog_submit_bio(...)
-#define mtk_btag_pidlog_set_pid(...)
-#define mtk_btag_pidlog_set_pid_pages(...)
-
-#define mtk_btag_mictx_enable(...)
-#define mtk_btag_mictx_eval_tp(...)
-#define mtk_btag_mictx_eval_req(...)
 #define mtk_btag_mictx_get_data(...)
-#define mtk_btag_mictx_update_ctx(...)
+#define mtk_btag_mictx_enable(...)
 
-#define rs_index_init(...)
+#define mtk_btag_ufs_init(...)
+#define mtk_btag_ufs_exit(...)
+#define mtk_btag_ufs_send_command(...)
+#define mtk_btag_ufs_transfer_req_compl(...)
+
+#define mmc_mtk_biolog_send_command(...)
+#define mmc_mtk_biolog_transfer_req_compl(...)
+#define mmc_mtk_biolog_init(...)
+#define mmc_mtk_biolog_exit(...)
+#define mmc_mtk_biolog_check(...)
 
 #endif
-
 #endif
-

@@ -42,7 +42,7 @@
 /* if need assert , use AUDIO_ASSERT(true) */
 #define AUDIO_ASSERT(value) WARN_ON(value)
 
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 #define AUDIO_AEE(message)                                                     \
 	(aee_kernel_exception_api(__FILE__, __LINE__, DB_OPT_FTRACE, message,  \
 				  "audio dump ftrace"))
@@ -95,6 +95,7 @@
 #define MT_SOC_DL1DAI_NAME "mt-soc-dl1dai-driver"
 #define MT_SOC_DL2DAI_NAME "mt-soc-dl2dai-driver"
 #define MT_SOC_EXTSPKDAI_NAME "mt-soc-extspkdai-driver"
+#define MT_SOC_I2SSPKDAI_NAME "mt-soc-i2sspkdai-driver"
 #define MT_SOC_DL1DATA2DAI_NAME "mt-soc-dl1data2dai-driver"
 #define MT_SOC_UL1DAI_NAME "mt-soc-ul1dai-driver"
 #define MT_SOC_UL1DATA2_NAME "mt-soc-ul1data2dai-driver"

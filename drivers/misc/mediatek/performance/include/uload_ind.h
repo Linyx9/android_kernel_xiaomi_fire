@@ -2,10 +2,11 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
+
 #ifndef DURASPEED_IND_H
 #define DURASPEED_IND_H
 
-#ifdef CONFIG_MTK_LOAD_TRACKER
+#if IS_ENABLED(CONFIG_MTK_LOAD_TRACKER)
 
 extern int init_uload_ind(struct proc_dir_entry *parent);
 

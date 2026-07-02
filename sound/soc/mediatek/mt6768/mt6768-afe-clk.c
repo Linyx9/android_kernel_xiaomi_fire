@@ -11,8 +11,9 @@
 
 #include "mt6768-afe-common.h"
 #include "mt6768-afe-clk.h"
+#include "mtk_spm_sleep.h"
 
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if !defined(FPGA_EARLY_PORTING)
 #include <mtk_idle.h>
 #include <mtk_spm_resource_req.h>
 #endif
@@ -395,7 +396,7 @@ int mt6768_afe_dram_request(struct device *dev)
 		 __func__, afe_priv->dram_resource_counter);
 
 	mutex_lock(&mutex_request_dram);
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if !defined(FPGA_EARLY_PORTING)
 	if (afe_priv->dram_resource_counter == 0)
 		spm_resource_req(SPM_RESOURCE_USER_AUDIO, SPM_RESOURCE_ALL);
 #endif
@@ -414,7 +415,7 @@ int mt6768_afe_dram_release(struct device *dev)
 
 	mutex_lock(&mutex_request_dram);
 	afe_priv->dram_resource_counter--;
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if !defined(FPGA_EARLY_PORTING)
 	if (afe_priv->dram_resource_counter == 0)
 		spm_resource_req(SPM_RESOURCE_USER_AUDIO, SPM_RESOURCE_RELEASE);
 #endif
@@ -671,7 +672,7 @@ void mt6768_mck_disable(struct mtk_base_afe *afe, int mck_id)
 		clk_disable_unprepare(afe_priv->clk[m_sel_id]);
 }
 
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if !defined(FPGA_EARLY_PORTING)
 enum {
 	aud_intbus_sel_26m = 0,
 	aud_intbus_sel_syspll_d1_d4,
@@ -742,8 +743,10 @@ int mt6768_init_clock(struct mtk_base_afe *afe)
 		return PTR_ERR(afe_priv->topckgen);
 	}
 
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if !defined(FPGA_EARLY_PORTING)
 	mtk_idle_notifier_register(&mt6768_afe_idle_nfb);
+	/* callback for spm fm is playing */
+	RegisterConditionEnterSuspend(mtk_audio_condition_enter_suspend);
 #endif
 
 	return 0;

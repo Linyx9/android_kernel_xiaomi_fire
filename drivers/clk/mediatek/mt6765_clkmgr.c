@@ -372,12 +372,10 @@ static int univpll_speed_dump_read(struct seq_file *m, void *v)
 /************ L ********************/
 static int proc_armpll1_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
-
 	return single_open(file, armpll1_fsel_read, NULL);
 }
 
-static const struct file_operations armpll1_fsel_proc_fops = {
+static const struct file_operations armpll1_fsel_proc_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_armpll1_fsel_open,
 	.read = seq_read,
@@ -387,12 +385,11 @@ static const struct file_operations armpll1_fsel_proc_fops = {
 /************ LL ********************/
 static int proc_armpll2_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
 
 	return single_open(file, armpll2_fsel_read, NULL);
 }
 
-static const struct file_operations armpll2_fsel_proc_fops = {
+static const struct file_operations armpll2_fsel_proc_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_armpll2_fsel_open,
 	.read = seq_read,
@@ -402,12 +399,11 @@ static const struct file_operations armpll2_fsel_proc_fops = {
 /************ CCI ********************/
 static int proc_ccipll_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
 
 	return single_open(file, ccipll_fsel_read, NULL);
 }
 
-static const struct file_operations ccipll_fsel_proc_fops = {
+static const struct file_operations ccipll_fsel_proc_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_ccipll_fsel_open,
 	.read = seq_read,
@@ -417,12 +413,11 @@ static const struct file_operations ccipll_fsel_proc_fops = {
 /************ MM ********************/
 static int proc_mmpll_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
 
 	return single_open(file, mmpll_fsel_read, NULL);
 }
 
-static const struct file_operations mmpll_fsel_proc_fops = {
+static const struct file_operations mmpll_fsel_proc_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_mmpll_fsel_open,
 	.read = seq_read,
@@ -432,12 +427,11 @@ static const struct file_operations mmpll_fsel_proc_fops = {
 /************ GPU ********************/
 static int proc_gpupll_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
 
 	return single_open(file, gpupll_fsel_read, NULL);
 }
 
-static const struct file_operations gpupll_fsel_proc_fops = {
+static const struct file_operations gpupll_fsel_proc_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_gpupll_fsel_open,
 	.read = seq_read,
@@ -450,7 +444,7 @@ static int proc_mm_clk_open(struct inode *inode, struct file *file)
 	return single_open(file, mm_clk_speed_dump_read, NULL);
 }
 
-static const struct file_operations mm_fops = {
+static const struct file_operations mm_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_mm_clk_open,
 	.read = seq_read,
@@ -461,7 +455,7 @@ static int proc_gpupll_open(struct inode *inode, struct file *file)
 	return single_open(file, gpupll_speed_dump_read, NULL);
 }
 
-static const struct file_operations gpu_fops = {
+static const struct file_operations gpu_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_gpupll_open,
 	.read = seq_read,
@@ -472,60 +466,12 @@ static int proc_univpll_open(struct inode *inode, struct file *file)
 	return single_open(file, univpll_speed_dump_read, NULL);
 }
 
-static const struct file_operations univ_fops = {
+static const struct file_operations univ_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_univpll_open,
 	.read = seq_read,
 };
 
-void mt_clkmgr_debug_init(void)
-{
-/*use proc_create*/
-	struct proc_dir_entry *entry;
-	struct proc_dir_entry *clkmgr_dir;
-
-	clkmgr_dir = proc_mkdir("clkmgr", NULL);
-	if (!clkmgr_dir) {
-		pr_info("[%s]: fail to mkdir /proc/clkmgr\n", __func__);
-		return;
-	}
-	entry =
-	    proc_create("armpll1_fsel", 0664, clkmgr_dir,
-			&armpll1_fsel_proc_fops);
-	entry =
-	    proc_create("armpll2_fsel", 0664, clkmgr_dir,
-			&armpll2_fsel_proc_fops);
-	entry =
-	    proc_create("ccipll_fsel", 0664, clkmgr_dir,
-			&ccipll_fsel_proc_fops);
-	entry =
-	    proc_create("mmpll_fsel", 0664, clkmgr_dir,
-			&mmpll_fsel_proc_fops);
-	entry =
-	    proc_create("gpupll_fsel", 0664, clkmgr_dir,
-			&gpupll_fsel_proc_fops);
-	entry =
-	    proc_create("mm_speed_dump", 0444, clkmgr_dir,
-			&mm_fops);
-	entry =
-	    proc_create("gpu_speed_dump", 0444, clkmgr_dir,
-			&gpu_fops);
-	entry =
-	    proc_create("univpll_speed_dump", 0444, clkmgr_dir,
-			&univ_fops);
-}
-
-/*move to other place*/
-int univpll_is_used(void)
-{
-	/*
-	 * 0: univpll is not used, sspm can disable
-	 * 1: univpll is used, sspm cannot disable
-	 */
-	struct clk *c = __clk_lookup("univpll");
-
-	return __clk_get_enable_count(c);
-}
 
 #ifdef CONFIG_OF
 void iomap(void)
@@ -555,8 +501,10 @@ void iomap(void)
 static int mt_clkmgr_debug_module_init(void)
 {
 	iomap();
-	mt_clkmgr_debug_init();
+	// mt_clkmgr_debug_init(); //TODO
 	return 0;
 }
 
 module_init(mt_clkmgr_debug_module_init);
+
+MODULE_LICENSE("GPL");

@@ -261,7 +261,7 @@ struct sensor_fifo {
 	uint32_t wp;
 	uint32_t fifo_size;
 	uint32_t reserve;
-	struct data_unit_t data[0];
+	struct data_unit_t data[];
 };
 
 struct SCP_SENSOR_HUB_REQ {
@@ -315,9 +315,9 @@ struct SCP_SENSOR_HUB_GET_DATA_RSP {
 	uint8_t reserve[1];
 	/* struct data_unit_t data_t; */
 	union {
-		int8_t int8_Data[0];
-		int16_t int16_Data[0];
-		int32_t int32_Data[0];
+		int8_t int8_Data[SCP_SENSOR_HUB_AXES_NUM];
+		int16_t int16_Data[SCP_SENSOR_HUB_AXES_NUM];
+		int32_t int32_Data[SCP_SENSOR_HUB_AXES_NUM];
 	} data;
 };
 
@@ -370,7 +370,7 @@ struct SCP_SENSOR_HUB_CUST {
 
 struct SCP_SENSOR_HUB_SET_CUST {
 	enum CUST_ACTION action;
-	int32_t data[0];
+	int32_t data[];
 };
 
 struct SCP_SENSOR_HUB_SET_TRACE {
@@ -391,11 +391,11 @@ struct SCP_SENSOR_HUB_SET_FACTORY {
 struct SCP_SENSOR_HUB_SET_CALI {
 	enum CUST_ACTION action;
 	union {
-		int8_t int8_data[0];
-		uint8_t uint8_data[0];
-		int16_t int16_data[0];
-		uint16_t uint16_data[0];
-		int32_t int32_data[0];
+		int8_t int8_data[SCP_SENSOR_HUB_AXES_NUM];
+		uint8_t uint8_data[SCP_SENSOR_HUB_AXES_NUM];
+		int16_t int16_data[SCP_SENSOR_HUB_AXES_NUM];
+		uint16_t uint16_data[SCP_SENSOR_HUB_AXES_NUM];
+		int32_t int32_data[SCP_SENSOR_HUB_AXES_NUM];
 		uint32_t uint32_data[SCP_SENSOR_HUB_AXES_NUM];
 	};
 };
@@ -420,11 +420,11 @@ struct SCP_SENSOR_HUB_SETPS_THRESHOLD {
 struct SCP_SENSOR_HUB_GET_RAW_DATA {
 	enum CUST_ACTION action;
 	union {
-		int8_t int8_data[0];
-		uint8_t uint8_data[0];
-		int16_t int16_data[0];
-		uint16_t uint16_data[0];
-		int32_t int32_data[0];
+		int8_t int8_data[SCP_SENSOR_HUB_AXES_NUM];
+		uint8_t uint8_data[SCP_SENSOR_HUB_AXES_NUM];
+		int16_t int16_data[SCP_SENSOR_HUB_AXES_NUM];
+		uint16_t uint16_data[SCP_SENSOR_HUB_AXES_NUM];
+		int32_t int32_data[SCP_SENSOR_HUB_AXES_NUM];
 		uint32_t uint32_data[SCP_SENSOR_HUB_AXES_NUM];
 	};
 };
@@ -443,7 +443,7 @@ struct sensorInfo_t {
 struct scp_sensor_hub_get_sensor_info {
 	enum CUST_ACTION action;
 	union {
-		int32_t int32_data[0];
+		int32_t int32_data[SCP_SENSOR_HUB_AXES_NUM];
 		struct sensorInfo_t sensorInfo;
 	};
 };
@@ -493,9 +493,9 @@ struct SCP_SENSOR_HUB_NOTIFY_RSP {
 	uint8_t event;
 	uint8_t reserve[1];
 	union {
-		int8_t		int8_Data[0];
-		int16_t		int16_Data[0];
-		int32_t		int32_Data[0];
+		int8_t		int8_Data[SCP_SENSOR_HUB_AXES_NUM];
+		int16_t		int16_Data[SCP_SENSOR_HUB_AXES_NUM];
+		int32_t		int32_Data[SCP_SENSOR_HUB_AXES_NUM];
 		struct {
 			uint32_t	currWp;
 			uint64_t	scp_timestamp;

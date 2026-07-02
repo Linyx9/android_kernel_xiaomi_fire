@@ -31,7 +31,7 @@
  */
 static kuid_t uid = KUIDT_INIT(0);
 static kgid_t gid = KGIDT_INIT(1000);
-static DEFINE_SEMAPHORE(sem_mutex);
+static DEFINE_SEMAPHORE(sem_mutex, 1);
 static int isTimerCancelled;
 
 /**
@@ -46,7 +46,7 @@ static int polling_factor1 = 5000;
 static int polling_factor2 = 10000;
 
 static unsigned int interval;	/* seconds, 0 : no auto polling */
-static unsigned int trip_temp[10] = { 136000, 110000, 100000, 90000, 80000,
+static unsigned int trip_temp[10] = { 120000, 110000, 100000, 90000, 80000,
 					70000, 65000, 60000, 55000, 50000 };
 
 static unsigned int cl_dev_sysrst_state;
@@ -56,9 +56,10 @@ static struct thermal_cooling_device *cl_dev_sysrst;
 static int kernelmode;
 
 static int g_THERMAL_TRIP[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static struct thermal_trip trips[10];
 
-static int num_trip = 1;
-static char g_bind0[20] = "mtktspmic-sysrst";
+static int num_trip;
+static char g_bind0[20] = { 0 };
 static char g_bind1[20] = { 0 };
 static char g_bind2[20] = { 0 };
 static char g_bind3[20] = { 0 };
@@ -69,9 +70,9 @@ static char g_bind7[20] = { 0 };
 static char g_bind8[20] = { 0 };
 static char g_bind9[20] = { 0 };
 
-static long int mtktspmic_cur_temp;
-static long int mtktspmic_start_temp;
-static long int mtktspmic_end_temp;
+static long mtktspmic_cur_temp;
+static long mtktspmic_start_temp;
+static long mtktspmic_end_temp;
 /*=============================================================*/
 
 static int mtktspmic_get_temp(struct thermal_zone_device *thermal, int *t)
@@ -80,11 +81,11 @@ static int mtktspmic_get_temp(struct thermal_zone_device *thermal, int *t)
 	mtktspmic_cur_temp = *t;
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -186,31 +187,10 @@ static int mtktspmic_unbind(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-static int mtktspmic_get_mode(
-struct thermal_zone_device *thermal, enum thermal_device_mode *mode)
-{
-	*mode = (kernelmode) ? THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
-	return 0;
-}
-
-static int mtktspmic_set_mode(
+static int mtktspmic_change_mode(
 struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 {
 	kernelmode = mode;
-	return 0;
-}
-
-static int mtktspmic_get_trip_type(
-struct thermal_zone_device *thermal, int trip, enum thermal_trip_type *type)
-{
-	*type = g_THERMAL_TRIP[trip];
-	return 0;
-}
-
-static int mtktspmic_get_trip_temp(
-struct thermal_zone_device *thermal, int trip, int *temp)
-{
-	*temp = trip_temp[trip];
 	return 0;
 }
 
@@ -226,10 +206,7 @@ static struct thermal_zone_device_ops mtktspmic_dev_ops = {
 	.bind = mtktspmic_bind,
 	.unbind = mtktspmic_unbind,
 	.get_temp = mtktspmic_get_temp,
-	.get_mode = mtktspmic_get_mode,
-	.set_mode = mtktspmic_set_mode,
-	.get_trip_type = mtktspmic_get_trip_type,
-	.get_trip_temp = mtktspmic_get_trip_temp,
+	.change_mode = mtktspmic_change_mode,
 	.get_crit_temp = mtktspmic_get_crit_temp,
 };
 
@@ -260,7 +237,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 
 	}
 	return 0;
@@ -376,7 +353,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		mtktspmic_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtktspmic_write",
 					"Bad argument");
@@ -453,6 +430,11 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		mtktspmic_dprintk(
 			"[%s] mtktspmic_register_thermal\n", __func__);
 
+		for (i = 0; i < num_trip; i++) {
+			trips[i].temperature = trip_temp[i];
+			trips[i].type = g_THERMAL_TRIP[i];
+		}
+
 		mtktspmic_register_thermal();
 		up(&sem_mutex);
 		kfree(ptr_mtktspmic_data);
@@ -460,7 +442,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 	}
 
 	mtktspmic_dprintk("[%s] bad argument\n", __func__);
-    #ifdef CONFIG_MTK_AEE_FEATURE
+    #if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 							"mtktspmic_write",
 							"Bad argument");
@@ -523,7 +505,7 @@ static int mtktspmic_register_thermal(void)
 	mtktspmic_dprintk("[%s]\n", __func__);
 
 	/* trips : trip 0~2 */
-	thz_dev = mtk_thermal_zone_device_register("mtktspmic", num_trip, NULL,
+	thz_dev = mtk_thermal_zone_device_register("mtktspmic", trips, num_trip, NULL,
 						&mtktspmic_dev_ops, 0, 0, 0,
 						interval * 1000);
 
@@ -553,13 +535,12 @@ static int mtktspmic_open(struct inode *inode, struct file *file)
 	return single_open(file, mtktspmic_read, NULL);
 }
 
-static const struct file_operations mtktspmic_fops = {
-	.owner = THIS_MODULE,
-	.open = mtktspmic_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtktspmic_write,
-	.release = single_release,
+static const struct proc_ops mtktspmic_fops = {
+	.proc_open = mtktspmic_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtktspmic_write,
+	.proc_release = single_release,
 };
 
 
@@ -602,13 +583,12 @@ static int mtktspmic_open_log(struct inode *inode, struct file *file)
 	return single_open(file, mtktspmic_read_log, NULL);
 }
 
-static const struct file_operations mtktspmic_log_fops = {
-	.owner = THIS_MODULE,
-	.open = mtktspmic_open_log,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtktspmic_write_log,
-	.release = single_release,
+static const struct proc_ops mtktspmic_log_fops = {
+	.proc_open = mtktspmic_open_log,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtktspmic_write_log,
+	.proc_release = single_release,
 };
 
 static int mtktspmic_read_ate(struct seq_file *m, void *v)
@@ -658,23 +638,24 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 	return -EINVAL;
 }
 
-static const struct file_operations mtktspmic_ate_fops = {
-	.owner = THIS_MODULE,
-	.open = mtktspmic_open_ate,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtktspmic_write_ate,
-	.release = single_release,
+static const struct proc_ops mtktspmic_ate_fops = {
+	.proc_open = mtktspmic_open_ate,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtktspmic_write_ate,
+	.proc_release = single_release,
 };
+
 static int mtk_ts_pmic_probe(struct platform_device *pdev)
 {
 	int err = 0;
+	int i = 0;
 	struct proc_dir_entry *entry = NULL;
 	struct proc_dir_entry *mtktspmic_dir = NULL;
 	struct mt6397_chip *chip;
 
-	mtktspmic_debug_log = 1;
-
+//	mtktspmic_debug_log = 1;
+//	mtktspmic_info("[%s]\n", __func__);
 	chip = (struct mt6397_chip *)dev_get_drvdata(pdev->dev.parent);
 	mtktspmic_info("[%s]\n", __func__);
 
@@ -691,28 +672,27 @@ static int mtk_ts_pmic_probe(struct platform_device *pdev)
 	 *	mtktspmic_info("[mtktspmic_init]: Warrning !!!"
 	 *				"Need to checking this !!!!!\n");
 	 */
-#if (defined(CONFIG_MACH_MT6739)  \
-	|| defined(CONFIG_MACH_MT6877) \
-	|| defined(CONFIG_MACH_MT6853)    \
-	|| defined(CONFIG_MACH_MT6873)    \
-	|| defined(CONFIG_MACH_MT6893))
-	mtktspmic_cali_prepare();
-#else
+
+	if (chip == NULL)
+		return 0;
 	mtktspmic_cali_prepare(chip->regmap);
-#endif
 	mtktspmic_cali_prepare2();
+
 #if defined(THERMAL_USE_IIO_CHANNEL)
-#if defined(CONFIG_MACH_MT6785)
-	if(!mtktspmic_get_from_dts(pdev))
-		return -EPROBE_DEFER;
-#else
-	mtktspmic_get_from_dts(pdev);
-#endif
+	err = mtktspmic_get_from_dts(pdev);
+	if (err)
+		return err;
 #endif
 
 	err = mtktspmic_register_cooler();
 	if (err)
 		return err;
+
+	for (i = 0; i < num_trip; i++) {
+		trips[i].temperature = trip_temp[i];
+		trips[i].type = g_THERMAL_TRIP[i];
+	}
+
 	err = mtktspmic_register_thermal();
 	if (err)
 		goto err_unreg;
@@ -751,8 +731,6 @@ static const struct of_device_id mtk_ts_pmic_of_match[] = {
 	{.compatible = "mediatek,mtk_ts_pmic",},
 	{},
 };
-
-
 MODULE_DEVICE_TABLE(of, mtk_ts_pmic_of_match);
 
 static struct platform_driver mtk_ts_pmic_driver = {
@@ -763,13 +741,19 @@ static struct platform_driver mtk_ts_pmic_driver = {
 		},
 };
 
-static int __init mtktspmic_init(void)
+int mtktspmic_init(void)
 {
+	int ret;
+
 	mtktspmic_info("[%s:%d]\n", __func__, __LINE__);
-	return platform_driver_register(&mtk_ts_pmic_driver);
+	ret = platform_driver_register(&mtk_ts_pmic_driver);
+
+	mtktspmic_info("[%s], ret=%d", __func__, ret);
+
+	return 0;
 }
 
-static void __exit mtktspmic_exit(void)
+void  mtktspmic_exit(void)
 {
 	mtktspmic_info("[%s]\n", __func__);
 	mtktspmic_unregister_thermal();
@@ -777,8 +761,8 @@ static void __exit mtktspmic_exit(void)
 	mtkTTimer_unregister("mtktspmic");
 	platform_driver_unregister(&mtk_ts_pmic_driver);
 }
-module_init(mtktspmic_init);
-module_exit(mtktspmic_exit);
+//module_init(mtktspmic_init);
+//module_exit(mtktspmic_exit);
 
 MODULE_DESCRIPTION("MEDIATEK Thermal zone PMIC temperature sensor");
 MODULE_LICENSE("GPL v2");

@@ -1,88 +1,60 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2020 MediaTek Inc.
  */
 
+#ifndef _IRQ_MON_INT_H
+#define _IRQ_MON_INT_H
+
 /* common and private utility for mtprof */
-#include <linux/seq_file.h>
-#include <linux/sched.h>
-
-#define SEQ_printf(m, x...)	    \
-	do {			    \
-		if (m)		    \
-			seq_printf(m, x);	\
-		else		    \
-			pr_info(x);	    \
-	} while (0)
-
-#define MT_DEBUG_ENTRY(name) \
-void mt_##name##_switch(int on); \
-static int mt_##name##_show(struct seq_file *m, void *v);\
-static ssize_t mt_##name##_write(struct file *filp, const char *ubuf, \
-					size_t cnt, loff_t *data);\
-static int mt_##name##_open(struct inode *inode, struct file *file) \
-{ \
-	return single_open(file, mt_##name##_show, inode->i_private); \
-} \
-static const struct file_operations mt_##name##_fops = { \
-	.open = mt_##name##_open, \
-	.write = mt_##name##_write, \
-	.read = seq_read, \
-	.llseek = seq_lseek, \
-	.release = single_release, \
-}
-
-#define DEFINE_SCHED_MON_OPS(param, type, min, max) \
-static ssize_t sched_mon_##param##_write(struct file *filp, \
-	const char *ubuf, size_t count, loff_t *data) \
-{ \
-	char buf[32]; \
-	unsigned int val = 0; \
-				\
-	if (!sched_mon_door) \
-		return -EPERM; \
-						\
-	if (count >= sizeof(buf) || count < 1) \
-		return -EINVAL; \
-						\
-	if (copy_from_user(&buf, ubuf, count)) \
-		return -EFAULT; \
-					\
-	buf[count] = 0; \
-	if (kstrtouint(buf, 10, &val))	 \
-		return -EINVAL; \
-					\
-	if (val < min || val > max) \
-		return -EINVAL; \
-						\
-	param = (type)val; \
-					\
-	return count; \
-} \
-static int sched_mon_##param##_show(struct seq_file *s, void *p) \
-{ \
-	seq_printf(s, "%d\n", param); \
-	return 0; \
-} \
-static int sched_mon_##param##_open(struct inode *inode, struct file *file) \
-{ \
-	return single_open(file, sched_mon_##param##_show, inode->i_private); \
-} \
-static const struct file_operations sched_mon_##param##_fops = { \
-	.open = sched_mon_##param##_open, \
-	.write = sched_mon_##param##_write, \
-	.read = seq_read, \
-	.llseek = seq_lseek, \
-	.release = single_release, \
-}
-
-/* for bootprof.c */
-unsigned int gpt_boot_time(void);
-
 long long msec_high(unsigned long long nsec);
 unsigned long msec_low(unsigned long long nsec);
 long long usec_high(unsigned long long nsec);
 long long sec_high(unsigned long long nsec);
 unsigned long sec_low(unsigned long long nsec);
 
-void mt_sched_monitor_test_init(struct proc_dir_entry *dir);
+void mt_irq_monitor_test_init(struct proc_dir_entry *dir);
+
+// irq count tracer
+int irq_count_tracer_init(void);
+void irq_count_tracer_exit(void);
+const char *irq_to_name(int irq);
+const void *irq_to_handler(int irq);
+const int irq_to_ipi_type(unsigned int irq);
+void show_irq_count_info(unsigned int output);
+void irq_count_tracer_set(bool val);
+void irq_count_tracer_proc_init(struct proc_dir_entry *parent);
+void irq_mon_account_irq_time(u64 time, int irq);
+
+#define TO_FTRACE     BIT(0)
+#define TO_KERNEL_LOG BIT(1)
+#define TO_AEE        BIT(2)
+#define TO_SRAM       BIT(3)
+#define TO_BOTH       (TO_FTRACE | TO_KERNEL_LOG)
+
+#define MAX_MSG_LEN 160
+
+void irq_mon_msg(unsigned int out, char *buf, ...);
+
+// proc
+int irq_mon_bool_open(struct inode *inode, struct file *file);
+ssize_t irq_mon_count_set(struct file *filp,
+			  const char *ubuf, size_t count, loff_t *data);
+bool irq_mon_aee_debounce_check(bool update);
+
+extern const struct proc_ops irq_mon_uint_pops;
+
+#define IRQ_MON_TRACER_PROC_ENTRY(name, mode, type, dir, ptr) \
+	proc_create_data(#name, mode, dir, &irq_mon_##type##_pops, (void *)ptr)
+
+/*
+ * irq_monitor_log.c
+ */
+void irq_log_start(void);
+void irq_log_end(void);
+void irq_log_dump(unsigned int out, u64 start, u64 end);
+void irq_log_exit(void);
+int irq_log_init(void);
+
+#endif
+

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
 /* id	HW_OP     MASK_EN     cycle   name */
 DECLARE_CMDQ_INSTR_CYCLE(CMDQ_STA_WRI, CMDQ_CODE_WRITE, 4, WRI)

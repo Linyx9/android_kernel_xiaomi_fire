@@ -7,6 +7,7 @@
 #define _FLASHLIGHT_CORE_H
 
 #include <linux/list.h>
+#include <linux/thermal.h>
 #include "flashlight.h"
 
 /* protocol version */
@@ -27,6 +28,17 @@
 #define FLASHLIGHT_SW_DISABLE_STATUS_BUF_SIZE \
 	(FLASHLIGHT_TYPE_MAX * FLASHLIGHT_CT_MAX * FLASHLIGHT_PART_MAX * \
 	 FLASHLIGHT_SW_DISABLE_STATUS_TMPBUF_SIZE + 1)
+
+/* sysfs - torch status */
+#define FLASHLIGHT_TORCH_NUM    4
+#define FLASHLIGHT_TORCH_TYPE   0
+#define FLASHLIGHT_TORCH_CT     1
+#define FLASHLIGHT_TORCH_PART   2
+#define FLASHLIGHT_TORCH_STATUS 3
+#define FLASHLIGHT_TORCH_STATUS_TMPBUF_SIZE 9
+#define FLASHLIGHT_TORCH_STATUS_BUF_SIZE \
+	(FLASHLIGHT_TYPE_MAX * FLASHLIGHT_CT_MAX * FLASHLIGHT_PART_MAX * \
+	 FLASHLIGHT_TORCH_STATUS_TMPBUF_SIZE + 1)
 
 /* sysfs - charger status */
 #define FLASHLIGHT_CHARGER_NUM    4
@@ -102,17 +114,26 @@ struct flashlight_dev {
 	int low_pt_level;
 	int charger_status;
 	int sw_disable_status;
-/* +POWER, 20230110, ADD, [thermal]config thermal framework for flashing */
-	int need_cooler;
-	int cooler_level;
-/* -POWER, 20230110, ADD, [thermal]config thermal framework for flashing */
+	int torch_status;
+	unsigned int cur_mW;
 };
 
 /* device arguments */
 struct flashlight_dev_arg {
 	int channel;
 	int arg;
+	unsigned char addr;
+	unsigned char data;
 };
+
+#if IS_ENABLED(CONFIG_MTK_FLASHLIGHT_THERMAL)
+#define FLASHLIGHT_COOLER_MAX_STATE 4
+struct flashlight_cooling_device {
+	unsigned long target_state;
+	unsigned long max_state;
+	struct thermal_cooling_device *cdev;
+};
+#endif
 
 /* device operations */
 struct flashlight_operations {
@@ -131,11 +152,6 @@ int flashlight_dev_register_by_device_id(
 		struct flashlight_device_id *dev_id,
 		struct flashlight_operations *dev_ops);
 int flashlight_dev_unregister_by_device_id(struct flashlight_device_id *dev_id);
-
-/* +POWER, 20230110, ADD, [thermal]config thermal framework for flashing */
-int flashlight_get_max_duty(void);
-int flashlight_set_cooler_level(int level);
-/* -POWER, 20230110, ADD, [thermal]config thermal framework for flashing */
 
 /* get id and index */
 int flashlight_get_type_id(int type_index);
@@ -156,6 +172,9 @@ int flashlight_pt_is_low(void);
 #endif
 #ifdef CONFIG_MTK_FLASHLIGHT_DLPT
 void flashlight_kicker_pbm(bool status);
+void flashlight_kicker_pbm_by_device_id(
+		struct flashlight_device_id *dev_id,
+		unsigned int cur_mW);
 #endif
 
 #endif /* _FLASHLIGHT_CORE_H */

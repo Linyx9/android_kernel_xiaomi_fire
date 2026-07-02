@@ -12,12 +12,14 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/task.h>
 #include <linux/sched/cputime.h>
+#include <linux/kernel.h>
+#include <linux/tracepoint.h>
 
-#include <trace/events/fpsgo.h>
 #include <mt-plat/fpsgo_common.h>
 
 #include "fpsgo_base.h"
 #include "fpsgo_sysfs.h"
+#include "fpsgo_trace_event.h"
 #include "fbt_cpu.h"
 #include "fstb.h"
 #include "xgf.h"
@@ -64,12 +66,15 @@ static void minitop_trace(const char *fmt, ...)
 	va_list args;
 	int len;
 
+	if (!trace_minitop_trace_enabled())
+		return;
+
 	va_start(args, fmt);
 	len = vsnprintf(log, sizeof(log), fmt, args);
 	if (unlikely(len == 256))
 		log[255] = '\0';
 	va_end(args);
-	trace_minitop_log(log);
+	trace_minitop_trace(log);
 }
 
 static int __util_cmp(const void *a, const void *b)
@@ -120,7 +125,7 @@ void getMaxTaskUtil(int tasks[], int utils[])
 
 	for_each_possible_cpu(cpu) {
 
-		raw_spin_lock_irqsave(&cpu_rq(cpu)->lock, flags);
+		raw_spin_lock_irqsave(&cpu_rq(cpu)->__lock, flags);
 		utils[cpu] = 0;
 		min_utils = 0;
 		list_for_each_entry(p, &cpu_rq(cpu)->cfs_tasks, se.group_node) {
@@ -131,7 +136,7 @@ void getMaxTaskUtil(int tasks[], int utils[])
 				min_utils = task_util;
 			}
 		}
-		raw_spin_unlock_irqrestore(&cpu_rq(cpu)->lock, flags);
+		raw_spin_unlock_irqrestore(&cpu_rq(cpu)->__lock, flags);
 	}
 }
 
@@ -309,7 +314,7 @@ static int __get_runtime(pid_t tid, u64 *runtime)
 	get_task_struct(p);
 	rcu_read_unlock();
 
-	*runtime = (u64)task_sched_runtime(p);
+	*runtime = (u64)fpsgo_task_sched_runtime(p);
 	put_task_struct(p);
 
 	return 0;
@@ -525,10 +530,10 @@ static int minitop_has_heavy(void)
 	}
 
 	if (heavy)
-		fpsgo_systrace_c(FPSGO_DEBUG_MANDATORY, curr_tid, 0, 1,
+		fpsgo_systrace_c_fbt(curr_tid, 0, 1,
 				 "minitop_free_ceiling");
 	else if (last_tid) {
-		fpsgo_systrace_c(FPSGO_DEBUG_MANDATORY, last_tid, 0, 0,
+		fpsgo_systrace_c_fbt(last_tid, 0, 0,
 				 "minitop_free_ceiling");
 		last_tid = 0;
 	}
@@ -611,8 +616,10 @@ static void minitop_nominate_work(struct work_struct *work)
 	sort(tu, nr_cpus, sizeof(struct tid_util), __util_cmp, NULL);
 
 
-	if (!minitop_if_active_then_lock())
+	if (!minitop_if_active_then_lock()) {
+		kfree(tu);
 		return;
+	}
 	/*
 	 * Scheduler callback is hooked on sched-tick, which may enter
 	 * NOHZ and no more callback will be seen until leaving NOHZ.
@@ -825,14 +832,44 @@ int fpsgo_fbt2minitop_query_single(pid_t pid)
 	return -1;
 }
 
+int fpsgo_other2minitop_get_list(int max_num, int *tid_arr, unsigned long long *ratio_arr)
+{
+	int index = 0;
+	struct minitop_rec *mr = NULL;
+	struct rb_node *rbn = NULL;
+
+	if (max_num <= 0 || !tid_arr || !ratio_arr)
+		return -EINVAL;
+
+	if (!minitop_if_active_then_lock())
+		return index;
+
+	for (rbn = rb_first(&minitop_root); rbn; rbn = rb_next(rbn)) {
+		mr = rb_entry(rbn, struct minitop_rec, node);
+		if (mr->source & MINITOP_SCHED && index < max_num) {
+			tid_arr[index] = mr->tid;
+			ratio_arr[index] = mr->ratio;
+			index++;
+		}
+	}
+
+	minitop_unlock(__func__);
+
+	return index;
+}
+
 #define MINITOP_SYSFS_WRITE(name, lb, ub); \
 static ssize_t name##_store(struct kobject *kobj, \
 		struct kobj_attribute *attr, \
 		const char *buf, size_t count) \
 { \
-	int val; \
-	char acBuffer[FPSGO_SYSFS_MAX_BUFF_SIZE]; \
+	int val = -1; \
+	char *acBuffer = NULL; \
 	int arg; \
+\
+	acBuffer = kcalloc(FPSGO_SYSFS_MAX_BUFF_SIZE, sizeof(char), GFP_KERNEL); \
+	if (!acBuffer) \
+		goto out; \
 \
 	if ((count > 0) && (count < FPSGO_SYSFS_MAX_BUFF_SIZE)) { \
 		if (scnprintf(acBuffer, \
@@ -840,20 +877,23 @@ static ssize_t name##_store(struct kobject *kobj, \
 			if (kstrtoint(acBuffer, 0, &arg) == 0) { \
 				val = arg; \
 			} else \
-				return count; \
+				goto out; \
 		} \
 	} \
 \
 	if ((val < (lb)) || (val > (ub))) \
-		return count; \
+		goto out; \
 \
 	if (!minitop_if_active_then_lock()) \
-		return count; \
+		goto out; \
 	__##name = val; \
 	__minitop_cleanup(); \
 	minitop_unlock(__func__); \
 \
 	fbt_switch_ceiling(1); \
+\
+out: \
+	kfree(acBuffer); \
 	return count; \
 }
 
@@ -861,14 +901,18 @@ static ssize_t list_show(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		char *buf)
 {
-	char temp[FPSGO_SYSFS_MAX_BUFF_SIZE] = "";
+	char *temp = NULL;
 	int pos = 0;
-	int length;
+	int length = 0;
 	struct rb_node *n;
 	struct minitop_rec *mr;
 
+	temp = kcalloc(FPSGO_SYSFS_MAX_BUFF_SIZE, sizeof(char), GFP_KERNEL);
+	if (!temp)
+		goto out;
+
 	if (!minitop_if_active_then_lock())
-		return scnprintf(buf, PAGE_SIZE, "%s", temp);
+		goto out;
 
 	for (n = rb_first(&minitop_root); n; n = rb_next(n)) {
 		mr = rb_entry(n, struct minitop_rec, node);
@@ -882,7 +926,11 @@ static ssize_t list_show(struct kobject *kobj,
 
 	minitop_unlock(__func__);
 
-	return scnprintf(buf, PAGE_SIZE, "%s", temp);
+	length = scnprintf(buf, PAGE_SIZE, "%s", temp);
+
+out:
+	kfree(temp);
+	return length;
 }
 
 static KOBJ_ATTR_RO(list);
@@ -891,9 +939,13 @@ static ssize_t minitop_n_show(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		char *buf)
 {
-	char temp[FPSGO_SYSFS_MAX_BUFF_SIZE];
+	char *temp = NULL;
 	int pos = 0;
-	int length;
+	int length = 0;
+
+	temp = kcalloc(FPSGO_SYSFS_MAX_BUFF_SIZE, sizeof(char), GFP_KERNEL);
+	if (!temp)
+		goto out;
 
 	minitop_lock(__func__);
 	length = scnprintf(temp + pos, FPSGO_SYSFS_MAX_BUFF_SIZE - pos,
@@ -901,7 +953,11 @@ static ssize_t minitop_n_show(struct kobject *kobj,
 	pos += length;
 	minitop_unlock(__func__);
 
-	return scnprintf(buf, PAGE_SIZE, "%s", temp);
+	length = scnprintf(buf, PAGE_SIZE, "%s", temp);
+
+out:
+	kfree(temp);
+	return length;
 }
 
 MINITOP_SYSFS_WRITE(minitop_n, 1, nr_cpus);
@@ -912,9 +968,13 @@ static ssize_t warmup_order_show(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		char *buf)
 {
-	char temp[FPSGO_SYSFS_MAX_BUFF_SIZE];
+	char *temp = NULL;
 	int pos = 0;
-	int length;
+	int length = 0;
+
+	temp = kcalloc(FPSGO_SYSFS_MAX_BUFF_SIZE, sizeof(char), GFP_KERNEL);
+	if (!temp)
+		goto out;
 
 	minitop_lock(__func__);
 	length = scnprintf(temp + pos, FPSGO_SYSFS_MAX_BUFF_SIZE - pos,
@@ -923,7 +983,11 @@ static ssize_t warmup_order_show(struct kobject *kobj,
 	pos += length;
 	minitop_unlock(__func__);
 
-	return scnprintf(buf, PAGE_SIZE, "%s", temp);
+	length = scnprintf(buf, PAGE_SIZE, "%s", temp);
+
+out:
+	kfree(temp);
+	return length;
 }
 
 MINITOP_SYSFS_WRITE(warmup_order, 0, 20)
@@ -934,9 +998,13 @@ static ssize_t cooldn_order_show(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		char *buf)
 {
-	char temp[FPSGO_SYSFS_MAX_BUFF_SIZE];
+	char *temp = NULL;
 	int pos = 0;
-	int length;
+	int length = 0;
+
+	temp = kcalloc(FPSGO_SYSFS_MAX_BUFF_SIZE, sizeof(char), GFP_KERNEL);
+	if (!temp)
+		goto out;
 
 	minitop_lock(__func__);
 	length = scnprintf(temp + pos, FPSGO_SYSFS_MAX_BUFF_SIZE - pos,
@@ -945,7 +1013,11 @@ static ssize_t cooldn_order_show(struct kobject *kobj,
 	pos += length;
 	minitop_unlock(__func__);
 
-	return scnprintf(buf, PAGE_SIZE, "%s", temp);
+	length = scnprintf(buf, PAGE_SIZE, "%s", temp);
+
+out:
+	kfree(temp);
+	return length;
 }
 
 MINITOP_SYSFS_WRITE(cooldn_order, 0, 10)
@@ -956,9 +1028,13 @@ static ssize_t thrs_heavy_show(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		char *buf)
 {
-	char temp[FPSGO_SYSFS_MAX_BUFF_SIZE];
+	char *temp = NULL;
 	int pos = 0;
-	int length;
+	int length = 0;
+
+	temp = kcalloc(FPSGO_SYSFS_MAX_BUFF_SIZE, sizeof(char), GFP_KERNEL);
+	if (!temp)
+		goto out;
 
 	minitop_lock(__func__);
 	length = scnprintf(temp + pos, FPSGO_SYSFS_MAX_BUFF_SIZE - pos,
@@ -966,21 +1042,28 @@ static ssize_t thrs_heavy_show(struct kobject *kobj,
 	pos += length;
 	minitop_unlock(__func__);
 
-	return scnprintf(buf, PAGE_SIZE, "%s", temp);
+	length = scnprintf(buf, PAGE_SIZE, "%s", temp);
+
+out:
+	kfree(temp);
+	return length;
 }
 
-MINITOP_SYSFS_WRITE(thrs_heavy, 0, 100)
+MINITOP_SYSFS_WRITE(thrs_heavy, 0, 101)
 
 static KOBJ_ATTR_RW(thrs_heavy);
-
 
 static ssize_t enable_show(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		char *buf)
 {
-	char temp[FPSGO_SYSFS_MAX_BUFF_SIZE];
+	char *temp = NULL;
 	int pos = 0;
-	int length;
+	int length = 0;
+
+	temp = kcalloc(FPSGO_SYSFS_MAX_BUFF_SIZE, sizeof(char), GFP_KERNEL);
+	if (!temp)
+		goto out;
 
 	minitop_lock(__func__);
 	length = scnprintf(temp + pos, FPSGO_SYSFS_MAX_BUFF_SIZE - pos,
@@ -989,28 +1072,36 @@ static ssize_t enable_show(struct kobject *kobj,
 	pos += length;
 	minitop_unlock(__func__);
 
-	return scnprintf(buf, PAGE_SIZE, "%s", temp);
+	length = scnprintf(buf, PAGE_SIZE, "%s", temp);
+
+out:
+	kfree(temp);
+	return length;
 }
 
 static ssize_t enable_store(struct kobject *kobj,
 		struct kobj_attribute *attr,
 		const char *buf, size_t count)
 {
-	int val;
-	char acBuffer[FPSGO_SYSFS_MAX_BUFF_SIZE];
+	int val = -1;
+	char *acBuffer = NULL;
 	int arg;
+
+	acBuffer = kcalloc(FPSGO_SYSFS_MAX_BUFF_SIZE, sizeof(char), GFP_KERNEL);
+	if (!acBuffer)
+		goto out;
 
 	if ((count > 0) && (count < FPSGO_SYSFS_MAX_BUFF_SIZE)) {
 		if (scnprintf(acBuffer, FPSGO_SYSFS_MAX_BUFF_SIZE, "%s", buf)) {
 			if (kstrtoint(acBuffer, 0, &arg) == 0)
 				val = arg;
 			else
-				return count;
+				goto out;
 		}
 	}
 
 	if ((val < 0) || (val > 1))
-		return count;
+		goto out;
 
 	minitop_lock(__func__);
 	atomic_set(&__minitop_enable, val);
@@ -1019,6 +1110,9 @@ static ssize_t enable_store(struct kobject *kobj,
 
 	/* Switch ceiling on for safety */
 	fbt_switch_ceiling(1);
+
+out:
+	kfree(acBuffer);
 	return count;
 }
 

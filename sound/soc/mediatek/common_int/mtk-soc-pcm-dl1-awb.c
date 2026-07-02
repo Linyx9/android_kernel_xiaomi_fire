@@ -58,7 +58,8 @@ static int deep_buffer_mem_blk_io;
 static void StartAudioDl1AWBHardware(struct snd_pcm_substream *substream);
 static void StopAudioDl1AWBHardware(struct snd_pcm_substream *substream);
 static int mtk_dl1_awb_probe(struct platform_device *pdev);
-static int mtk_dl1_awb_pcm_close(struct snd_pcm_substream *substream);
+static int mtk_dl1_awb_pcm_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream);
 static int mtk_afe_dl1_awb_component_probe(struct snd_soc_component *component);
 
 #define MAX_PCM_DEVICES 4
@@ -135,27 +136,29 @@ static void StartAudioDl1AWBHardware(struct snd_pcm_substream *substream)
 	EnableAfe(true);
 }
 
-static int mtk_dl1_awb_pcm_prepare(struct snd_pcm_substream *substream)
+static int mtk_dl1_awb_pcm_prepare(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream)
 {
 	return 0;
 }
 
 static int mtk_dl1_awb_alsa_stop(struct snd_pcm_substream *substream)
 {
-	pr_debug("%s()\n", __func__);
 	StopAudioDl1AWBHardware(substream);
 	RemoveMemifSubStream(Soc_Aud_Digital_Block_MEM_AWB, substream);
 	return 0;
 }
 
 static snd_pcm_uframes_t
-mtk_dl1_awb_pcm_pointer(struct snd_pcm_substream *substream)
+mtk_dl1_awb_pcm_pointer(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream)
 {
 	return get_mem_frame_index(substream, Dl1_AWB_Control_context,
 				   Soc_Aud_Digital_Block_MEM_AWB);
 }
 
-static int mtk_dl1_awb_pcm_hw_params(struct snd_pcm_substream *substream,
+static int mtk_dl1_awb_pcm_hw_params(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream,
 				     struct snd_pcm_hw_params *hw_params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -188,9 +191,9 @@ static int mtk_dl1_awb_pcm_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_dl1_capture_pcm_hw_free(struct snd_pcm_substream *substream)
+static int mtk_dl1_capture_pcm_hw_free(struct snd_soc_component *component,
+				       struct snd_pcm_substream *substream)
 {
-	pr_debug("%s()\n", __func__);
 	if (Awb_Capture_dma_buf->area)
 		return 0;
 	else
@@ -202,7 +205,8 @@ static struct snd_pcm_hw_constraint_list dl1_awb_constraints_sample_rates = {
 	.list = soc_high_supported_sample_rates,
 };
 
-static int mtk_dl1_awb_pcm_open(struct snd_pcm_substream *substream)
+static int mtk_dl1_awb_pcm_open(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
@@ -223,14 +227,15 @@ static int mtk_dl1_awb_pcm_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_debug("mtk_dl1_awb_pcm_close\n");
-		mtk_dl1_awb_pcm_close(substream);
+		mtk_dl1_awb_pcm_close(component, substream);
 		return ret;
 	}
 	AudDrv_Emi_Clk_On();
 	return 0;
 }
 
-static int mtk_dl1_awb_pcm_close(struct snd_pcm_substream *substream)
+static int mtk_dl1_awb_pcm_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	AudDrv_Emi_Clk_Off();
 	AudDrv_Clk_Off();
@@ -239,13 +244,13 @@ static int mtk_dl1_awb_pcm_close(struct snd_pcm_substream *substream)
 
 static int mtk_dl1_awb_alsa_start(struct snd_pcm_substream *substream)
 {
-	pr_debug("%s()\n", __func__);
 	SetMemifSubStream(Soc_Aud_Digital_Block_MEM_AWB, substream);
 	StartAudioDl1AWBHardware(substream);
 	return 0;
 }
 
-static int mtk_dl1_awb_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_dl1_awb_pcm_trigger(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream, int cmd)
 {
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -258,50 +263,40 @@ static int mtk_dl1_awb_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	return -EINVAL;
 }
 
-static int mtk_dl1_awb_pcm_copy(struct snd_pcm_substream *substream,
+static int mtk_dl1_awb_pcm_copy(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
 				int channel, unsigned long pos,
-				void __user *dst, unsigned long count)
+				struct iov_iter *dst, unsigned long count)
 {
 	return mtk_memblk_copy(substream, channel, pos, dst, count,
 			       Dl1_AWB_Control_context,
 			       Soc_Aud_Digital_Block_MEM_AWB);
 }
 
-static int mtk_capture_pcm_silence(struct snd_pcm_substream *substream,
-				   int channel,
-				   unsigned long pos,
-				   unsigned long bytes)
-{
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
 static struct page *
-mtk_dl1_capture_pcm_page(struct snd_pcm_substream *substream,
+mtk_dl1_capture_pcm_page(struct snd_soc_component *component,
+			 struct snd_pcm_substream *substream,
 			 unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_dl1_awb_ops = {
+static const struct snd_soc_component_driver mtk_soc_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_afe_dl1_awb_component_probe,
 	.open = mtk_dl1_awb_pcm_open,
 	.close = mtk_dl1_awb_pcm_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_dl1_awb_pcm_hw_params,
 	.hw_free = mtk_dl1_capture_pcm_hw_free,
 	.prepare = mtk_dl1_awb_pcm_prepare,
 	.trigger = mtk_dl1_awb_pcm_trigger,
 	.pointer = mtk_dl1_awb_pcm_pointer,
-	.copy_user = mtk_dl1_awb_pcm_copy,
-	.fill_silence = mtk_capture_pcm_silence,
+	.copy = mtk_dl1_awb_pcm_copy,
 	.page = mtk_dl1_capture_pcm_page,
-};
 
-static struct snd_soc_component_driver mtk_soc_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_dl1_awb_ops,
-	.probe = mtk_afe_dl1_awb_component_probe,
 };
 
 static int mtk_dl1_awb_probe(struct platform_device *pdev)
@@ -332,7 +327,6 @@ static int mtk_dl1_awb_probe(struct platform_device *pdev)
 
 static int mtk_afe_dl1_awb_component_probe(struct snd_soc_component *component)
 {
-	pr_debug("%s()\n", __func__);
 	AudDrv_Allocate_mem_Buffer(component->dev, Soc_Aud_Digital_Block_MEM_AWB,
 				   AWB_MAX_BUFFER_SIZE);
 	Awb_Capture_dma_buf = Get_Mem_Buffer(Soc_Aud_Digital_Block_MEM_AWB);
@@ -345,7 +339,7 @@ static int mtk_dl1_awb_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_dl1_awb_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_dl1_awb",
@@ -358,7 +352,7 @@ static struct platform_driver mtk_dl1_awb_capture_driver = {
 
 			.name = MT_SOC_DL1_AWB_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_dl1_awb_of_ids,
 #endif
 		},
@@ -374,7 +368,6 @@ static int __init mtk_soc_dl1_awb_platform_init(void)
 {
 	int ret = 0;
 
-	pr_debug("%s()\n", __func__);
 #ifndef CONFIG_OF
 	soc_dl1_awb_capture_dev = platform_device_alloc(MT_SOC_DL1_AWB_PCM, -1);
 	if (!soc_dl1_awb_capture_dev)

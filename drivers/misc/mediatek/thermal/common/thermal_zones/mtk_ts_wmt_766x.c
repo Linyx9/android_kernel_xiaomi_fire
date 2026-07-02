@@ -658,7 +658,7 @@ static int wmt_thz_get_temp(struct thermal_zone_device *thz_dev, int *pv)
 
 	g_prev_temp = g_curr_temp;
 	if (sensor_select < 0 || sensor_select >= NR_TS_SENSORS) {
-		#ifdef CONFIG_MTK_AEE_FEATURE
+		#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 				"%s ", "sensor_select: %d\n",
 				__func__, sensor_select);
@@ -679,12 +679,12 @@ static int wmt_thz_get_temp(struct thermal_zone_device *thz_dev, int *pv)
 	}
 
 	if ((int)*pv >= polling_trip_temp1)
-		thz_dev->polling_delay = g_wmt_tm.linux_if.interval;
+		thz_dev->polling_delay_jiffies = g_wmt_tm.linux_if.interval;
 	else if ((int)*pv < polling_trip_temp2)
-		thz_dev->polling_delay =
+		thz_dev->polling_delay_jiffies =
 				g_wmt_tm.linux_if.interval * polling_factor2;
 	else
-		thz_dev->polling_delay =
+		thz_dev->polling_delay_jiffies =
 				g_wmt_tm.linux_if.interval * polling_factor1;
 
 	return 0;
@@ -789,7 +789,7 @@ static int wmt_cl_set_cur_state(struct thermal_cooling_device *cool_dev,
 		 * To trigger data abort to reset the system for thermal
 		 * protection.
 		 */
-		BUG();
+		BUG_ON();
 	}
 
 	return 0;
@@ -1155,7 +1155,7 @@ int wmt_wifi_tx_thro_read(struct seq_file *m, void *v)
 
 static int wmt_wifi_tx_thro_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_wifi_tx_thro_read, PDE_DATA(inode));
+	return single_open(file, wmt_wifi_tx_thro_read, pde_data(inode));
 }
 
 
@@ -1170,7 +1170,7 @@ int wmt_wifi_tx_thro_limit_read(struct seq_file *m, void *v)
 
 static int wmt_wifi_tx_thro_limit_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_wifi_tx_thro_limit_read, PDE_DATA(inode));
+	return single_open(file, wmt_wifi_tx_thro_limit_read, pde_data(inode));
 }
 
 /* New Wifi throttling Algo+ */
@@ -1260,7 +1260,7 @@ int wmt_wifi_algo_read(struct seq_file *m, void *v)
 
 static int wmt_wifi_algo_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_wifi_algo_read, PDE_DATA(inode));
+	return single_open(file, wmt_wifi_algo_read, pde_data(inode));
 }
 /* New Wifi throttling Algo- */
 
@@ -1277,10 +1277,6 @@ ssize_t wmt_tm_wfd_write(struct file *filp, const char __user *buf, size_t len,
 
 	ret = kstrtoint(tmp, 10, &tm_wfd_stat);
 
-#if 0
-	wmt_tm_printk("[%s] %s = %d, len=%d, ret=%d\n"
-		, __func__, tmp, tm_wfd_stat, len, ret);
-#endif
 
 	return len;
 }
@@ -1303,7 +1299,7 @@ int wmt_tm_wfd_read(struct seq_file *m, void *v)
 
 static int wmt_tm_wfd_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_tm_wfd_read, PDE_DATA(inode));
+	return single_open(file, wmt_tm_wfd_read, pde_data(inode));
 }
 
 ssize_t wmt_wifi_in_soc_write(struct file *filp, const char __user *buf,
@@ -1344,7 +1340,7 @@ ssize_t wmt_wifi_in_soc_write(struct file *filp, const char __user *buf,
 		      min_wifi_tput,
 		      tt_wifi_high, tt_wifi_low, tp_wifi_rise, tp_wifi_fall);
 	if (sensor_select < 0 || sensor_select >= NR_TS_SENSORS) {
-		#ifdef CONFIG_MTK_AEE_FEATURE
+		#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 					"%s ",
 					"sensor_select: %d\n",
@@ -1380,7 +1376,7 @@ int wmt_wifi_in_soc_read(struct seq_file *m, void *v)
 
 static int wmt_wifi_in_soc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_wifi_in_soc_read, PDE_DATA(inode));
+	return single_open(file, wmt_wifi_in_soc_read, pde_data(inode));
 }
 
 ssize_t wmt_tm_pid_write(struct file *filp, const char __user *buf, size_t len,
@@ -1420,7 +1416,7 @@ int wmt_tm_pid_read(struct seq_file *m, void *v)
 
 static int wmt_tm_pid_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_tm_pid_read, PDE_DATA(inode));
+	return single_open(file, wmt_tm_pid_read, pde_data(inode));
 }
 
 #define check_str(x) (x[0] == '\0'?"none\t":x)
@@ -1586,7 +1582,7 @@ static int wmt_tm_read(struct seq_file *m, void *v)
 
 static int wmt_tm_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_tm_read, PDE_DATA(inode));
+	return single_open(file, wmt_tm_read, pde_data(inode));
 }
 
 static ssize_t wmt_tm_write(struct file *filp, const char __user *buf,
@@ -1667,7 +1663,7 @@ static ssize_t wmt_tm_write(struct file *filp, const char __user *buf,
 		}
 
 		if (g_num_trip < 0 || g_num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 				DB_OPT_DEFAULT, "wmt_tm_write",	"Bad argument");
 			#endif
@@ -1738,7 +1734,7 @@ static ssize_t wmt_tm_write(struct file *filp, const char __user *buf,
 		wmt_tm_dprintk("[%s] polling time=%d\n",
 			__func__, p_linux_if->interval);
 
-		/* p_linux_if->thz_dev->polling_delay =
+		/* p_linux_if->thz_dev->polling_delay_jiffies =
 		 * p_linux_if->interval*1000;
 		 */
 
@@ -1762,7 +1758,7 @@ static ssize_t wmt_tm_write(struct file *filp, const char __user *buf,
 	}
 
 	wmt_tm_info("[%s] bad argument = %s\n", __func__, ptr_tm_data->desc);
-    #ifdef CONFIG_MTK_AEE_FEATURE
+    #if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 						"wmt_tm_write",	"Bad argument");
     #endif
@@ -1979,3 +1975,5 @@ static void __exit wmt_tm_deinit(void)
 /* EXPORT_SYMBOL(wifi_in_soc_throttle_enable); */
 module_init(wmt_tm_init);
 module_exit(wmt_tm_deinit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

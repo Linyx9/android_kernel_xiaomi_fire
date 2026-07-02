@@ -41,7 +41,7 @@
 #include <linux/regmap.h>
 #include <linux/types.h>
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -94,13 +94,12 @@ struct regmap *pregmap;
 int Auddrv_Reg_map(struct device *pdev)
 {
 	int ret = 0;
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 	struct device_node *audio_sram_node = NULL;
 
 	audio_sram_node =
 		of_find_compatible_node(NULL, NULL, "mediatek,audio_sram");
 
-	pr_debug("%s\n", __func__);
 
 	if (!pdev->of_node)
 		pr_warn("%s invalid of_node\n", __func__);
@@ -128,28 +127,31 @@ int Auddrv_Reg_map(struct device *pdev)
 		return -ENODEV;
 	}
 #else
-	AFE_BASE_ADDRESS = ioremap_nocache(AUDIO_HW_PHYSICAL_BASE, 0x1000);
-	AFE_SRAM_ADDRESS = ioremap_nocache(AFE_INTERNAL_SRAM_PHY_BASE,
+	AFE_BASE_ADDRESS = ioremap(AUDIO_HW_PHYSICAL_BASE, 0x1000);
+	AFE_SRAM_ADDRESS = ioremap(AFE_INTERNAL_SRAM_PHY_BASE,
 					   AFE_INTERNAL_SRAM_SIZE);
 #endif
 
 	/* temp for hardawre code  set 0x1000629c = 0xd */
-	AFE_TOP_ADDRESS = ioremap_nocache(AUDIO_POWER_TOP, 0x1000);
-	APMIXEDSYS_ADDRESS = ioremap_nocache(APMIXEDSYS_BASE, 0x1000);
-	CLKSYS_ADDRESS = ioremap_nocache(AUDIO_CLKCFG_PHYSICAL_BASE, 0x1000);
+	AFE_TOP_ADDRESS = ioremap(AUDIO_POWER_TOP, 0x1000);
+	APMIXEDSYS_ADDRESS = ioremap(APMIXEDSYS_BASE, 0x1000);
+	CLKSYS_ADDRESS = ioremap(AUDIO_CLKCFG_PHYSICAL_BASE, 0x1000);
 
 	return ret;
 }
+EXPORT_SYMBOL(Auddrv_Reg_map);
 
 unsigned int Get_Afe_Sram_Length(void)
 {
 	return AFE_INTERNAL_SRAM_SIZE;
 }
+EXPORT_SYMBOL(Get_Afe_Sram_Length);
 
 dma_addr_t Get_Afe_Sram_Phys_Addr(void)
 {
 	return (dma_addr_t)AFE_INTERNAL_SRAM_PHY_BASE;
 }
+EXPORT_SYMBOL(Get_Afe_Sram_Phys_Addr);
 
 dma_addr_t Get_Afe_Sram_Capture_Phys_Addr(void)
 {
@@ -160,6 +162,7 @@ void *Get_Afe_SramBase_Pointer(void)
 {
 	return AFE_SRAM_ADDRESS;
 }
+EXPORT_SYMBOL(Get_Afe_SramBase_Pointer);
 
 void *Get_Afe_SramCaptureBase_Pointer(void)
 {
@@ -184,6 +187,7 @@ unsigned int GetApmixedCfg(unsigned int offset)
 
 	return *value;
 }
+EXPORT_SYMBOL(GetApmixedCfg);
 
 void SetApmixedCfg(unsigned int offset, unsigned int value, unsigned int mask)
 {
@@ -200,6 +204,7 @@ void SetApmixedCfg(unsigned int offset, unsigned int value, unsigned int mask)
 	AFE_Register++;
 #endif
 }
+EXPORT_SYMBOL(SetApmixedCfg);
 
 /* function to access clksys */
 unsigned int clksys_get_reg(unsigned int offset)
@@ -252,6 +257,7 @@ void clksys_set_reg(unsigned int offset, unsigned int value, unsigned int mask)
 	spin_unlock_irqrestore(&clksys_set_reg_lock, flags);
 #endif
 }
+EXPORT_SYMBOL(clksys_set_reg);
 
 void Afe_Set_Reg_Val(unsigned int offset, unsigned int value)
 {
@@ -289,3 +295,4 @@ unsigned int Afe_Get_Reg(unsigned int offset)
 	return value;
 }
 EXPORT_SYMBOL(Afe_Get_Reg);
+MODULE_LICENSE("GPL");

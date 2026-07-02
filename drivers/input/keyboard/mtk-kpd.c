@@ -3,11 +3,7 @@
  * Copyright (C) 2019 MediaTek Inc.
  * Author Terry Chang <terry.chang@mediatek.com>
  */
-#include <linux/atomic.h>
 #include <linux/clk.h>
-#include <linux/debugfs.h>
-#include <linux/delay.h>
-#include <linux/fs.h>
 #include <linux/gpio.h>
 #include <linux/init.h>
 #include <linux/input.h>
@@ -15,7 +11,6 @@
 #include <linux/io.h>
 #include <linux/ioctl.h>
 #include <linux/kernel.h>
-#include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -24,8 +19,6 @@
 #include <linux/platform_device.h>
 #include <linux/pm_wakeup.h>
 #include <linux/regmap.h>
-#include <linux/timer.h>
-#include <linux/workqueue.h>
 
 #define KPD_NAME	"mtk-kpd"
 
@@ -36,12 +29,8 @@
 #define KP_MEM4			(0x0010)
 #define KP_MEM5			(0x0014)
 #define KP_DEBOUNCE		(0x0018)
-#define KP_SEL			(0x0020)
+#define KP_SEL			(0X0020)
 #define KP_EN			(0x0024)
-
-#define KP_COL0_SEL		(1 << 10)
-#define KP_COL1_SEL		(1 << 11)
-#define KP_COL2_SEL		(1 << 12)
 
 #define KPD_DEBOUNCE_MASK	((1U << 14) - 1)
 #define KPD_DOUBLE_KEY_MASK	(1U << 0)
@@ -58,16 +47,14 @@ struct mtk_keypad {
 	void __iomem *base;
 	unsigned int irqnr;
 	u32 key_debounce;
+	u32 use_extend_type;
 	u32 hw_map_num;
 	u32 hw_init_map[KPD_NUM_KEYS];
 	u16 keymap_state[KPD_NUM_MEMS];
 };
 
-/* for keymap handling */
-static void kpd_keymap_handler(unsigned long data);
-
-static int kpd_pdrv_probe(struct platform_device *pdev);
-
+static struct platform_device *ktf_pdev;
+static struct mtk_keypad *ktf_keypad;
 static void kpd_get_keymap_state(void __iomem *kp_base, u16 state[])
 {
 	state[0] = readw(kp_base + KP_MEM1);
@@ -75,8 +62,22 @@ static void kpd_get_keymap_state(void __iomem *kp_base, u16 state[])
 	state[2] = readw(kp_base + KP_MEM3);
 	state[3] = readw(kp_base + KP_MEM4);
 	state[4] = readw(kp_base + KP_MEM5);
-	pr_debug("kpd register = %x %x %x %x %x\n",
-		state[0], state[1], state[2], state[3], state[4]);
+}
+
+static void kpd_double_key_enable(void __iomem *kp_base, int en)
+{
+	u16 tmp;
+
+	tmp = *(u16 *)KP_SEL;
+	if (en)
+		writew((u16)(tmp | KPD_DOUBLE_KEY_MASK), kp_base + KP_SEL);
+	else
+		writew((u16)(tmp & ~KPD_DOUBLE_KEY_MASK), kp_base + KP_SEL);
+}
+
+static void enable_kpd(void __iomem *kp_base, int en)
+{
+	writew((u16)(en), kp_base + KP_EN);
 }
 
 static void kpd_keymap_handler(unsigned long data)
@@ -85,7 +86,6 @@ static void kpd_keymap_handler(unsigned long data)
 	int pressed;
 	u16 new_state[KPD_NUM_MEMS], change, mask;
 	u16 hw_keycode, keycode;
-	void *dest;
 	struct mtk_keypad *keypad = (struct mtk_keypad *)data;
 
 	kpd_get_keymap_state(keypad->base, new_state);
@@ -109,7 +109,7 @@ static void kpd_keymap_handler(unsigned long data)
 
 			/* bit is 1: not pressed, 0: pressed */
 			pressed = (new_state[i] & mask) == 0U;
-			pr_debug("(%s) HW keycode = %d\n",
+			pr_notice("(%s) HW keycode = %d\n",
 				(pressed) ? "pressed" : "released",
 					hw_keycode);
 
@@ -118,11 +118,11 @@ static void kpd_keymap_handler(unsigned long data)
 				continue;
 			input_report_key(keypad->input_dev, keycode, pressed);
 			input_sync(keypad->input_dev);
-			pr_debug("report Linux keycode = %d\n", keycode);
+			pr_notice("report Linux keycode = %d\n", keycode);
 		}
 	}
 
-	dest = memcpy(keypad->keymap_state, new_state, sizeof(new_state));
+	memcpy(keypad->keymap_state, new_state, sizeof(new_state));
 	enable_irq(keypad->irqnr);
 }
 
@@ -141,60 +141,44 @@ static int kpd_get_dts_info(struct mtk_keypad *keypad,
 {
 	int ret;
 
-	ret = of_property_read_u32(node, "mediatek,kpd-key-debounce",
+	ret = of_property_read_u32(node, "mediatek,key-debounce-ms",
 		&keypad->key_debounce);
 	if (ret) {
-		pr_debug("read mediatek,key-debounce-ms error.\n");
+		pr_notice("read mediatek,key-debounce-ms error.\n");
 		return ret;
 	}
 
-	ret = of_property_read_u32(node, "mediatek,kpd-hw-map-num",
+	ret = of_property_read_u32(node, "mediatek, use-extend-type",
+		&keypad->use_extend_type);
+	if (ret) {
+		pr_notice("read mediatek,use-extend-type error.\n");
+		keypad->use_extend_type = 0;
+	}
+
+	ret = of_property_read_u32(node, "mediatek,hw-map-num",
 		&keypad->hw_map_num);
 	if (ret) {
-		pr_debug("read mediatek,hw-map-num error.\n");
+		pr_notice("read mediatek,hw-map-num error.\n");
 		return ret;
 	}
 
 	if (keypad->hw_map_num > KPD_NUM_KEYS) {
-		pr_debug("hw-map-num error, it cannot bigger than %d.\n",
+		pr_notice("hw-map-num error, it cannot bigger than %d.\n",
 			KPD_NUM_KEYS);
 		return -EINVAL;
 	}
 
-	ret = of_property_read_u32_array(node, "mediatek,kpd-hw-init-map",
+	ret = of_property_read_u32_array(node, "mediatek,hw-init-map",
 		keypad->hw_init_map, keypad->hw_map_num);
 
 	if (ret) {
-		pr_debug("hw-init-map was not defined in dts.\n");
+		pr_notice("hw-init-map was not defined in dts.\n");
 		return ret;
 	}
 
-	pr_debug("deb= %d\n", keypad->key_debounce);
+	pr_notice("deb= %d\n", keypad->key_debounce);
 
 	return 0;
-}
-
-static int kpd_gpio_init(struct device *dev)
-{
-	struct pinctrl *keypad_pinctrl;
-	struct pinctrl_state *kpd_default;
-
-	keypad_pinctrl = devm_pinctrl_get(dev);
-	if (IS_ERR(keypad_pinctrl)) {
-		pr_debug("Cannot find keypad_pinctrl!\n");
-
-		return (int)PTR_ERR(keypad_pinctrl);
-	}
-
-	kpd_default = pinctrl_lookup_state(keypad_pinctrl, "default");
-	if (IS_ERR(kpd_default)) {
-		pr_debug("Cannot find ecall_state!\n");
-
-		return (int)PTR_ERR(kpd_default);
-	}
-
-	return pinctrl_select_state(keypad_pinctrl,
-				kpd_default);
 }
 
 static int kpd_pdrv_probe(struct platform_device *pdev)
@@ -202,56 +186,47 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 	struct mtk_keypad *keypad;
 	struct resource *res;
 	int i;
-	int err;
+	int ret;
+	ktf_pdev = pdev;
 
 	keypad = devm_kzalloc(&pdev->dev, sizeof(*keypad), GFP_KERNEL);
 	if (!keypad)
 		return -ENOMEM;
 
 	keypad->clk = devm_clk_get(&pdev->dev, "kpd");
-	if (IS_ERR(keypad->clk)) {
-		pr_debug("get kpd-clk fail: %d\n", (int)PTR_ERR(keypad->clk));
-		return (int)PTR_ERR(keypad->clk);
-	}
+	if (IS_ERR(keypad->clk))
+		return PTR_ERR(keypad->clk);
 
-	err = clk_prepare_enable(keypad->clk);
-	if (err) {
-		pr_debug("kpd-clk prepare enable failed.\n");
-		return err;
+	ret = clk_prepare_enable(keypad->clk);
+	if (ret) {
+		pr_notice("cannot prepare/enable keypad clock\n");
+		return ret;
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
-		err = -ENODEV;
+		ret = -ENODEV;
 		goto err_unprepare_clk;
 	}
 
 	keypad->base = devm_ioremap(&pdev->dev, res->start,
 			resource_size(res));
 	if (!keypad->base) {
-		pr_debug("KP iomap failed\n");
-		err = -EBUSY;
+		pr_notice("KP iomap failed\n");
+		ret = -EBUSY;
 		goto err_unprepare_clk;
 	}
 
 	keypad->irqnr = irq_of_parse_and_map(pdev->dev.of_node, 0);
 	if (!keypad->irqnr) {
-		pr_debug("KP get irqnr failed\n");
-		err = -ENODEV;
+		pr_notice("KP get irqnr failed\n");
+		ret = -ENODEV;
 		goto err_unprepare_clk;
 	}
 
-	pr_info("kp base: 0x%p, addr:0x%p,  kp irq: %d\n",
-			keypad->base, &keypad->base, keypad->irqnr);
-	err = kpd_gpio_init(&pdev->dev);
-	if (err) {
-		pr_debug("gpio init failed\n");
-		goto err_unprepare_clk;
-	}
-
-	err = kpd_get_dts_info(keypad, pdev->dev.of_node);
-	if (err) {
-		pr_debug("get dts info failed.\n");
+	ret = kpd_get_dts_info(keypad, pdev->dev.of_node);
+	if (ret) {
+		pr_notice("get dts info failed.\n");
 		goto err_unprepare_clk;
 	}
 
@@ -260,7 +235,7 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 	keypad->input_dev = devm_input_allocate_device(&pdev->dev);
 	if (!keypad->input_dev) {
 		pr_notice("input allocate device fail.\n");
-		err = -ENOMEM;
+		ret = -ENOMEM;
 		goto err_unprepare_clk;
 	}
 
@@ -270,15 +245,23 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 
 	__set_bit(EV_KEY, keypad->input_dev->evbit);
 
+	if (!keypad->use_extend_type) {
+		for (i = 17; i < KPD_NUM_KEYS; i += 9)
+			keypad->hw_init_map[i] = 0;
+	}
+
 	for (i = 0; i < KPD_NUM_KEYS; i++) {
 		if (keypad->hw_init_map[i])
 			__set_bit(keypad->hw_init_map[i],
 				keypad->input_dev->keybit);
 	}
 
-	err = input_register_device(keypad->input_dev);
-	if (err) {
-		pr_notice("register input device failed (%d)\n", err);
+	if (keypad->use_extend_type)
+		kpd_double_key_enable(keypad->base, 1);
+
+	ret = input_register_device(keypad->input_dev);
+	if (ret) {
+		pr_notice("register input device failed (%d)\n", ret);
 		goto err_unprepare_clk;
 	}
 
@@ -297,14 +280,20 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 			keypad->base + KP_DEBOUNCE);
 
 	/* register IRQ */
-	err = request_irq(keypad->irqnr, kpd_irq_handler, IRQF_TRIGGER_NONE,
+	ktf_keypad = keypad;
+	ret = request_irq(keypad->irqnr, kpd_irq_handler, IRQF_TRIGGER_NONE,
 			KPD_NAME, keypad);
-	if (err) {
-		pr_notice("register IRQ failed (%d)\n", err);
+	if (ret) {
+		pr_notice("register IRQ failed (%d)\n", ret);
 		goto err_irq;
 	}
 
-	pr_info("kpd_probe OK.\n");
+	ret = enable_irq_wake(keypad->irqnr);
+	if (ret < 0)
+		pr_notice("irq %d enable irq wake fail\n", keypad->irqnr);
+
+	platform_set_drvdata(pdev, keypad);
+	enable_kpd(keypad->base, 1);
 
 	return 0;
 
@@ -317,9 +306,8 @@ err_unregister_device:
 err_unprepare_clk:
 	clk_disable_unprepare(keypad->clk);
 
-	return err;
+	return ret;
 }
-
 
 static int kpd_pdrv_remove(struct platform_device *pdev)
 {
@@ -333,23 +321,61 @@ static int kpd_pdrv_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int kpd_pdrv_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	return 0;
+}
+
+static int kpd_pdrv_resume(struct platform_device *pdev)
+{
+	return 0;
+}
+
 static const struct of_device_id kpd_of_match[] = {
 	{.compatible = "mediatek,mt6779-keypad"},
 	{.compatible = "mediatek,kp"},
-	{},
+	{}
 };
 
 static struct platform_driver kpd_pdrv = {
 	.probe = kpd_pdrv_probe,
 	.remove = kpd_pdrv_remove,
+	.suspend = kpd_pdrv_suspend,
+	.resume = kpd_pdrv_resume,
 	.driver = {
 		   .name = KPD_NAME,
 		   .of_match_table = kpd_of_match,
-		   },
+	},
 };
-
 module_platform_driver(kpd_pdrv);
 
+int ktf_mtk_kpd_test(char *str)
+{
+	int ret = 0;
+	int irq = 0;
+	pm_message_t ktf_state;
+
+	if (!str)
+		return -EINVAL;
+	if (!ktf_pdev)
+		return -ENODEV;
+	if (!ktf_keypad)
+		return -ENODEV;
+	if (!strncmp(str, "suspend", 7)) {
+		ktf_state.event = 0;
+		kpd_pdrv_suspend(ktf_pdev, ktf_state);
+		ret = kpd_pdrv_resume(ktf_pdev);
+	} else if (!strncmp(str, "probe", 5)) {
+		ret = kpd_pdrv_probe(ktf_pdev);
+	} else if (!strncmp(str, "handler", 7)) {
+		ret = kpd_irq_handler(irq, ktf_keypad);
+	} else {
+		pr_info("%s is fail", __func__);
+		ret = -ENODEV;
+	}
+	return ret;
+}
+EXPORT_SYMBOL(ktf_mtk_kpd_test);
 MODULE_AUTHOR("Mediatek Corporation");
 MODULE_DESCRIPTION("MTK Keypad (KPD) Driver");
 MODULE_LICENSE("GPL");

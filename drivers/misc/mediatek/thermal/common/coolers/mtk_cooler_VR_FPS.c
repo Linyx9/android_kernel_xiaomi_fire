@@ -13,7 +13,7 @@
 #include <linux/types.h>
 #include <linux/proc_fs.h>
 #include "mt-plat/mtk_thermal_monitor.h"
-#if defined(CONFIG_MTK_CLKMGR)
+#if IS_ENABLED(CONFIG_MTK_CLKMGR)
 #include <mach/mtk_clkmgr.h>
 #else
 #include <linux/clk.h>
@@ -103,13 +103,12 @@ static int clVR_FPS_status_open(struct inode *inode, struct file *file)
 	return single_open(file, clVR_FPS_status_read, NULL);
 }
 
-static const struct file_operations clVR_FPS_status_fops = {
-	.owner = THIS_MODULE,
-	.open = clVR_FPS_status_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = clVR_FPS_status_write,
-	.release = single_release,
+static const struct proc_ops clVR_FPS_status_fops = {
+	.proc_open = clVR_FPS_status_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = clVR_FPS_status_write,
+	.proc_release = single_release,
 };
 
 /*
@@ -151,7 +150,7 @@ static struct thermal_cooling_device_ops mtkclVR_FPS_ops = {
 	.set_cur_state = clVR_FPS_set_cur_state,
 };
 
-static int __init mtk_cooler_VR_FPS_init(void)
+int mtk_cooler_VR_FPS_init(void)
 {
 	struct proc_dir_entry *cooler_dir = NULL;
 
@@ -177,7 +176,7 @@ static int __init mtk_cooler_VR_FPS_init(void)
 	return 0;
 }
 
-static void __exit mtk_cooler_VR_FPS_exit(void)
+void mtk_cooler_VR_FPS_exit(void)
 {
 
 	clVR_FPS_dprintk("%s %d\n", __func__, __LINE__);
@@ -189,5 +188,7 @@ static void __exit mtk_cooler_VR_FPS_exit(void)
 	proc_remove(clVR_FPS_status);
 	clVR_FPS_dprintk("%s %d\n", __func__, __LINE__);
 }
-module_init(mtk_cooler_VR_FPS_init);
-module_exit(mtk_cooler_VR_FPS_exit);
+//module_init(mtk_cooler_VR_FPS_init);
+//module_exit(mtk_cooler_VR_FPS_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

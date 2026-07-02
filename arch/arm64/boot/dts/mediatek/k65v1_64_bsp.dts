@@ -27,6 +27,16 @@
 	atag,videolfb-lcmname= "nt35695B_fhd_dsi_cmd_auo_rt5081_drv";
 };
 
+&mtk_leds {
+	compatible = "mediatek,pwm-leds";
+	backlight {
+		led_mode = <5>;
+		pwms = <&disp_pwm 0 39385>;
+		pwm-names = "lcd-backlight";
+		pwm_config = <0 3 0 0 0>;
+	};
+};
+
 &odm {
 	led0:led@0 {
 		compatible = "mediatek,red";
@@ -385,21 +395,47 @@
 };
 /* AUDIO end */
 
-&mt6370_pmu {
-	mt6370,intr_gpio_num = <11>; /* direct defined GPIO num */
-	mt6370,intr_gpio = <&pio 11 0x0>;
+&mt6370 {
+	interrupt-parent = <&pio>;
+	interrupts = <11 IRQ_TYPE_LEVEL_LOW 11 0>;
 };
 
 &mt6370_typec {
-	mt6370pd,intr_gpio_num = <41>; /* direct defined GPIO num */
-	mt6370pd,intr_gpio = <&pio 41 0x0>;
+	mt6370pd-intr-gpios = <&pio 41 0>;
 };
 
-&mt6370_chg {
-	bc12_sel = <1>;
+/*
+ *&mt6370_chg {
+ *	bc12_sel = <1>;
+ *};
+ */
+
+/* DISPSYS GPIO standardization */
+&dsi0 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	panel1@0 {
+		compatible = "nt35695b,auo,vdo";
+		reg = <0>;
+		reset-gpios = <&pio 45 0>;
+		pinctrl-names = "default";
+		port {
+			panel_in1: endpoint {
+				remote-endpoint = <&dsi_out>;
+			};
+		};
+	};
+	ports {
+		port {
+			dsi_out: endpoint {
+				remote-endpoint = <&panel_in1>;
+			};
+		};
+	};
 };
 
-#include "k65v1_64_bsp/cust.dtsi"
+#include <k65v1_64_bsp/cust.dtsi>
 #include "mediatek/cust_mt6765_camera.dtsi"
 #include "mediatek/cust_mt6765_touch_1080x1920.dtsi"
 /*End of this file, DO NOT ADD ANYTHING HERE*/

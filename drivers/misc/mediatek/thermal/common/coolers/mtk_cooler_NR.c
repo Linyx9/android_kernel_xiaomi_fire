@@ -13,7 +13,7 @@
 #include <linux/types.h>
 #include <linux/proc_fs.h>
 #include "mt-plat/mtk_thermal_monitor.h"
-#if defined(CONFIG_MTK_CLKMGR)
+#if IS_ENABLED(CONFIG_MTK_CLKMGR)
 #include <mach/mtk_clkmgr.h>
 #else
 #include <linux/clk.h>

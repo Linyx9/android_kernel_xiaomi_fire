@@ -8,9 +8,16 @@
 
 #include <linux/soc/mediatek/mtk_tinysys_ipi.h>
 
+/* Be available to print in userdebug and eng load */
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_DEBUG_SUPPORT)
+#define pr_usrdebug(fmt, ...) pr_notice(fmt, __VA_ARGS__)
+#else
+#define pr_usrdebug(fmt, ...) no_printk(fmt, __VA_ARGS__)
+#endif
+
 #define SCP_MBOX_TOTAL 5
 
-#define PIN_OUT_SIZE_AUDIO_VOW_1         9
+#define PIN_OUT_SIZE_AUDIO_VOW_1        11
 #define PIN_IN_SIZE_AUDIO_VOW_ACK_1      2
 #define PIN_IN_SIZE_AUDIO_VOW_1         26
 #define PIN_IN_SIZE_AUDIO_ACCDET_1       1
@@ -44,6 +51,15 @@
 #define PIN_IN_SIZE_SENSOR_NOTIFY        7
 #define PIN_OUT_SIZE_SCP_CONNSYS         3
 #define PIN_OUT_SIZE_SCP_HWVOTER_DEBUG   2
+#define PIN_OUT_SIZE_DEBUG_CMD           2
+#define PIN_OUT_SIZE_AOV_SCP             4
+#define PIN_IN_SIZE_SCP_AOV              4
+#define IPI_OUT_SIZE_SCP_PM_NOTIFY_0     1
+#define IPI_OUT_SIZE_SCP_PM_NOTIFY_1     1
+#define PIN_IN_SIZE_NPU_SCP		 4
+#define PIN_OUT_SIZE_SCP_NPU		 4
+#define PIN_OUT_SIZE_HOST_SCP_CHRE	 2
+#define PIN_IN_SIZE_SCP_HOST_CHRE	 2
 
 /* scp Core ID definition */
 enum scp_core_id {
@@ -92,6 +108,19 @@ enum {
 	IPI_IN_AUDIO_ACCDET_1     = 36,
 	IPI_OUT_SCP_AOD           = 37,
 	IPI_IN_SCP_AOD            = 38,
+	IPI_OUT_AOV_SCP           = 39,
+	IPI_IN_SCP_AOV            = 40,
+	IPI_OUT_DEBUG_CMD         = 41,
+	IPI_IN_RV_SPK_PROCESS     = 42,
+	IPI_OUT_NPU_SCP		  = 43,
+	IPI_IN_SCP_NPU		  = 44,
+	IPI_OUT_SCP_PM_NOTIFY_0	  = 45,
+	IPI_OUT_SCP_PM_NOTIFY_1   = 46,
+	IPI_OUT_HOST_SCP_CHRE	  = 47,
+	IPI_IN_SCP_HOST_CHRE	  = 48,
+	IPI_IN_KASAN_CHECK	  = 49,
+	IPI_OUT_CAMFE_SCP_CAMBE   = 50,
+	IPI_IN_SCP_CAMBE_CAMFE    = 51,
 	SCP_IPI_COUNT
 };
 
@@ -115,6 +144,36 @@ enum ipi_id {
 	IPI_CHREX,
 	IPI_SENSOR,
 	IPI_SENSOR_INIT_START,
+	MTK_IPC_FASTRVC_APK_START,
+	MTK_IPC_FASTRVC_APK_START_RSP,
+	MTK_IPC_SEND_GPIO_STATUS_REQ,
+	MTK_IPC_SEND_GPIO_STATUS,
+	MTK_CAM_FE_IPC_OPEN,
+	MTK_CAM_FE_IPC_QUERYCAP,
+	MTK_CAM_FE_IPC_G_FMT,    //11
+	MTK_CAM_FE_IPC_S_FMT,
+	MTK_CAM_FE_IPC_REQBUFS,
+	MTK_CAM_FE_IPC_QUERYBUF,
+	MTK_CAM_FE_IPC_STREAMON,
+	MTK_CAM_FE_IPC_QBUF,
+	MTK_CAM_BE_IPC_QBUF_RESPOND,
+	MTK_CAM_FE_IPC_DQBUF,
+	MTK_CAM_FE_IPC_DQBUF_RESPOND,
+	MTK_CAM_FE_IPC_STREAMOFF,
+	MTK_CAM_FE_IPC_CLOSE,        //21
+	IPI_SCP_MM_BE_READY,
+	IPI_SCP_MM_FE_ENQUE,
+	IPI_SCP_MM_FE_DEQUE,
+	MTK_CMDQ_FE_IPC,
+	MTK_CAM_FE_IPC_REVERSE,
+	MTK_SENSOR_FE_IPC_STREAMON,
+	MTK_SENSOR_FE_IPC_STREAMOFF,
+	MTK_SENSOR_FE_IPC_OPEN,
+	MTK_SENSOR_FE_IPC_CLOSE,
+	MTK_MDP_FE_R_IPC,         //31
+	MTK_MDP_FE_S_IPC,
+	MTK_CAM_FE_IPC_SENTRYCFG,
+	MTK_CAM_FE_IPC_BUF_READY,
 	SCP_NR_IPI,
 };
 
@@ -125,14 +184,22 @@ enum scp_reserve_mem_id_t {
 	SENS_MEM_ID,
 	SCP_A_LOGGER_MEM_ID,
 	AUDIO_IPI_MEM_ID,
-	VOW_BARGEIN_MEM_ID,
+	VOW_BARGEIN_MEM_ID = 5,
 	SCP_DRV_PARAMS_MEM_ID,
 	ULTRA_MEM_ID,
 	SENS_SUPER_MEM_ID,
 	SENS_LIST_MEM_ID,
-	SENS_DEBUG_MEM_ID,
+	SENS_DEBUG_MEM_ID = 10,
 	SENS_CUSTOM_W_MEM_ID,
 	SENS_CUSTOM_R_MEM_ID,
+	SCP_AOV_MEM_ID,
+	SCP_SPK_MEM_ID,
+	SCP_AOD_MEM_ID = 15,
+	SCP_CONNSYS_MEM_ID,
+	SCP_CHRE_FROM_MEM_ID,
+	SCP_CHRE_TO_MEM_ID,
+	SCP_LOW_PWR_DBG_MEM_ID,
+	SCP_DBI_MEM_ID = 20,
 	NUMS_MEM_ID,
 };
 
@@ -152,7 +219,15 @@ enum feature_id {
 	VOW_DUAL_MIC_FEATURE_ID = 11,
 	VOW_DUAL_MIC_BARGE_IN_FEATURE_ID = 12,
 	ULTRA_FEATURE_ID = 13,
-	NUM_FEATURE_ID = 14,
+	RVSPKPROCESS_FEATURE_ID = 14,
+	RVVOICE_CALL_FEATURE_ID = 15,
+	NUM_FEATURE_ID = 16,
+};
+
+enum SCP_THERMAL_TYPE {
+	SCP_THERMAL_TYPE_HOT = 0,
+	SCP_THERMAL_TYPE_COLD = 1,
+	NUM_SCP_THERMAL_TYPE,
 };
 
 extern struct mtk_mbox_device scp_mboxdev;
@@ -160,6 +235,11 @@ extern struct mtk_ipi_device scp_ipidev;
 extern struct mtk_mbox_pin_send *scp_mbox_pin_send;
 extern struct mtk_mbox_pin_recv *scp_mbox_pin_recv;
 
+/* An API to dump scp ipi timeout info */
+extern void scp_plat_ipi_timeout_cb(int ipi_id);
+
+/* An  API to check scp wdt irq pending or not*/
+extern int scp_wdt_pending_check(unsigned int num);
 
 /* An API to get scp status */
 extern unsigned int is_scp_ready(enum scp_core_id scp_id);
@@ -197,9 +277,17 @@ extern phys_addr_t scp_get_reserve_mem_size(enum scp_reserve_mem_id_t id);
 /* APIs for registering function of features */
 extern void scp_register_feature(enum feature_id id);
 extern void scp_deregister_feature(enum feature_id id);
+extern int sensor_control_scp(enum feature_id id, int freq);
 
 /* APIs for reset scp */
 extern void scp_wdt_reset(int cpu_id);
+
+/* APIs for get status of scp dram_region_manage */
+extern int get_scp_dram_region_manage(void);
+
+extern void scp_send_thermal_wq(enum SCP_THERMAL_TYPE type);
+
+extern void dump_u1u2_clock(void);
 
 #endif
 

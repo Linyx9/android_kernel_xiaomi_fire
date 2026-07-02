@@ -206,13 +206,12 @@ int get_md32_img_sz(const char *IMAGE_PATH)
 		return -1;
 	}
 
-	filp_close(filp, NULL);
+	release_firmware((struct firmware)filp);
 	return fsize;
 }
 
 void upload_coef(void)
 {
-	pr_debug("upload_coef\n");
 	memcpy((void *)(MD32_DTCM_VIRTUAL_ADDR + MD32_COEF_OFFSET), md32_coef,
 	       MAX_TABS * 4);
 }
@@ -259,13 +258,13 @@ int load_md32(const char *IMAGE_PATH, void *dst)
 		memcpy_md32(dst, buf, fsize);
 	}
 
-	filp_close(filp, NULL);
+	release_firmware((struct firmware)filp);
 	kfree(buf);
 	return fsize;
 
 error:
 	if (filp != NULL)
-		filp_close(filp, NULL);
+		release_firmware((struct firmware)filp);
 
 	kfree(buf);
 	return -1;
@@ -474,7 +473,7 @@ int ReadFile(struct file *fp, char *buf, int readlen)
 
 int CloseFile(struct file *fp)
 {
-	filp_close(fp, NULL);
+	release_firmware((struct firmware)filp);
 	return 0;
 }
 
@@ -534,7 +533,6 @@ void wait_ipc_ack(void)
 
 void trigger_ipc_l(void)
 {
-	pr_debug("ANC trigger_ipc_l\n");
 	IPC_wait_queue_flag = 0;
 	HOST_TO_MD32_REG = 0x1;
 	/*	ANC_M2A_IPC_DATA */
@@ -548,14 +546,12 @@ void trigger_ipc_wait_l(void)
 
 void wake_up_ipc_wait(void)
 {
-	pr_debug("ANC wake_up_ipc_wait\n");
 	IPC_wait_queue_flag = 1;
 	wake_up_interruptible(&IPC_Wait_Queue);
 }
 
 void require_ipc_lock(void)
 {
-	pr_debug("ANC require_ipc_lock\n");
 	mutex_lock(&to_md32_ipc_lock);
 }
 
@@ -566,7 +562,6 @@ void release_ipc_lock(void)
 
 void notify_md32_update_parameter(void)
 {
-	pr_debug("notify_md32_update_parameter\n");
 	require_ipc_lock();
 	WriteREG_ANC(ANC_A2M_IPC_DATA, A2M_UpdateParameter);
 	trigger_ipc_wait_l();
@@ -585,7 +580,6 @@ void notify_md32_set_status(bool Enable)
 
 void notify_md32_enable_dump(bool Enable)
 {
-	pr_debug("notify_md32_enable_dump\n");
 	require_ipc_lock();
 	WriteREG_ANC(ANC_A2M_IPC_DATA, A2M_EnableDump);
 	WriteREG_ANC(ANC_A2M_IPC_DATA + 0x4, Enable ? 0x1 : 0x0);
@@ -595,7 +589,6 @@ void notify_md32_enable_dump(bool Enable)
 
 void notify_md32_enable_debug(bool Enable)
 {
-	pr_debug("notify_md32_enable_debug\n");
 	require_ipc_lock();
 	WriteREG_ANC(ANC_A2M_IPC_DATA, A2M_EnableDebug);
 	WriteREG_ANC(ANC_A2M_IPC_DATA + 0x4, Enable ? 0x1 : 0x0);
@@ -646,7 +639,7 @@ static long ANCService_ioctl(struct file *fp, unsigned int cmd,
 {
 	int ret = 0;
 
-	pr_debug("ANCService_ioctl cmd = %u arg = %lu\n", cmd, arg);
+	pr_debug("%s cmd = %u arg = %lu\n", __func__, cmd, arg);
 
 	switch (cmd) {
 	case SET_ANC_CONTROL: {
@@ -740,7 +733,7 @@ static long ANCService_ioctl(struct file *fp, unsigned int cmd,
 /*
  * ioctl32 compat
  */
-#ifdef CONFIG_COMPAT
+#if IS_ENABLED(CONFIG_COMPAT)
 
 static long ANCService_ioctl_compat(struct file *file, unsigned int cmd,
 				    unsigned long arg)
@@ -758,7 +751,7 @@ static ssize_t ANCService_write(struct file *fp, const char __user *data,
 {
 	char temp_str[MAX_TABS * 4];
 
-	pr_debug("ANCService_write write count %zu", count);
+	pr_debug("%s write count %zu", __func__, count);
 
 	if (count > MAX_TABS * 4)
 		return -EINVAL;
@@ -768,7 +761,7 @@ static ssize_t ANCService_write(struct file *fp, const char __user *data,
 
 	memcpy((void *)md32_coef, (void *)temp_str, count);
 
-	pr_debug("ANCService_write write done");
+	pr_debug("%s write done", __func__);
 	return 0;
 }
 
@@ -900,8 +893,8 @@ static int mtk_anc_pcm_open(struct snd_pcm_substream *substream)
 					    SNDRV_PCM_HW_PARAM_PERIODS);
 
 	/* print for hw pcm information */
-	pr_debug("mtk_anc_pcm_open runtime rate = %d channels = %d\n",
-		 runtime->rate, runtime->channels);
+	pr_debug("%s runtime rate = %d channels = %d\n",
+		 __func__, runtime->rate, runtime->channels);
 	if (substream->pcm->device & 1) {
 		runtime->hw.info &= ~SNDRV_PCM_INFO_INTERLEAVED;
 		runtime->hw.info |= SNDRV_PCM_INFO_NONINTERLEAVED;
@@ -916,7 +909,6 @@ static int mtk_anc_pcm_open(struct snd_pcm_substream *substream)
 		mtk_anc_close(substream);
 		return ret;
 	}
-	pr_debug("mtk_anc_pcm_open return\n");
 	return 0;
 }
 
@@ -927,7 +919,7 @@ static int mtk_anc_close(struct snd_pcm_substream *substream)
 
 static int mtk_anc_trigger(struct snd_pcm_substream *substream, int cmd)
 {
-	pr_debug("mtk_anc_trigger cmd = %d\n", cmd);
+	pr_debug("%s cmd = %d\n", __func__, cmd);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -977,7 +969,7 @@ static int mtk_anc_hw_free(struct snd_pcm_substream *substream)
 	return snd_pcm_lib_free_pages(substream);
 }
 
-static struct snd_pcm_ops mtk_afe_ops = {
+static const struct snd_pcm_ops mtk_afe_ops = {
 	.open = mtk_anc_pcm_open,
 	.close = mtk_anc_close,
 	.ioctl = snd_pcm_lib_ioctl,
@@ -985,12 +977,12 @@ static struct snd_pcm_ops mtk_afe_ops = {
 	.hw_free = mtk_anc_hw_free,
 	.prepare = mtk_anc_prepare,
 	.trigger = mtk_anc_trigger,
-	.copy_user = mtk_anc_copy,
+	.copy = mtk_anc_copy,
 	.fill_silence = mtk_anc_silence,
 	.page = mtk_anc_page,
 };
 
-static struct snd_soc_component_driver mtk_soc_anc_component = {
+static const struct snd_soc_component_driver mtk_soc_anc_component = {
 	.name = AFE_PCM_NAME,
 	.ops = &mtk_afe_ops,
 	.probe = mtk_anc_component_probe,
@@ -998,7 +990,7 @@ static struct snd_soc_component_driver mtk_soc_anc_component = {
 
 irqreturn_t AudDrv_ANC_IRQ_handler(int irq, void *dev_id)
 {
-	pr_debug("AudDrv_ANC_IRQ_handler %d\n", irq);
+	pr_debug("%s %d\n", __func__, irq);
 	/* MD32_TO_SPM_REG = 0x0;
 	 * on_md32_ipc_trigger();
 	 * MD32_TO_HOST_REG =  0x0;
@@ -1010,7 +1002,7 @@ bool Register_Aud_ANC_Irq(void *dev)
 {
 	int ret = 0;
 
-	pr_debug("Register_Aud_ANC_Irq %s dev name =%s\n", __func__,
+	pr_debug("%s dev name =%s\n", __func__,
 		 dev_name(dev));
 
 	/* ret = request_irq(MT6595_AFE_MCU_ANC_TO_AP_LINE,
@@ -1029,7 +1021,6 @@ static int mtk_anc_probe(struct platform_device *pdev)
 	dump_analog = 0;
 	IPC_wait_queue_flag = 0;
 
-	pr_debug("mtk_anc_probe\n");
 
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -1057,7 +1048,6 @@ static int mtk_anc_probe(struct platform_device *pdev)
 
 static int mtk_anc_component_probe(struct snd_soc_component *component)
 {
-	pr_debug("mtk_anc_component_probe\n");
 	return 0;
 }
 
@@ -1067,7 +1057,7 @@ static int mtk_afeanc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_anc_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_anc",
@@ -1080,7 +1070,7 @@ static struct platform_driver mtk_anc_driver = {
 
 			.name = MT_SOC_ANC_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_anc_of_ids,
 #endif
 		},
@@ -1096,7 +1086,6 @@ static int __init mtk_soc_anc_platform_init(void)
 {
 	int ret = 0;
 
-	pr_debug("%s\n", __func__);
 #ifndef CONFIG_OF
 	soc_mtkafe_anc_dev = platform_device_alloc(MT_SOC_ANC_PCM, -1);
 	if (!soc_mtkafe_anc_dev)

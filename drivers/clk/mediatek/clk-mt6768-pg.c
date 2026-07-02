@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -18,8 +18,7 @@
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 
-
-#include "clk-mtk-v1.h"
+#include "clkchk.h"
 #include "clk-mt6768-pg.h"
 
 #include <dt-bindings/clock/mt6768-clk.h>
@@ -64,9 +63,15 @@
 #define spm_read(addr)			__raw_readl(IOMEM(addr))
 #define spm_write(addr, val)		mt_reg_sync_writel(val, addr)
 
-#define clk_readl(addr)			__raw_readl(IOMEM(addr))
-#define clk_writel(addr, val)		mt_reg_sync_writel(val, addr)
+spinlock_t *get_mtk_clk_lock(void);
+spinlock_t *get_mtk_mtcmos_lock(void);
 
+#define mtk_clk_lock(flags)	spin_lock_irqsave(get_mtk_clk_lock(), flags)
+#define mtk_clk_unlock(flags)	\
+	spin_unlock_irqrestore(get_mtk_clk_lock(), flags)
+#define mtk_mtcmos_lock(flags)	spin_lock_irqsave(get_mtk_mtcmos_lock(), flags)
+#define mtk_mtcmos_unlock(flags)	\
+	spin_unlock_irqrestore(get_mtk_mtcmos_lock(), flags)
 
 /*MM Bus*/
 #ifdef CONFIG_OF
@@ -543,8 +548,44 @@ static struct subsys syss[] =	/* NR_SYSS *//* FIXME: set correct value */
 			},
 };
 
+static DEFINE_SPINLOCK(clk_ops_lock);
+static DEFINE_SPINLOCK(mtcmos_ops_lock);
+
+spinlock_t *get_mtk_clk_lock(void)
+{
+	return &clk_ops_lock;
+}
+
+spinlock_t *get_mtk_mtcmos_lock(void)
+{
+	return &mtcmos_ops_lock;
+}
+
+
 spinlock_t pgcb_lock;
 LIST_HEAD(pgcb_list);
+
+static struct provider_clk *__clk_pg_lookup_pvdck(const char *name)
+{
+	struct provider_clk *pvdck = get_all_provider_clks();
+
+	for (; pvdck->ck != NULL; pvdck++) {
+		if (!strcmp(pvdck->ck_name, name))
+			return pvdck;
+	}
+
+	return NULL;
+}
+
+static struct clk *__clk_pg_lookup(const char *name)
+{
+	struct provider_clk *pvdck = __clk_pg_lookup_pvdck(name);
+
+	if (pvdck)
+		return pvdck->ck;
+
+	return NULL;
+}
 
 struct pg_callbacks *register_pg_callback(struct pg_callbacks *pgcb)
 {
@@ -591,7 +632,7 @@ static void vdec_pre_busprotect(void)
 	data_latched[14] = clk_readl(VDEC_REG10);
 	data_latched[15] = clk_readl(VDEC_REG11);
 }
-#ifdef CONFIG_MTK_RAM_CONSOLE
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 static void vdec_dump_regs(void)
 {
 	int i;
@@ -728,7 +769,7 @@ static int DBG_STEP;
  */
 static void ram_console_update(void)
 {
-#ifdef CONFIG_MTK_RAM_CONSOLE
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 	struct pg_callbacks *pgcb;
 	unsigned long spinlock_save_flags;
 	u32 data[8] = {0x0};
@@ -872,9 +913,6 @@ static void ram_console_update(void)
 			vdec_dump_regs();
 		}
 	}
-
-	for (j = 0; j <= i; j++)
-		aee_rr_rec_clk(j, data[j]);
 	/*todo: add each domain's debug register to ram console*/
 #endif
 }
@@ -2890,17 +2928,6 @@ static int sys_get_state_op(struct subsys *sys)
 	return (sta & sys->sta_mask) && (sta_s & sys->sta_mask);
 }
 
-#if 0
-static int mfg_get_state_op(struct subsys *sys)
-{
-	if ((spm_read(MFG_PWR_CON) & PWR_ON) &&
-		(spm_read(MFG_PWR_CON) & PWR_ON_2ND))
-		return 1;
-	else
-		return 0;
-}
-#endif
-
 static struct subsys_ops MD1_sys_ops = {
 	.prepare =  MD1_sys_prepare_op,
 	.unprepare =  MD1_sys_unprepare_op,
@@ -3049,26 +3076,6 @@ static int enable_subsys(enum subsys_id id, enum mtcmos_op action)
 
 	WARN_ON(!sys);
 
-	if (!mtk_is_mtcmos_enable()) {
-#if MT_CCF_DEBUG
-		pr_notice("[CCF] skip %s: sys=%s, id=%d\n",
-			__func__, sys->name, id);
-#endif
-		switch (id) {
-		case SYS_MD1:
-			spm_mtcmos_ctrl_md1_pwr(STA_POWER_ON);
-			spm_mtcmos_ctrl_md1_bus_prot(STA_POWER_ON);
-			break;
-		case SYS_CONN:
-			spm_mtcmos_ctrl_conn_pwr(STA_POWER_ON);
-			spm_mtcmos_ctrl_conn_bus_prot(STA_POWER_ON);
-			break;
-		default:
-			break;
-		}
-		return 0;
-	}
-
 #if CONTROL_LIMIT
 	#if MT_CCF_DEBUG
 	pr_notice("[CCF] %s: sys=%s, id=%d, action = %s\n",
@@ -3114,26 +3121,6 @@ static int disable_subsys(enum subsys_id id, enum mtcmos_op action)
 	unsigned long spinlock_save_flags;
 
 	WARN_ON(!sys);
-
-	if (!mtk_is_mtcmos_enable()) {
-#if MT_CCF_DEBUG
-		pr_notice("[CCF] skip %s: sys=%s, id=%d\n",
-			__func__, sys->name, id);
-#endif
-		switch (id) {
-		case SYS_MD1:
-			spm_mtcmos_ctrl_md1_bus_prot(STA_POWER_DOWN);
-			spm_mtcmos_ctrl_md1_pwr(STA_POWER_DOWN);
-			break;
-		case SYS_CONN:
-			spm_mtcmos_ctrl_conn_bus_prot(STA_POWER_DOWN);
-			spm_mtcmos_ctrl_conn_pwr(STA_POWER_DOWN);
-			break;
-		default:
-			break;
-		}
-		return 0;
-	}
 
 #if CONTROL_LIMIT
 	#if MT_CCF_DEBUG
@@ -3195,10 +3182,7 @@ static int pg_is_enabled(struct clk_hw *hw)
 {
 	struct mt_power_gate *pg = to_power_gate(hw);
 
-	if (!mtk_is_mtcmos_enable())
-		return 1;
-	else
-		return subsys_is_on(pg->pd_id);
+	return subsys_is_on(pg->pd_id);
 }
 
 int pg_prepare(struct clk_hw *hw)
@@ -3220,7 +3204,7 @@ int pg_prepare(struct clk_hw *hw)
 			break;
 
 		clk = pg->pre_clk1_list->cg[i] ?
-			__clk_lookup(pg->pre_clk1_list->cg[i]) : NULL;
+			__clk_pg_lookup(pg->pre_clk1_list->cg[i]) : NULL;
 
 		if (clk)
 			ret1 = clk_prepare_enable(clk);
@@ -3248,7 +3232,7 @@ int pg_prepare(struct clk_hw *hw)
 			break;
 
 		clk = pg->pre_clk2_list->cg[i] ?
-			__clk_lookup(pg->pre_clk2_list->cg[i]) : NULL;
+			__clk_pg_lookup(pg->pre_clk2_list->cg[i]) : NULL;
 		if (clk)
 			ret3 = clk_prepare_enable(clk);
 		else
@@ -3299,7 +3283,7 @@ void pg_unprepare(struct clk_hw *hw)
 			break;
 
 		clk = pg->pre_clk2_list->cg[i] ?
-			__clk_lookup(pg->pre_clk2_list->cg[i]) : NULL;
+			__clk_pg_lookup(pg->pre_clk2_list->cg[i]) : NULL;
 
 		if (clk)
 			clk_disable_unprepare(clk);
@@ -3324,7 +3308,7 @@ void pg_unprepare(struct clk_hw *hw)
 			break;
 
 		clk = pg->pre_clk1_list->cg[i] ?
-			__clk_lookup(pg->pre_clk1_list->cg[i]) : NULL;
+			__clk_pg_lookup(pg->pre_clk1_list->cg[i]) : NULL;
 
 		if (clk)
 			clk_disable_unprepare(clk);
@@ -3469,23 +3453,20 @@ struct mtk_power_gate {
 	}
 
 /* FIXME: all values needed to be verified */
-static struct mtk_power_gate scp_clks[] = {
+struct mtk_power_gate scp_clks[] = {
 	PGATE2(SCP_SYS_MD1, pg_md1, NULL, NULL, NULL, SYS_MD1),
-	PGATE2(SCP_SYS_CONN, pg_conn, NULL, NULL, NULL, SYS_CONN),
-	PGATE2(SCP_SYS_DPY, pg_dpy, NULL, NULL, NULL, SYS_DPY),
-	PGATE2(SCP_SYS_DIS, pg_dis, NULL, &mm_cg1, &mm_cg2, SYS_DIS),
+	//PGATE2(SCP_SYS_CONN, pg_conn, NULL, NULL, NULL, SYS_CONN),
+	//PGATE2(SCP_SYS_DPY, pg_dpy, NULL, NULL, NULL, SYS_DPY),
+	//PGATE2(SCP_SYS_DIS, pg_dis, NULL, &mm_cg1, &mm_cg2, SYS_DIS),
 	PGATE2(SCP_SYS_MFG, pg_mfg, pg_mfg_async, NULL, NULL, SYS_MFG),
-	PGATE2(SCP_SYS_ISP, pg_isp, pg_dis, NULL, &isp_cg, SYS_ISP),
-	PGATE2(SCP_SYS_IFR, pg_ifr, NULL, NULL, NULL, SYS_IFR),
-	PGATE2(SCP_SYS_MFG_CORE0, pg_mfg_core0, pg_mfg,
-		NULL, NULL, SYS_MFG_CORE0),
-	PGATE2(SCP_SYS_MFG_CORE1, pg_mfg_core1, pg_mfg,
-		NULL, NULL, SYS_MFG_CORE1),
-	PGATE2(SCP_SYS_MFG_ASYNC, pg_mfg_async, NULL,
-		&mfg_cg, NULL, SYS_MFG_ASYNC),
-	PGATE2(SCP_SYS_CAM, pg_cam, pg_dis, NULL, &cam_cg, SYS_CAM),
-	PGATE2(SCP_SYS_VENC, pg_venc, pg_dis, NULL, &venc_cg, SYS_VENC),
-	PGATE2(SCP_SYS_VDEC, pg_vdec, pg_dis, NULL, &vdec_cg, SYS_VDEC),
+	//PGATE2(SCP_SYS_ISP, pg_isp, pg_dis, NULL, &isp_cg, SYS_ISP),
+	//PGATE2(SCP_SYS_IFR, pg_ifr, NULL, NULL, NULL, SYS_IFR),
+	PGATE2(SCP_SYS_MFG_CORE0, pg_mfg_core0, pg_mfg, NULL, NULL, SYS_MFG_CORE0),
+	PGATE2(SCP_SYS_MFG_CORE1, pg_mfg_core1, pg_mfg, NULL, NULL, SYS_MFG_CORE1),
+	PGATE2(SCP_SYS_MFG_ASYNC, pg_mfg_async, NULL, &mfg_cg, NULL, SYS_MFG_ASYNC),
+	//PGATE2(SCP_SYS_CAM, pg_cam, pg_dis, NULL, &cam_cg, SYS_CAM),
+	//PGATE2(SCP_SYS_VENC, pg_venc, pg_dis, NULL, &venc_cg, SYS_VENC),
+	//PGATE2(SCP_SYS_VDEC, pg_vdec, pg_dis, NULL, &vdec_cg, SYS_VDEC),
 };
 
 static int  init_clk_scpsys(struct platform_device *pdev, struct clk_onecell_data *clk_data)
@@ -3510,14 +3491,9 @@ static int  init_clk_scpsys(struct platform_device *pdev, struct clk_onecell_dat
 	for (i = 0; i < ARRAY_SIZE(scp_clks); i++) {
 		struct mtk_power_gate *pg = &scp_clks[i];
 
-		if (mtk_is_mtcmos_enable())
-			clk = mt_clk_register_power_gate(pg->name,
-				pg->parent_name, pg->pre_clk1_names,
-				pg->pre_clk2_names, pg->pd_id);
-		else
-			clk = mt_clk_register_power_gate(pg->name,
-				pg->parent_name, NULL,
-				NULL, pg->pd_id);
+		clk = mt_clk_register_power_gate(pg->name,
+			pg->parent_name, pg->pre_clk1_names,
+			pg->pre_clk2_names, pg->pd_id);
 
 		if (IS_ERR(clk)) {
 			pr_debug("[CCF] %s: Failed to register clk %s: %ld\n",
@@ -3579,7 +3555,7 @@ static int  clk_mt6768_scpsys_probe(struct platform_device *pdev)
 	int r;
 	struct device_node *node = pdev->dev.of_node;
 
-	if(!node) {
+	if (!node) {
 		pr_err("%s node is null\n", __func__);
 		return -EINVAL;
 	}
@@ -3616,46 +3592,11 @@ static int  clk_mt6768_scpsys_probe(struct platform_device *pdev)
 
 	spin_lock_init(&pgcb_lock);
 
-	if (mtk_is_mtcmos_enable()) {
-		/* subsys init: per modem owner request,
-		 *disable modem power first
-		 */
-		disable_subsys(SYS_MD1, MTCMOS_PWR);
-	} else {	/*power on all subsys for bring up */
+	/* subsys init: per modem owner request,
+	 * disable modem power first
+	 */
+	disable_subsys(SYS_MD1, MTCMOS_PWR);
 
-#ifndef CONFIG_FPGA_EARLY_PORTING
-		pr_notice("[CCF] %s: MT6768: S/B bringup mtcmos start\n",
-			__func__);
-
-		/* md1 and conn power down first */
-		spm_mtcmos_ctrl_md1_bus_prot(STA_POWER_DOWN);/*do after ccif*/
-		spm_mtcmos_ctrl_md1_pwr(STA_POWER_DOWN);/*do after ccif*/
-		spm_mtcmos_ctrl_conn_bus_prot(STA_POWER_DOWN);
-		spm_mtcmos_ctrl_conn_pwr(STA_POWER_DOWN);
-
-		spm_mtcmos_ctrl_dpy_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_dpy_bus_prot(STA_POWER_ON);
-		spm_mtcmos_ctrl_dis_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_dis_bus_prot(STA_POWER_ON);
-		spm_mtcmos_ctrl_isp_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_isp_bus_prot(STA_POWER_ON);
-		spm_mtcmos_ctrl_ifr_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_mfg_async_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_mfg_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_mfg_bus_prot(STA_POWER_ON);
-		spm_mtcmos_ctrl_mfg_core0_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_mfg_core1_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_cam_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_cam_bus_prot(STA_POWER_ON);
-		spm_mtcmos_ctrl_ven_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_ven_bus_prot(STA_POWER_ON);
-		spm_mtcmos_ctrl_vde_pwr(STA_POWER_ON);
-		spm_mtcmos_ctrl_vde_bus_prot(STA_POWER_ON);
-
-		pr_notice("[CCF] %s: MT6768: S/B bringup done\n",
-			__func__);
-#endif
-	}
 	return r;
 }
 
@@ -3667,7 +3608,7 @@ void subsys_if_on(void)
 {
 	unsigned int sta = spm_read(PWR_STATUS);
 	unsigned int sta_s = spm_read(PWR_STATUS_2ND);
-	int ret = 0;
+	int ret __maybe_unused = 0;
 
 	if ((sta & (1U << 0)) && (sta_s & (1U << 0)))
 		pr_debug("suspend warning: SYS_MD1 is on!!!\n");
@@ -3676,14 +3617,7 @@ void subsys_if_on(void)
 		pr_notice("suspend warning: SYS_CONN is on!!!\n");
 		ret++;
 	}
-#if 0
-	if ((sta & (1U << 2)) && (sta_s & (1U << 2)))
-		pr_debug("suspend warning: SYS_DPY is on!!!\n");
 
-	if ((sta & (1U << 3)) && (sta_s & (1U << 3)))
-		pr_debug("suspend warning: SYS_IFR is on!!!\n");
-
-#endif
 	if ((sta & (1U << 5)) && (sta_s & (1U << 5))) {
 		pr_notice("suspend warning: SYS_DIS is on!!!\n");
 		ret++;
@@ -3730,8 +3664,8 @@ void subsys_if_on(void)
 	 *	WARN_ON(1);
 	 */
 }
+EXPORT_SYMBOL(subsys_if_on);
 
-#if 1 /*only use for suspend test*/
 void mtcmos_force_off(void)
 {
 	spm_mtcmos_ctrl_md1_bus_prot(STA_POWER_DOWN);
@@ -3759,40 +3693,20 @@ void mtcmos_force_off(void)
 	spm_mtcmos_ctrl_dis_pwr(STA_POWER_DOWN);
 
 }
-#endif
+
 static const struct of_device_id of_match_clk_mt6768_scpsys[] = {
-	{ .compatible = "mediatek,scpsys", },
+	{ .compatible = "mediatek,scpsys-clk", },
 	{}
 };
 
 static struct platform_driver clk_mt6768_scpsys_drv = {
 	.probe = clk_mt6768_scpsys_probe,
 	.driver = {
-		.name = "clk-mt6768-scpsys",
+		.name = "clk-mt6768-scpsys-clk",
 		.owner = THIS_MODULE,
 		.of_match_table = of_match_clk_mt6768_scpsys,
 	},
 };
-
-
-
-
-
-
-
-/*
- * Workaround for mm dvfs: Poll mm rdma before clkmux switching.
- */
-void polling_rdma_output_line_is_not_zero(void);
-void mm_polling(struct clk_hw *hw)
-{
-	const char *clk_name = __clk_get_name(hw->clk);
-
-	if (clk_name) {
-		if (!strcmp(clk_name, "mm_sel") && subsys_is_on(SYS_DIS))
-			polling_rdma_output_line_is_not_zero();
-	}
-}
 
 #if CLK_DEBUG
 /*
@@ -3824,7 +3738,7 @@ static int test_pg_dump_regs(struct seq_file *s, void *v)
 
 static void dump_pg_state(const char *clkname, struct seq_file *s)
 {
-	struct clk *c = __clk_lookup(clkname);
+	struct clk *c = __clk_pg_lookup(clkname);
 	struct clk *p = IS_ERR_OR_NULL(c) ? NULL : clk_get_parent(c);
 
 	if (IS_ERR_OR_NULL(c)) {
@@ -3886,7 +3800,7 @@ static int test_pg_1(struct seq_file *s, void *v)
 /*	pr_debug("\n");*/
 
 	for (i = 0; i < ARRAY_SIZE(g_clks); i++) {
-		g_clks[i].clk = __clk_lookup(g_clks[i].name);
+		g_clks[i].clk = __clk_pg_lookup(g_clks[i].name);
 		if (IS_ERR_OR_NULL(g_clks[i].clk)) {
 			seq_printf(s, "clk_get(%s): NULL\n", g_clks[i].name);
 			continue;

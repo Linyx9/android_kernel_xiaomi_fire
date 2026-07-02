@@ -155,7 +155,8 @@ static int mtk_dai_gain_hw_params(struct snd_pcm_substream *substream,
 			   dai->id == MT6885_DAI_HW_GAIN_1 ?
 			   AFE_GAIN1_CON0 : AFE_GAIN2_CON0,
 			   GAIN1_SAMPLE_PER_STEP_MASK_SFT,
-			   0x40 << GAIN1_SAMPLE_PER_STEP_SFT);
+			   (dai->id == MT6885_DAI_HW_GAIN_1 ? 0x40 : 0x0) <<
+			   GAIN1_SAMPLE_PER_STEP_SFT);
 
 	return 0;
 }
@@ -174,7 +175,6 @@ static const struct snd_soc_dai_ops mtk_dai_gain_ops = {
 #define MTK_HW_GAIN_FORMATS (SNDRV_PCM_FMTBIT_S16_LE |\
 			     SNDRV_PCM_FMTBIT_S24_LE |\
 			     SNDRV_PCM_FMTBIT_S32_LE)
-
 
 static struct snd_soc_dai_driver mtk_dai_gain_driver[] = {
 	{
@@ -195,9 +195,9 @@ static struct snd_soc_dai_driver mtk_dai_gain_driver[] = {
 			.formats = MTK_HW_GAIN_FORMATS,
 		},
 		.ops = &mtk_dai_gain_ops,
-		.symmetric_rates = 1,
+		.symmetric_rate = 1,
 		.symmetric_channels = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_sample_bits = 1,
 	},
 	{
 		.name = "HW Gain 2",
@@ -217,9 +217,9 @@ static struct snd_soc_dai_driver mtk_dai_gain_driver[] = {
 			.formats = MTK_HW_GAIN_FORMATS,
 		},
 		.ops = &mtk_dai_gain_ops,
-		.symmetric_rates = 1,
+		.symmetric_rate = 1,
 		.symmetric_channels = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_sample_bits = 1,
 	},
 };
 

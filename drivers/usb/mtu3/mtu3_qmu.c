@@ -273,8 +273,8 @@ static int mtu3_prepare_tx_gpd(struct mtu3_ep *mep, struct mtu3_request *mreq)
 			gpd->dw3_info |= cpu_to_le32(GPD_EXT_FLAG_ZLP);
 	}
 
-	/* requires a memory barrier */
-	smp_mb();
+	/* prevent reorder, make sure GPD's HWO is set last */
+	mb();
 	gpd->dw0_info |= cpu_to_le32(GPD_FLAGS_IOC | GPD_FLAGS_HWO);
 
 	mreq->gpd = gpd;
@@ -308,8 +308,8 @@ static int mtu3_prepare_rx_gpd(struct mtu3_ep *mep, struct mtu3_request *mreq)
 	gpd->next_gpd = cpu_to_le32(lower_32_bits(enq_dma));
 	ext_addr |= GPD_EXT_NGP(mtu, upper_32_bits(enq_dma));
 	gpd->dw3_info = cpu_to_le32(ext_addr);
-	/* requires a memory barrier */
-	smp_mb();
+	/* prevent reorder, make sure GPD's HWO is set last */
+	mb();
 	gpd->dw0_info |= cpu_to_le32(GPD_FLAGS_IOC | GPD_FLAGS_HWO);
 
 	mreq->gpd = gpd;
@@ -456,10 +456,8 @@ static void qmu_tx_zlp_error_handler(struct mtu3 *mtu, u8 epnum)
 		return;
 	}
 	mtu3_setbits(mbase, MU3D_EP_TXCR0(mep->epnum), TX_TXPKTRDY);
-
-	/* requires a memory barrier */
-	smp_mb();
-
+	/* prevent reorder, make sure GPD's HWO is set last */
+	mb();
 	/* by pass the current GDP */
 	gpd_current->dw0_info |= cpu_to_le32(GPD_FLAGS_BPS | GPD_FLAGS_HWO);
 
@@ -485,7 +483,7 @@ static void qmu_error_rx(struct mtu3 *mtu, u8 epnum)
 
 	mreq = next_request(mep);
 	if (!mreq || mreq->gpd != gpd_current) {
-		dev_err(mtu->dev, "no correct RX req is found\n");
+		dev_info(mtu->dev, "no correct RX req is found\n");
 		return;
 	}
 
@@ -524,8 +522,7 @@ static void qmu_done_tx(struct mtu3 *mtu, u8 epnum)
 	dev_dbg(mtu->dev, "%s EP%d, last=%p, current=%p, enq=%p\n",
 		__func__, epnum, gpd, gpd_current, ring->enqueue);
 
-	while (gpd != NULL && gpd != gpd_current &&
-			!GET_GPD_HWO(gpd)) {
+	while (gpd && gpd != gpd_current && !GET_GPD_HWO(gpd)) {
 
 		mreq = next_request(mep);
 
@@ -540,6 +537,11 @@ static void qmu_done_tx(struct mtu3 *mtu, u8 epnum)
 		mtu3_req_complete(mep, request, 0);
 
 		gpd = advance_deq_gpd(ring);
+
+		if (!gpd) {
+			dev_err(mtu->dev, "[TX] EP%d GPD null!\n", epnum);
+			return;
+		}
 	}
 
 	dev_dbg(mtu->dev, "%s EP%d, deq=%p, enq=%p, complete\n",
@@ -564,8 +566,7 @@ static void qmu_done_rx(struct mtu3 *mtu, u8 epnum)
 	dev_dbg(mtu->dev, "%s EP%d, last=%p, current=%p, enq=%p\n",
 		__func__, epnum, gpd, gpd_current, ring->enqueue);
 
-	while (gpd != NULL && gpd != gpd_current &&
-			!GET_GPD_HWO(gpd)) {
+	while (gpd && gpd != gpd_current && !GET_GPD_HWO(gpd)) {
 
 		mreq = next_request(mep);
 
@@ -580,6 +581,11 @@ static void qmu_done_rx(struct mtu3 *mtu, u8 epnum)
 		mtu3_req_complete(mep, req, 0);
 
 		gpd = advance_deq_gpd(ring);
+
+		if (!gpd) {
+			dev_err(mtu->dev, "[RX] EP%d GPD null!\n", epnum);
+			return;
+		}
 	}
 
 	dev_dbg(mtu->dev, "%s EP%d, deq=%p, enq=%p, complete\n",

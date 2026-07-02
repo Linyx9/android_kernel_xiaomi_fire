@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/clk-provider.h>
 #include <linux/platform_device.h>
@@ -17,10 +17,6 @@
 #define INV_OFS			-1
 #define INV_BIT			-1
 
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status ipe_pwr_stat = GATE_PWR_STAT(0xEF0,
-		0xEF4, INV_OFS, BIT(11), BIT(11));
-
 static const struct mtk_gate_regs ipe_cg_regs = {
 	.set_ofs = 0x4,
 	.clr_ofs = 0x8,
@@ -34,7 +30,6 @@ static const struct mtk_gate_regs ipe_cg_regs = {
 		.regs = &ipe_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &ipe_pwr_stat,			\
 	}
 
 static const struct mtk_gate ipe_clks[] = {
@@ -102,4 +97,4 @@ static int __init clk_mt6877_ipe_init(void)
 	return platform_driver_register(&clk_mt6877_ipe_drv);
 }
 arch_initcall(clk_mt6877_ipe_init);
-
+MODULE_LICENSE("GPL");

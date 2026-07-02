@@ -1,29 +1,31 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
-#include <drm/drmP.h>
+#include <linux/backlight.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
-#include <linux/backlight.h>
+#include <drm/drm_modes.h>
 #include <linux/delay.h>
+#include <drm/drm_connector.h>
+#include <drm/drm_device.h>
 
 #include <linux/gpio/consumer.h>
+#include <linux/regulator/consumer.h>
 
 #include <video/mipi_display.h>
 #include <video/of_videomode.h>
 #include <video/videomode.h>
-#include <linux/of_graph.h>
+
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 
 #define CONFIG_MTK_PANEL_EXT
 #if defined(CONFIG_MTK_PANEL_EXT)
-#include "../mediatek/mtk_drm_graphics_base.h"
-#include "../mediatek/mtk_log.h"
-#include "../mediatek/mtk_panel_ext.h"
+#include "../mediatek/mediatek_v2/mtk_panel_ext.h"
+#include "../mediatek/mediatek_v2/mtk_drm_graphics_base.h"
 #endif
 /* enable this to check panel self -bist pattern */
 /* #define PANEL_BIST_PATTERN */
@@ -32,13 +34,22 @@
 #include <linux/i2c.h>
 //#include "lcm_i2c.h"
 
-#define AVDD_REG 0x00
-#define AVDD_REG 0x01
+#define HFP_SUPPORT 1
 
+#if HFP_SUPPORT
+static int current_fps = 60;
+#endif
+
+static char bl_tb0[] = { 0x51, 0xff };
+
+//TO DO: You have to do that remove macro BYPASSI2C and solve build error
+//otherwise voltage will be unstable
+#define BYPASSI2C
+
+#ifndef BYPASSI2C
 /* i2c control start */
 #define LCM_I2C_ID_NAME "I2C_LCD_BIAS"
 static struct i2c_client *_lcm_i2c_client;
-static char bl_tb0[] = { 0x51, 0xff };
 
 /*****************************************************************************
  * Function Prototype
@@ -143,6 +154,7 @@ static void __exit _lcm_i2c_exit(void)
 module_init(_lcm_i2c_init);
 module_exit(_lcm_i2c_exit);
 /***********************************/
+#endif
 
 struct jdi {
 	struct device *dev;
@@ -234,30 +246,34 @@ static void jdi_dcs_write(struct jdi *ctx, const void *data, size_t len)
 static void jdi_panel_init(struct jdi *ctx)
 {
 	ctx->reset_gpio = devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(ctx->dev, "%s: cannot get reset-gpios %ld\n",
-			__func__, PTR_ERR(ctx->reset_gpio));
-		return;
-	}
 	usleep_range(10 * 1000, 15 * 1000);
 	gpiod_set_value(ctx->reset_gpio, 0);
 	usleep_range(10 * 1000, 15 * 1000);
 	gpiod_set_value(ctx->reset_gpio, 1);
 	usleep_range(10 * 1000, 15 * 1000);
 	devm_gpiod_put(ctx->dev, ctx->reset_gpio);
-	//set 120hz
+ #if HFP_SUPPORT
+	jdi_dcs_write_seq_static(ctx, 0xFF, 0x25);
+	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
+	if (current_fps == 60)
+		jdi_dcs_write_seq_static(ctx, 0x18, 0x21);
+	else if (current_fps == 90)
+		jdi_dcs_write_seq_static(ctx, 0x18, 0x20);
+	else
+		jdi_dcs_write_seq_static(ctx, 0x18, 0x22);
+#else
 	jdi_dcs_write_seq_static(ctx, 0xFF, 0x25);
 	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
 	jdi_dcs_write_seq_static(ctx, 0x18, 0x22);
-
+#endif
 	jdi_dcs_write_seq_static(ctx, 0xFF, 0x10);
 	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
 	jdi_dcs_write_seq_static(ctx, 0xB0, 0x00);
 	//DSC ON && set PPS
 	jdi_dcs_write_seq_static(ctx, 0xC0, 0x03);
-	jdi_dcs_write_seq_static(ctx, 0xC1, 0x89, 0x28, 0x00, 0x08, 0x00, 0xAA,
-				0x02, 0x0E, 0x00, 0x2B, 0x00, 0x07, 0x0D, 0xB7,
-				0x0C, 0xB7);
+	jdi_dcs_write_seq_static(ctx, 0xC1, 0x89, 0x28, 0x00, 0x14, 0x00, 0xAA,
+				0x02, 0x0E, 0x00, 0x71, 0x00, 0x07, 0x05, 0x0E,
+				0x05, 0x16);
 	jdi_dcs_write_seq_static(ctx, 0xC2, 0x1B, 0XA0);
 
 	// CCMON
@@ -612,21 +628,11 @@ static int jdi_unprepare(struct drm_panel *panel)
 	msleep(200);
 	/*
 	 * ctx->reset_gpio = devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
-	 * if (IS_ERR(ctx->reset_gpio)) {
-	 *	dev_err(ctx->dev, "%s: cannot get reset-gpios %ld\n",
-	 *		__func__, PTR_ERR(ctx->reset_gpio));
-	 *	return PTR_ERR(ctx->reset_gpio);
-	 * }
 	 * gpiod_set_value(ctx->reset_gpio, 0);
 	 * devm_gpiod_put(ctx->dev, ctx->reset_gpio);
 	 */
 	ctx->bias_neg =
 	    devm_gpiod_get_index(ctx->dev, "bias", 1, GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(ctx->dev, "%s: cannot get bias-neg 1 %ld\n",
-			__func__, PTR_ERR(ctx->bias_neg));
-		return PTR_ERR(ctx->bias_neg);
-	}
 	gpiod_set_value(ctx->bias_neg, 0);
 	devm_gpiod_put(ctx->dev, ctx->bias_neg);
 
@@ -634,11 +640,6 @@ static int jdi_unprepare(struct drm_panel *panel)
 
 	ctx->bias_pos =
 	    devm_gpiod_get_index(ctx->dev, "bias", 0, GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(ctx->dev, "%s: cannot get bias-pos 0 %ld\n",
-			__func__, PTR_ERR(ctx->bias_pos));
-		return PTR_ERR(ctx->bias_pos);
-	}
 	gpiod_set_value(ctx->bias_pos, 0);
 	devm_gpiod_put(ctx->dev, ctx->bias_pos);
 
@@ -659,11 +660,6 @@ static int jdi_prepare(struct drm_panel *panel)
 
 	// lcd reset H -> L -> L
 	ctx->reset_gpio = devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(ctx->dev, "%s: cannot get reset-gpios %ld\n",
-			__func__, PTR_ERR(ctx->reset_gpio));
-		return PTR_ERR(ctx->reset_gpio);
-	}
 	gpiod_set_value(ctx->reset_gpio, 1);
 	usleep_range(10000, 10001);
 	gpiod_set_value(ctx->reset_gpio, 0);
@@ -673,26 +669,18 @@ static int jdi_prepare(struct drm_panel *panel)
 	// end
 	ctx->bias_pos =
 	    devm_gpiod_get_index(ctx->dev, "bias", 0, GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(ctx->dev, "%s: cannot get bias-pos 0 %ld\n",
-			__func__, PTR_ERR(ctx->bias_pos));
-		return PTR_ERR(ctx->bias_pos);
-	}
 	gpiod_set_value(ctx->bias_pos, 1);
 	devm_gpiod_put(ctx->dev, ctx->bias_pos);
 
 	usleep_range(2000, 2001);
 	ctx->bias_neg =
 	    devm_gpiod_get_index(ctx->dev, "bias", 1, GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(ctx->dev, "%s: cannot get bias-neg 1 %ld\n",
-			__func__, PTR_ERR(ctx->bias_neg));
-		return PTR_ERR(ctx->bias_neg);
-	}
 	gpiod_set_value(ctx->bias_neg, 1);
 	devm_gpiod_put(ctx->dev, ctx->bias_neg);
+#ifndef BYPASSI2C
 	_lcm_i2c_write_bytes(0x0, 0xf);
 	_lcm_i2c_write_bytes(0x1, 0xf);
+#endif
 	jdi_panel_init(ctx);
 
 	ret = ctx->error;
@@ -700,9 +688,6 @@ static int jdi_prepare(struct drm_panel *panel)
 		jdi_unprepare(panel);
 
 	ctx->prepared = true;
-#if defined(CONFIG_MTK_PANEL_EXT)
-	mtk_panel_tch_rst(panel);
-#endif
 #ifdef PANEL_SUPPORT_READBACK
 	jdi_panel_get_data(ctx);
 #endif
@@ -732,7 +717,31 @@ static int jdi_enable(struct drm_panel *panel)
 
 	return 0;
 }
+#if HFP_SUPPORT
+static const struct drm_display_mode default_mode = {
+	.clock = 316325,
+	.hdisplay = 1080,
+	.hsync_start = 1080 + 983,//HFP
+	.hsync_end = 1080 + 983 + 12,//HSA
+	.htotal = 1080 + 983 + 12 + 56,//HBP
+	.vdisplay = 2400,
+	.vsync_start = 2400 + 54,//VFP
+	.vsync_end = 2400 + 54 + 10,//VSA
+	.vtotal = 2400 + 54 + 10 + 10,//VBP
+};
 
+static const struct drm_display_mode performance_mode = {
+	.clock = 369170,
+	.hdisplay = 1080,
+	.hsync_start = 1080 + 510,//HFP
+	.hsync_end = 1080 + 510 + 12,//HSA
+	.htotal = 1080 + 510 + 12 + 56,//HBP
+	.vdisplay = 2400,
+	.vsync_start = 2400 + 54,//VFP
+	.vsync_end = 2400 + 54 + 10,//VSA
+	.vtotal = 2400 + 54 + 10 + 10,//VBP
+};
+#else
 static const struct drm_display_mode default_mode = {
 	.clock = 422163,
 	.hdisplay = 1080,
@@ -742,8 +751,7 @@ static const struct drm_display_mode default_mode = {
 	.vdisplay = 2400,
 	.vsync_start = 2400 + 2528,//VFP
 	.vsync_end = 2400 + 2528 + 10,//VSA
-	.vtotal = 2400 + 2528 + 10 + 10,//VBP
-	.vrefresh = 60,
+	.vtotal = 2400 + 2528 + 10 + 10,//VBP 4948
 };
 
 static const struct drm_display_mode performance_mode = {
@@ -756,9 +764,8 @@ static const struct drm_display_mode performance_mode = {
 	.vsync_start = 2400 + 879,//VFP
 	.vsync_end = 2400 + 879 + 10,//VSA
 	.vtotal = 2400 + 879 + 10 + 10,//VBP
-	.vrefresh = 90,
 };
-
+#endif
 static const struct drm_display_mode performance_mode1 = {
 	.clock = 422163,
 	.hdisplay = 1080,
@@ -768,15 +775,14 @@ static const struct drm_display_mode performance_mode1 = {
 	.vdisplay = 2400,
 	.vsync_start = 2400 + 54,//VFP
 	.vsync_end = 2400 + 54 + 10,//VSA
-	.vtotal = 2400 + 54 + 10 + 10,//VBP
-	.vrefresh = 120,
+	.vtotal = 2400 + 54 + 10 + 10,//VBP 2474
 };
 
 
 #if defined(CONFIG_MTK_PANEL_EXT)
 static struct mtk_panel_params ext_params = {
 	.pll_clk = 369,
-	.vfp_low_power = 4178,//45hz
+	.vfp_low_power = 879,//45hz
 	.cust_esd_check = 0,
 	.esd_check_enable = 1,
 	.lcm_esd_check_table[0] = {
@@ -792,22 +798,22 @@ static struct mtk_panel_params ext_params = {
 		.dsc_cfg = 34,
 		.rct_on = 1,
 		.bit_per_channel = 8,
-		.dsc_line_buf_depth = 9,
+		.dsc_line_buf_depth = 11,
 		.bp_enable = 1,
 		.bit_per_pixel = 128,
 		.pic_height = 2400,
 		.pic_width = 1080,
-		.slice_height = 8,
+		.slice_height = 20,
 		.slice_width = 540,
 		.chunk_size = 540,
 		.xmit_delay = 170,
 		.dec_delay = 526,
 		.scale_value = 32,
-		.increment_interval = 43,
+		.increment_interval = 113,
 		.decrement_interval = 7,
 		.line_bpg_offset = 12,
-		.nfl_bpg_offset = 3511,
-		.slice_bpg_offset = 3255,
+		.nfl_bpg_offset = 1294,
+		.slice_bpg_offset = 1302,
 		.initial_offset = 6144,
 		.final_offset = 7072,
 		.flatness_minqp = 3,
@@ -820,11 +826,25 @@ static struct mtk_panel_params ext_params = {
 		.rc_tgt_offset_lo = 3,
 		},
 	.data_rate = 738,
+	.lfr_enable = 1,
+	.lfr_minimum_fps = 60,
 	.dyn_fps = {
-		.switch_en = 1, .vact_timing_fps = 120,
-	},
-	.dyn = {
 		.switch_en = 1,
+#if HFP_SUPPORT
+		.vact_timing_fps = 60,
+#else
+		.vact_timing_fps = 120,
+#endif
+		.dfps_cmd_table[0] = {0, 2, {0xFF, 0x25} },
+		.dfps_cmd_table[1] = {0, 2, {0xFB, 0x01} },
+		.dfps_cmd_table[2] = {0, 2, {0x18, 0x21} },
+		/*switch page for esd check*/
+		.dfps_cmd_table[3] = {0, 2, {0xFF, 0x10} },
+		.dfps_cmd_table[4] = {0, 2, {0xFB, 0x01} },
+	},
+	/* following MIPI hopping parameter might cause screen mess */
+	.dyn = {
+		.switch_en = 0,
 		.pll_clk = 428,
 		.vfp_lp_dyn = 4178,
 		.hfp = 396,
@@ -834,7 +854,7 @@ static struct mtk_panel_params ext_params = {
 
 static struct mtk_panel_params ext_params_90hz = {
 	.pll_clk = 369,
-	.vfp_low_power = 2528,//60hz
+	.vfp_low_power = 1294,//60hz
 	.cust_esd_check = 0,
 	.esd_check_enable = 1,
 	.lcm_esd_check_table[0] = {
@@ -851,22 +871,22 @@ static struct mtk_panel_params ext_params_90hz = {
 		.dsc_cfg = 34,
 		.rct_on = 1,
 		.bit_per_channel = 8,
-		.dsc_line_buf_depth = 9,
+		.dsc_line_buf_depth = 11,
 		.bp_enable = 1,
 		.bit_per_pixel = 128,
 		.pic_height = 2400,
 		.pic_width = 1080,
-		.slice_height = 8,
+		.slice_height = 20,
 		.slice_width = 540,
 		.chunk_size = 540,
 		.xmit_delay = 170,
 		.dec_delay = 526,
 		.scale_value = 32,
-		.increment_interval = 43,
+		.increment_interval = 113,
 		.decrement_interval = 7,
 		.line_bpg_offset = 12,
-		.nfl_bpg_offset = 3511,
-		.slice_bpg_offset = 3255,
+		.nfl_bpg_offset = 1294,
+		.slice_bpg_offset = 1302,
 		.initial_offset = 6144,
 		.final_offset = 7072,
 		.flatness_minqp = 3,
@@ -879,11 +899,25 @@ static struct mtk_panel_params ext_params_90hz = {
 		.rc_tgt_offset_lo = 3,
 		},
 	.data_rate = 738,
+	.lfr_enable = 1,
+	.lfr_minimum_fps = 60,
 	.dyn_fps = {
-		.switch_en = 1, .vact_timing_fps = 120,
-	},
-	.dyn = {
 		.switch_en = 1,
+#if HFP_SUPPORT
+		.vact_timing_fps = 90,
+#else
+		.vact_timing_fps = 120,
+#endif
+		.dfps_cmd_table[0] = {0, 2, {0xFF, 0x25} },
+		.dfps_cmd_table[1] = {0, 2, {0xFB, 0x01} },
+		.dfps_cmd_table[2] = {0, 2, {0x18, 0x20} },
+		/*switch page for esd check*/
+		.dfps_cmd_table[3] = {0, 2, {0xFF, 0x10} },
+		.dfps_cmd_table[4] = {0, 2, {0xFB, 0x01} },
+	},
+	/* following MIPI hopping parameter might cause screen mess */
+	.dyn = {
+		.switch_en = 0,
 		.pll_clk = 428,
 		.vfp_lp_dyn = 2528,
 		.hfp = 396,
@@ -909,22 +943,22 @@ static struct mtk_panel_params ext_params_120hz = {
 		.dsc_cfg = 34,
 		.rct_on = 1,
 		.bit_per_channel = 8,
-		.dsc_line_buf_depth = 9,
+		.dsc_line_buf_depth = 11,
 		.bp_enable = 1,
 		.bit_per_pixel = 128,
 		.pic_height = 2400,
 		.pic_width = 1080,
-		.slice_height = 8,
+		.slice_height = 20,
 		.slice_width = 540,
 		.chunk_size = 540,
 		.xmit_delay = 170,
 		.dec_delay = 526,
 		.scale_value = 32,
-		.increment_interval = 43,
+		.increment_interval = 113,
 		.decrement_interval = 7,
 		.line_bpg_offset = 12,
-		.nfl_bpg_offset = 3511,
-		.slice_bpg_offset = 3255,
+		.nfl_bpg_offset = 1294,
+		.slice_bpg_offset = 1302,
 		.initial_offset = 6144,
 		.final_offset = 7072,
 		.flatness_minqp = 3,
@@ -937,11 +971,21 @@ static struct mtk_panel_params ext_params_120hz = {
 		.rc_tgt_offset_lo = 3,
 		},
 	.data_rate = 738,
+	.lfr_enable = 1,
+	.lfr_minimum_fps = 60,
 	.dyn_fps = {
-		.switch_en = 1, .vact_timing_fps = 120,
-	},
-	.dyn = {
 		.switch_en = 1,
+		.vact_timing_fps = 120,
+		.dfps_cmd_table[0] = {0, 2, {0xFF, 0x25} },
+		.dfps_cmd_table[1] = {0, 2, {0xFB, 0x01} },
+		.dfps_cmd_table[2] = {0, 2, {0x18, 0x22} },
+		/*switch page for esd check*/
+		.dfps_cmd_table[3] = {0, 2, {0xFF, 0x10} },
+		.dfps_cmd_table[4] = {0, 2, {0xFB, 0x01} },
+	},
+	/* following MIPI hopping parameter might cause screen mess */
+	.dyn = {
+		.switch_en = 0,
 		.pll_clk = 428,
 		.vfp_lp_dyn = 2528,
 		.hfp = 396,
@@ -963,16 +1007,16 @@ static int jdi_setbacklight_cmdq(void *dsi, dcs_write_gce cb, void *handle,
 		level = 255;
 	pr_info("%s backlight = -%d\n", __func__, level);
 	bl_tb0[1] = (u8)level;
-#if 0
-	char bl_tb0[] = {0x51, 0xf, 0xff};
-
-	if (level > 255)
-		level = 255;
-
-	level = level * 4095 / 255;
-	bl_tb0[1] = ((level >> 8) & 0xf);
-	bl_tb0[2] = (level & 0xff);
-#endif
+/*
+ *	char bl_tb0[] = {0x51, 0xf, 0xff};
+ *
+ *	if (level > 255)
+ *		level = 255;
+ *
+ *	level = level * 4095 / 255;
+ *	bl_tb0[1] = ((level >> 8) & 0xf);
+ *	bl_tb0[2] = (level & 0xff);
+ */
 	if (!cb)
 		return -1;
 
@@ -980,32 +1024,108 @@ static int jdi_setbacklight_cmdq(void *dsi, dcs_write_gce cb, void *handle,
 	return 0;
 }
 
-struct drm_display_mode *get_mode_by_id(struct drm_panel *panel,
+struct drm_display_mode *get_mode_by_id_hfp(struct drm_connector *connector,
 	unsigned int mode)
 {
 	struct drm_display_mode *m;
 	unsigned int i = 0;
 
-	list_for_each_entry(m, &panel->connector->modes, head) {
+	list_for_each_entry(m, &connector->modes, head) {
 		if (i == mode)
 			return m;
 		i++;
 	}
 	return NULL;
 }
-static int mtk_panel_ext_param_set(struct drm_panel *panel, unsigned int mode)
+static int mtk_panel_ext_param_set(struct drm_panel *panel,
+			struct drm_connector *connector, unsigned int mode)
 {
 	struct mtk_panel_ext *ext = find_panel_ext(panel);
 	int ret = 0;
-	struct drm_display_mode *m = get_mode_by_id(panel, mode);
+	struct drm_display_mode *m = get_mode_by_id_hfp(connector, mode);
 
-	if (m->vrefresh == 60)
+	if (drm_mode_vrefresh(m) == 60) {
 		ext->params = &ext_params;
-	else if (m->vrefresh == 90)
+#if HFP_SUPPORT
+		current_fps = 60;
+#endif
+	} else if (drm_mode_vrefresh(m) == 90) {
 		ext->params = &ext_params_90hz;
-	else if (m->vrefresh == 120)
+#if HFP_SUPPORT
+		current_fps = 90;
+#endif
+	} else if (drm_mode_vrefresh(m) == 120) {
 		ext->params = &ext_params_120hz;
-	else
+#if HFP_SUPPORT
+		current_fps = 120;
+#endif
+	} else
+		ret = 1;
+
+	return ret;
+}
+
+static void mode_switch_to_120(struct drm_panel *panel)
+{
+	struct jdi *ctx = panel_to_jdi(panel);
+
+	pr_info("%s\n", __func__);
+
+	jdi_dcs_write_seq_static(ctx, 0xFF, 0x25);
+	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
+	jdi_dcs_write_seq_static(ctx, 0x18, 0x22);//120hz
+	jdi_dcs_write_seq_static(ctx, 0xFF, 0x10);
+	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
+	//cb(dsi, handle, bl_tb0, ARRAY_SIZE(bl_tb0));
+
+}
+
+static void mode_switch_to_90(struct drm_panel *panel)
+{
+	struct jdi *ctx = panel_to_jdi(panel);
+
+	pr_info("%s\n", __func__);
+
+	jdi_dcs_write_seq_static(ctx, 0xFF, 0x25);
+	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
+	jdi_dcs_write_seq_static(ctx, 0x18, 0x20);//90hz
+	jdi_dcs_write_seq_static(ctx, 0xFF, 0x10);
+	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
+
+}
+
+static void mode_switch_to_60(struct drm_panel *panel)
+{
+	struct jdi *ctx = panel_to_jdi(panel);
+
+	jdi_dcs_write_seq_static(ctx, 0xFF, 0x25);
+	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
+	jdi_dcs_write_seq_static(ctx, 0x18, 0x21);
+	jdi_dcs_write_seq_static(ctx, 0xFF, 0x10);
+	jdi_dcs_write_seq_static(ctx, 0xFB, 0x01);
+}
+
+static int mode_switch(struct drm_panel *panel,
+		struct drm_connector *connector, unsigned int cur_mode,
+		unsigned int dst_mode, enum MTK_PANEL_MODE_SWITCH_STAGE stage)
+{
+	int ret = 0;
+	struct drm_display_mode *m = get_mode_by_id_hfp(connector, dst_mode);
+
+	if (!m) {
+		pr_info("ERROR!! drm_display_mode m is null\n");
+		return -ENOMEM;
+	}
+
+	pr_info("%s cur_mode = %d dst_mode %d\n", __func__, cur_mode, dst_mode);
+
+	if (drm_mode_vrefresh(m) == 60) { /* 60 switch to 120 */
+		mode_switch_to_60(panel);
+	} else if (drm_mode_vrefresh(m) == 90) { /* 1200 switch to 60 */
+		mode_switch_to_90(panel);
+	} else if (drm_mode_vrefresh(m) == 120) { /* 1200 switch to 60 */
+		mode_switch_to_120(panel);
+	} else
 		ret = 1;
 
 	return ret;
@@ -1017,11 +1137,6 @@ static int panel_ext_reset(struct drm_panel *panel, int on)
 
 	ctx->reset_gpio =
 		devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
-	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(ctx->dev, "%s: cannot get reset-gpios %ld\n",
-			__func__, PTR_ERR(ctx->reset_gpio));
-		return PTR_ERR(ctx->reset_gpio);
-	}
 	gpiod_set_value(ctx->reset_gpio, on);
 	devm_gpiod_put(ctx->dev, ctx->reset_gpio);
 
@@ -1032,6 +1147,7 @@ static struct mtk_panel_funcs ext_funcs = {
 	.reset = panel_ext_reset,
 	.set_backlight_cmdq = jdi_setbacklight_cmdq,
 	.ext_param_set = mtk_panel_ext_param_set,
+	.mode_switch = mode_switch,
 	.ata_check = panel_ata_check,
 };
 #endif
@@ -1066,50 +1182,51 @@ struct panel_desc {
 	} delay;
 };
 
-static int jdi_get_modes(struct drm_panel *panel)
+static int jdi_get_modes(struct drm_panel *panel,
+					struct drm_connector *connector)
 {
 	struct drm_display_mode *mode;
 	struct drm_display_mode *mode2;
 	struct drm_display_mode *mode3;
 
-	mode = drm_mode_duplicate(panel->drm, &default_mode);
+	mode = drm_mode_duplicate(connector->dev, &default_mode);
 	if (!mode) {
-		dev_info(panel->drm->dev, "failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			 default_mode.hdisplay, default_mode.vdisplay,
-			 default_mode.vrefresh);
+			 drm_mode_vrefresh(&default_mode));
 		return -ENOMEM;
 	}
 
 	drm_mode_set_name(mode);
 	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	drm_mode_probed_add(panel->connector, mode);
+	drm_mode_probed_add(connector, mode);
 
-	mode2 = drm_mode_duplicate(panel->drm, &performance_mode);
+	mode2 = drm_mode_duplicate(connector->dev, &performance_mode);
 	if (!mode2) {
-		dev_info(panel->drm->dev, "failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			 performance_mode.hdisplay, performance_mode.vdisplay,
-			 performance_mode.vrefresh);
+			 drm_mode_vrefresh(&performance_mode));
 		return -ENOMEM;
 	}
 
 	drm_mode_set_name(mode2);
 	mode2->type = DRM_MODE_TYPE_DRIVER;
-	drm_mode_probed_add(panel->connector, mode2);
+	drm_mode_probed_add(connector, mode2);
 
-	mode3 = drm_mode_duplicate(panel->drm, &performance_mode1);
+	mode3 = drm_mode_duplicate(connector->dev, &performance_mode1);
 	if (!mode3) {
-		dev_info(panel->drm->dev, "failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			 performance_mode1.hdisplay, performance_mode1.vdisplay,
-			 performance_mode1.vrefresh);
+			 drm_mode_vrefresh(&performance_mode1));
 		return -ENOMEM;
 	}
 
 	drm_mode_set_name(mode3);
 	mode3->type = DRM_MODE_TYPE_DRIVER;
-	drm_mode_probed_add(panel->connector, mode3);
+	drm_mode_probed_add(connector, mode3);
 
-	panel->connector->display_info.width_mm = 70;
-	panel->connector->display_info.height_mm = 152;
+	connector->display_info.width_mm = 70;
+	connector->display_info.height_mm = 152;
 
 	return 1;
 }
@@ -1128,24 +1245,6 @@ static int jdi_probe(struct mipi_dsi_device *dsi)
 	struct jdi *ctx;
 	struct device_node *backlight;
 	int ret;
-	struct device_node *dsi_node, *remote_node = NULL, *endpoint = NULL;
-
-	dsi_node = of_get_parent(dev->of_node);
-	if (dsi_node) {
-		endpoint = of_graph_get_next_endpoint(dsi_node, NULL);
-		if (endpoint) {
-			remote_node = of_graph_get_remote_port_parent(endpoint);
-			if (!remote_node) {
-				pr_info("No panel connected,skip probe lcm\n");
-				return -ENODEV;
-			}
-			pr_info("device node name:%s\n", remote_node->name);
-		}
-	}
-	if (remote_node != dev->of_node) {
-		pr_info("%s+ skip probe due to not current lcm\n", __func__);
-		return -ENODEV;
-	}
 
 	pr_info("%s+\n", __func__);
 	ctx = devm_kzalloc(dev, sizeof(struct jdi), GFP_KERNEL);
@@ -1158,7 +1257,7 @@ static int jdi_probe(struct mipi_dsi_device *dsi)
 	dsi->lanes = 3;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
-			  MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_EOT_PACKET |
+			  MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_NO_EOT_PACKET |
 			  MIPI_DSI_CLOCK_NON_CONTINUOUS;
 
 	backlight = of_parse_phandle(dev->of_node, "backlight", 0);
@@ -1172,36 +1271,31 @@ static int jdi_probe(struct mipi_dsi_device *dsi)
 
 	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(dev, "%s:cannot get reset-gpios %ld\n",
-			__func__, PTR_ERR(ctx->reset_gpio));
+		dev_info(dev, "cannot get reset-gpios %ld\n",
+			 PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
 	devm_gpiod_put(dev, ctx->reset_gpio);
 	ctx->bias_pos = devm_gpiod_get_index(dev, "bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(dev, "%s: cannot get bias-pos 0 %ld\n",
-			 __func__, PTR_ERR(ctx->bias_pos));
+		dev_info(dev, "cannot get bias-gpios 0 %ld\n",
+			 PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
 	devm_gpiod_put(dev, ctx->bias_pos);
 
 	ctx->bias_neg = devm_gpiod_get_index(dev, "bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(dev, "%s: cannot get bias-neg 1 %ld\n",
-			 __func__, PTR_ERR(ctx->bias_neg));
+		dev_info(dev, "cannot get bias-gpios 1 %ld\n",
+			 PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
 	devm_gpiod_put(dev, ctx->bias_neg);
 	ctx->prepared = true;
 	ctx->enabled = true;
-	drm_panel_init(&ctx->panel);
-	ctx->panel.dev = dev;
-	ctx->panel.funcs = &jdi_drm_funcs;
+	drm_panel_init(&ctx->panel, dev, &jdi_drm_funcs, DRM_MODE_CONNECTOR_DSI);
 
-	ret = drm_panel_add(&ctx->panel);
-	if (ret < 0)
-		return ret;
-
+	drm_panel_add(&ctx->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
@@ -1215,19 +1309,25 @@ static int jdi_probe(struct mipi_dsi_device *dsi)
 
 #endif
 
-	pr_info("%s- jdi,nt36672c,cphy,vdo\n", __func__);
+	pr_info("%s- jdi,nt36672c,cphy,vdo,hfp\n", __func__);
 
 	return ret;
 }
 
-static int jdi_remove(struct mipi_dsi_device *dsi)
+static void jdi_remove(struct mipi_dsi_device *dsi)
 {
 	struct jdi *ctx = mipi_dsi_get_drvdata(dsi);
+#if defined(CONFIG_MTK_PANEL_EXT)
+	struct mtk_panel_ctx *ext_ctx = find_panel_ctx(&ctx->panel);
+#endif
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
+#if defined(CONFIG_MTK_PANEL_EXT)
+	mtk_panel_detach(ext_ctx);
+	mtk_panel_remove(ext_ctx);
+#endif
 
-	return 0;
 }
 
 static const struct of_device_id jdi_of_match[] = {
@@ -1248,7 +1348,6 @@ static struct mipi_dsi_driver jdi_driver = {
 		.of_match_table = jdi_of_match,
 	},
 };
-
 
 module_mipi_dsi_driver(jdi_driver);
 

@@ -251,7 +251,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 
 	}
 	return 0;
@@ -543,3 +543,6 @@ static void __exit tsda9214_exit(void)
 }
 late_initcall(tsda9214_init);
 module_exit(tsda9214_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");
+

@@ -38,6 +38,10 @@
 #define FLASHLIGHT_SW_DISABLE_ON	1
 #define FLASHLIGHT_SW_DISABLE_OFF	0
 
+/* torch status*/
+#define FLASHLIGHT_TORCH_ON	1
+#define FLASHLIGHT_TORCH_OFF	0
+
 /* max duty number */
 #define FLASHLIGHT_MAX_DUTY_NUM 40
 
@@ -62,6 +66,10 @@ struct flashlight_user_arg {
 #define FLASHLIGHTIOC_G_FLASHTYPE          _IOR(FLASHLIGHT_MAGIC, 25, int)
 #define FLASHLIGHTIOC_X_SET_DRIVER         _IOWR(FLASHLIGHT_MAGIC, 30, int)
 #define FLASHLIGHTIOC_T_DELAY              _IOW(FLASHLIGHT_MAGIC, 35, int)
+
+#define FLASH_IOC_GET_THERMAL_MAX_STATE    _IOR(FLASHLIGHT_MAGIC, 50, int)
+#define FLASH_IOC_GET_THERMAL_CUR_STATE    _IOR(FLASHLIGHT_MAGIC, 51, int)
+#define FLASH_IOC_SET_THERMAL_CUR_STATE    _IOR(FLASHLIGHT_MAGIC, 52, int)
 
 /* ioctl protocol version 1. */
 #define FLASH_IOC_SET_TIME_OUT_TIME_MS     _IOR(FLASHLIGHT_MAGIC, 100, int)
@@ -106,6 +114,7 @@ struct flashlight_user_arg {
 #define FLASH_IOC_GET_HW_TIMEOUT           _IOWR(FLASHLIGHT_MAGIC, 240, int)
 #define FLASH_IOC_GET_HW_FAULT             _IOR(FLASHLIGHT_MAGIC, 250, int)
 #define FLASH_IOC_GET_HW_FAULT2            _IOR(FLASHLIGHT_MAGIC, 251, int)
-
+#define FLASH_IOC_GET_REGISTER         	   _IOR(FLASHLIGHT_MAGIC, 252, int)
+#define FLASH_IOC_SET_REGISTER         	   _IOR(FLASHLIGHT_MAGIC, 253, int)
 #endif /* _FLASHLIGHT_H */
 

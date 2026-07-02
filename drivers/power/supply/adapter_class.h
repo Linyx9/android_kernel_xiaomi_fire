@@ -27,24 +27,53 @@ struct adapter_power_cap {
 	int info[ADAPTER_CAP_MAX_NR];
 };
 
+struct adapter_auth_data {
+	int vcap_min;
+	int vcap_max;
+	int icap_min;
+	int vta_min;
+	int vta_max;
+	int ita_max;
+	bool pwr_lmt;
+	u8 pdp;
+	bool support_meas_cap;
+	bool support_status;
+	bool support_cc;
+	u32 vta_step;
+	u32 ita_step;
+	u32 ita_gap_per_vstep;
+};
+
 enum adapter_type {
-	MTK_PD_ADAPTER,
+	PD,
+	UFCS,
+	MAX_TA_IDX,
+};
+
+static const char *const adapter_type_names[] = {
+	"pd_adapter", "ufcs_adapter"
 };
 
 enum adapter_event {
-	MTK_PD_CONNECT_NONE,
-	MTK_PD_CONNECT_HARD_RESET,
-	MTK_PD_CONNECT_PE_READY_SNK,
-	MTK_PD_CONNECT_PE_READY_SNK_PD30,
-	MTK_PD_CONNECT_PE_READY_SNK_APDO,
-	MTK_PD_CONNECT_TYPEC_ONLY_SNK,
+	TA_ATTACH,
+	TA_DETACH,
+	TA_DETECT_FAIL,
+	TA_HARD_RESET,
+	TA_SOFT_RESET,
 	MTK_TYPEC_WD_STATUS,
 	MTK_TYPEC_HRESET_STATUS,
+	MTK_SINK_VBUS,
+	MTK_UFCS_DETACH,
+	MTK_UFCS_ATTACH,
+	MTK_UFCS_FAIL,
 };
 
 enum adapter_property {
 	TYPEC_RP_LEVEL,
 	PD_TYPE,
+	UFCS_TYPE,
+	CAP_TYPE,
+	PD_SRC_PDO_SUPPORT_USB_SUSPEND,
 };
 
 enum adapter_cap_type {
@@ -52,6 +81,7 @@ enum adapter_cap_type {
 	MTK_PD_APDO_END,
 	MTK_PD,
 	MTK_PD_APDO,
+	MTK_UFCS,
 	MTK_CAP_TYPE_UNKNOWN,
 };
 
@@ -98,7 +128,14 @@ struct adapter_ops {
 	int (*get_cap)(struct adapter_device *dev, enum adapter_cap_type type,
 		struct adapter_power_cap *cap);
 	int (*get_output)(struct adapter_device *dev, int *mV, int *mA);
-
+	int (*authentication)(struct adapter_device *dev,
+			      struct adapter_auth_data *data);
+	int (*is_cc)(struct adapter_device *dev, bool *cc);
+	int (*set_wdt)(struct adapter_device *dev, u32 ms);
+	int (*enable_wdt)(struct adapter_device *dev, bool en);
+	int (*sync_volt)(struct adapter_device *dev, u32 mV);
+	int (*send_hardreset)(struct adapter_device *dev);
+	int (*exit_mode)(struct adapter_device *dev);
 };
 
 static inline void *adapter_dev_get_drvdata(
@@ -141,7 +178,12 @@ extern int adapter_dev_set_cap(struct adapter_device *adapter_dev,
 extern int adapter_dev_get_cap(struct adapter_device *adapter_dev,
 	enum adapter_cap_type type,
 	struct adapter_power_cap *cap);
-
-
+extern int adapter_dev_authentication(struct adapter_device *adapter_dev,
+				      struct adapter_auth_data *data);
+extern int adapter_dev_is_cc(struct adapter_device *adapter_dev, bool *cc);
+extern int adapter_dev_set_wdt(struct adapter_device *adapter_dev, u32 ms);
+extern int adapter_dev_enable_wdt(struct adapter_device *adapter_dev, bool en);
+extern int adapter_dev_sync_volt(struct adapter_device *adapter_dev, u32 mV);
+extern int adapter_dev_send_hardreset(struct adapter_device *adapter_dev);
+extern int adapter_dev_exit_mode(struct adapter_device *adapter_dev);
 #endif /*LINUX_POWER_ADAPTER_CLASS_H*/
-

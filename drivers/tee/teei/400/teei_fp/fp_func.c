@@ -126,17 +126,21 @@ static long fp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		/* [11-15] is the length of data */
 		args_len = *((unsigned int *)(args + 12));
 
-		if (args_len + 16 > MICROTRUST_FP_SIZE) {
+		if (args_len > MICROTRUST_FP_SIZE - 16) {
 			IMSG_ERROR("args_len=%d is invalid!.\n", args_len);
 			up(&fp_api_lock);
 			return -EFAULT;
 		}
 
+#ifdef DYNAMIC_SET_PRIORITY
 		teei_cpus_write_lock();
+#endif
 
 		ret  = send_fp_command((void *)arg, args_len + 16);
 
+#ifdef DYNAMIC_SET_PRIORITY
 		teei_cpus_write_unlock();
+#endif
 
 		if (ret) {
 			IMSG_ERROR("transfer data to ta failed.\n");
@@ -209,7 +213,7 @@ static void fp_setup_cdev(struct fp_dev *dev, int index)
 		IMSG_ERROR("Error %d adding fp %d.\n", err, index);
 }
 
-int fp_init(void)
+int teei_fp_init(void)
 {
 	int result = 0;
 	struct device *class_dev = NULL;
@@ -222,7 +226,7 @@ int fp_init(void)
 		return result;
 
 	driver_class = NULL;
-	driver_class = class_create(THIS_MODULE, DEV_NAME);
+	driver_class = class_create(DEV_NAME);
 	if (IS_ERR(driver_class)) {
 		result = -ENOMEM;
 		IMSG_ERROR("class_create failed %d.\n", result);
@@ -260,8 +264,9 @@ unregister_chrdev_region:
 return_fn:
 	return result;
 }
+EXPORT_SYMBOL_GPL(teei_fp_init);
 
-void fp_exit(void)
+void teei_fp_exit(void)
 {
 	device_destroy(driver_class, devno);
 	class_destroy(driver_class);
@@ -269,11 +274,4 @@ void fp_exit(void)
 	vfree(fp_devp);
 	unregister_chrdev_region(MKDEV(fp_major, 0), 1);
 }
-
-MODULE_AUTHOR("Microtrust");
-MODULE_LICENSE("Dual BSD/GPL");
-
-module_param(fp_major, int, 0444);
-
-module_init(fp_init);
-module_exit(fp_exit);
+EXPORT_SYMBOL_GPL(teei_fp_exit);

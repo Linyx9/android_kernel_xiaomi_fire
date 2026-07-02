@@ -18,9 +18,9 @@
 static struct proc_dir_entry *gConnMdDbgEntry;
 
 #if USE_NEW_PROC_FS_FLAG
-static const struct  file_operations conn_md_dbg_fops = {
-	.read = conn_md_dbg_read,
-	.write = conn_md_dbg_write,
+static const struct  proc_ops conn_md_dbg_fops = {
+	.proc_read = conn_md_dbg_read,
+	.proc_write = conn_md_dbg_write,
 };
 #endif
 
@@ -76,7 +76,7 @@ static int conn_md_dbg_write(struct file *file, const char *buffer,
 	unsigned long x = 0;
 	long y = 0;
 	long z = 0;
-	long i;
+	long i __maybe_unused;
 	char *pToken = NULL;
 	char *pDelimiter = " \t";
 

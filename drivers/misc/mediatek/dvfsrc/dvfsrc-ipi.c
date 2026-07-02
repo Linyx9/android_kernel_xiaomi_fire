@@ -7,9 +7,12 @@
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
-#include "dvfsrc.h"
+#include "dvfsrc-helper.h"
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_V1) || IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_V0)
 #include <sspm_ipi.h>
 #include <sspm_ipi_pin.h>
+#endif
+
 
 enum {
 	IPI_DVFSRC_ENABLE,
@@ -56,7 +59,7 @@ static const int mt6779_qos_ipi_pin[] = {
 
 static int mt6779_qos_ipi_to_sspm(void *buffer, int slot)
 {
-#if IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_V1) || IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_V0)
 	int ack_data = 0;
 
 	return sspm_ipi_send_sync(IPI_ID_QOS, IPI_OPT_POLLING,
@@ -66,7 +69,7 @@ static int mt6779_qos_ipi_to_sspm(void *buffer, int slot)
 #endif
 }
 
-static int mt6779_qos_dvfsrc_init(struct mtk_dvfsrc_up *dvfsrc)
+static int mt6779_qos_dvfsrc_init(struct mtk_dvfsrc *dvfsrc)
 {
 	int i;
 	const int *ipi_pin;
@@ -98,7 +101,7 @@ static int mt6779_qos_dvfsrc_init(struct mtk_dvfsrc_up *dvfsrc)
 		ipi_d.cmd = ipi_pin[IPI_OPP_TABLE];
 		ipi_d.u.opp_table.vcore_dvfs_opp = opp_idx;
 		ipi_d.u.opp_table.vcore_uv = opp->vcore_uv;
-		ipi_d.u.opp_table.ddr_khz = opp->dram_khz;
+		ipi_d.u.opp_table.ddr_khz = opp->dram_kbps;
 		mt6779_qos_ipi_to_sspm(&ipi_d, 4);
 	}
 
@@ -119,4 +122,15 @@ const struct dvfsrc_qos_config mt6761_qos_config = {
 	.ipi_pin = mt6761_qos_ipi_pin,
 	.qos_dvfsrc_init = mt6779_qos_dvfsrc_init,
 };
+
+const struct dvfsrc_qos_config mt6768_qos_config = {
+	.ipi_pin = mt6761_qos_ipi_pin,
+	.qos_dvfsrc_init = mt6779_qos_dvfsrc_init,
+};
+
+const struct dvfsrc_qos_config mt6765_qos_config = {
+	.ipi_pin = mt6761_qos_ipi_pin,
+	.qos_dvfsrc_init = mt6779_qos_dvfsrc_init,
+};
+
 

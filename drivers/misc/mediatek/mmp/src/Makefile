@@ -11,10 +11,10 @@
 # GNU General Public License for more details.
 #
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmp/
-subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mmp/
+subdir-ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include
 
-obj-y += mmprofile.o
+obj-$(CONFIG_MMPROFILE) += mmprofile.o
 
 # while the project is not GMO RAM optimize, other kernel modules can start MMP
 #   at init (which will occupy some memory at system boot-up)

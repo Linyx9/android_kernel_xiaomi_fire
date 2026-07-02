@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2020 MediaTek Inc.
+ * Copyright (c) 2021 MediaTek Inc.
  */
 
 #undef TRACE_SYSTEM
@@ -11,92 +11,84 @@
 
 #include <linux/tracepoint.h>
 
-TRACE_EVENT(mmqos__update_port,
-	TP_PROTO(u32 larb_id, u32 master_id, s32 bw, s32 config),
-	TP_ARGS(larb_id, master_id, bw, config),
+TRACE_EVENT(mmdvfs__record_opp_v1,
+	TP_PROTO(unsigned long rec, unsigned long opp),
+	TP_ARGS(rec, opp),
 	TP_STRUCT__entry(
-		__field(u32, larb_id)
-		__field(u32, master_id)
-		__field(s32, bw)
-		__field(s32, config)
+		__field(unsigned long, rec)
+		__field(unsigned long, opp)
 	),
 	TP_fast_assign(
-		__entry->larb_id = larb_id;
-		__entry->master_id = master_id;
-		__entry->bw = bw;
-		__entry->config = config;
+		__entry->rec = rec;
+		__entry->opp = opp;
 	),
-	TP_printk("bw_master_%u_%u=%d, config_master_%u_%u=%d",
-		(u32)__entry->larb_id,
-		(u32)__entry->master_id,
-		(s32)__entry->bw,
-		(u32)__entry->larb_id,
-		(u32)__entry->master_id,
-		(s32)__entry->config)
+	TP_printk("rec_%lu=%lu",
+		(unsigned long)__entry->rec,
+		(unsigned long)__entry->opp)
 );
 
-TRACE_EVENT(mmqos__update_larb,
-	TP_PROTO(u32 comm, u32 larb_id, s32 bw, s32 bwl, s32 soft_mode),
-	TP_ARGS(comm, larb_id, bw, bwl, soft_mode),
+TRACE_EVENT(mmdvfs__pwr_opp_v3,
+	TP_PROTO(unsigned long pwr, unsigned long opp),
+	TP_ARGS(pwr, opp),
 	TP_STRUCT__entry(
-		__field(u32, comm)
-		__field(u32, larb_id)
-		__field(s32, bw)
-		__field(s32, bwl)
-		__field(s32, soft_mode)
+		__field(unsigned long, pwr)
+		__field(unsigned long, opp)
 	),
 	TP_fast_assign(
-		__entry->comm = comm;
-		__entry->larb_id = larb_id;
-		__entry->bw = bw;
-		__entry->bwl = bwl;
-		__entry->soft_mode = soft_mode;
+		__entry->pwr = pwr;
+		__entry->opp = opp;
 	),
-	TP_printk("comm=%u bw_larb_%u=%d, bwl_larb_%u=%d, soft=%d",
-		(u32)__entry->comm,
-		(u32)__entry->larb_id,
-		(s32)__entry->bw,
-		(u32)__entry->larb_id,
-		(s32)__entry->bwl,
-		(s32)__entry->soft_mode)
+	TP_printk("pwr_%lu=%lu",
+		(unsigned long)__entry->pwr,
+		(unsigned long)__entry->opp)
 );
 
-TRACE_EVENT(mmqos__update_qosbw,
-	TP_PROTO(u32 larb_id, u32 port_id, u32 req_id, s32 bw),
-	TP_ARGS(larb_id, port_id, req_id, bw),
+TRACE_EVENT(mmdvfs__user_opp_v3_vcore,
+	TP_PROTO(unsigned long user, unsigned long opp),
+	TP_ARGS(user, opp),
 	TP_STRUCT__entry(
-		__field(u32, larb_id)
-		__field(u32, port_id)
-		__field(u32, req_id)
-		__field(s32, bw)
+		__field(unsigned long, user)
+		__field(unsigned long, opp)
 	),
 	TP_fast_assign(
-		__entry->larb_id = larb_id;
-		__entry->port_id = port_id;
-		__entry->req_id = req_id;
-		__entry->bw = bw;
+		__entry->user = user;
+		__entry->opp = opp;
 	),
-	TP_printk("larb_id=%u port_id=%u req_id=%u bw=%d",
-		(u32)__entry->larb_id,
-		(u32)__entry->port_id,
-		(u32)__entry->req_id,
-		(s32)__entry->bw)
+	TP_printk("user_%lu=%lu",
+		(unsigned long)__entry->user,
+		(unsigned long)__entry->opp)
 );
 
-TRACE_EVENT(mmqos__update_qoslarb,
-	TP_PROTO(u32 larb_id, s32 bw),
-	TP_ARGS(larb_id, bw),
+TRACE_EVENT(mmdvfs__user_opp_v3_vmm,
+	TP_PROTO(unsigned long user, unsigned long opp),
+	TP_ARGS(user, opp),
 	TP_STRUCT__entry(
-		__field(u32, larb_id)
-		__field(s32, bw)
+		__field(unsigned long, user)
+		__field(unsigned long, opp)
 	),
 	TP_fast_assign(
-		__entry->larb_id = larb_id;
-		__entry->bw = bw;
+		__entry->user = user;
+		__entry->opp = opp;
 	),
-	TP_printk("larb_%u=%d",
-		(u32)__entry->larb_id,
-		(s32)__entry->bw)
+	TP_printk("user_%lu=%lu",
+		(unsigned long)__entry->user,
+		(unsigned long)__entry->opp)
+);
+
+TRACE_EVENT(mmdvfs__user_opp_v3,
+	TP_PROTO(unsigned long user, unsigned long opp),
+	TP_ARGS(user, opp),
+	TP_STRUCT__entry(
+		__field(unsigned long, user)
+		__field(unsigned long, opp)
+	),
+	TP_fast_assign(
+		__entry->user = user;
+		__entry->opp = opp;
+	),
+	TP_printk("user_%lu=%lu",
+		(unsigned long)__entry->user,
+		(unsigned long)__entry->opp)
 );
 
 #endif /* _TRACE_MMDVFS_EVENTS_H */
@@ -108,4 +100,3 @@ TRACE_EVENT(mmqos__update_qoslarb,
 
 /* This part must be outside protection */
 #include <trace/define_trace.h>
-

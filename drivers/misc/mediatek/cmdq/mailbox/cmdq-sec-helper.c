@@ -3,7 +3,7 @@
  * Copyright (c) 2019 MediaTek Inc.
  */
 
-#include <linux/soc/mediatek/mtk-cmdq.h>
+#include <linux/soc/mediatek/mtk-cmdq-ext.h>
 
 #include "cmdq-util.h"
 #include "cmdq-sec.h"
@@ -13,8 +13,6 @@
 
 #define CMDQ_IMMEDIATE_VALUE		(0)
 #define CMDQ_REG_TYPE			(1)
-
-#define CMDQ_PREDUMP_TIMEOUT_MS		200
 
 static s32 cmdq_sec_realloc_addr_list(struct cmdq_pkt *pkt, const u32 count)
 {
@@ -55,16 +53,14 @@ static s32 cmdq_sec_check_sec(struct cmdq_pkt *pkt)
 
 static s32 cmdq_sec_append_metadata(
 	struct cmdq_pkt *pkt, const enum CMDQ_IWC_ADDR_METADATA_TYPE type,
-	const u64 base, const u32 offset, const u32 size, const u32 port, uint32_t sec_id)
+	const u64 base, const u32 offset, const u32 size, const u32 port, u32 sec_id)
 {
 	struct cmdq_sec_data *sec_data;
 	struct cmdq_sec_addr_meta *meta;
 	s32 idx, max, ret;
 
-	cmdq_log("pkt:%p type:%u base:%#llx offset:%#x size:%#x port:%#x sec_id:%d",
-		pkt, type, base, offset, size, port, sec_id);
-	cmdq_msg("%s pkt:%p type:%u base:%#llx offset:%#x size:%#x port:%#x sec_id:%d",
-		__func__, pkt, type, base, offset, size, port, sec_id);
+	cmdq_log("pkt:%p type:%u base:%#llx offset:%#x size:%#x port:%#x",
+		pkt, type, base, offset, size, port);
 
 	ret = cmdq_sec_check_sec(pkt);
 	if (ret < 0)
@@ -104,8 +100,8 @@ static s32 cmdq_sec_append_metadata(
 	meta[idx].offset = offset;
 	meta[idx].size = size;
 	meta[idx].port = port;
-	meta[idx].useSecIdinMeta = 1;
 	meta[idx].sec_id = sec_id;
+	meta[idx].useSecIdinMeta = (sec_id != U32_MAX) ? true : false;
 	sec_data->addrMetadataCount += 1;
 	return 0;
 }
@@ -139,17 +135,26 @@ s32 cmdq_sec_pkt_set_data(struct cmdq_pkt *pkt, const u64 dapc_engine,
 }
 EXPORT_SYMBOL(cmdq_sec_pkt_set_data);
 
-void cmdq_sec_pkt_set_mtee(struct cmdq_pkt *pkt, const bool enable, const int32_t sec_id)
+void cmdq_sec_pkt_set_mtee(struct cmdq_pkt *pkt, const bool enable)
 {
 	struct cmdq_sec_data *sec_data =
 		(struct cmdq_sec_data *)pkt->sec_data;
 	sec_data->mtee = enable;
-	sec_data->sec_id = sec_id;
-	cmdq_msg("%s pkt:%p mtee:%d sec_id:%d\n",
-		__func__, pkt, ((struct cmdq_sec_data *)pkt->sec_data)->mtee,
-		((struct cmdq_sec_data *)pkt->sec_data)->sec_id);
+	cmdq_msg("%s pkt:%p mtee:%d\n",
+		__func__, pkt, ((struct cmdq_sec_data *)pkt->sec_data)->mtee);
 }
 EXPORT_SYMBOL(cmdq_sec_pkt_set_mtee);
+
+/* iommu_sec_id */
+void cmdq_sec_pkt_set_secid(struct cmdq_pkt *pkt, int32_t sec_id)
+{
+	struct cmdq_sec_data *sec_data =
+		(struct cmdq_sec_data *)pkt->sec_data;
+	sec_data->sec_id = sec_id;
+	cmdq_log("%s pkt:%p sec_id:%d\n",
+		__func__, pkt, ((struct cmdq_sec_data *)pkt->sec_data)->sec_id);
+}
+EXPORT_SYMBOL(cmdq_sec_pkt_set_secid);
 
 void cmdq_sec_pkt_free_data(struct cmdq_pkt *pkt)
 {
@@ -202,11 +207,13 @@ s32 cmdq_sec_pkt_set_payload(struct cmdq_pkt *pkt, u8 idx,
 }
 EXPORT_SYMBOL(cmdq_sec_pkt_set_payload);
 
-s32 cmdq_sec_pkt_write_reg(struct cmdq_pkt *pkt, u32 addr, u64 base,
+s32 cmdq_sec_pkt_write_reg_disp(struct cmdq_pkt *pkt, u32 addr, u64 base,
 	const enum CMDQ_IWC_ADDR_METADATA_TYPE type,
-	const u32 offset, const u32 size, const u32 port, uint32_t sec_id)
+	const u32 offset, const u32 size, const u32 port, u32 sec_id)
 {
 	s32 ret;
+
+	pkt->write_addr_high = 0;
 
 	ret = cmdq_pkt_assign_command(pkt, CMDQ_SPR_FOR_TEMP, addr);
 	if (ret)
@@ -219,13 +226,30 @@ s32 cmdq_sec_pkt_write_reg(struct cmdq_pkt *pkt, u32 addr, u64 base,
 	if (ret)
 		return ret;
 
-	/* check boundary size and append at first before append metadata */
-	if (unlikely(!pkt->avail_buf_size)) {
-		if (cmdq_pkt_add_cmd_buffer(pkt) < 0)
-			return -ENOMEM;
-	}
-
 	return cmdq_sec_append_metadata(pkt, type, base, offset, size, port, sec_id);
+}
+EXPORT_SYMBOL(cmdq_sec_pkt_write_reg_disp);
+
+s32 cmdq_sec_pkt_write_reg(struct cmdq_pkt *pkt, u32 addr, u64 base,
+	const enum CMDQ_IWC_ADDR_METADATA_TYPE type,
+	const u32 offset, const u32 size, const u32 port)
+{
+	s32 ret;
+
+	pkt->write_addr_high = 0;
+
+	ret = cmdq_pkt_assign_command(pkt, CMDQ_SPR_FOR_TEMP, addr);
+	if (ret)
+		return ret;
+
+	ret = cmdq_pkt_append_command(pkt,
+		base & 0xffff, base >> 16, CMDQ_SPR_FOR_TEMP, 0,
+		CMDQ_IMMEDIATE_VALUE, CMDQ_IMMEDIATE_VALUE, CMDQ_REG_TYPE,
+		CMDQ_CODE_WRITE_S);
+	if (ret)
+		return ret;
+
+	return cmdq_sec_append_metadata(pkt, type, base, offset, size, port, U32_MAX);
 }
 EXPORT_SYMBOL(cmdq_sec_pkt_write_reg);
 
@@ -300,6 +324,7 @@ int cmdq_sec_pkt_wait_complete(struct cmdq_pkt *pkt)
 	unsigned long ret;
 	u8 cnt = 0;
 	s32 thread_id = cmdq_sec_mbox_chan_id(client->chan);
+	u32 timeout_ms = cmdq_mbox_get_thread_timeout((void *)client->chan);
 
 #if IS_ENABLED(CONFIG_MMPROFILE)
 	cmdq_sec_mmp_wait(client->chan, pkt);
@@ -308,8 +333,14 @@ int cmdq_sec_pkt_wait_complete(struct cmdq_pkt *pkt)
 	cmdq_sec_mbox_enable(client->chan);
 
 	do {
+		if (timeout_ms == CMDQ_NO_TIMEOUT) {
+			cmdq_msg("%s: timeout:%u", __func__, timeout_ms);
+			wait_for_completion(&pkt->cmplt);
+			break;
+		}
+
 		ret = wait_for_completion_timeout(&pkt->cmplt,
-			msecs_to_jiffies(CMDQ_PREDUMP_TIMEOUT_MS));
+			msecs_to_jiffies(CMDQ_PREDUMP_MS(timeout_ms)));
 		if (ret)
 			break;
 
@@ -318,7 +349,6 @@ int cmdq_sec_pkt_wait_complete(struct cmdq_pkt *pkt)
 		cmdq_msg("===== SW timeout Pre-dump %hhu =====", cnt);
 		cnt++;
 
-		cmdq_dump_core(client->chan);
 		cmdq_msg("thd:%d Hidden thread info since it's secure",
 			thread_id);
 		cmdq_sec_dump_operation(client->chan);
@@ -350,3 +380,4 @@ void cmdq_sec_err_dump(struct cmdq_pkt *pkt, struct cmdq_client *client,
 }
 EXPORT_SYMBOL(cmdq_sec_err_dump);
 
+MODULE_LICENSE("GPL v2");

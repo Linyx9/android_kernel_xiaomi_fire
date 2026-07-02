@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_QC_LOGIC_Z350
+	obj-y += z350/
+endif
+
+ifdef CONFIG_OEM_QC_LOGIC_WT6670F
+	obj-y += wt6670f/
+endif

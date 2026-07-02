@@ -1,8 +1,19 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Goodix Firmware Update Driver.
+ *
+ * Copyright (C) 2019 - 2020 Goodix, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be a reference
+ * to you, when you are integrating the GOODiX's CTP IC into your system,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
  */
-
 #ifndef _GOODIX_CFG_BIN_H_
 #define _GOODIX_CFG_BIN_H_
 
@@ -12,6 +23,10 @@
 #define TS_DEFAULT_CFG_BIN   "gt9896s_cfg_"
 extern const char *gt9896s_firmware_buf;
 extern const char *gt9896s_config_buf;
+extern int gt9896s_find_touch_node;
+extern int gt9896s_cfg_flag;
+extern char panel_firmware_buf[128];
+extern char panel_config_buf[128];
 
 #define TS_BIN_VERSION_START_INDEX	5
 #define TS_BIN_VERSION_LEN	4
@@ -32,7 +47,7 @@ extern const char *gt9896s_config_buf;
 
 #define TS_NORMAL_CFG 0x01
 #define TS_HIGH_SENSE_CFG 0x03
-#define TS_RQST_FW_RETRY_TIMES 5
+#define TS_RQST_FW_RETRY_TIMES 2
 
 #pragma pack(1)
 struct gt9896s_cfg_pkg_reg {
@@ -103,17 +118,5 @@ extern struct gt9896s_module gt9896s_modules;
 int gt9896s_ts_stage2_init(struct gt9896s_ts_core *core_data);
 
 int gt9896s_ts_core_release(struct gt9896s_ts_core *core_data);
-
-int gt9896s_parse_cfg_bin(struct gt9896s_cfg_bin *cfg_bin);
-
-int gt9896s_get_reg_and_cfg(struct gt9896s_ts_device *ts_dev,
-				  struct gt9896s_cfg_bin *cfg_bin);
-
-// int gt9896s_read_cfg_bin(struct device *dev,
-	//		       struct gt9896s_cfg_bin *cfg_bin);
-int gt9896s_read_cfg_bin(struct gt9896s_ts_device *ts_dev,
-					struct gt9896s_cfg_bin *cfg_bin);
-
-void gt9896s_cfg_pkg_leToCpu(struct gt9896s_cfg_package *pkg);
 
 #endif

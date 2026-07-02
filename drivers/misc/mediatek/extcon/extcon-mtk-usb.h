@@ -10,20 +10,25 @@ struct mtk_extcon_info {
 	unsigned int c_role; /* current data role */
 	struct workqueue_struct *extcon_wq;
 	struct regulator *vbus;
-	struct gpio_desc *id_gpiod;
 	unsigned int vbus_vol;
 	unsigned int vbus_cur;
-	unsigned int id_irq;
 	bool vbus_on;
-	struct device_connection dev_conn;
 	struct power_supply *usb_psy;
 	struct notifier_block psy_nb;
-	struct delayed_work wq_detcable;
-#ifdef CONFIG_TCPC_CLASS
+	struct delayed_work wq_psy;
+#if IS_ENABLED(CONFIG_TCPC_CLASS)
 	struct tcpc_device *tcpc_dev;
 	struct notifier_block tcpc_nb;
 #endif
 	bool bypss_typec_sink;
+	/* id/vbus gpio */
+	struct gpio_desc *id_gpiod;
+	struct gpio_desc *vbus_gpiod;
+	int id_irq;
+	int vbus_irq;
+	struct delayed_work wq_detcable;
+	unsigned int vbus_limit_cur;
+	bool vbus_cur_inlimit;
 };
 
 struct usb_role_info {
@@ -44,13 +49,6 @@ enum {
 	DUAL_PROP_PR_NONE,
 };
 
-enum {
-	DUAL_PROP_DR_HOST = 0,
-	DUAL_PROP_DR_DEVICE,
-	DUAL_PROP_DR_NONE,
-};
-
-#if defined ADAPT_PSY_V1
-extern void mt_usb_connect_v1(void);
-extern void mt_usb_disconnect_v1(void);
-#endif //ADAPT_PSY_V1
+#define USB_GPIO_DEB_US	(2000)
+#define USB_GPIO_IRQ_FLAG   \
+	(IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT)

@@ -59,6 +59,7 @@ int sspm_mbox_read(unsigned int mbox, unsigned int slot, void *data,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(sspm_mbox_read);
 
 int sspm_mbox_write(unsigned int mbox, unsigned int slot, void *data,
 	unsigned int len)
@@ -71,6 +72,7 @@ int sspm_mbox_write(unsigned int mbox, unsigned int slot, void *data,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(sspm_mbox_write);
 
 int sspm_mbox_polling(unsigned int mbox, unsigned int irq, unsigned int slot,
 	unsigned int *retdata, unsigned int retlen, unsigned int retries)
@@ -87,18 +89,8 @@ int sspm_mbox_polling(unsigned int mbox, unsigned int irq, unsigned int slot,
 	out_irq = desc->in_out + SSPM_MBOX_OUT_IRQ_OFS;
 
 	spin_lock_irqsave(&lock_mbox[mbox], flags);
-#if 0
-	while (retries-- > 0) {
-		irqs = readl(out_irq);
 
-		if (irqs & irq)
-			break;
-
-		udelay(1);
-	}
-#else
 	irqs = readl(out_irq);
-#endif
 
 	if (irqs & irq) {
 		writel(irq, out_irq);

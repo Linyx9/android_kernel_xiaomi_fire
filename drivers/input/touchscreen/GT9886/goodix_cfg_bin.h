@@ -1,7 +1,22 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Goodix Touchscreen Driver
+ * Core layer of touchdriver architecture.
+ *
+ * Copyright (C) 2015 - 2016 Goodix, Inc.
+ * Authors:  Yulong Cai <caiyulong@goodix.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be a reference
+ * to you, when you are integrating the GOODiX's CTP IC into your system,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ */
 #ifndef _GOODIX_CFG_BIN_H_
 #define _GOODIX_CFG_BIN_H_
 
@@ -11,6 +26,9 @@
 #define TS_DEFAULT_CFG_BIN   "gt9886_cfg_"
 extern const char *gt9886_firmware_buf;
 extern const char *gt9886_config_buf;
+extern int gt9886_find_touch_node;
+extern char panel_firmware_buf[];
+extern char panel_config_buf[];
 
 #define TS_BIN_VERSION_START_INDEX	5
 #define TS_BIN_VERSION_LEN	4
@@ -32,7 +50,7 @@ extern const char *gt9886_config_buf;
 
 #define TS_NORMAL_CFG 0x01
 #define TS_HIGH_SENSE_CFG 0x03
-#define TS_RQST_FW_RETRY_TIMES 5
+#define TS_RQST_FW_RETRY_TIMES 2
 
 #pragma pack(1)
 struct goodix_cfg_pkg_reg {

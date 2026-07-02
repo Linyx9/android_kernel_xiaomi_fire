@@ -17,7 +17,7 @@
 /*
  * This is IPC driver
  *
- * For communication between client OS and hypervisor-TEE OS, IPC driver
+ * For communication between client OS and hypervisor-TEE OS, saddIPC driver
  * is provided, including:
  * 1. standard call interface for communication and entering hypervisor-TEE
  * 2. virtio for message/command passing by shared memory
@@ -41,13 +41,14 @@
 #include <gz-trusty/smcall.h>
 #include <gz-trusty/sm_err.h>
 #include <gz-trusty/trusty.h>
+#include <linux/arm-smccc.h>
 #include <uapi/linux/sched/types.h>
 #include <linux/string.h>
 
 #define enable_code 0 /*replace #if 0*/
 
 #if enable_code /*#if 0*/
-#if IS_ENABLED(CONFIG_MTK_RAM_CONSOLE)
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 #include "trusty-ramconsole.h"
 #endif
 #endif
@@ -86,20 +87,11 @@ static inline ulong smc_asm(ulong r0, ulong r1, ulong r2, ulong r3)
 	register ulong _r1 asm(SMC_ARG1) = r1;
 	register ulong _r2 asm(SMC_ARG2) = r2;
 	register ulong _r3 asm(SMC_ARG3) = r3;
+	struct arm_smccc_res res;
 
-	asm volatile (__asmeq("%0", SMC_ARG0)
-		      __asmeq("%1", SMC_ARG1)
-		      __asmeq("%2", SMC_ARG2)
-		      __asmeq("%3", SMC_ARG3)
-		      __asmeq("%4", SMC_ARG0)
-		      __asmeq("%5", SMC_ARG1)
-		      __asmeq("%6", SMC_ARG2)
-		      __asmeq("%7", SMC_ARG3)
-		      SMC_ARCH_EXTENSION "smc	#0" /* switch to secure world */
-		      : "=r"(_r0), "=r"(_r1), "=r"(_r2), "=r"(_r3)
-		      : "r"(_r0), "r"(_r1), "r"(_r2), "r"(_r3)
-		      : SMC_REGISTERS_TRASHED);
-	return _r0;
+	arm_smccc_smc(_r0, _r1, _r2, _r3, _r0, _r1, _r2, _r3, &res);
+
+	return res.a0;
 }
 
 s32 trusty_fast_call32(struct device *dev, u32 smcnr, u32 a0, u32 a1, u32 a2)
@@ -220,7 +212,10 @@ static ulong trusty_std_call_helper(struct device *dev, ulong smcnr,
 		trusty_dbg(dev,
 			   "%s(0x%lx 0x%lx 0x%lx 0x%lx) busy, wait %d ms\n",
 			   __func__, smcnr, a0, a1, a2, sleep_time);
-		msleep(sleep_time);
+		if (sleep_time < 10)
+			usleep_range(sleep_time * 500, sleep_time * 1000);
+		else
+			msleep(sleep_time);
 		if (sleep_time < 1000)
 			sleep_time <<= 1;
 
@@ -449,7 +444,7 @@ static ssize_t trusty_version_store(struct device *dev,
 DEVICE_ATTR_RW(trusty_version);
 
 #if enable_code /*#if 0*/
-#if IS_ENABLED(CONFIG_MTK_RAM_CONSOLE)
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 static void init_gz_ramconsole(struct device *dev)
 {
 	u32 low, high;
@@ -586,6 +581,12 @@ static bool dequeue_nop(struct trusty_state *s, u32 *args, struct list_head *nop
 
 	spin_unlock_irqrestore(&s->nop_lock, flags);
 
+	if (nop != NULL && nop->args[0] == REE_SERVICE_CMD_NEW_THREAD) {
+		vfree(nop);
+		nop = NULL;
+		usleep_range(250, 350);
+	}
+
 	return nop;
 }
 
@@ -661,10 +662,10 @@ void trusty_enqueue_nop(struct device *dev, struct trusty_nop *nop, int cpu)
 	s = platform_get_drvdata(to_platform_device(dev));
 
 	preempt_disable();
-	if (cpu_possible(cpu))
-		nop_ti = per_cpu_ptr(s->nop_tasks_info, cpu);
-	else
+	if (cpu < 0 || !cpu_possible(cpu))
 		nop_ti = this_cpu_ptr(s->nop_tasks_info);
+	else
+		nop_ti = per_cpu_ptr(s->nop_tasks_info, cpu);
 
 	if (nop) {
 		WARN_ON(s->api_version < TRUSTY_API_VERSION_SMP_NOP);
@@ -725,6 +726,8 @@ static int trusty_task_nop(void *data)
 	trusty_info(s->dev, "tee%d/%s_%d ->\n", s->tee_id, __func__, idx);
 
 	while (!kthread_should_stop()) {
+		int current_cpu = -1;
+
 		wait_for_completion_interruptible_timeout(&nop_ti->run, timeout);
 
 		if (nop_ti->idx >= 0) {
@@ -734,7 +737,10 @@ static int trusty_task_nop(void *data)
 		} else
 			break;
 
-		if (unlikely(smp_processor_id() != idx)) {
+		preempt_disable();
+		current_cpu = smp_processor_id();
+		preempt_enable();
+		if (unlikely(current_cpu != idx)) {
 			/* self migrate */
 			if (cpu_online(idx)) {
 				struct cpumask cpu_mask;
@@ -815,7 +821,7 @@ static int trusty_nop_thread_create(struct trusty_state *s)
 			ret = PTR_ERR(ts);
 			goto err_thread_create;
 		}
-		set_user_nice(ts, PRIO_TO_NICE(MAX_USER_RT_PRIO) + 1);
+		set_user_nice(ts, PRIO_TO_NICE(MAX_RT_PRIO) + 1);
 		kthread_bind(ts, cpu);
 
 		wake_up_process(ts);
@@ -890,20 +896,20 @@ static int trusty_poll_create(struct trusty_state *s)
 	s->poll_notifier.notifier_call = trusty_poll_notify;
 	s->poll_notifier.priority = -1;
 	/* ret = trusty_call_notifier_register(s->dev, &s->poll_notifier);
-	if (ret) {
-		trusty_info(s->dev,
-			 "%s: failed (%d) to register notifier\n",
-			 __func__, ret);
-		return ret;
-	}
-	*/
+	 *	if (ret) {
+	 *		trusty_info(s->dev,
+	 *			 "%s: failed (%d) to register notifier\n",
+	 *			 __func__, ret);
+	 *		return ret;
+	 *	}
+	 */
 
 	kthread_init_work(&s->poll_work, trusty_poll_work);
 	kthread_init_worker(&s->poll_worker);
 	s->poll_task = kthread_create(kthread_worker_fn, (void *)&s->poll_worker,
 				      "trusty_poll_task");
 	if (IS_ERR(s->poll_task)) {
-		trusty_info(s->dev, "%s: unable create trusty_poll_worker\n",
+		trusty_info(s->dev, "%s: unable create trusty_poll_worker %d\n",
 			    __func__, s->tee_id);
 		return PTR_ERR(s->poll_task);
 	}
@@ -999,7 +1005,7 @@ static int trusty_probe(struct platform_device *pdev)
 #endif
 
 #if enable_code /*#if 0*/
-#if IS_ENABLED(CONFIG_MTK_RAM_CONSOLE)
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 	init_gz_ramconsole(&pdev->dev);
 #endif
 #endif

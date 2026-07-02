@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2018 MediaTek Inc.
  */
 
 #ifndef __MTK_DCM_AUTOGEN_H__
@@ -8,7 +8,7 @@
 
 #include <mtk_dcm.h>
 
-#if defined(__KERNEL__) && defined(CONFIG_OF)
+#if defined(__KERNEL__) && IS_ENABLED(CONFIG_OF)
 /* TODO: Fix all base addresses. */
 extern unsigned long dcm_infracfg_ao_base;
 extern unsigned long dcm_mcucfg_base;
@@ -29,14 +29,14 @@ extern unsigned long dcm_emi_base;
 #define MP1_CPUCFG_BASE		(MCUCFG_BASE + 0x200)
 #define MCU_MISCCFG_BASE	(MCUCFG_BASE + 0x400)
 #define MCU_MISC1CFG_BASE	(MCUCFG_BASE + 0x800)
-#define DDRPHY0_AO_BASE		(dcm_ddrphy0_ao_base)
-#define DRAMC0_AO_BASE		(dcm_dramc0_ao_base)
-#define DDRPHY1_AO_BASE		(dcm_ddrphy1_ao_base)
-#define DRAMC1_AO_BASE		(dcm_dramc1_ao_base)
-#define CHN0_EMI_BASE		(dcm_chn0_emi_base)
-#define CHN1_EMI_BASE		(dcm_chn1_emi_base)
+#define DDRPHY0_AO_BASE	(dcm_ddrphy0_ao_base)
+#define DRAMC0_AO_BASE	(dcm_dramc0_ao_base)
+#define DDRPHY1_AO_BASE	(dcm_ddrphy1_ao_base)
+#define DRAMC1_AO_BASE	(dcm_dramc1_ao_base)
+#define CHN0_EMI_BASE	(dcm_chn0_emi_base)
+#define CHN1_EMI_BASE	(dcm_chn1_emi_base)
 #define EMI_BASE		(dcm_emi_base)
-#else /* !(defined(__KERNEL__) && defined(CONFIG_OF)) */
+#else
 #undef INFRACFG_AO_BASE
 #undef EMI_BASE
 #undef DRAMC_CH0_TOP0_BASE

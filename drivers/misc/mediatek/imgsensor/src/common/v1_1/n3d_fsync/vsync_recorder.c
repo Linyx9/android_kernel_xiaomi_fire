@@ -1,6 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #include <linux/spinlock.h>
@@ -32,6 +32,8 @@ static unsigned int latest_vs1_period;
 static unsigned int latest_vs2_period;
 static unsigned int vs2_diff_cnt_correction;
 static struct Vtimestamp records[MAX_RECORD_SENSOR];
+static int array_oob_detected;
+static unsigned int mis_trig_cnt;
 
 int reset_recorder(int cammux_id1, int cammux_id2)
 {
@@ -44,6 +46,8 @@ int reset_recorder(int cammux_id1, int cammux_id2)
 	latest_vs1_period = 0;
 	latest_vs2_period = 0;
 	vs2_diff_cnt_correction = 0;
+	array_oob_detected = 0;
+	mis_trig_cnt = 0;
 
 	for (i = 0; i < ARRAY_SIZE(records); i++) {
 		records[i].cammux_id = -1;
@@ -66,8 +70,19 @@ static int record_vs(unsigned int idx, unsigned int tclk)
 	unsigned int pre_time;
 	unsigned int ts = CLK_TO_TIME_IN_US(tclk);
 
+	if (idx >= MAX_RECORD_SENSOR) {
+		// never be here
+		array_oob_detected = 1;
+		return -1;
+	}
+
 	if (global_time != 0) {
 		w_pos = records[idx].w_cur_pos;
+		if (w_pos < -1 || w_pos >= MAX_RECORD_NUM) {
+			// never be here
+			array_oob_detected = 2;
+			return -1;
+		}
 		if (w_pos == -1)
 			pre_time = global_time;
 		else
@@ -109,16 +124,27 @@ static int update_vs1_rec(unsigned int d_tclk)
 		vs1_pos = records[vs1_idx].w_cur_pos;
 		vs2_pos = records[vs2_idx].w_cur_pos;
 
+		if (vs1_pos < 0 || vs1_pos >= MAX_RECORD_NUM ||
+		    vs2_pos < 0 || vs2_pos >= MAX_RECORD_NUM) {
+			// never be here
+			array_oob_detected = 3;
+			return -1;
+		}
+
 		vs2_latest_ts = records[vs2_idx].timestamps[vs2_pos];
 
-		if (records[vs1_idx].timestamps[vs1_pos] > vs2_latest_ts) {
-			records[vs1_idx].timestamps[vs1_pos] =
-				vs2_latest_ts + diff_ts;
-			/*
-			 * LOG_D("amend vs1 ts to %u\n",
-			 *   records[vs1_idx].timestamps[vs1_pos]);
-			 */
-		}
+		/*
+		 * the diff count only comeout when vs1, so it's no need to
+		 * check if vs1 irq will follow the diff irq or not
+		 */
+		//if (records[vs1_idx].timestamps[vs1_pos] > vs2_latest_ts) {
+		records[vs1_idx].timestamps[vs1_pos] =
+			vs2_latest_ts + diff_ts;
+		/*
+		 * LOG_D("amend vs1 ts to %u\n",
+		 *     records[vs1_idx].timestamps[vs1_pos]);
+		 */
+		//}
 	}
 
 	return 0;
@@ -136,14 +162,28 @@ static int update_vs2_rec(unsigned int d_tclk)
 		vs1_pos = records[vs1_idx].w_cur_pos;
 		vs2_pos = records[vs2_idx].w_cur_pos;
 
+		if (vs1_pos < 0 || vs1_pos >= MAX_RECORD_NUM ||
+		    vs2_pos < 0 || vs2_pos >= MAX_RECORD_NUM) {
+			// never be here
+			array_oob_detected = 4;
+			return -1;
+		}
+
 		vs1_latest_ts = records[vs1_idx].timestamps[vs1_pos];
 
-		if (records[vs2_idx].timestamps[vs2_pos] > vs1_latest_ts) {
+		/*
+		 * update vs2 when vs2 record is larger than vs1
+		 * or vs2 period irq handled after diff irq
+		 * (vs2_diff_cnt_correction should already non-zero
+		 * in this case)
+		 */
+		if (vs2_diff_cnt_correction ||
+		    (records[vs2_idx].timestamps[vs2_pos] > vs1_latest_ts)) {
 			records[vs2_idx].timestamps[vs2_pos] =
 				vs1_latest_ts + diff_ts;
 			/*
 			 * LOG_D("amend vs2 ts to %u\n",
-			 *    records[vs2_idx].timestamps[vs2_pos]);
+			 *     records[vs2_idx].timestamps[vs2_pos]);
 			 */
 		} else {
 			/* Need to correction vs2 when vs2 recorded */
@@ -167,7 +207,9 @@ static int try_update_vs2_rec(unsigned int d_tclk)
 /* ISR */
 int record_vs_diff(int vflag, unsigned int diff_cnt)
 {
-	spin_lock(&global_lock);
+	unsigned long flags = 0;
+
+	spin_lock_irqsave(&global_lock, flags);
 
 	if (!is_period_closely(latest_vs1_period, latest_vs2_period)) {
 		/* skip recording untrust ts */
@@ -198,7 +240,7 @@ int record_vs_diff(int vflag, unsigned int diff_cnt)
 #endif
 	}
 
-	spin_unlock(&global_lock);
+	spin_unlock_irqrestore(&global_lock, flags);
 
 	return 0;
 }
@@ -206,7 +248,9 @@ int record_vs_diff(int vflag, unsigned int diff_cnt)
 /* ISR */
 int record_vs1(unsigned int tclk)
 {
-	spin_lock(&global_lock);
+	unsigned long flags = 0;
+
+	spin_lock_irqsave(&global_lock, flags);
 
 	latest_vs1_period = tclk;
 
@@ -215,7 +259,7 @@ int record_vs1(unsigned int tclk)
 
 	record_vs(0, tclk);
 
-	spin_unlock(&global_lock);
+	spin_unlock_irqrestore(&global_lock, flags);
 
 	return 0;
 }
@@ -223,7 +267,9 @@ int record_vs1(unsigned int tclk)
 /* ISR */
 int record_vs2(unsigned int tclk)
 {
-	spin_lock(&global_lock);
+	unsigned long flags = 0;
+
+	spin_lock_irqsave(&global_lock, flags);
 
 	latest_vs2_period = tclk;
 
@@ -240,7 +286,14 @@ int record_vs2(unsigned int tclk)
 	}
 #endif
 
-	spin_unlock(&global_lock);
+	spin_unlock_irqrestore(&global_lock, flags);
+
+	return 0;
+}
+
+int record_mis_trigger_cnt(void)
+{
+	mis_trig_cnt++;
 
 	return 0;
 }
@@ -303,18 +356,17 @@ int query_n3d_vsync_data(struct vsync_rec *pData)
 	pData->cur_tick = max_tick + 1;
 	pData->tick_factor = 1;
 
-	LOG_D("idx 1 time[0] = %u, time[1] = %u, time[2] = %u, time[3] = %u\n",
-	       pData->recs[0].timestamps[0],
-	       pData->recs[0].timestamps[1],
-	       pData->recs[0].timestamps[2],
-	       pData->recs[0].timestamps[3]);
-
-	LOG_D("idx 2 time[0] = %u, time[1] = %u, time[2] = %u, time[3] = %u\n",
-	       pData->recs[1].timestamps[0],
-	       pData->recs[1].timestamps[1],
-	       pData->recs[1].timestamps[2],
-	       pData->recs[1].timestamps[3]);
-
+	LOG_D(
+		"idx 1 t = %u / %u / %u / %u, idx 2 t = %u / %u / %u / %u mis_trig(%u) oob(%d)\n",
+		pData->recs[0].timestamps[0],
+		pData->recs[0].timestamps[1],
+		pData->recs[0].timestamps[2],
+		pData->recs[0].timestamps[3],
+		pData->recs[1].timestamps[0],
+		pData->recs[1].timestamps[1],
+		pData->recs[1].timestamps[2],
+		pData->recs[1].timestamps[3],
+		mis_trig_cnt, array_oob_detected);
 	return 0;
 }
 

@@ -47,9 +47,17 @@ ssize_t mtk_afe_debugfs_write(struct file *f, const char __user *buf,
 
 	memset((void *)input, 0, MAX_DEBUG_WRITE_INPUT);
 
-	if (copy_from_user(input, buf, count))
+	if (copy_from_user(input, buf, count)) {
 		dev_warn(afe->dev, "%s(), copy_from_user fail, count = %zu\n",
 			 __func__, count);
+		goto exit;
+	}
+
+	if (count > 0)
+		input[count - 1] = '\0';
+	else
+		input[0] = '\0';
+
 
 	str_begin = kstrndup(input, MAX_DEBUG_WRITE_INPUT - 1,
 			     GFP_KERNEL);
@@ -77,18 +85,19 @@ exit:
 }
 EXPORT_SYMBOL_GPL(mtk_afe_debugfs_write);
 
-/* debug function */
-void mtk_afe_debug_write_reg(struct file *file, void *arg)
+void mtk_afe_write_reg(struct mtk_base_afe *afe, void *arg)
 {
-	struct mtk_base_afe *afe = file->private_data;
 	char *token1 = NULL;
 	char *token2 = NULL;
 	char *temp = arg;
 	char delim[] = " ,";
 	unsigned long reg_addr = 0;
 	unsigned long reg_value = 0;
-	unsigned int reg_value_after;
+	unsigned int reg_value_after = 0;
 	int ret = 0;
+
+	if (!afe)
+		return;
 
 	token1 = strsep(&temp, delim);
 	token2 = strsep(&temp, delim);
@@ -98,8 +107,8 @@ void mtk_afe_debug_write_reg(struct file *file, void *arg)
 	if ((token1 != NULL) && (token2 != NULL)) {
 		ret = kstrtoul(token1, 16, &reg_addr);
 		ret = kstrtoul(token2, 16, &reg_value);
-		dev_info(afe->dev, "%s(), reg_addr 0x%lx, reg_value 0x%lx\n",
-			 __func__, reg_addr, reg_value);
+		dev_info(afe->dev, "%s(), reg_addr 0x%lx, reg_value 0x%lx, ret %d\n",
+			 __func__, reg_addr, reg_value, ret);
 
 		regmap_write(afe->regmap, reg_addr, reg_value);
 		regmap_read(afe->regmap, reg_addr, &reg_value_after);
@@ -109,6 +118,16 @@ void mtk_afe_debug_write_reg(struct file *file, void *arg)
 	} else {
 		dev_warn(afe->dev, "token1 or token2 is NULL!\n");
 	}
+
+}
+EXPORT_SYMBOL_GPL(mtk_afe_write_reg);
+
+/* debug function *//* debug function */
+void mtk_afe_debug_write_reg(struct file *file, void *arg)
+{
+	struct mtk_base_afe *afe = file->private_data;
+
+	mtk_afe_write_reg(afe, arg);
 }
 EXPORT_SYMBOL_GPL(mtk_afe_debug_write_reg);
 

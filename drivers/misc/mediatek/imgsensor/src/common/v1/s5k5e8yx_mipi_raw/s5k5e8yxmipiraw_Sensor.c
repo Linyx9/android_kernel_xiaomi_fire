@@ -1422,7 +1422,7 @@ static kal_uint32 slim_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 
 
 static kal_uint32 get_resolution(
-		MSDK_SENSOR_RESOLUTION_INFO_STRUCT * sensor_resolution)
+		MSDK_SENSOR_RESOLUTION_INFO_STRUCT *sensor_resolution)
 {
 	pr_info("E\n");
 	sensor_resolution->SensorFullWidth =
@@ -1868,8 +1868,7 @@ static kal_uint32 set_test_pattern_mode(kal_uint32 modes,
 			//write_cmos_sensor(0x0609, (Color_Gb >> 8) & 0x3);
 			write_cmos_sensor(0x0608, Color_Gb & 0x3FF);
 		}
-	}
-	else
+	} else
 		write_cmos_sensor(0x0601, 0x0000); /*No pattern*/
 
 	write_cmos_sensor(0x3200, 0x00);

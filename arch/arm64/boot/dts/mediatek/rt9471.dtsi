@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2021 MediaTek Inc.
  */
 
-&i2c7 {
+&i2c1 {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	rt-swchg@53 {
+	rt9471_chg: rt-swchg@53 {
 		compatible = "richtek,swchg";
 		reg = <0x53>;
 		status = "okay";
-
-		rt,intr_gpio = <&pio 42 0x0>; /* GPIO */
-		rt,intr_gpio_num = <42>; /* direct defined GPIO num */
+		interrupts-extended = <&pio 14 IRQ_TYPE_LEVEL_LOW>;
+		phys = <&u2port0 PHY_TYPE_USB2>;
+		phy-names = "usb2-phy";
+		usb = <&ssusb>;
 		/*
 		 * rt,ceb_gpio = <&pio 43 0x0>;
 		 * rt,ceb_gpio_num = <43>;
@@ -25,13 +26,14 @@
 			 */
 			chg_name = "primary_chg";
 			chg_alias_name = "rt9471_chg";
-			rm-slave-addr = /bits/ 8 <0x53>;
+			rm-dev-addr = /bits/ 8 <0x53>;
 			rm-name = "rt9471";
 			interrupt-names = "wdt", "chg_mivr", "vbus_gd",
 					  "bc12_done", "detach", "vac_ov",
 					  "otg_fault", "chg_rdy", "chg_done",
 					  "aicc_done", "pe_done", "chg_tout",
 					  "rechg", "chg_batov";
+			charger = <&rt9471_chg>;
 			vac_ovp = <14000000>;		/* uV */
 			mivr = <4400000>;		/* uV */
 			aicr = <500000>;		/* uA */
@@ -47,6 +49,7 @@
 			 * >= 3: MIVR = VBAT + 300mV
 			 */
 			mivr_track = <0>;
+			bc12_sel = <0>;
 			en_safe_tmr;
 			en_te;
 			/* en_jeita; */
@@ -54,6 +57,15 @@
 			/* dis_i2c_tout; */
 			en_qon_rst;
 			/* auto_aicr; */
+			bootmode = <&chosen>;
+otg_vbus2: usb-otg-vbus	{
+				regulator-compatible = "usb-otg-vbus";
+				regulator-name = "usb-otg-vbus";
+				regulator-min-microvolt = <4850000>;
+				regulator-max-microvolt = <5300000>;
+				regulator-min-microamp = <500000>;
+				regulator-max-microamp = <1200000>;
+			};
 		};
 	};
 };

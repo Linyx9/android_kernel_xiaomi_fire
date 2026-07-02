@@ -40,8 +40,6 @@
 #define SEM_TIMEOUT		5000
 #define SSPM_INIT_FLAG	0x1
 
-static int __init sspm_init(void);
-
 struct sspm_regs sspmreg;
 struct platform_device *sspm_pdev;
 static struct workqueue_struct *sspm_workqueue;
@@ -167,7 +165,37 @@ unsigned int is_sspm_ready(void)
 }
 EXPORT_SYMBOL_GPL(is_sspm_ready);
 
-static int sspm_device_probe(struct platform_device *pdev)
+static int __init sspm_module_init(void)
+{
+	if (sspm_sysfs_init()) {
+		pr_err("[SSPM] Sysfs Init Failed\n");
+		return -1;
+	}
+
+#if SSPM_PLT_SERV_SUPPORT
+	if (sspm_plt_init()) {
+		pr_err("[SSPM] Platform Init Failed\n");
+		return -1;
+	}
+	pr_info("SSPM platform service is ready\n");
+#endif
+
+	if (sspm_timesync_init()) {
+		pr_debug("SSPM timesync init fail\n");
+		return -1;
+	}
+
+	sspm_lock_emi_mpu();
+
+	pr_debug("[SSPM] sspm_module Done\n");
+
+	sspm_ready = 1;
+
+	atomic_set(&sspm_inited, 1);
+	return 0;
+}
+
+static int __init sspm_device_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct device *dev = &pdev->dev;
@@ -195,13 +223,13 @@ static int sspm_device_probe(struct platform_device *pdev)
 
 	sspm_pdev = pdev;
 
-	if (sspm_ipi_init()) {
+	if (sspm_ipi_init(pdev)) {
 		pr_err("[SSPM] IPI Init Failed\n");
 		return -1;
 	}
 
 	pr_info("SSPM is ready to service IPI\n");
-#ifdef CONFIG_OF_RESERVED_MEM
+#if IS_ENABLED(CONFIG_OF_RESERVED_MEM)
 	if (sspm_reserve_memory_init(sspm_pdev)) {
 		pr_err("[SSPM] Reserved Memory Failed\n");
 		atomic_set(&sspm_inited, 1);
@@ -215,8 +243,31 @@ static int sspm_device_probe(struct platform_device *pdev)
 		}
 	}
 
+	pr_info("[SSPM] sspm_pdrv probe Done.\n");
+
+	sspm_module_init();
+
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_PM)
+static int sspm_suspend(struct device *dev)
+{
+	sspm_timesync_suspend();
+	return 0;
+}
+
+static int sspm_resume(struct device *dev)
+{
+	sspm_timesync_resume();
+	return 0;
+}
+
+static const struct dev_pm_ops sspm_dev_pm_ops = {
+	.suspend = sspm_suspend,
+	.resume  = sspm_resume,
+};
+#endif
 
 static const struct of_device_id sspm_of_match[] = {
 	{ .compatible = "mediatek,sspm", },
@@ -228,16 +279,19 @@ static const struct platform_device_id sspm_id_table[] = {
 	{ },
 };
 
-static struct platform_driver mtk_sspm_driver = {
+static struct platform_driver mtk_sspm_driver __refdata = {
+	.probe = sspm_device_probe,
 	.remove = NULL,
 	.shutdown = NULL,
 	.suspend = NULL,
 	.resume = NULL,
-	.probe = sspm_device_probe,
 	.driver = {
 		.name = "sspm",
 		.owner = THIS_MODULE,
 		.of_match_table = sspm_of_match,
+#if IS_ENABLED(CONFIG_PM)
+		.pm = &sspm_dev_pm_ops,
+#endif
 	},
 	.id_table = sspm_id_table,
 };
@@ -245,56 +299,30 @@ static struct platform_driver mtk_sspm_driver = {
 /*
  * driver initialization entry point
  */
-static int __init sspm_init(void)
+static int __init sspm_pdrv_init(void)
 {
-	if (atomic_inc_return(&sspm_inited) != 1)
-		return 0;
+	int ret;
 
 	/* static initialise */
 	sspm_ready = 0;
 
 	sspm_workqueue = create_workqueue("SSPM_WQ");
 
-	if (!sspm_workqueue) {
-		pr_err("[SSPM] Workqueue Create Failed\n");
-		goto error;
-	}
+	ret = platform_driver_register(&mtk_sspm_driver);
+	if (ret)
+		pr_err("[SSPM] sspm platform driver Init Failed\n");
 
-	if (platform_driver_register(&mtk_sspm_driver)) {
-		pr_err("[SSPM] Device Init Failed\n");
-		goto error;
-	}
-	pr_debug("[SSPM] Helper Init\n");
-
-	sspm_ready = 1;
-
-	atomic_set(&sspm_inited, 1);
-	return 0;
-
-error:
-	atomic_set(&sspm_inited, 1);
-	return -1;
+	return ret;
 }
 
-static int __init sspm_module_init(void)
+static void __exit sspm_pdrv_exit(void)
 {
-	if (sspm_sysfs_init()) {
-		pr_err("[SSPM] Sysfs Init Failed\n");
-		return -1;
-	}
-
-#if SSPM_PLT_SERV_SUPPORT
-	if (sspm_plt_init()) {
-		pr_err("[SSPM] Platform Init Failed\n");
-		return -1;
-	}
-	pr_info("SSPM platform service is ready\n");
-#endif
-
-	sspm_lock_emi_mpu();
-
-	return 0;
+	pr_info("[SSPM] sspm platform driver Exit.\n");
 }
 
-arch_initcall(sspm_init);
-module_init(sspm_module_init);
+MODULE_DESCRIPTION("MEDIATEK Module SSPM platform driver");
+MODULE_LICENSE("GPL v2");
+
+subsys_initcall(sspm_pdrv_init);
+module_exit(sspm_pdrv_exit);
+

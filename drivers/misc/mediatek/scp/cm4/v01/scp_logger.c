@@ -110,7 +110,7 @@ static size_t scp_A_get_last_log(size_t b_len)
 {
 	size_t ret = 0;
 	int scp_awake_flag;
-	unsigned int log_start_idx;
+	unsigned int log_start_idx __maybe_unused;
 	unsigned int log_end_idx;
 	unsigned int update_start_idx;
 	unsigned char *scp_last_log_buf =
@@ -125,7 +125,7 @@ static size_t scp_A_get_last_log(size_t b_len)
 	mutex_lock(&scp_logger_mutex);
 	/*SCP keep awake */
 	scp_awake_flag = 0;
-	if (scp_awake_lock(SCP_A_ID) == -1) {
+	if (scp_awake_lock((void *)SCP_A_ID) == -1) {
 		scp_awake_flag = -1;
 		pr_debug("[SCP] %s: awake scp fail\n", __func__);
 	}
@@ -172,7 +172,7 @@ static size_t scp_A_get_last_log(size_t b_len)
 
 	/*SCP release awake */
 	if (scp_awake_flag == 0) {
-		if (scp_awake_unlock(SCP_A_ID) == -1)
+		if (scp_awake_unlock((void *)SCP_A_ID) == -1)
 			pr_debug("[SCP] %s: awake unlock fail\n", __func__);
 	}
 
@@ -615,7 +615,7 @@ int scp_logger_init(phys_addr_t start, phys_addr_t limit)
 
 	/*init dram ctrl table*/
 	last_ofs = 0;
-#ifdef CONFIG_ARM64
+#if IS_ENABLED(CONFIG_ARM64)
 	SCP_A_log_ctl = (struct log_ctrl_s *) start;
 #else
 	/* plz fix origial ptr to phys_addr flow */
@@ -716,7 +716,7 @@ void scp_crash_log_move_to_buf(enum scp_core_id scp_id)
 
 	/* SCP keep awake */
 	mutex_lock(&scp_logger_mutex);
-	if (scp_awake_lock(scp_id) == -1) {
+	if (scp_awake_lock((void *)scp_id) == -1) {
 		pr_debug("[SCP] %s: awake scp fail\n", __func__);
 		mutex_unlock(&scp_logger_mutex);
 		return;
@@ -744,7 +744,7 @@ void scp_crash_log_move_to_buf(enum scp_core_id scp_id)
 	ret = 0;
 	if (scp_last_logger) {
 		ret += snprintf(scp_last_logger, strlen(crash_message),
-			crash_message);
+			"%s", crash_message);
 		ret--;
 		while ((log_start_idx != log_end_idx) &&
 			ret <= (length + strlen(crash_message))) {
@@ -797,7 +797,7 @@ void scp_crash_log_move_to_buf(enum scp_core_id scp_id)
 	}
 
 	/* SCP release awake */
-	if (scp_awake_unlock(scp_id) == -1)
+	if (scp_awake_unlock((void *)scp_id) == -1)
 		pr_debug("[SCP] %s: awake unlock fail\n", __func__);
 
 	mutex_unlock(&scp_logger_mutex);

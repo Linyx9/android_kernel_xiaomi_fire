@@ -4,6 +4,7 @@
  */
 
 #include "ged_ge.h"
+#include "mtk_heap.h"
 
 #include <ged_bridge.h>
 
@@ -88,10 +89,9 @@ GED_ERROR ged_ge_init(void)
 
 	gPoolCache = kmem_cache_create("gralloc_extra",
 		sizeof(struct GEEntry), 0, flags, NULL);
-
 	if (!gPoolCache) {
-		GED_PDEBUG("kmem_cache_create fail\n");
-		err = GED_ERROR_FAIL;
+		GED_LOGE("Failed to kmem_cache_create");
+		return GED_ERROR_FAIL;
 	}
 
 	return err;
@@ -147,7 +147,6 @@ int ged_ge_alloc(int region_num, uint32_t *region_sizes)
 			sizeof(void *) * region_num);
 		goto err_kmalloc;
 	}
-
 	entry->region_sizes = (uint32_t *)entry->data;
 	entry->region_data = (uint32_t **)(entry->region_sizes + region_num);
 	for (i = 0; i < region_num; ++i) {
@@ -209,9 +208,10 @@ static int valid_parameters(struct GEEntry *entry, int region_id,
 
 		dump_ge_regions(entry);
 
+		if (region_id >= entry->region_num)
+			return GED_ERROR_VENDOR_NOT_SUPPORT;
 		return -EFAULT;
 	}
-
 	return 0;
 }
 
@@ -234,10 +234,9 @@ int ged_ge_get(int ge_fd, int region_id, int u32_offset,
 
 	entry = file->private_data;
 
-	if (valid_parameters(entry, region_id, u32_offset, u32_size)) {
-		err = -EFAULT;
+	err = valid_parameters(entry, region_id, u32_offset, u32_size);
+	if (err)
 		goto err_parameter;
-	}
 
 	spin_lock_irqsave(&ge_raf_lock, flags);
 	pregion_data = entry->region_data[region_id];
@@ -276,10 +275,9 @@ int ged_ge_set(int ge_fd, int region_id, int u32_offset,
 
 	entry = file->private_data;
 
-	if (valid_parameters(entry, region_id, u32_offset, u32_size)) {
-		err = -EFAULT;
+	err = valid_parameters(entry, region_id, u32_offset, u32_size);
+	if (err)
 		goto err_parameter;
-	}
 
 	spin_lock_irqsave(&ge_raf_lock, flags);
 	while (!entry->region_data[region_id]) {
@@ -324,6 +322,35 @@ err_parameter:
 	return err;
 }
 
+int ged_dmabuf_set_name(int32_t share_fd, char *name)
+{
+	struct dma_buf *dmabuf;
+	int ret = 0;
+
+	if (share_fd < 0) {
+		GED_PDEBUG("%s: invalid value of share_fd %d", __func__, share_fd);
+		return -1;
+	}
+
+	if (name == NULL) {
+		GED_PDEBUG("%s: name is NULL", __func__);
+		return -1;
+	}
+
+	dmabuf = dma_buf_get(share_fd);
+
+	if (IS_ERR_OR_NULL(dmabuf)) {
+		GED_PDEBUG("%s: dma_buf_get return NULL", __func__);
+		return -1;
+	}
+
+	ret = mtk_dma_buf_set_name(dmabuf, name);
+
+	dma_buf_put(dmabuf);
+
+	return ret;
+}
+
 int ged_bridge_ge_alloc(
 	struct GED_BRIDGE_IN_GE_ALLOC *psALLOC_IN,
 	struct GED_BRIDGE_OUT_GE_ALLOC *psALLOC_OUT)
@@ -339,11 +366,6 @@ int ged_bridge_ge_get(
 	struct GED_BRIDGE_OUT_GE_GET *psGET_OUT,
 	int output_buffer_size)
 {
-	/* in gpu_ext/ged/lib/ged_ge.cpp. ged_ge_get()
-	 * iOutSize will show the header size and data size.
-	 */
-	int header_size = sizeof(struct GED_BRIDGE_OUT_GE_GET);
-
 	if (psGET_IN->uint32_offset < 0 ||
 		psGET_IN->uint32_offset >= (GE_MAX_REGION_SIZE / sizeof(uint32_t)) ||
 		psGET_IN->uint32_size <= 0 ||
@@ -356,12 +378,12 @@ int ged_bridge_ge_get(
 	}
 	// check output buffer alloc size
 	if (output_buffer_size !=
-		header_size +
-		(psGET_IN->uint32_size * sizeof(uint32_t))) {
+		sizeof(struct GED_BRIDGE_OUT_GE_GET) +
+		psGET_IN->uint32_size * sizeof(uint32_t)) {
 		GED_PDEBUG("[%s] output_buffer_size (%d byte) != header_size + u32_size (%d byte)",
 			__func__,
-			(unsigned int)output_buffer_size,
-			(unsigned int)(header_size +
+			(unsigned int)(output_buffer_size),
+			(unsigned int)(sizeof(struct GED_BRIDGE_OUT_GE_GET) +
 				(psGET_IN->uint32_size * sizeof(uint32_t))));
 		return -EFAULT;
 	}
@@ -380,8 +402,6 @@ int ged_bridge_ge_set(
 	struct GED_BRIDGE_OUT_GE_SET *psSET_OUT,
 	int input_buffer_size)
 {
-	int header_size = sizeof(struct GED_BRIDGE_IN_GE_SET);
-
 	if (psSET_IN->uint32_offset < 0 ||
 		psSET_IN->uint32_offset >= (GE_MAX_REGION_SIZE / sizeof(uint32_t)) ||
 		psSET_IN->uint32_size <= 0 ||
@@ -394,12 +414,12 @@ int ged_bridge_ge_set(
 	}
 	// check input buffer alloc size
 	if (input_buffer_size !=
-		header_size +
-		(psSET_IN->uint32_size * sizeof(uint32_t))) {
+		sizeof(struct GED_BRIDGE_IN_GE_SET) +
+		psSET_IN->uint32_size * sizeof(uint32_t)) {
 		GED_PDEBUG("[%s] input_buffer_size (%d byte) != header_size + u32_size (%d byte)",
 			__func__,
-			(unsigned int)input_buffer_size,
-			(unsigned int)(header_size +
+			(unsigned int)(input_buffer_size),
+			(unsigned int)(sizeof(struct GED_BRIDGE_IN_GE_SET) +
 				(psSET_IN->uint32_size * sizeof(uint32_t))));
 		return -EFAULT;
 	}
@@ -434,3 +454,22 @@ int ged_bridge_ge_info(
 
 	return 0;
 }
+
+int ged_bridge_dmabuf_set_name(
+	struct GED_BRIDGE_IN_DMABUF_SET_NAME *in,
+	struct GED_BRIDGE_OUT_DMABUF_SET_NAME *out)
+{
+	if (in == NULL) {
+		GED_PDEBUG("%s: GED_BRIDGE_IN_DMABUF_SET_NAME is NULL", __func__);
+		return -1;
+	}
+
+	if (out == NULL) {
+		GED_PDEBUG("%s: GED_BRIDGE_OUT_DMABUF_SET_NAME is NULL", __func__);
+		return -1;
+	}
+
+	out->eError = ged_dmabuf_set_name(in->share_fd, in->name);
+	return 0;
+}
+MODULE_IMPORT_NS(DMA_BUF);

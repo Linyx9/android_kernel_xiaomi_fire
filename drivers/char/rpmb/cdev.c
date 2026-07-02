@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2015-2016 Intel Corp. All rights reserved
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
+ * Copyright (c) 2021 MediaTek Inc.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -153,7 +145,7 @@ static int rpmb_cmd_copy_to_user(struct rpmb_ioc_cmd __user *ucmd,
  * Return: 0 on success, <0 on error
  */
 static long rpmb_ioctl_seq_cmd(struct rpmb_dev *rdev,
-			       struct rpmb_ioc_seq_cmd __user *ptr)
+			       struct rpmb_ioc_seq_cmd __user *ptr, u8 region)
 {
 	__u64 ncmds;
 	struct rpmb_cmd *cmds;
@@ -187,7 +179,7 @@ static long rpmb_ioctl_seq_cmd(struct rpmb_dev *rdev,
 			goto out;
 	}
 
-	ret = rpmb_cmd_seq(rdev, cmds, ncmds);
+	ret = rpmb_cmd_seq(rdev, cmds, ncmds, region);
 	if (ret)
 		goto out;
 
@@ -239,7 +231,7 @@ static long rpmb_ioctl_req_cmd(struct rpmb_dev *rdev,
 	if (ret)
 		goto out;
 
-	ret = rpmb_cmd_req(rdev, &rpmbd);
+	ret = rpmb_cmd_req(rdev, &rpmbd, 0);
 	if (ret)
 		goto out;
 

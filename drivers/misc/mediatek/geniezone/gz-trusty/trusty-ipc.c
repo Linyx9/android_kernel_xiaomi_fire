@@ -67,6 +67,9 @@
 #define TIPC_IOC_MAGIC			'r'
 #define TIPC_IOC_CONNECT		_IOW(TIPC_IOC_MAGIC, 0x80, char *)
 
+#define TIPC_READ_MAX_RETRY_CNT		5
+#define TIPC_READ_MAX_TIMEOUT_MS	1000
+
 struct tipc_virtio_dev;
 
 struct tipc_msg_hdr {
@@ -75,7 +78,7 @@ struct tipc_msg_hdr {
 	u32 reserved;
 	u16 len;
 	u16 flags;
-	u8 data[0];
+	u8 data[];
 } __packed;
 
 enum tipc_ctrl_msg_types {
@@ -89,7 +92,7 @@ enum tipc_ctrl_msg_types {
 struct tipc_ctrl_msg {
 	u32 type;
 	u32 body_len;
-	u8 body[0];
+	u8 body[];
 } __packed;
 
 struct tipc_conn_req_body {
@@ -427,23 +430,21 @@ static int vds_select_cpu(struct tipc_virtio_dev *vds, int32_t cpu_affinity)
 		cpu = ffs(online_cpus & atomic_read(&vds->allowed_cpus) &
 			  vds->default_cpumask) - 1;
 
-		if (!cpu_online(cpu))
+		if (cpu < 0 || !cpu_online(cpu))
 			cpu = fls(online_cpus &
 				  atomic_read(&vds->allowed_cpus)) - 1;
-
-		if (!cpu_online(cpu))
-			cpu = fls(online_cpus) - 1;
 	} else if (cpu_affinity > 0) {
 		cpu = ffs(online_cpus & atomic_read(&vds->allowed_cpus) &
 			  cpu_affinity) - 1;
 
-		if (!cpu_online(cpu))
+		if (cpu < 0 || !cpu_online(cpu))
 			cpu = fls(online_cpus & cpu_affinity) - 1;
-
-		if (!cpu_online(cpu))
-			cpu = fls(online_cpus) - 1;
 	}
-	preempt_enable_no_resched();
+	preempt_enable();
+
+	/* If there is not a suitable cpu number, just give a max cpu number. */
+	if (cpu < 0)
+		cpu = fls(online_cpus) - 1;
 
 	dev_dbg(&vds->vdev->dev,
 		"%s: select cpu %d, o:0x%x, u:0x%x, a:0x%x, d:0x%x\n",
@@ -1435,7 +1436,15 @@ EXPORT_SYMBOL(tipc_k_connect);
 
 int tipc_k_disconnect(struct tipc_k_handle *h)
 {
-	struct tipc_dn_chan *dn = h->dn;
+	struct tipc_dn_chan *dn = NULL;
+
+	if (!h || !h->dn) {
+		pr_info("[%s] ERROR: try to free a non-existent handle\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	dn = h->dn;
 
 	dn_shutdown(dn);
 
@@ -1463,9 +1472,15 @@ ssize_t tipc_k_read(struct tipc_k_handle *h, void *buf, size_t buf_len,
 	struct tipc_msg_buf *mb;
 	struct tipc_dn_chan *dn = (struct tipc_dn_chan *)h->dn;
 
+	int retry;
+	bool read_ok = false;
+	struct device *trusty_dev = dn->chan->vds->vdev->dev.parent->parent;
+
 	mutex_lock(&dn->lock);
 
 	while (list_empty(&dn->rx_msg_queue)) {
+		retry = TIPC_READ_MAX_RETRY_CNT;
+		read_ok = false;
 		if (dn->state != TIPC_CONNECTED) {
 			if (dn->state == TIPC_CONNECTING)
 				ret = -ENOTCONN;
@@ -1483,7 +1498,25 @@ ssize_t tipc_k_read(struct tipc_k_handle *h, void *buf, size_t buf_len,
 		if (flags & O_NONBLOCK)
 			return -EAGAIN;
 
-		if (wait_event_interruptible(dn->readq, _got_rx(dn)))
+		/* During stress testing with AVF and mTEE, there are chance that the stdcall
+		 * thread is switched to a different CPU core, causing tasks to return to the
+		 * host before being fully processed in EL2, resulting in the host hanging.
+		 *
+		 * Therefore, we have implemented a timeout and retry mechanism that triggers a
+		 * resend of nop when the host hangs.
+		 */
+		while (--retry && !read_ok) {
+			if (!wait_event_interruptible_timeout(dn->readq, _got_rx(dn),
+			    msecs_to_jiffies(TIPC_READ_MAX_TIMEOUT_MS))) {
+				preempt_disable();
+				trusty_enqueue_nop(trusty_dev, NULL, smp_processor_id());
+				preempt_enable();
+				continue;
+			}
+			read_ok = true;
+		}
+
+		if (!retry && !read_ok)
 			return -ERESTARTSYS;
 
 		mutex_lock(&dn->lock);
@@ -1606,7 +1639,7 @@ static int _create_cdev_node(struct device *parent,
 	}
 
 	/* Create a device node */
-	cdn->dev = device_create(tipc_class, parent, devt, NULL, name);
+	cdn->dev = device_create(tipc_class, parent, devt, NULL, "%s", name);
 
 	if (IS_ERR(cdn->dev)) {
 		ret = PTR_ERR(cdn->dev);
@@ -1911,7 +1944,7 @@ static void _rxvq_cb(struct virtqueue *rxvq)
 {
 	unsigned int len;
 	struct tipc_msg_buf *mb;
-	unsigned int msg_cnt = 0;
+	unsigned int __maybe_unused msg_cnt = 0;
 	struct tipc_virtio_dev *vds = rxvq->vdev->priv;
 
 	while ((mb = virtqueue_get_buf(rxvq, &len)) != NULL) {
@@ -2260,7 +2293,7 @@ static int __init tipc_init(void)
 	}
 
 	tipc_major = MAJOR(dev);
-	tipc_class = class_create(THIS_MODULE, KBUILD_MODNAME);
+	tipc_class = class_create(KBUILD_MODNAME);
 	if (IS_ERR(tipc_class)) {
 		ret = PTR_ERR(tipc_class);
 		pr_info("%s: class_create failed: %d\n", __func__, ret);

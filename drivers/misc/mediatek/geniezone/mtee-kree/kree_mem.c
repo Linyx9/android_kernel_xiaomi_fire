@@ -183,6 +183,27 @@ static TZ_RESULT send_shm_cmd(int round, union MTEEC_PARAM *p,
 	return ret;
 }
 
+static TZ_RESULT send_shm_first_cmd(union MTEEC_PARAM *p,
+	KREE_SESSION_HANDLE session, uint32_t cmd)
+{
+	int i;
+	uint32_t paramTypes;
+	TZ_RESULT ret = 0;
+
+	/* send ending command */
+	for (i = 0; i < MAX_NUM_OF_PARAM; i++) {
+		p[i].mem.buffer = NULL;
+		p[i].mem.size = 0;
+	}
+	p[3].value.a = -98;
+	p[3].value.b = PAGE_SIZE;
+	paramTypes = TZ_ParamTypes4(TZPT_MEM_INPUT, TZPT_MEM_INPUT,
+				    TZPT_MEM_INPUT, TZPT_VALUE_INOUT);
+	ret = KREE_TeeServiceCall(session, cmd, paramTypes, p);
+
+	return ret;
+}
+
 static TZ_RESULT send_shm_ending_cmd(union MTEEC_PARAM *p,
 	KREE_SESSION_HANDLE session, uint32_t numOfPA, uint32_t cmd,
 	uint32_t region_id)
@@ -275,6 +296,11 @@ static TZ_RESULT kree_register_cont_shm(union MTEEC_PARAM *p,
 
 	tmpAry = kmalloc((MAX_MARY_SIZE)
 			 * sizeof(struct KREE_SHM_RUNLENGTH_ENTRY), GFP_KERNEL);
+	if (tmpAry == NULL) {
+		KREE_DEBUG("[%s] tmpAry malloc fail\n", __func__);
+		return TZ_RESULT_ERROR_OUT_OF_MEMORY;
+	}
+	ret = send_shm_first_cmd(p, session, cmd);
 	tmpAry[0].high = (uint32_t) ((uint64_t) start >> 32);
 	tmpAry[0].low = (uint32_t) ((uint64_t) start & (0x00000000ffffffff));
 	tmpAry[0].size = numOfPA;
@@ -323,9 +349,13 @@ static TZ_RESULT kree_register_desc_shm(union MTEEC_PARAM *p,
 
 	ary = (int64_t *) mapAry;
 	numOfPA = ary[0];
+#if IS_ENABLED(CONFIG_PHYS_ADDR_T_64BIT)
 	KREE_DEBUG("[%s] numOfPA = %d, MAX_MARY_SIZE = %lu\n", __func__,
 		numOfPA, MAX_MARY_SIZE);
-
+#else
+	KREE_DEBUG("[%s] numOfPA = %d, MAX_MARY_SIZE = %u\n", __func__,
+                numOfPA, MAX_MARY_SIZE);
+#endif
 	/* encode page tables */
 	runLengAry =
 	shmem_param_run_length_encoding(numOfPA, &runLeng_arySize, ary);
@@ -344,6 +374,8 @@ static TZ_RESULT kree_register_desc_shm(union MTEEC_PARAM *p,
 		idx, runLengAry[idx].high, runLengAry[idx].low,
 		runLengAry[idx].size);
 #endif
+
+	ret = send_shm_first_cmd(p, session, cmd);
 
 	/* start sending page tables... */
 	idx = 1;
@@ -494,6 +526,7 @@ TZ_RESULT KREE_RegisterSharedmem(KREE_SESSION_HANDLE session,
 	}
 	return TZ_RESULT_SUCCESS;
 }
+EXPORT_SYMBOL(KREE_RegisterSharedmem);
 
 TZ_RESULT KREE_UnregisterSharedmem(KREE_SESSION_HANDLE session,
 	KREE_SHAREDMEM_HANDLE shm_handle)
@@ -598,6 +631,7 @@ TZ_RESULT KREE_AllocSecuremem(KREE_SESSION_HANDLE session,
 		alignment, size, "KREE Alloc Secure mem");
 	return ret;
 }
+EXPORT_SYMBOL(KREE_AllocSecuremem);
 
 TZ_RESULT KREE_ZallocSecuremem(KREE_SESSION_HANDLE session,
 	KREE_SECUREMEM_HANDLE *mem_handle, uint32_t alignment, uint32_t size)
@@ -632,6 +666,7 @@ TZ_RESULT KREE_ZallocSecurememWithTag(KREE_SESSION_HANDLE session,
 		alignment, size, "KREE_ZallocSecurememWithTag");
 	return ret;
 }
+EXPORT_SYMBOL(KREE_ZallocSecurememWithTag);
 
 TZ_RESULT KREE_ReferenceSecuremem(KREE_SESSION_HANDLE session,
 	KREE_SECUREMEM_HANDLE mem_handle)
@@ -642,6 +677,7 @@ TZ_RESULT KREE_ReferenceSecuremem(KREE_SESSION_HANDLE session,
 		"KREE_ReferenceSecuremem");
 	return ret;
 }
+EXPORT_SYMBOL(KREE_ReferenceSecuremem);
 
 TZ_RESULT KREE_UnreferenceSecuremem(KREE_SESSION_HANDLE session,
 	KREE_SECUREMEM_HANDLE mem_handle)
@@ -654,11 +690,11 @@ TZ_RESULT KREE_UnreferenceSecuremem(KREE_SESSION_HANDLE session,
 	KREE_DEBUG("[%s] unref count = 0x%x\n", __func__, count);
 	return ret;
 }
+EXPORT_SYMBOL(KREE_UnreferenceSecuremem);
 
 #endif
 
 #if API_chunkMem /*chunk memory APIs */
-
 static TZ_RESULT _kree_mcm_Append(KREE_SESSION_HANDLE session,
 	KREE_SHAREDMEM_HANDLE *cm_hd, KREE_SHAREDMEM_PARAM *param,
 	uint32_t cmd)

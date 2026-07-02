@@ -1,6 +1,5 @@
 config MTK_COMBO
 	tristate "MediaTek Connectivity Combo Chip Support"
-	select BT
 	help
 	  MTK connectivity combo chip driver for MT66xx
 	  This config
@@ -10,15 +9,6 @@ config MTK_COMBO
 #
 # MTK Combo Chip Selection
 #
-
-choice
-	prompt "Select Chip"
-	depends on MTK_COMBO
-	help
-	  This is used to select chip.
-	  When MTK_COMBO is y,
-	  we need to choose
-	  a chip.
 
 config MTK_COMBO_CHIP_MT6620
 	bool "MT6620"
@@ -109,6 +99,14 @@ config MTK_COMBO_CHIP_CONSYS_6761
 	  is
 	  MT6761(BT/WIFI/GPS/FM combo chip)
 
+config MTK_COMBO_CHIP_CONSYS_6768
+	bool "MTK MT6768 combo chip support"
+	help
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6768(BT/WIFI/GPS/FM combo chip)
+
 config MTK_COMBO_CHIP_CONSYS_8167
 	bool "MTK MT8167 combo chip support"
 	help
@@ -149,14 +147,6 @@ config MTK_COMBO_CHIP_CONSYS_6739
 	  is
 	  MT6739(BT/WIFI/GPS/FM combo chip)
 
-config MTK_COMBO_CHIP_CONSYS_6768
-	bool "MTK MT6768 combo chip support"
-	help
-	  this config is used to decided SOC consys version
-	  in current platform
-	  is
-	  MT6768(BT/WIFI/GPS/FM combo chip)
-
 config MTK_COMBO_CHIP_CONSYS_6779
 	bool "MTK MT6779 combo chip support"
 	help
@@ -173,14 +163,6 @@ config MTK_COMBO_CHIP_CONSYS_6781
 	  is
 	  MT6781(BT/WIFI/GPS/FM combo chip)
 
-config MTK_COMBO_CHIP_CONSYS_6785
-	bool "MTK MT6785 combo chip support"
-	help
-	  this config is used to decided SOC consys version
-	  in current platform
-	  is
-	  MT6785(BT/WIFI/GPS/FM combo chip)
-
 config MTK_COMBO_CHIP_CONSYS_6833
 	bool "MTK MT6833 combo chip support"
 	help
@@ -188,6 +170,14 @@ config MTK_COMBO_CHIP_CONSYS_6833
 	  in current platform
 	  is
 	  MT6833(BT/WIFI/GPS/FM combo chip)
+
+config MTK_COMBO_CHIP_CONSYS_6835
+	bool "MTK MT6835 combo chip support"
+	help
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6835(BT/WIFI/GPS/FM combo chip)
 
 config MTK_COMBO_CHIP_CONSYS_6853
 	bool "MTK MT6853 combo chip support"
@@ -205,6 +195,14 @@ config MTK_COMBO_CHIP_CONSYS_6873
 	  is
 	  MT6873(BT/WIFI/GPS/FM combo chip)
 
+config MTK_COMBO_CHIP_CONSYS_6886
+	bool "MTK MT6886 combo chip support"
+	help
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6886(BT/WIFI/GPS/FM combo chip)
+
 config MTK_COMBO_CHIP_CONSYS_6877
 	bool "MTK MT6877 combo chip support"
 	help
@@ -212,14 +210,6 @@ config MTK_COMBO_CHIP_CONSYS_6877
 	  in current platform
 	  is
 	  MT6877(BT/WIFI/GPS/FM combo chip)
-
-config MTK_COMBO_CHIP_CONSYS_6885
-	bool "MTK MT6885 combo chip support"
-	help
-	  this config is used to decided SOC consys version
-	  in current platform
-	  is
-	  MT6885(BT/WIFI/GPS/FM combo chip)
 
 config MTK_COMBO_CHIP_CONSYS_6893
 	bool "MTK MT6893 combo chip support"
@@ -229,39 +219,69 @@ config MTK_COMBO_CHIP_CONSYS_6893
 	  is
 	  MT6893(BT/WIFI/GPS/FM combo chip)
 
-endchoice
-
-config MTK_COMBO_CHIP
-	string
-	default "MT6620" if MTK_COMBO_CHIP_MT6620
-	default "MT6628" if MTK_COMBO_CHIP_MT6628
-	default "MT6630" if MTK_COMBO_CHIP_MT6630
-	default "MT6632" if MTK_COMBO_CHIP_MT6632
-	default "MT7668" if MTK_COMBO_CHIP_MT7668
-	default "CONSYS_6757" if MTK_COMBO_CHIP_CONSYS_6757
-	default "CONSYS_6763" if MTK_COMBO_CHIP_CONSYS_6763
-	default "CONSYS_6758" if MTK_COMBO_CHIP_CONSYS_6758
-	default "CONSYS_6759" if MTK_COMBO_CHIP_CONSYS_6759
-	default "CONSYS_6765" if MTK_COMBO_CHIP_CONSYS_6765
-	default "CONSYS_6761" if MTK_COMBO_CHIP_CONSYS_6761
-	default "CONSYS_8167" if MTK_COMBO_CHIP_CONSYS_8167
-	default "CONSYS_3967" if MTK_COMBO_CHIP_CONSYS_3967
-	default "CONSYS_6771" if MTK_COMBO_CHIP_CONSYS_6771
-	default "CONSYS_6739" if MTK_COMBO_CHIP_CONSYS_6739
-	default "CONSYS_6768" if MTK_COMBO_CHIP_CONSYS_6768
-	default "CONSYS_6779" if MTK_COMBO_CHIP_CONSYS_6779
-	default "CONSYS_6781" if MTK_COMBO_CHIP_CONSYS_6781
-	default "CONSYS_6785" if MTK_COMBO_CHIP_CONSYS_6785
-	default "CONSYS_6833" if MTK_COMBO_CHIP_CONSYS_6833
-	default "CONSYS_6853" if MTK_COMBO_CHIP_CONSYS_6853
-	default "CONSYS_6873" if MTK_COMBO_CHIP_CONSYS_6873
-	default "CONSYS_6885" if MTK_COMBO_CHIP_CONSYS_6885
-	default "CONSYS_6893" if MTK_COMBO_CHIP_CONSYS_6893
-	default "CONSYS_6877" if MTK_COMBO_CHIP_CONSYS_6877
+config MTK_COMBO_CHIP_CONSYS_6897
+	bool "MTK MT6897 combo chip support"
 	help
-	  this feature is used to identify combo chip version or SOC chip
-	  consys version.
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6897(BT/WIFI/GPS/FM combo chip)
 
+config MTK_COMBO_CHIP_CONSYS_6983
+	bool "MTK MT6983 combo chip support"
+	help
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6893(BT/WIFI/GPS/FM combo chip)
+
+config MTK_COMBO_CHIP_CONSYS_6879
+	bool "MTK MT6879 combo chip support"
+	help
+	  this config is used to decide SOC consys version
+	  in current platform
+	  is
+	  MT6879(BT/WIFI/GPS/FM combo chip)
+
+config MTK_COMBO_CHIP_CONSYS_6895
+	bool "MTK MT6895 combo chip support"
+	help
+	  this config is used to decide SOC consys version
+	  in current platform
+	  is
+	  MT6895(BT/WIFI/GPS/FM combo chip)
+
+config MTK_COMBO_CHIP_CONSYS_6985
+	bool "MTK MT6985 combo chip support"
+	help
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6985(BT/WIFI/GPS combo chip)
+
+config MTK_COMBO_CHIP_CONSYS_6989
+	bool "MTK MT6989 combo chip support"
+	help
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6989(BT/WIFI/GPS combo chip)
+
+config MTK_COMBO_CHIP_CONSYS_6991
+	bool "MTK MT6991 combo chip support"
+	help
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6991(BT/WIFI/GPS combo chip)
+
+config MTK_COMBO_CHIP_CONSYS_6899
+	bool "MTK MT6899 combo chip support"
+	help
+	  this config is used to decided SOC consys version
+	  in current platform
+	  is
+	  MT6899(BT/WIFI/GPS combo chip)
 #
 # Target Platform Selection
 #
@@ -297,14 +317,12 @@ config MTK_COMBO_COMM_SDIO
 config MTK_COMBO_COMM_NPWR
 	depends on MTK_COMBO_COMM
 	bool "Enable NPWR support"
-	default n
 	help
 	  Enable NPWR support of new power on swquence
 
 config MTK_COMBO_COMM_APO
 	depends on MTK_COMBO_COMM
 	bool "Enable always power on support"
-	default n
 	help
 	  Enable chip will always power on
 
@@ -371,8 +389,7 @@ config MTK_CONN_LTE_IDC_SUPPORT
 
 menuconfig GPS
 	tristate "GPS drivers"
-	default n
-	---help---
+	help
 	  Say Y here for supporting GPS.
 
 config MTK_GPS_SUPPORT
@@ -451,7 +468,6 @@ config MTK_CONN_MT3337_CHIP_SUPPORT
 
 config MTK_CONNSYS_DEDICATED_LOG_PATH
 	bool "Enable connsys log using dedicated path"
-	default n
 	help
 	  This will enable connsys log using dedicated path
 	  1. There would be a common debug utility for collecting log
@@ -459,16 +475,28 @@ config MTK_CONNSYS_DEDICATED_LOG_PATH
 	  2. The scope may include (but not limited) Wi-Fi firmware log,
 	     BT firmware log, GPS firmware log etc.
 
-config WLAN_DRV_BUILD_IN
-    bool "Build Wlan module in kernel"
-    help
-      This will build the wlan driver and the corresponding componenets
-      into the kernel.
-      If unsure say n
+config MTK_AOL_DEBUG
+	bool "Enable Always on Location test"
+	depends on MTK_TINYSYS_SCP_SUPPORT
+	help
+	  This config is used to choose whether to support
+	  test for Always on Location feature or not.
+	  Will support test if set to 'y',
+	  otherwise will not support test.
 
-config MTK_EXTRA_CONN_DRV_BUILD_IN
-    bool "Build connectivity module in kernel"
-    help
-      This will build FM, GPS, BT, connfem driver and the
-      corresponding componenets into the kernel.
-      If unsure say n
+config CONN_PWR_DEBUG
+	bool "Enable Power Throttling test"
+	help
+	  This config is used to choose whether to support
+	  test for Power Throttling feature or not.
+	  Will support test if set to 'y',
+	  otherwise will not support test.
+
+config MTK_ADVANCED_80211_MLO
+        bool "Allow google advanced MLO patch"
+        help
+          This config is used to choose whether to support
+          test for Power Throttling feature or not.
+          Will support test if set to 'y',
+          otherwise will not support test.
+

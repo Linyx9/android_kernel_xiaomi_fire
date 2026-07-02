@@ -37,14 +37,16 @@
 
 static kuid_t uid = KUIDT_INIT(0);
 static kgid_t gid = KGIDT_INIT(1000);
-static DEFINE_SEMAPHORE(sem_mutex);
+static DEFINE_SEMAPHORE(sem_mutex, 1);
 static int isTimerCancelled;
 
-static unsigned int interval = 2;	/* seconds, 0 : no auto polling */
-static unsigned int trip_temp[10] = { 120000, 80000, 70000, 60000, 50000,
+static unsigned int interval;	/* seconds, 0 : no auto polling */
+static unsigned int trip_temp[10] = { 85000, 80000, 70000, 60000, 50000,
 					40000, 30000, 20000, 10000, 5000 };
 
 static int g_THERMAL_TRIP[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+static struct thermal_trip trips[10];
 
 static int cl_dev_sysrst_state;
 static struct thermal_zone_device *thz_dev;
@@ -52,7 +54,7 @@ static struct thermal_cooling_device *cl_dev_sysrst;
 static int mtktspa_debug_log;
 static int kernelmode;
 
-static int num_trip = 1;
+static int num_trip;
 static char g_bind0[20] = "mtktspa-sysrst";
 static char g_bind1[20] = { 0 };
 static char g_bind2[20] = { 0 };
@@ -77,10 +79,10 @@ static int polling_factor2 = 10000;
 
 #define mtktspa_TEMP_CRIT 85000	/* 85.000 degree Celsius */
 
-#define mtktspa_dprintk(fmt, args...)   \
+#define mtktspa_dprintk(fmt, args...) \
 do {                                    \
 	if (mtktspa_debug_log) {                \
-		pr_debug("[Thermal/TZ/PA]" fmt, ##args); \
+		pr_notice("[Thermal/TZ/PA]" fmt, ##args); \
 	}                                   \
 } while (0)
 
@@ -96,28 +98,29 @@ static struct timer_list pa_stats_timer;
 static unsigned long pre_time;
 static unsigned long tx_throughput;
 
-static unsigned long get_tx_bytes(void)
+static unsigned long get_tx_bytes(unsigned long pre_tx_bytes)
 {
 	struct net_device *dev;
 	struct net *net;
 	unsigned long tx_bytes = 0;
 
-	read_lock(&dev_base_lock);
-	for_each_net(net) {
-		for_each_netdev(net, dev) {
-			if (!strncmp(dev->name, "ccmni", 5)) {
-				struct rtnl_link_stats64 temp;
-				const struct rtnl_link_stats64 *stats =
-						dev_get_stats(dev, &temp);
-				/* mtktspa_dprintk("%s tx_bytes: %lu\n",
-				 * dev->name, (unsigned long)stats->tx_bytes);
-				 */
-				if (stats)
-					tx_bytes = tx_bytes + stats->tx_bytes;
+	if (read_trylock(&dev_base_lock)) {
+		for_each_net(net) {
+			for_each_netdev(net, dev) {
+				if (!strncmp(dev->name, "ccmni", 5)) {
+					struct rtnl_link_stats64 temp;
+					const struct rtnl_link_stats64 *stats =
+							dev_get_stats(dev, &temp);
+					if (stats)
+						tx_bytes = tx_bytes + stats->tx_bytes;
+				}
 			}
 		}
+		read_unlock(&dev_base_lock);
+	} else {
+		tx_bytes = pre_tx_bytes;
+		mtktspa_dprintk("[%s] skip get tx bytes for lock is busy!\n", __func__);
 	}
-	read_unlock(&dev_base_lock);
 	return tx_bytes;
 }
 
@@ -128,31 +131,32 @@ int tspa_get_MD_tx_tput(void)
 static void pa_cal_stats(struct timer_list *t)
 {
 	struct pa_stats *stats_info = &pa_stats_info;
-	struct timeval cur_time;
+	struct timespec64 cur_time;
+
+	 ktime_get_ts64(&cur_time);
 
 	mtktspa_dprintk("[%s] pre_time=%lu, pre_data=%lu\n", __func__,
 					pre_time, stats_info->pre_tx_bytes);
 
-	do_gettimeofday(&cur_time);
 
 	if (pre_time != 0 && cur_time.tv_sec > pre_time) {
-		unsigned long tx_bytes = get_tx_bytes();
+		unsigned long tx_bytes = get_tx_bytes(stats_info->pre_tx_bytes);
 
 		if (tx_bytes > stats_info->pre_tx_bytes) {
 
-			tx_throughput = ((tx_bytes - stats_info->pre_tx_bytes)
-					/ (cur_time.tv_sec - pre_time)) >> 7;
+			tx_throughput = div_u64((tx_bytes - stats_info->pre_tx_bytes),
+					(cur_time.tv_sec - pre_time)) >> 7;
 
 			mtktspa_dprintk(
-				"[%s] cur_time=%lu, cur_data=%lu, tx_throughput=%luKb/s\n",
+				"[%s] cur_time=%llu, cur_data=%lu, tx_throughput=%luKb/s\n",
 				__func__, cur_time.tv_sec, tx_bytes,
 				tx_throughput);
 
 			stats_info->pre_tx_bytes = tx_bytes;
 		} else if (tx_bytes < stats_info->pre_tx_bytes) {
 			/* Overflow */
-			tx_throughput = ((0xffffffff - stats_info->pre_tx_bytes
-					+ tx_bytes) /
+			tx_throughput = div_u64((0xffffffff - stats_info->pre_tx_bytes
+					+ tx_bytes),
 					(cur_time.tv_sec - pre_time)) >> 7;
 
 			stats_info->pre_tx_bytes = tx_bytes;
@@ -167,12 +171,12 @@ static void pa_cal_stats(struct timer_list *t)
 	} else {
 		/* Overflow possible ??*/
 		tx_throughput = 0;
-		mtktspa_dprintk("[%s] cur_time(%lu) < pre_time\n",
+		mtktspa_dprintk("[%s] cur_time(%llu) < pre_time\n",
 						__func__, cur_time.tv_sec);
 	}
 
 	pre_time = cur_time.tv_sec;
-	mtktspa_dprintk("[%s] pre_time=%lu, tv_sec=%lu\n", __func__,
+	mtktspa_dprintk("[%s] pre_time=%lu, tv_sec=%llu\n", __func__,
 						pre_time, cur_time.tv_sec);
 
 	pa_stats_timer.expires = jiffies + 1 * HZ;
@@ -193,10 +197,10 @@ static void pa_cal_stats(struct timer_list *t)
  *struct md_info g_pinfo_list[] =
  *{{"TXPWR_MD1", -127, "db", -127, 0},
  * {"TXPWR_MD2", -127, "db", -127, 1},
- * {"RFTEMP_2G_MD1", -32767, "¢XC", -32767, 2},
- * {"RFTEMP_2G_MD2", -32767, "¢XC", -32767, 3},
- * {"RFTEMP_3G_MD1", -32767, "¢XC", -32767, 4},
- * {"RFTEMP_3G_MD2", -32767, "¢XC", -32767, 5}};
+ * {"RFTEMP_2G_MD1", -32767, "ï¿½XC", -32767, 2},
+ * {"RFTEMP_2G_MD2", -32767, "ï¿½XC", -32767, 3},
+ * {"RFTEMP_3G_MD1", -32767, "ï¿½XC", -32767, 4},
+ * {"RFTEMP_3G_MD2", -32767, "ï¿½XC", -32767, 5}};
  */
 static DEFINE_MUTEX(TSPA_lock);
 static int mtktspa_get_hw_temp(void)
@@ -242,11 +246,11 @@ static int mtktspa_get_temp(struct thermal_zone_device *thermal, int *t)
 	*t = mtktspa_get_hw_temp();
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -348,32 +352,11 @@ struct thermal_zone_device *thermal, struct thermal_cooling_device *cdev)
 	return 0;
 }
 
-static int mtktspa_get_mode(
-struct thermal_zone_device *thermal, enum thermal_device_mode *mode)
-{
-	*mode = (kernelmode) ? THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
 
-	return 0;
-}
-
-static int mtktspa_set_mode(
+static int mtktspa_change_mode(
 struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 {
 	kernelmode = mode;
-	return 0;
-}
-
-static int mtktspa_get_trip_type(
-struct thermal_zone_device *thermal, int trip, enum thermal_trip_type *type)
-{
-	*type = g_THERMAL_TRIP[trip];
-	return 0;
-}
-
-static int mtktspa_get_trip_temp(
-struct thermal_zone_device *thermal, int trip, int *temp)
-{
-	*temp = trip_temp[trip];
 	return 0;
 }
 
@@ -389,10 +372,7 @@ static struct thermal_zone_device_ops mtktspa_dev_ops = {
 	.bind = mtktspa_bind,
 	.unbind = mtktspa_unbind,
 	.get_temp = mtktspa_get_temp,
-	.get_mode = mtktspa_get_mode,
-	.set_mode = mtktspa_set_mode,
-	.get_trip_type = mtktspa_get_trip_type,
-	.get_trip_temp = mtktspa_get_trip_temp,
+	.change_mode = mtktspa_change_mode,
 	.get_crit_temp = mtktspa_get_crit_temp,
 };
 
@@ -428,7 +408,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 	}
 	return 0;
 }
@@ -542,7 +522,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		mtktspa_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 						DB_OPT_DEFAULT, "mtktspa_write",
 						"Bad argument");
@@ -618,13 +598,20 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 						trip_temp[9], interval * 1000);
 
 		mtktspa_dprintk("[%s] mtktspa_register_thermal\n", __func__);
+
+
+		for (i = 0; i < num_trip; i++) {
+			trips[i].temperature = trip_temp[i];
+			trips[i].type = g_THERMAL_TRIP[i];
+		}
+
 		mtktspa_register_thermal();
 		up(&sem_mutex);
 
 		kfree(ptr_mtktspa_data);
 		return count;
 	}
-	#ifdef CONFIG_MTK_AEE_FEATURE
+	#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 							"mtktspa_write",
 							"Bad argument");
@@ -640,13 +627,12 @@ static int mtktspa_open(struct inode *inode, struct file *file)
 	return single_open(file, mtktspa_read, NULL);
 }
 
-static const struct file_operations mtktspa_fops = {
-	.owner = THIS_MODULE,
-	.open = mtktspa_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtktspa_write,
-	.release = single_release,
+static const struct proc_ops mtktspa_fops = {
+	.proc_open = mtktspa_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtktspa_write,
+	.proc_release = single_release,
 };
 
 #if Feature_Thro_update
@@ -660,15 +646,14 @@ int pa_mobile_tx_thro_read(struct seq_file *m, void *v)
 
 static int pa_mobile_tx_thro_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, pa_mobile_tx_thro_read, PDE_DATA(inode));
+	return single_open(file, pa_mobile_tx_thro_read, pde_data(inode));
 }
 
-static const struct file_operations _tx_thro_fops = {
-	.owner = THIS_MODULE,
-	.open = pa_mobile_tx_thro_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops _tx_thro_fops = {
+	.proc_open = pa_mobile_tx_thro_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 #endif
 
@@ -728,7 +713,7 @@ static int mtktspa_register_thermal(void)
 
 	/* trips */
 	thz_dev = mtk_thermal_zone_device_register(
-						"mtktspa", num_trip, NULL,
+						"mtktspa", trips, num_trip, NULL,
 						&mtktspa_dev_ops, 0, 0, 0,
 						interval * 1000);
 
@@ -755,9 +740,10 @@ static void mtktspa_unregister_thermal(void)
 	}
 }
 
-static int __init mtktspa_init(void)
+int  mtktspa_init(void)
 {
 	int err = 0;
+	int i = 0;
 	struct proc_dir_entry *entry = NULL;
 	struct proc_dir_entry *mtktspa_dir = NULL;
 #if Feature_Thro_update
@@ -769,6 +755,11 @@ static int __init mtktspa_init(void)
 	err = mtktspa_register_cooler();
 	if (err)
 		return err;
+
+	for (i = 0; i < num_trip; i++) {
+		trips[i].temperature = trip_temp[i];
+		trips[i].type = g_THERMAL_TRIP[i];
+	}
 
 	err = mtktspa_register_thermal();
 	if (err)
@@ -815,7 +806,7 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtktspa_exit(void)
+void mtktspa_exit(void)
 {
 	mtktspa_dprintk("[%s]\n", __func__);
 	mtktspa_unregister_thermal();
@@ -826,5 +817,7 @@ static void __exit mtktspa_exit(void)
 	del_timer(&pa_stats_timer);
 #endif
 }
-module_init(mtktspa_init);
-module_exit(mtktspa_exit);
+//module_init(mtktspa_init);
+//module_exit(mtktspa_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

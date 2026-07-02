@@ -10,6 +10,8 @@
 # See http://www.gnu.org/licenses/gpl-2.0.html for more details.
 #
 #
-LINUXINCLUDE += -include $(srctree)/kernel/sched/sched.h
-ccflags-y += -I$(src)              # needed for trace events
+ccflags-y += -I$(srctree)
+ccflags-y += -I$(srctree)/$(src)              # needed for trace events
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/sched/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/performance/fpsgo_v3/fstb
 obj-$(CONFIG_MTK_TASK_TURBO) += task_turbo.o

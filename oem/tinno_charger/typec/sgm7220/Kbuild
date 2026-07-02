@@ -1,0 +1,6 @@
+ifdef CONFIG_OEM_TCPC_SGM7220
+	TCPC_SGM7220_OBJS += tcpc_sgm7220.o
+endif
+
+obj-$(CONFIG_OEM_TCPC_SGM7220) += sgm7220.o
+sgm7220-y := $(TCPC_SGM7220_OBJS)

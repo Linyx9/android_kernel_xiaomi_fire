@@ -698,13 +698,6 @@ static const struct mtk_pin_field_calc mt6877_pin_eh_range[] = {
 	PIN_FIELD_BASE(187, 187, 7, 0x0030, 0x10, 3, 3),
 };
 
-static const struct mtk_eint_hw mt6877_eint_hw = {
-	.port_mask = 7,
-	.ports     = 7,
-	.ap_num    = 128,
-	.db_cnt    = 32,
-};
-
 static const struct mtk_pin_reg_calc mt6877_reg_cals[PINCTRL_PIN_REG_MAX] = {
 	[PINCTRL_PIN_REG_MODE] = MTK_RANGE(mt6877_pin_mode_range),
 	[PINCTRL_PIN_REG_DIR] = MTK_RANGE(mt6877_pin_dir_range),
@@ -756,10 +749,10 @@ static const struct mtk_pin_soc mt6877_data = {
 	.pins = mtk_pins_mt6877,
 	.npins = ARRAY_SIZE(mtk_pins_mt6877),
 	.ngrps = ARRAY_SIZE(mtk_pins_mt6877),
-	.eint_hw = &mt6877_eint_hw,
 	.nfuncs = 8,
 	.gpio_m = 0,
-	.race_free_access = true,
+	.capability_flags = FLAG_RACE_FREE_ACCESS
+				| FLAG_DRIVE_SET_RAW,
 	.eh_pin_pinmux = mt6877_eh_pin_pinmux_list,
 	.bias_set_combo = mtk_pinconf_bias_set_combo,
 	.bias_get_combo = mtk_pinconf_bias_get_combo,
@@ -772,22 +765,17 @@ static const struct mtk_pin_soc mt6877_data = {
 };
 
 static const struct of_device_id mt6877_pinctrl_of_match[] = {
-	{ .compatible = "mediatek,mt6877-pinctrl", },
+	{ .compatible = "mediatek,mt6877-pinctrl", .data = &mt6877_data },
 	{ }
 };
-
-static int mt6877_pinctrl_probe(struct platform_device *pdev)
-{
-	return mtk_paris_pinctrl_probe(pdev, &mt6877_data);
-}
 
 static struct platform_driver mt6877_pinctrl_driver = {
 	.driver = {
 		.name = "mt6877-pinctrl",
 		.of_match_table = mt6877_pinctrl_of_match,
-		.pm = &mtk_eint_pm_ops_v2,
+		.pm = &mtk_paris_pinctrl_pm_ops,
 	},
-	.probe = mt6877_pinctrl_probe,
+	.probe = mtk_paris_pinctrl_probe,
 };
 
 static int __init mt6877_pinctrl_init(void)
@@ -795,3 +783,6 @@ static int __init mt6877_pinctrl_init(void)
 	return platform_driver_register(&mt6877_pinctrl_driver);
 }
 arch_initcall(mt6877_pinctrl_init);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("MediaTek MT6877 Pinctrl Driver");

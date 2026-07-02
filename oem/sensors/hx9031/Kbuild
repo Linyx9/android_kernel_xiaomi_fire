@@ -1,0 +1,11 @@
+
+$(warning srctree=$(srctree))
+$(warning src=$(src))
+
+ifdef CONFIG_HX9031_SAR
+	HX9031_SAR_OBJS += hx9031as.o
+endif
+
+obj-$(CONFIG_HX9031_SAR) += hx9031_sar.o
+hx9031_sar-y := $(HX9031_SAR_OBJS)
+

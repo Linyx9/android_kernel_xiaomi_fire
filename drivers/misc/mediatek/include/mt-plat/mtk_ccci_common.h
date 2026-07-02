@@ -9,18 +9,9 @@
 #include <asm/setup.h>
 #include <linux/device.h>
 #include <linux/skbuff.h>
-/*
- * all code owned by CCCI should use modem index starts from ZERO
- */
+
 enum MD_SYS {
-	/* MD SYS name counts from 1,
-	 * but internal index counts from 0
-	 */
 	MD_SYS1 = 0,
-	MD_SYS2,
-	MD_SYS3,
-	MD_SYS4,
-	MD_SYS5 = 4,
 	MAX_MD_NUM
 };
 
@@ -48,15 +39,12 @@ enum MD_LOAD_TYPE {
 	modem_ultwcg,
 	modem_ulftg,
 	modem_ulfctg,
-#if 0
 	modem_unlwg,
 	modem_unlwtg,
 	modem_unlwctg,
 	modem_unlwcg,
 	modem_unltctg,
 	MAX_IMG_NUM = modem_unltctg /* this enum starts from 1 */
-#endif
-	MAX_IMG_NUM = modem_ulfctg /* this enum starts from 1 */
 };
 
 /* MD logger configure file */
@@ -321,9 +309,6 @@ enum{
 #define CCCI_ERR_LOAD_IMG_NOT_FOUND \
 	(CCCI_ERR_LOAD_IMG_START_ID+13)
 
-/* -- boot mode  -- */
-#define DISABLE_MTK_BOOT_MODE 1
-
 /* export to other kernel modules, */
 /*better not let other module include ECCCI header directly (except IPC...) */
 enum MD_STATE_FOR_USER {
@@ -335,7 +320,6 @@ enum MD_STATE_FOR_USER {
 
 enum KERN_FUNC_ID {
 	ID_GET_MD_WAKEUP_SRC,   /* for SPM */
-	ID_GET_TXPOWER,		/* for thermal */
 	ID_PAUSE_LTE,		/* for DVFS */
 	ID_GET_MD_STATE,	/* for DVFS */
 	ID_THROTTLING_CFG,	/* For MD SW throughput throttling */
@@ -344,11 +328,14 @@ enum KERN_FUNC_ID {
 	/* for PMIC to notify MD buck over current, */
 	/*called from kernel thread context */
 	ID_PMIC_INTR,
-	ID_FORCE_MD_ASSERT,	/* for EMI MPU */
+	ID_FORCE_MD_ASSERT,	/* for user */
 	ID_MD_MPU_ASSERT,	/* for EMI MPU */
 	ID_LWA_CONTROL_MSG,	/* for Wi-Fi driver */
 	ID_UPDATE_TX_POWER,	/* for SWTP */
 	ID_AP2MD_LOWPWR,	/* for AP2MD LOWPWR*/
+	ID_GET_MD_BOOT_CNT,	/* for thermal */
+	ID_SPMI_FORCE_MD_ASSERT,	/* for SPMI */
+	ID_PMIF_FORCE_MD_ASSERT,	/* for PMIF: let MD call MD MMRF API to assert*/
 };
 
 /* AP<->MD messages on control or system channel */
@@ -372,8 +359,8 @@ enum {
 	MD_DORMANT_NOTIFY = 0x100, /* deprecated */
 	MD_SLP_REQUEST = 0x101, /* deprecated */
 	MD_TX_POWER = 0x102,
-	MD_RF_TEMPERATURE = 0x103,
-	MD_RF_TEMPERATURE_3G = 0x104,
+	MD_RF_MAX_TEMPERATURE_SUB6 = 0x103,
+	MD_RF_ALL_TEMPERATURE_MMW = 0x104,
 	MD_GET_BATTERY_INFO = 0x105,
 
 	MD_SIM_TYPE = 0x107,
@@ -405,10 +392,9 @@ enum {
 	C2K_PPP_LINE_STATUS = 0x11F,	/*usb bypass for 93 and later*/
 	MD_DISPLAY_DYNAMIC_MIPI = 0x120, /* MIPI for TC16 */
 	MD_RF_HOPPING_NOTIFY = 0x121,
-	/* 0x125 for CCMSG_ID_SYSMSGSVC_RF_HOPPING_NOTIFY */
-	MD_CAMERA_FRE_HOPPING = 0x125,
-
 	CCMSG_ID_SYSMSGSVC_LOWPWR_APSTS_NOTIFY = 0x128,
+	MD_NR_BAND_ACTIVATE_INFO = 0x12A,
+	MD_DRAM_SLC = 0x12B,
 
 	/*c2k ctrl msg start from 0x200*/
 	C2K_STATUS_IND_MSG = 0x201, /* for usb bypass */
@@ -434,6 +420,11 @@ enum {
 	MODEM_CAP_TXBUSY_STOP = (1<<1),
 	MODEM_CAP_SGIO = (1<<2),
 	MODEM_CAP_HWTXCSUM = (1<<3),
+	MODEM_CAP_LRO = (1 << 4),
+	MODEM_CAP_2RXQ = (1 << 5),
+	MODEM_CAP_USE_RESV_MEM = (1 << 6),
+	MODEM_CAP_USE_MAX_BAT = (1 << 7),
+	MODEM_CAP_LIM_UDP_GRO = (1 << 8),
 	/*bit16-bit31:
 	 *for modem capability only
 	 *related with ccmni driver
@@ -445,7 +436,6 @@ enum {
 	MODEM_CAP_WORLD_PHONE = (1<<20),
 	/* it must depend on DATA ACK DEVIDE feature */
 	MODEM_CAP_CCMNI_MQ = (1<<21),
-	MODEM_CAP_DIRECT_TETHERING = (1<<22),
 };
 
 enum MD_STATE {
@@ -466,6 +456,26 @@ enum HIF_STATE {
 	TX_FULL, /* broadcast by HIF, only for network! */
 };
 
+/* DATA Q priority channel
+ * high:Q1
+ * normal:Q0
+ * medium:Q2 -->gen97/98:PDCP VRB, Dujac:QOS VRB
+ * IMS:Q3
+ */
+enum QUEUE_PRIORITY {
+	PRIORITY_0 = 0, /* lowest priority -> MD_HW_NORMAL_Q(Q0)*/
+	PRIORITY_1 = 1, /* medium priority -> MD_HW_MEDIUM_Q(Q2)*/
+	PRIORITY_2 = 2, /* highest priority-> MD_HW_HIGH_Q(Q1)*/
+	PRIORITY_NUM,
+};
+
+enum QUEUE_NUM {
+	MD_HW_HIGH_Q = 1,
+	MD_HW_NORMAL_Q = 0,
+	MD_HW_MEDIUM_Q = 2,
+	MD_HW_IMS_Q = 3,
+	MD_HW_Q_MAX = 4,
+};
 /* ============================================================== */
 /* Image type and header defination part */
 /* ============================================================== */
@@ -525,8 +535,8 @@ struct ccci_image_info {
 	struct IMG_REGION_INFO rmpu_info;  /* refion pinfo for RMPU setting */
 };
 
-typedef int (*get_status_func_t)(int, char*, int);
-typedef int (*boot_md_func_t)(int);
+typedef int (*get_status_func_t)(char*, int);
+typedef int (*boot_md_func_t)(void);
 
 enum SMEM_USER_ID {
 	/* this should remain to be 0 for backward compatibility */
@@ -541,17 +551,17 @@ enum SMEM_USER_ID {
 
 	/* squence of other users does not matter */
 	SMEM_USER_RAW_CCB_CTRL,
-	SMEM_USER_RAW_DHL, /* 5 */
+	SMEM_USER_RAW_DHL,
 	SMEM_USER_RAW_MDM,
 	SMEM_USER_RAW_NETD,
 	SMEM_USER_RAW_USB,
 	SMEM_USER_RAW_AUDIO,
-	SMEM_USER_RAW_DFD, /* 10 */
+	SMEM_USER_RAW_DFD,
 	SMEM_USER_RAW_LWA,
 	SMEM_USER_RAW_MDCCCI_DBG,
 	SMEM_USER_RAW_MDSS_DBG,
 	SMEM_USER_RAW_RUNTIME_DATA,
-	SMEM_USER_RAW_FORCE_ASSERT, /* 15 */
+	SMEM_USER_RAW_FORCE_ASSERT,
 	SMEM_USER_CCISM_SCP,
 	SMEM_USER_RAW_MD2MD,
 	SMEM_USER_RAW_RESERVED,
@@ -561,24 +571,37 @@ enum SMEM_USER_ID {
 	SMEM_USER_RAW_MD_CONSYS,
 	SMEM_USER_RAW_PHY_CAP,
 	SMEM_USER_RAW_USIP,
-	SMEM_USER_RESV_0, /* 25. Sync to MT6779 SMEM_USER_MAX_K */
+	SMEM_USER_RESV_0, /* Sync to MT6779 SMEM_USER_MAX_K */
 	SMEM_USER_ALIGN_PADDING, /* Sync to MT6779 SMEM_USER_NON_PADDING */
 	SMEM_USER_RAW_UDC_DATA,
 	SMEM_USER_RAW_UDC_DESCTAB,
 	SMEM_USER_RAW_AMMS_POS,
-	SMEM_USER_RAW_ALIGN_PADDING, /* 30.= SMEM_USER_RAW_AMMS_ALIGN_PADDING */
+	SMEM_USER_RAW_ALIGN_PADDING, /* = SMEM_USER_RAW_AMMS_ALIGN_PADDING */
 	SMEM_USER_MD_WIFI_PROXY, /* 31 */
 	SMEM_USER_MD_NVRAM_CACHE, /* 32 */
 	SMEM_USER_LOW_POWER,
 	SMEM_USER_SECURITY_SMEM,
-	SMEM_USER_SAP_EX_DBG, /* 35 */
-	SMEM_USER_SAP_DFD_DBG, /* 36 */
+	SMEM_USER_SAP_EX_DBG, /*35*/
+	SMEM_USER_SAP_DFD_DBG,
 	SMEM_USER_32K_LOW_POWER,
 	SMEM_USER_USB_DATA,
 	SMEM_USER_MD_CDMR, /* CDMR:Crash Dump Memory Region/MIDR:Modem Internals Dump Region */
-	SMEM_USER_RESERVED, /* 40 */
-	SMEM_USER_MD_DRDI, /* 41 */
+	SMEM_USER_RESERVED, /*40*/
+	SMEM_USER_MD_DRDI,
+	SMEM_USER_MD_DATA,
 	SMEM_USER_MAX,
+};
+
+enum KERNEL_MD_STATE_RECEIVER {
+	KERN_MD_STAT_RCV_NONE,
+	/* ../ccci_fsm_scp_c.c */
+	KERN_MD_STAT_RCV_SCP = 1,
+	/*/vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/mgmt/*/
+	KERN_MD_STAT_RCV_MDDP,
+	KERN_MD_KERN_INTF,
+	/* drivers/misc/mediatek/lpm: check if MDEE is related to low power */
+	KERN_MD_LPM_DUMP,
+	KERN_MD_STAT_RCV_MAX, /* <32 for static unsigned int kern_reg_cb_bitmap */
 };
 
 enum SYS_CB_ID {
@@ -586,21 +609,7 @@ enum SYS_CB_ID {
 	ID_GET_TDD_THERMAL_DATA,
 };
 
-enum KERNEL_USER_ID {
-	ID_MD_CAMERA = 0,
-	ID_USER_MAX,
-};
-
-typedef int (*ccci_misc_cb_func_t)(int, void *, int);
-struct ccci_misc_cb_func_info {
-	enum KERNEL_USER_ID	id;
-	ccci_misc_cb_func_t	func;
-};
-
-int register_ccci_func_call_back(int md_id, unsigned int id,
-	ccci_misc_cb_func_t func);
-
-typedef int (*ccci_sys_cb_func_t)(int, int);
+typedef int (*ccci_sys_cb_func_t)(int);
 struct ccci_sys_cb_func_info {
 	enum SYS_CB_ID		id;
 	ccci_sys_cb_func_t	func;
@@ -609,7 +618,7 @@ struct ccci_sys_cb_func_info {
 #define MAX_KERN_API 64
 
 enum MD_WAKEUP_SOURCE {
-	WAKE_SRC_MD_WDT = 0,
+	WAKE_SRC_DEFAULT_SETTING = 0, /* not MD/HIF related. */
 	WAKE_SRC_HIF_CCIF0 = 1,
 	WAKE_SRC_HIF_CCIF1 = 2,
 	WAKE_SRC_HIF_CLDMA = 3,
@@ -623,73 +632,72 @@ enum MD_WAKEUP_SOURCE {
 /* for getting modem info, Export by ccci util */
 int ccci_get_fo_setting(char item[], unsigned int *val);
 void ccci_md_mem_reserve(void);
-unsigned int get_modem_is_enabled(int md_id);
+unsigned int get_modem_is_enabled(void);
 unsigned int ccci_get_modem_nr(void);
-int ccci_init_security(void);
-int ccci_sysfs_add_modem(int md_id, void *kobj, void *ktype,
+int ccci_sysfs_add_modem(void *kobj, void *ktype,
 	get_status_func_t get_sta_func, boot_md_func_t boot_func);
-int get_modem_support_cap(int md_id); /* Export by ccci util */
-int set_modem_support_cap(int md_id, int new_val);
-char *ccci_get_md_info_str(int md_id);
-void get_md_postfix(int md_id, const char k[], char buf[], char buf_ex[]);
+int get_modem_support_cap(void); /* Export by ccci util */
+int set_modem_support_cap(int new_val);
+char *ccci_get_md_info_str(void);
+void get_md_postfix(const char k[], char buf[], char buf_ex[]);
 void update_ccci_port_ver(unsigned int new_ver);
-int ccci_load_firmware(int md_id, void *img_inf, char img_err_str[],
+int ccci_load_firmware(void *img_inf, char img_err_str[],
 	char post_fix[], struct device *dev);
-int get_md_resv_mem_info(int md_id, phys_addr_t *r_rw_base,
+int get_md_resv_mem_info(phys_addr_t *r_rw_base,
 	unsigned int *r_rw_size, phys_addr_t *srw_base, unsigned int *srw_size);
 int get_md_sib_mem_info(phys_addr_t *rw_base, unsigned int *rw_size);
-int get_md_resv_ccb_info(int md_id, phys_addr_t *ccb_data_base,
+int get_md_resv_ccb_info(phys_addr_t *ccb_data_base,
 	unsigned int *ccb_data_size);
-int get_md_resv_udc_info(int md_id, unsigned int *udc_noncache_size,
+int get_md_resv_udc_info(unsigned int *udc_noncache_size,
 	unsigned int *udc_cache_size);
-int get_md1_md3_resv_smem_info(int md_id, phys_addr_t *rw_base,
-	unsigned int *rw_size);
-unsigned int get_md_resv_phy_cap_size(int md_id);
-unsigned int get_md_resv_sib_size(int md_id);
-int get_smem_amms_pos_size(int md_id);
-int get_smem_align_padding_size(int md_id);
-int get_md_smem_dfd_size(int md_id);
-unsigned int get_md_smem_cachable_offset(int md_id);
-phys_addr_t get_smem_phy_start_addr(int md_id,
-	enum SMEM_USER_ID user_id, int *size_o);
+unsigned int get_md_resv_phy_cap_size(void);
+unsigned int get_md_resv_sib_size(void);
+int get_smem_amms_pos_size(void);
+int get_smem_align_padding_size(void);
+int get_md_smem_dfd_size(void);
+unsigned int get_md_smem_cachable_offset(void);
+phys_addr_t get_smem_phy_start_addr(int id, enum SMEM_USER_ID user_id, int *size_o);
 
-unsigned long ccci_get_md_boot_count(int md_id); /* Export by ccci fsm */
-int exec_ccci_kern_func_by_md_id(int md_id, unsigned int id, char *buf,
+unsigned long ccci_get_md_boot_count(void); /* Export by ccci fsm */
+int exec_ccci_kern_func(unsigned int id, char *buf,
 	unsigned int len); /* Export by ccci core */
-int register_ccci_sys_call_back(int md_id, unsigned int id,
+int register_ccci_sys_call_back(unsigned int id,
 	ccci_sys_cb_func_t func); /* Export by ccci port */
-void __iomem *get_smem_start_addr(int md_id, enum SMEM_USER_ID user_id,
+void __iomem *get_smem_start_addr(enum SMEM_USER_ID user_id,
 	int *size_o); /* Export by ccci port */
-int switch_sim_mode(int id, char *buf,
-	unsigned int len); /* Export by SIM switch */
+int switch_sim_mode(char *buf, unsigned int len); /* Export by SIM switch */
 unsigned int get_sim_switch_type(void); /* Export by SIM switch */
 
-#ifdef CONFIG_MTK_ECCCI_C2K
+#if IS_ENABLED(CONFIG_MTK_ECCCI_C2K_USB)
 /* for c2k usb bypass */
+typedef int (*usb_upstream_buffer_cb_t) (int transfer_id,
+	const void *buffer, unsigned int length);
 int ccci_c2k_rawbulk_intercept(int ch_id, unsigned int interception);
 int ccci_c2k_buffer_push(int ch_id, void *buf, int count);
 int modem_dtr_set(int on, int low_latency);
 int modem_dcd_state(void);
+void ccci_c2k_set_usb_callback(usb_upstream_buffer_cb_t callback);
 #endif
 /* for modem get AP time */
 void notify_time_update(void);
 int wait_time_update_notify(void);
 /* callback for system power off*/
-//void ccci_power_off(void);
+void ccci_power_off(void);
 /* LK load modem, Export by ccci util */
-int modem_run_env_ready(int md_id);
+int modem_run_env_ready(void);
 int get_lk_load_md_info(char buf[], int size);
-int get_md_type_from_lk(int md_id);
-int get_raw_check_hdr(int md_id, char buf[], int size);
-int ccci_get_md_check_hdr_inf(int md_id, void *img_inf, char post_fix[]);
-int get_md_img_raw_size(int md_id);
-void clear_meta_1st_boot_arg(int md_id);
+int get_md_type_from_lk(void);
+int get_raw_check_hdr(char buf[], int size);
+int ccci_get_md_check_hdr_inf(void *img_inf, char post_fix[]);
+int get_md_img_raw_size(void);
+void clear_meta_1st_boot_arg(void);
 
 /* CCCI dump */
 #define CCCI_DUMP_TIME_FLAG		(1<<0)
-#define CCCI_DUMP_CLR_BUF_FLAG		(1<<1)
+#define CCCI_DUMP_CLR_BUF_FLAG	(1<<1)
 #define CCCI_DUMP_CURR_FLAG		(1<<2)
 #define CCCI_DUMP_ANDROID_TIME_FLAG	(1<<3)
+
 enum {
 	CCCI_DUMP_INIT = 0,
 	CCCI_DUMP_BOOTUP,
@@ -698,21 +706,19 @@ enum {
 	CCCI_DUMP_MEM_DUMP,
 	CCCI_DUMP_HISTORY,
 	CCCI_DUMP_REGISTER,
-	CCCI_DUMP_DPMA_DRB,
 	CCCI_DUMP_MD_INIT,
+	CCCI_DUMP_DPMAIF,
 	CCCI_DUMP_MAX,
 };
-void ccci_util_mem_dump(int md_id, int buf_type, void *start_addr, int len);
-void ccci_util_cmpt_mem_dump(int md_id, int buf_type, void *start_addr,
+void ccci_util_mem_dump(int buf_type, void *start_addr, int len);
+void ccci_util_cmpt_mem_dump(int buf_type, void *start_addr,
 	int len);
-int ccci_dump_write(int md_id, int buf_type, unsigned int flag,
+int ccci_dump_write(unsigned int buf_type, unsigned int flag,
 	const char *fmt, ...);
 int ccci_log_write(const char *fmt, ...);
 int ccci_log_write_raw(unsigned int flags, const char *fmt, ...);
 int ccci_event_log_cpy(char buf[], int size);
 int ccci_event_log(const char *fmt, ...);
-int ccmni_send_mbim_skb(int md_id, struct sk_buff *skb);
-void ccmni_update_mbim_interface(int md_id, int id);
 
 /* MPU setting */
 struct _mpu_cfg {
@@ -726,18 +732,18 @@ struct _mpu_cfg *get_mpu_region_cfg_info(int region_id);
 int ccci_get_opt_val(char *opt_name);
 
 /* RAT configure relate */
-int get_md_img_type(int md_id);
-int check_rat_at_md_img(int md_id, char str[]);
-unsigned int get_md_bin_capability(int md_id);
-int set_soc_md_rt_rat_str(int md_id, char str[]);
-unsigned int get_soc_md_rt_rat(int md_id);
-int check_rat_at_rt_setting(int md_id, char str[]);
-unsigned int get_soc_md_rt_rat_idx(int md_id);
-int set_soc_md_rt_rat_by_idx(int md_id, unsigned int wm_idx);
-int get_nc_smem_region_info(unsigned int id, unsigned int *ap_off,
-                            unsigned int *md_off, unsigned int *size);
+int get_md_img_type(void);
+int check_rat_at_md_img(char str[]);
+unsigned int get_md_bin_capability(void);
+int set_soc_md_rt_rat_str(char str[]);
+unsigned int get_soc_md_rt_rat(void);
+int check_rat_at_rt_setting(char str[]);
+unsigned int get_soc_md_rt_rat_idx(void);
+int set_soc_md_rt_rat_by_idx(unsigned int wm_idx);
 
-int get_md_resv_csmem_info(int md_id, phys_addr_t *buf_base,
+int get_nc_smem_region_info(unsigned int id, unsigned int *ap_off,
+				unsigned int *md_off, unsigned int *size);
+int get_md_resv_csmem_info(phys_addr_t *buf_base,
 	unsigned int *buf_size);
 int get_md_cache_region_info(int region_id, unsigned int *buf_base,
 	unsigned int *buf_size);
@@ -755,6 +761,5 @@ int mtk_ccci_register_md_state_cb(
 		void (*md_state_cb)(
 			enum MD_STATE old_state,
 			enum MD_STATE new_state));
-
 
 #endif

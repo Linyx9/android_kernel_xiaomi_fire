@@ -1,0 +1,8 @@
+subdir-ccflags-y += -Wno-unused-but-set-variable
+
+ifdef CONFIG_OEM_TINNO_CHARGE_MISC
+	TINNO_CHARGE_MISC_OBJS += charge_misc.o
+endif
+
+obj-$(CONFIG_OEM_TINNO_CHARGE_MISC) += oem_tinno_charge_misc.o
+oem_tinno_charge_misc-y := $(TINNO_CHARGE_MISC_OBJS)

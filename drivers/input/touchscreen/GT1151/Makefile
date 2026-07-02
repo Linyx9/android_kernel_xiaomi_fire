@@ -1,15 +1,15 @@
 # Linux driver folder
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/
-
-obj-y	+=  gt1x_generic.o
-obj-n	+=  gt1x_tools.o
-obj-y	+=  gt1x_tpd.o
-obj-y	+=  gt1x_update.o
-obj-y   +=  tpd_control.o
-obj-y   +=  tpd_button.o
-obj-y   +=  tpd_debug.o
-obj-y   +=  tpd_default.o
-obj-y   +=  tpd_misc.o
-obj-y   +=  tpd_setting.o
+ccflags-$(CONFIG_DRM_MEDIATEK_V2) += -I$(DEVICE_MODULES_PATH)/drivers/gpu/drm/mediatek/mediatek_v2/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/input/touchscreen/GT1151/
+obj-m += gt1151.o
+gt1151-y	+=  gt1x_generic.o
+gt1151-n	+=  gt1x_tools.o
+gt1151-y	+=  gt1x_tpd.o
+gt1151-y	+=  gt1x_update.o
+gt1151-y	+=  tpd_control.o
+gt1151-y	+=  tpd_button.o
+gt1151-y	+=  tpd_debug.o
+gt1151-y	+=  tpd_default.o
+gt1151-y	+=  tpd_misc.o
+gt1151-y	+=  tpd_setting.o
 

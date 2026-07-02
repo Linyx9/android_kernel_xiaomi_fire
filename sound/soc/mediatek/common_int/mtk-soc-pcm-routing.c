@@ -56,21 +56,27 @@
 #include <linux/clk.h>
 #include <linux/time.h>
 
-#include <linux/fb.h>
 #include <linux/notifier.h>
 
-#ifdef CONFIG_COMPAT
+#if IS_ENABLED(CONFIG_COMPAT)
 #include <linux/compat.h>
 #endif
 
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
+#include "mtk_disp_notify.h"
+#endif
+
 #include "mtk-soc-speaker-amp.h"
+
+#define CODE_COMMENT
 
 /*
  *    function implementation
  */
 
 static int mtk_afe_routing_probe(struct platform_device *pdev);
-static int mtk_routing_pcm_close(struct snd_pcm_substream *substream);
+static int mtk_routing_pcm_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream);
 static int mtk_afe_routing_component_probe(struct snd_soc_component *component);
 
 static int mDac_Sinegen = 27; /* "OFF" */
@@ -93,7 +99,7 @@ static const char *const DAC_DL_SINEGEN_AMPLITUE[] = {
 	"1/128", "1/64", "1/32", "1/16", "1/8", "1/4", "1/2", "1"};
 static const char *const spk_type_str[] = {"MTK_SPK_NOT_SMARTPA",
 					   "MTK_SPK_RICHTEK_RT5509",
-#if defined(CONFIG_SND_SOC_TAS5782M)
+#if IS_ENABLED(CONFIG_SND_SOC_TAS5782M)
 					   "MTK_SPK_TI_TAS5782M",
 #endif
 					   "MTK_SPK_MTK_MT6660"};
@@ -137,7 +143,6 @@ static int Audio_SineGen_Set(struct snd_kcontrol *kcontrol,
 {
 	int index = 0;
 
-	pr_debug("%s()\n", __func__);
 	if (ucontrol->value.enumerated.item[0] > ARRAY_SIZE(DAC_DL_SINEGEN)) {
 		pr_err("return -EINVAL\n");
 		return -EINVAL;
@@ -324,7 +329,6 @@ static int Audio_SineGen_Set(struct snd_kcontrol *kcontrol,
 static int Audio_SineGen_SampleRate_Get(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s\n", __func__);
 	ucontrol->value.integer.value[0] = mDac_SampleRate;
 	return 0;
 }
@@ -403,8 +407,6 @@ static int Audio_SineGen_Amplitude_Set(struct snd_kcontrol *kcontrol,
 {
 	int index = 0;
 
-	pr_debug("%s()\n", __func__);
-
 	if (ucontrol->value.enumerated.item[0] >
 	    ARRAY_SIZE(DAC_DL_SINEGEN_AMPLITUE)) {
 		pr_err("return -EINVAL\n");
@@ -471,7 +473,7 @@ static int stf_positive_gain_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-#if 0 /* not used */
+#ifndef CODE_COMMENT /* not used */
 static int Audio_ModemPcm_ASRC_Get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
@@ -512,7 +514,7 @@ static void Auddrv_I2S1GpioSet(void)
 #ifndef CONFIG_FPGA_EARLY_PORTING
 
 /* I2S1 gpio set */
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 	AudDrv_GPIO_I2S_Select(true);
 #else
 	mt_set_gpio_mode(GPIO_I2S1_CK_PIN, GPIO_MODE_01);
@@ -529,7 +531,7 @@ static void Auddrv_I2S1GpioReset(void)
 
 #ifndef CONFIG_FPGA_EARLY_PORTING
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 	AudDrv_GPIO_I2S_Select(false);
 #else
 	mt_set_gpio_mode(GPIO_I2S1_CK_PIN, GPIO_MODE_00);
@@ -544,7 +546,6 @@ static void Auddrv_I2S1GpioReset(void)
 static int AudioDebug_Setting_Get(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	return 0;
 }
 
@@ -567,12 +568,11 @@ static int AudioI2S1_Setting_Set(struct snd_kcontrol *kcontrol,
 static int AudioI2S1_Setting_Get(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	ucontrol->value.enumerated.item[0] = AudioI2S1Setting;
 	return 0;
 }
 
-#if 0
+#ifndef CODE_COMMENT
 static int Audio_ModemPcm_ASRC_Set(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
@@ -592,7 +592,6 @@ static int Audio_ModemPcm_ASRC_Set(struct snd_kcontrol *kcontrol,
 static int Audio_Ipoh_Setting_Get(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	ucontrol->value.integer.value[0] = AudDrvSuspend_ipoh_Status;
 	return 0;
 }
@@ -632,7 +631,6 @@ static int Audio_Mode_Set(struct snd_kcontrol *kcontrol,
 static int audio_dpd_get(struct snd_kcontrol *kcontrol,
 			 struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	ucontrol->value.integer.value[0] = audio_dpd_switch;
 	return 0;
 }
@@ -665,7 +663,7 @@ static int audio_dpd_set(struct snd_kcontrol *kcontrol,
 static int Audio_DL2_DataTransfer(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
-#ifdef CONFIG_COMPAT
+#if IS_ENABLED(CONFIG_COMPAT)
 	void *addr = compat_ptr(ucontrol->value.integer.value[0]);
 #else
 	void *addr = (void *)ucontrol->value.integer.value[0];
@@ -696,7 +694,6 @@ static int Audio_LowLatencyDebug_Set(struct snd_kcontrol *kcontrol,
 static int Audio_AssignDRAM_Get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	ucontrol->value.integer.value[0] = 0;
 	return 0;
 }
@@ -725,7 +722,7 @@ static int spk_type_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static const struct soc_enum spk_type_enum[] = {
+static const struct soc_enum spk_type_enum[] __maybe_unused = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(spk_type_str), spk_type_str),
 };
 
@@ -792,7 +789,6 @@ static int m_Anc_State = AUDIO_ANC_ON;
 static int Afe_Anc_Get(struct snd_kcontrol *kcontrol,
 		       struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	ucontrol->value.integer.value[0] = m_Anc_State;
 	return 0;
 }
@@ -823,19 +819,19 @@ static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 	.mask = 0,
 };
 
-static int mtk_routing_pcm_open(struct snd_pcm_substream *substream)
+static int mtk_routing_pcm_open(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
 
-	pr_debug("mtk_routing_pcm_open\n");
 
 	ret = snd_pcm_hw_constraint_list(runtime, 0, SNDRV_PCM_HW_PARAM_RATE,
 					 &constraints_sample_rates);
 
 	/* print for hw pcm information */
-	pr_debug("mtk_routing_pcm_open runtime rate = %d channels = %d\n",
-		runtime->rate, runtime->channels);
+	pr_debug("%s runtime rate = %d channels = %d\n",
+		__func__, runtime->rate, runtime->channels);
 	if (substream->pcm->device & 1) {
 		runtime->hw.info &= ~SNDRV_PCM_INFO_INTERLEAVED;
 		runtime->hw.info |= SNDRV_PCM_INFO_NONINTERLEAVED;
@@ -846,19 +842,20 @@ static int mtk_routing_pcm_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_debug("mtk_routing_pcm_close\n");
-		mtk_routing_pcm_close(substream);
+		mtk_routing_pcm_close(component, substream);
 		return ret;
 	}
-	pr_debug("mtk_routing_pcm_open return\n");
 	return 0;
 }
 
-static int mtk_routing_pcm_close(struct snd_pcm_substream *substream)
+static int mtk_routing_pcm_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	return 0;
 }
 
-static int mtk_routing_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_routing_pcm_trigger(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream, int cmd)
 {
 	pr_debug("%s cmd = %d\n", __func__, cmd);
 	switch (cmd) {
@@ -871,7 +868,8 @@ static int mtk_routing_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	return -EINVAL;
 }
 
-static int mtk_routing_pcm_copy(struct snd_pcm_substream *substream,
+static int mtk_routing_pcm_copy(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
 				int channel,
 				unsigned long pos,
 				void __user *buf,
@@ -880,65 +878,54 @@ static int mtk_routing_pcm_copy(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int mtk_routing_pcm_silence(struct snd_pcm_substream *substream,
-				   int channel,
-				   unsigned long pos,
-				   unsigned long bytes)
-{
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
-static struct page *mtk_routing_pcm_page(struct snd_pcm_substream *substream,
+static struct page *mtk_routing_pcm_page(struct snd_soc_component *component,
+					 struct snd_pcm_substream *substream,
 					 unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static int mtk_routing_pcm_prepare(struct snd_pcm_substream *substream)
+static int mtk_routing_pcm_prepare(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream)
 {
 	pr_debug("mtk_alsa_prepare\n");
 	return 0;
 }
 
-static int mtk_routing_pcm_hw_params(struct snd_pcm_substream *substream,
+static int mtk_routing_pcm_hw_params(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream,
 				     struct snd_pcm_hw_params *hw_params)
 {
 	int ret = 0;
 
-	pr_debug("mtk_routing_pcm_hw_params\n");
 	return ret;
 }
 
-static int mtk_routing_pcm_hw_free(struct snd_pcm_substream *substream)
+static int mtk_routing_pcm_hw_free(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream)
 {
-	pr_debug("mtk_routing_pcm_hw_free\n");
 	return snd_pcm_lib_free_pages(substream);
 }
 
-static struct snd_pcm_ops mtk_afe_ops = {
+static const struct snd_soc_component_driver mtk_soc_routing_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_afe_routing_component_probe,
 	.open = mtk_routing_pcm_open,
 	.close = mtk_routing_pcm_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_routing_pcm_hw_params,
 	.hw_free = mtk_routing_pcm_hw_free,
 	.prepare = mtk_routing_pcm_prepare,
 	.trigger = mtk_routing_pcm_trigger,
-	.copy_user = mtk_routing_pcm_copy,
-	.fill_silence = mtk_routing_pcm_silence,
+	.copy = mtk_routing_pcm_copy,
 	.page = mtk_routing_pcm_page,
-};
 
-static struct snd_soc_component_driver mtk_soc_routing_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_afe_ops,
-	.probe = mtk_afe_routing_component_probe,
 };
 
 static int mtk_afe_routing_probe(struct platform_device *pdev)
 {
-	pr_debug("%s\n", __func__);
 
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -957,7 +944,6 @@ static int mtk_afe_routing_probe(struct platform_device *pdev)
 
 static int mtk_afe_routing_component_probe(struct snd_soc_component *component)
 {
-	pr_debug("%s\n", __func__);
 
 	/* add  controls */
 	snd_soc_add_component_controls(component, Audio_snd_routing_controls,
@@ -970,7 +956,6 @@ static int mtk_afe_routing_component_probe(struct snd_soc_component *component)
 
 static int mtk_afe_routing_remove(struct platform_device *pdev)
 {
-	pr_debug("%s\n", __func__);
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
@@ -978,7 +963,6 @@ static int mtk_afe_routing_remove(struct platform_device *pdev)
 /* supend and resume function */
 static int mtk_routing_pm_ops_suspend(struct device *device)
 {
-	pr_debug("%s\n", __func__);
 
 	if (get_voice_status() || get_voice_md2_status() ||
 #ifdef _NON_COMMON_FEATURE_READY
@@ -1006,7 +990,6 @@ static int mtk_routing_pm_ops_suspend(struct device *device)
 
 static int mtk_pm_ops_suspend_ipo(struct device *device)
 {
-	pr_debug("%s", __func__);
 	AudDrvSuspend_ipoh_Status = true;
 	return mtk_routing_pm_ops_suspend(device);
 }
@@ -1029,7 +1012,6 @@ static int mtk_routing_pm_ops_resume(struct device *device)
 
 static int mtk_pm_ops_resume_ipo(struct device *device)
 {
-	pr_debug("%s", __func__);
 	return mtk_routing_pm_ops_resume(device);
 }
 
@@ -1043,7 +1025,7 @@ const struct dev_pm_ops mtk_routing_pm_ops = {
 	.restore_noirq = mtk_pm_ops_resume_ipo,
 };
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_routing_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_routing",
@@ -1056,10 +1038,10 @@ static struct platform_driver mtk_afe_routing_driver = {
 
 			.name = MT_SOC_ROUTING_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_routing_of_ids,
 #endif
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 			.pm = &mtk_routing_pm_ops,
 #endif
 		},
@@ -1067,33 +1049,31 @@ static struct platform_driver mtk_afe_routing_driver = {
 	.remove = mtk_afe_routing_remove,
 };
 
-static int soc_fb_notifier_callback(struct notifier_block *self,
-				    unsigned long event, void *data)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
+static int soc_notifier_callback(struct notifier_block *nb,
+				 unsigned long value, void *v)
 {
-	struct fb_event *evdata = data;
-	int blank;
+	int *data = (int *)v;
 
-	if (event != FB_EVENT_BLANK)
-		return 0;
-
-	blank = *(int *)evdata->data;
-	switch (blank) {
-	case FB_BLANK_UNBLANK:
-		set_screen_state(true);
-		break;
-	case FB_BLANK_POWERDOWN:
-		set_screen_state(false);
-		break;
-	default:
-		break;
+	if (value == MTK_DISP_EVENT_BLANK) {
+		pr_info("%s+\n", __func__);
+		if (*data == MTK_DISP_BLANK_UNBLANK) {
+			pr_info("Set screen state true\n");
+			set_screen_state(true);
+		} else if (*data == MTK_DISP_BLANK_POWERDOWN) {
+			pr_info("Set screen state false\n");
+			set_screen_state(false);
+		}
+		pr_info("%s-\n", __func__);
 	}
 
 	return 0;
 }
 
-static struct notifier_block soc_fb_notif = {
-	.notifier_call = soc_fb_notifier_callback,
+static struct notifier_block soc_notif = {
+	.notifier_call = soc_notifier_callback,
 };
+#endif
 
 #ifndef CONFIG_OF
 static struct platform_device *soc_mtkafe_routing_dev;
@@ -1103,7 +1083,6 @@ static int __init mtk_soc_routing_platform_init(void)
 {
 	int ret = 0;
 
-	pr_debug("%s\n", __func__);
 #ifndef CONFIG_OF
 	soc_mtkafe_routing_dev = platform_device_alloc(MT_SOC_ROUTING_PCM, -1);
 	if (!soc_mtkafe_routing_dev)
@@ -1118,10 +1097,13 @@ static int __init mtk_soc_routing_platform_init(void)
 
 	ret = platform_driver_register(&mtk_afe_routing_driver);
 
-	ret = fb_register_client(&soc_fb_notif);
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
+	ret = mtk_disp_notifier_register("Audio", &soc_notif);
 	if (ret)
-		pr_err("FAILED TO REGISTER FB CLIENT (%d)\n", ret);
-
+		pr_err("FAILED TO REGISTER disp notifier (%d)\n", ret);
+#else
+	pr_err("CONFIG_DRM_MEDIATEK not enable, ignore register disp notifer\n");
+#endif
 	return ret;
 }
 module_init(mtk_soc_routing_platform_init);

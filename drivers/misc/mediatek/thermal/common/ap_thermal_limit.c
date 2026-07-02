@@ -18,16 +18,19 @@
 #include <ap_thermal_limit.h>
 #include <mt-plat/aee.h>
 
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC) && IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
+#include <mt-plat/mboot_params.h>
+#endif
 
 #if defined(ATM_USES_PPM)
-#if defined(CONFIG_MTK_PPM)
+#if IS_ENABLED(CONFIG_MTK_PPM_V3)
 #include "mtk_ppm_api.h"
 #endif
 #else
 #include "mt_cpufreq.h"
 #endif
 #if defined(THERMAL_VPU_SUPPORT)
-#if defined(CONFIG_MTK_APUSYS_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_APUSYS_SUPPORT)
 #include "apu_power_table.h"
 #else
 #include "vpu_dvfs.h"
@@ -35,12 +38,15 @@
 #endif
 
 #if defined(THERMAL_MDLA_SUPPORT)
-#if defined(CONFIG_MTK_APUSYS_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_APUSYS_SUPPORT)
 #include "apu_power_table.h"
 #else
 #include "mdla_dvfs.h"
 #endif
 #endif
+
+#include "mtk_gpufreq.h"
+#include <gpufreq_v2_legacy.h>
 
 /*=============================================================
  * Local variable definition
@@ -96,26 +102,13 @@ static DEFINE_MUTEX(apthermolmt_cpu_mutex);
  * Weak functions
  *=============================================================
  */
-#if defined(ATM_USES_PPM)
-void __attribute__ ((weak))
-mt_ppm_cpu_thermal_protect(unsigned int limited_power)
-{
-	pr_notice(TSCPU_LOG_TAG "E_WF: %s doesn't exist\n", __func__);
-}
-#else
+#if !defined(ATM_USES_PPM)
 void __attribute__ ((weak))
 mt_cpufreq_thermal_protect(unsigned int limited_power)
 {
 	pr_notice(TSCPU_LOG_TAG "E_WF: %s doesn't exist\n", __func__);
 }
 #endif
-
-
-void __attribute__ ((weak))
-mt_gpufreq_thermal_protect(unsigned int limited_power)
-{
-	pr_notice(TSCPU_LOG_TAG "E_WF: %s doesn't exist\n", __func__);
-}
 
 
 /*=============================================================
@@ -199,13 +192,15 @@ struct apthermolmt_user *handle, unsigned int limit)
 		unsigned long timeout;
 
 		tscpu_dprintk("%s %u\n", __func__, final_limit);
-#if (CONFIG_THERMAL_AEE_RR_REC == 1)
-		aee_rr_rec_thermal_ATM_status(ATM_CPULIMIT);
-#endif
+//#if (CONFIG_THERMAL_AEE_RR_REC == 1)
+//		aee_rr_rec_thermal_ATM_status(ATM_CPULIMIT);
+//#endif
 		timeout = jiffies + msecs_to_jiffies(100);
 #if defined(ATM_USES_PPM)
+#if IS_ENABLED(CONFIG_MTK_PPM_V3)
 		mt_ppm_cpu_thermal_protect((final_limit != 0x7FFFFFFF) ?
 							final_limit : 0);
+#endif
 #else
 		mt_cpufreq_thermal_protect((final_limit != 0x7FFFFFFF) ?
 							final_limit : 0);
@@ -247,7 +242,7 @@ struct apthermolmt_user *handle, unsigned int limit)
 		int opp = 0;
 
 		if (final_limit != 0x7FFFFFFF) {
-#ifdef CONFIG_MTK_APUSYS_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_APUSYS_SUPPORT)
 			for (opp = 0; opp < APU_OPP_NUM - 1; opp++) {
 				if (final_limit >= vpu_power_table[opp].power)
 					break;
@@ -296,8 +291,9 @@ struct apthermolmt_user *handle, unsigned int limit)
 
 	if (apthermolmt_prev_mdla_pwr_lim != apthermolmt_curr_mdla_pwr_lim) {
 		int opp = 0;
+
 		if (final_limit != 0x7FFFFFFF) {
-#ifdef CONFIG_MTK_APUSYS_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_APUSYS_SUPPORT)
 			for (opp = 0; opp < APU_OPP_NUM - 1; opp++) {
 				if (final_limit >= mdla_power_table[opp].power)
 					break;
@@ -345,11 +341,14 @@ struct apthermolmt_user *handle, unsigned int limit)
 
 	if (apthermolmt_prev_gpu_pwr_lim != apthermolmt_curr_gpu_pwr_lim) {
 		tscpu_dprintk("%s %d\n", __func__, final_limit);
-#if (CONFIG_THERMAL_AEE_RR_REC == 1)
-		aee_rr_rec_thermal_ATM_status(ATM_GPULIMIT);
+//#if (CONFIG_THERMAL_AEE_RR_REC == 1)
+//		aee_rr_rec_thermal_ATM_status(ATM_GPULIMIT);
+//#endif
+		final_limit = (final_limit != 0x7FFFFFFF) ? final_limit : 0;
+#if IS_ENABLED(CONFIG_MTK_GPU_MT6768_SUPPORT)
+		gpufreq_set_limit_by_power(TARGET_DEFAULT, LIMIT_THERMAL_AP,
+				final_limit, GPUPPM_KEEP_IDX);
 #endif
-		mt_gpufreq_thermal_protect((final_limit != 0x7FFFFFFF) ?
-							final_limit : 0);
 	}
 }
 EXPORT_SYMBOL(apthermolmt_set_gpu_power_limit);
@@ -432,3 +431,5 @@ unsigned int apthermolmt_get_mdla_min_power(void)
 EXPORT_SYMBOL(apthermolmt_get_mdla_min_power);
 #endif
 
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

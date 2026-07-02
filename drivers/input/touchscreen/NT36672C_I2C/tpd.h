@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
+ * Copyright (C) 2023 MediaTek Inc.
  */
 
 #ifndef __TPD_H
@@ -21,6 +21,7 @@
 #include <generated/autoconf.h>
 #include <linux/kobject.h>
 #include <linux/regulator/consumer.h>
+#include <linux/pinctrl/consumer.h>
 
 /*debug macros */
 #define TPD_DEBUG
@@ -152,6 +153,8 @@ extern int tpd_em_spl_num;
 extern int tpd_em_pressure_threshold;
 extern struct tpd_device *tpd;
 extern struct tpd_dts_info tpd_dts_data;
+extern int tpd_device_init(void);
+extern void tpd_device_exit(void);
 
 extern void tpd_get_dts_info(void);
 #define GTP_RST_PORT    0

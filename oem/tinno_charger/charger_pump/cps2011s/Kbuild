@@ -1,0 +1,9 @@
+subdir-ccflags-y += -Wno-unused-but-set-variable
+subdir-ccflags-y += -Wno-unused-const-variable
+
+ifdef CONFIG_OEM_CHARGER_PUMP_CPS2011S
+	CHARGER_CPS2011S_OBJS += cps2011s_charger.o
+endif
+
+obj-$(CONFIG_OEM_CHARGER_PUMP_CPS2011S) += cps2011s.o
+cps2011s-y := $(CHARGER_CPS2011S_OBJS)

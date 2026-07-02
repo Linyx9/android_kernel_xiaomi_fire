@@ -196,10 +196,6 @@ static unsigned int sspm_log_lastk_get(char *buf)
 
 		ret = w_pos;
 
-#if 0	/* TODO: memcpy ? */
-		while (w_pos-- > 0)
-			*(buf++) = *(lbuf++);
-#endif
 		memcpy_fromio(buf, lbuf, w_pos);
 	}
 
@@ -238,7 +234,7 @@ static ssize_t sspm_mobile_log_store(struct device *kobj,
 	return n;
 }
 
-DEVICE_ATTR(sspm_mobile_log, 0644, sspm_mobile_log_show, sspm_mobile_log_store);
+DEVICE_ATTR_RW(sspm_mobile_log);
 
 #if SSPM_LASTK_SUPPORT
 static ssize_t sspm_log_lastk_show(struct device *kobj,
@@ -251,7 +247,7 @@ static ssize_t sspm_log_lastk_show(struct device *kobj,
 	return ret;
 }
 
-DEVICE_ATTR(sspm_log_lastk, 0444, sspm_log_lastk_show, NULL);
+DEVICE_ATTR_RO(sspm_log_lastk);
 #endif
 
 unsigned int __init sspm_logger_init(phys_addr_t start, phys_addr_t limit)

@@ -3,9 +3,10 @@
  * Copyright (c) 2019 MediaTek Inc.
  */
 
-#ifndef __SCP_CM4_H
-#define __SCP_CM4_H
+#ifndef __SCP_CM4_H__
+#define __SCP_CM4_H__
 
+#include <linux/soc/mediatek/mtk_tinysys_ipi.h>
 /* scp Core ID definition*/
 enum scp_core_id {
 	SCP_A_ID = 0,
@@ -130,8 +131,8 @@ extern enum scp_ipi_status scp_ipi_send(enum ipi_id id, void *buf,
 
 
 /* APIs to lock scp and make scp awaken */
-extern int scp_awake_lock(enum scp_core_id scp_id);
-extern int scp_awake_unlock(enum scp_core_id scp_id);
+extern int scp_awake_lock(void *_scp_id);
+extern int scp_awake_unlock(void *_scp_id);
 
 /* APIs for register notification */
 extern void scp_A_register_notify(struct notifier_block *nb);

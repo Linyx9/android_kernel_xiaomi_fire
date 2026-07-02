@@ -17,13 +17,6 @@
 #include "mt-plat/mtk_thermal_monitor.h"
 #include <linux/uidgid.h>
 
-int __attribute__ ((weak))
-exec_ccci_kern_func_by_md_id(
-int md_id, unsigned int id, char *buf, unsigned int len)
-{
-	pr_notice("E_WF: %s doesn't exist\n", __func__);
-	return -316;
-}
 
 #define cl_type_upper               "cl-amutt-u"
 #define cl_type_lower               "cl-amutt-l"
@@ -95,13 +88,13 @@ static int amutt_backoff(int level)
 	if (level == 0) {
 		/* no throttle */
 		ret =
-			exec_ccci_kern_func_by_md_id(MD_SYS1, ID_THROTTLING_CFG,
+			exec_ccci_kern_func(ID_THROTTLING_CFG,
 					(char *)&amutt_param[level], 4);
 		mtk_cooler_amutt_dprintk_always("[%s] unlimit\n", __func__);
 
 	} else if (level >= 1 && level <= COOLER_STEPS - 1) {
 		ret =
-			exec_ccci_kern_func_by_md_id(MD_SYS1, ID_THROTTLING_CFG,
+			exec_ccci_kern_func(ID_THROTTLING_CFG,
 					(char *)&amutt_param[level], 4);
 		mtk_cooler_amutt_dprintk_always("[%s] limit %x\n", __func__,
 							amutt_param[level]);

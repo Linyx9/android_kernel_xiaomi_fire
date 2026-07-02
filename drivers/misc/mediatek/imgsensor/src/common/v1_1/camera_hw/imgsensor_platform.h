@@ -2,11 +2,9 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 #ifndef __IMGSENSOR_PLATFORM_H__
 #define __IMGSENSOR_PLATFORM_H__
 
-#undef MIPI_SWITCH
 
 enum IMGSENSOR_HW_ID {
 	IMGSENSOR_HW_ID_MCLK,

@@ -1,7 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2021 MediaTek Inc.
+ *
+ */
 
 /*vboot voltage for gauge 0%*/
 g_PMIC_MIN_VOL_row = <4>;
@@ -56,14 +57,31 @@ g_FG_PSEUDO100_row = <4>;
 g_FG_PSEUDO100_col = <10>;
 g_FG_PSEUDO100 =
 <
-	100  100  100  100
-	100  100  100  100
-	100  100  100  100
-	100  100  100  100
-	100  100  100  100
-	100  100  100  100
-	100  100  100  100
-	100  100  100  100
-	100  100  100  100
-	100  100  100  100
+	98  100  100  100
+	98  100  100  100
+	98  100  100  100
+	98  100  100  100
+	95  100  100  100
+	95  100  100  100
+	95  100  100  100
+	95  100  100  100
+	95  100  100  100
+	95  100  100  100
+>;
+
+/* charge_r  pseudo100 setting*/
+g_FG_charge_PSEUDO100_row = <4>;
+g_FG_charge_PSEUDO100_col = <10>;
+g_FG_charge_PSEUDO100 =
+<
+	100   89  79  69
+	 99   88  78  68
+	 98   87  77  67
+	 97   86  76  66
+	 96   85  75  65
+	 95   84  74  64
+	 94   83  73  63
+	 93   82  72  62
+	 92   81  71  61
+	 91   80  70  60
 >;

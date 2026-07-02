@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2016 MediaTek Inc.
  */
@@ -14,19 +14,25 @@
 #define SSPM_MBOX_SLOT_SIZE		0x4
 
 #define SSPM_CFG_OFS_SEMA	0x048
+
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_LEGACY)
+#define SSPM_MPU_REGION_ID  4
+#else
 #define SSPM_MPU_REGION_ID  9
+#endif
 
 #define SSPM_PLT_SERV_SUPPORT       (1)
 #define SSPM_LOGGER_SUPPORT         (1)
 #define SSPM_LASTK_SUPPORT          (0)
 #define SSPM_COREDUMP_SUPPORT       (0)
-#define SSPM_EMI_PROTECTION_SUPPORT (1)
 
-#if defined(CONFIG_MACH_MT6768) || defined(CONFIG_MACH_MT6785)
-#define SSPM_TIMESYNC_SUPPORT       (0)
+#if IS_ENABLED(CONFIG_MTK_EMI_LEGACY) || IS_ENABLED(CONFIG_MTK_EMI)
+#define SSPM_EMI_PROTECTION_SUPPORT (1)
 #else
-#define SSPM_TIMESYNC_SUPPORT       (1)
+#define SSPM_EMI_PROTECTION_SUPPORT (0)
 #endif
+
+#define SSPM_TIMESYNC_SUPPORT       (0)
 
 #define TIMESYNC_TIMEOUT	(60 * 60 * HZ)
 
@@ -36,6 +42,7 @@
 #define PLT_TIMESYNC_SRAM_TEST	0x504C5406
 
 #define mtk_timer_src_count(...)    arch_counter_get_cntvct(__VA_ARGS__)
+#define arch_counter_get_cntvct(...)  arch_timer_read_counter(__VA_ARGS__)
 
 struct plt_ipi_data_s {
 	unsigned int cmd;

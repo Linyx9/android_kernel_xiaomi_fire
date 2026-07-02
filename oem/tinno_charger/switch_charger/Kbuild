@@ -1,0 +1,19 @@
+ifdef CONFIG_OEM_SWITCH_CHARGER_SC89890H
+	obj-y += sc89890h/
+endif
+
+ifdef CONFIG_OEM_SWITCH_CHARGER_SGM41542
+	obj-y += sgm41542/
+endif
+
+ifdef CONFIG_OEM_SWITCH_CHARGER_CX25601D
+	obj-y += cx2560x/
+endif
+
+ifdef CONFIG_OEM_SWITCH_CHARGER_ETA6937
+	obj-y += eta6937/
+endif
+
+ifdef CONFIG_OEM_SWITCH_CHARGER_CX2589X
+	obj-y += cx2589x/
+endif

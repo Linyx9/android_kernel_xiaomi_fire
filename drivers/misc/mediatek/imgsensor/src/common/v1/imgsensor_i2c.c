@@ -16,7 +16,7 @@ static const struct i2c_device_id gi2c_dev_id[] = {
 	{}
 };
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id gof_device_id_0[] = {
 	{ .compatible = IMGSENSOR_I2C_OF_DRV_NAME_0, },
 	{}
@@ -32,29 +32,29 @@ static const struct of_device_id gof_device_id_2[] = {
 #endif
 
 static int
-imgsensor_i2c_probe_0(struct i2c_client *client, const struct i2c_device_id *id)
+imgsensor_i2c_probe_0(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_0].pi2c_client = client;
 	return 0;
 }
 
 static int
-imgsensor_i2c_probe_1(struct i2c_client *client, const struct i2c_device_id *id)
+imgsensor_i2c_probe_1(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_1].pi2c_client = client;
 	return 0;
 }
 
 static int
-imgsensor_i2c_probe_2(struct i2c_client *client, const struct i2c_device_id *id)
+imgsensor_i2c_probe_2(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_2].pi2c_client = client;
 	return 0;
 }
 
-static int imgsensor_i2c_remove(struct i2c_client *client)
+void imgsensor_i2c_remove(struct i2c_client *client)
 {
-	return 0;
+	return;
 }
 
 static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
@@ -64,7 +64,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_0,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 		.of_match_table = gof_device_id_0,
 #endif
 		},
@@ -76,7 +76,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_1,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 		.of_match_table = gof_device_id_1,
 #endif
 		},
@@ -88,7 +88,7 @@ static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
 		.driver = {
 		.name = IMGSENSOR_I2C_DRV_NAME_2,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 		.of_match_table = gof_device_id_2,
 #endif
 		},
@@ -167,6 +167,7 @@ enum IMGSENSOR_RETURN imgsensor_i2c_read(
 {
 	struct IMGSENSOR_I2C_INST *pinst = pi2c_cfg->pinst;
 	enum   IMGSENSOR_RETURN    ret   = IMGSENSOR_RETURN_SUCCESS;
+	//int ret_i2c = 0;
 
 	mutex_lock(&pi2c_cfg->i2c_mutex);
 
@@ -220,6 +221,7 @@ enum IMGSENSOR_RETURN imgsensor_i2c_write(
 	u8                 *pdata = pwrite_data;
 	u8                 *pend  = pwrite_data + write_length;
 	int i   = 0;
+	//int ret_i2c = 0;
 
 	mutex_lock(&pi2c_cfg->i2c_mutex);
 

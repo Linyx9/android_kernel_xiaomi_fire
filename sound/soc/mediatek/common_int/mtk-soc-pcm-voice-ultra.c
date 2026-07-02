@@ -49,7 +49,7 @@
 #include "mtk-soc-pcm-platform.h"
 #include <linux/dma-mapping.h>
 
-#ifdef CONFIG_MTK_TINYSYS_SCP_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
 #include <audio_task_manager.h>
 #include <scp_helper.h>
 #endif
@@ -220,7 +220,7 @@ static void ultra_md2_enable(bool enable, struct snd_pcm_runtime *runtime)
 
 static int send_ipi_enable(bool enable)
 {
-#ifdef CONFIG_MTK_TINYSYS_SCP_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
 #define VOICE_ULTRA_ENABLE_ID 1
 #define VOICE_ULTRA_DISABLE_ID 0
 	struct ipi_msg_t ipi_msg;
@@ -264,7 +264,6 @@ static int send_ipi_enable(bool enable)
 
 static int mtk_voice_ultra_close(struct snd_pcm_substream *substream)
 {
-	pr_debug("mtk_voice_ultra_close\n");
 
 	/* inform cm4 */
 	if (mDlPrepareDone && mUlPrepareDone)
@@ -329,8 +328,6 @@ static int mtk_voice_ultra_open(struct snd_pcm_substream *substream)
 	int ret = 0;
 
 	AudDrv_Clk_On();
-
-	pr_debug("%s()\n", __func__);
 
 	runtime->hw = mtk_pcm_hardware;
 	memcpy((void *)(&(runtime->hw)), (void *)&mtk_pcm_hardware,
@@ -588,14 +585,14 @@ static int mtk_voice_ultra_hw_free(struct snd_pcm_substream *substream)
 	return freeAudioSram((void *)substream);
 }
 
-static struct snd_pcm_ops mtk_voice_ultra_ops = {
+static const struct snd_pcm_ops mtk_voice_ultra_ops = {
 	.open = mtk_voice_ultra_open,
 	.close = mtk_voice_ultra_close,
 	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_voice_ultra_hw_params,
 	.hw_free = mtk_voice_ultra_hw_free,
 	.prepare = mtk_voice_ultra_prepare,
-	.copy_user = mtk_afe_pcm_copy,
+	.copy = mtk_afe_pcm_copy,
 };
 
 static int mtk_voice_ultra_component_probe(struct snd_soc_component *component)
@@ -605,7 +602,7 @@ static int mtk_voice_ultra_component_probe(struct snd_soc_component *component)
 	return 0;
 }
 
-static struct snd_soc_component_driver mtk_soc_voice_ultra_component = {
+static const struct snd_soc_component_driver mtk_soc_voice_ultra_component = {
 	.name = AFE_PCM_NAME,
 	.ops = &mtk_voice_ultra_ops,
 	.probe = mtk_voice_ultra_component_probe,

@@ -1,55 +1,34 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  * Author: owen.chen <owen.chen@mediatek.com>
  */
 
 /*
  * @file    mtk-srclken-rc-hw.c
- * @brief   Driver for clock buffer control of each platform
+ * @brief   Driver for subys request resource control of each platform
  *
  */
+
+#include <linux/device.h>
+#include <linux/io.h>
+#include <linux/kobject.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/platform_device.h>
+#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/types.h>
-#include <linux/slab.h>
-#include <linux/device.h>
-#include <linux/platform_device.h>
-#include <linux/kobject.h>
 
-#include <mtk-srclken-bridge.h>
-#include <mtk-srclken-rc-hw.h>
-#include <mtk-srclken-rc-common.h>
-#include <mtk-clkbuf-bridge.h>
+#include "mtk-srclken-rc.h"
+#include "mtk-srclken-rc-common.h"
+#include "mtk-srclken-rc-hw.h"
+#include <mtk_clkbuf_ctl.h>
 
 #define ADDR_NOT_VALID	0xffff
-#define SRCLKEN_REG(ofs)	(hw->base[SRCLKEN_BASE] + ofs)
 #define SCP_REG(ofs)	(hw->base[SCPDVFS_BASE] + ofs)
 #define GPIO_REG(ofs)	(hw->base[GPIO_BASE] + ofs)
 
-#if defined(CONFIG_OF)
-#define SRCLKEN_RC_CFG			SRCLKEN_REG(hw->val[PWR_CFG])
-#define RC_CENTRAL_CFG1			SRCLKEN_REG(hw->val[CENTRAL_1_CFG])
-#define RC_CENTRAL_CFG2			SRCLKEN_REG(hw->val[CENTRAL_2_CFG])
-#define RC_CMD_ARB_CFG			SRCLKEN_REG(hw->val[CMD_ARB_CFG])
-#define RC_PMIC_RCEN_SET_CLR_ADDR	SRCLKEN_REG(hw->val[PMIC_SETCLR_CFG])
-#define RC_DCXO_FPM_CFG			SRCLKEN_REG(hw->val[DCXO_FPM_CFG])
-#define RC_CENTRAL_CFG3			SRCLKEN_REG(hw->val[CENTRAL_3_CFG])
-#define RC_M00_SRCLKEN_CFG		SRCLKEN_REG(hw->val[SUBSYS_CFG])
-#define RC_FSM_STA_0			SRCLKEN_REG(hw->val[FSM_STA])
-#define RC_CMD_STA_0			SRCLKEN_REG(hw->val[CMD_0_STA])
-#define RC_CMD_STA_1			SRCLKEN_REG(hw->val[CMD_1_STA])
-#define RC_SPI_STA_0			SRCLKEN_REG(hw->val[SPI_STA])
-#define RC_PI_PO_STA_0			SRCLKEN_REG(hw->val[PIPO_STA])
-#define RC_M00_REQ_STA_0		SRCLKEN_REG(hw->val[SUBSYS_STA])
-#define RC_MISC_0			SRCLKEN_REG(hw->val[MISC_CFG])
-#define RC_SPM_CTL			SRCLKEN_REG(hw->val[SPM_CFG])
-#define SUBSYS_INTF_CFG			SRCLKEN_REG(hw->val[SUB_INTF_CFG])
-#define DBG_TRACE_0_LSB			SRCLKEN_REG(hw->val[DBG_TRACE_L_STA])
-#define DBG_TRACE_0_MSB			SRCLKEN_REG(hw->val[DBG_TRACE_M_STA])
-#endif	/* CONFIG_OF */
-
-/* TODO: marked this after driver is ready */
-#define SRCLKEN_RC_BRINGUP		0
 /* Pwrap Register */
 #define SRCLKEN_RCINF_STA_0		(0x1C4)
 #define SRCLKEN_RCINF_STA_1		(0x1C8)
@@ -76,61 +55,28 @@
 #define GPIO_PULL_SHFT			(hw->val[GPIO_PULL_BIT])
 #endif
 
-#define TRACE_NUM				8
+#define TRACE_NUM			8
+#define MAX_BUF_LEN			1024
 
 static bool srclken_debug;
+static bool is_rc_bringup;
+static bool get_bringup_state_done;
 static bool rc_dts_init_done;
-static bool rc_stage_init_done;
-static enum srclken_config rc_stage = SRCLKEN_BRINGUP;
+static bool rc_cfg_init_done;
+static int rc_cfg = NOT_SUPPORT_CFG;
+static uint32_t subsys_num;
 
-static const char *base_n[MAX_BASE_NUM] = {
-	[SRCLKEN_BASE] = "srclken",
-	[SCPDVFS_BASE] = "scpdvfs",
-	[PWRAP_BASE] = "pwrap",
-	[GPIO_BASE] = "gpio",
+struct subsys_cfg {
+	const char	*name;
+	enum sys_id	id;
+	enum rc_ctrl_m	mode;
+	enum rc_ctrl_r	req;
+	uint32_t		sta;
 };
 
-static const char *subsys_n[MAX_SYS_NUM] = {
-	[SYS_SUSPEND] = "SUSPEND",
-	[SYS_RF] = "RF",
-	[SYS_DPIDLE] = "DPIDLE",
-	[SYS_MD] = "MD",
-	[SYS_GPS] = "GPS",
-	[SYS_BT] = "BT",
-	[SYS_WIFI] = "WIFI",
-	[SYS_MCU] = "MCU",
-	[SYS_COANT] = "COANT",
-	[SYS_NFC] = "NFC",
-	[SYS_UFS] = "UFS",
-	[SYS_SCP] = "SCP",
-	[SYS_RSV] = "RSV",
-};
+static struct subsys_cfg *sys_cfg;
 
 static struct rc_dts_predef srclken_dts[DTS_NUM] = {
-	[PWR_CFG] = {"srclken", "rst", "cfg", 0},
-	[CENTRAL_1_CFG] = {"srclken", "central", "cfg", 0},
-	[CENTRAL_2_CFG] = {"srclken", "central", "cfg", 1},
-	[CMD_ARB_CFG] = {"srclken", "cmd", "cfg", 0},
-	[PMIC_CFG] = {"srclken", "pmic", "cfg", 0},
-	[PMIC_SETCLR_CFG] = {"srclken", "pmic", "cfg", 1},
-	[DCXO_FPM_CFG] = {"srclken", "dcxo-fpm", "cfg", 0},
-	[CENTRAL_3_CFG] = {"srclken", "central", "cfg", 2},
-	[SUBSYS_CFG] = {"srclken", "subsys", "cfg", 0},
-	[SW_CON_CFG] = {"srclken", "sw-con", "cfg", 0},
-	[CENTRAL_4_CFG] = {"srclken", "central", "cfg", 3},
-	[PROTOCOL_CHK_CFG] = {"srclken", "protocol", "cfg", 0},
-	[DBG_CFG] = {"srclken", "dbg", "cfg", 0},
-	[MISC_CFG] = {"srclken", "misc", "cfg", 0},
-	[SPM_CFG] = {"srclken", "spm", "cfg", 0},
-	[SUB_INTF_CFG] = {"srclken", "subsys-if", "cfg", 0},
-	[FSM_STA] = {"srclken", "fsm", "sta", 0},
-	[CMD_0_STA] = {"srclken", "cmd", "sta", 0},
-	[CMD_1_STA] = {"srclken", "cmd", "sta", 1},
-	[SPI_STA] = {"srclken", "spi", "sta", 0},
-	[PIPO_STA] = {"srclken", "pipo", "sta", 0},
-	[SUBSYS_STA] = {"srclken", "subsys", "sta", 0},
-	[DBG_TRACE_L_STA] = {"srclken", "dbg-trace", "sta", 0},
-	[DBG_TRACE_M_STA] = {"srclken", "dbg-trace", "sta", 1},
 	[SCP_VREQ_CFG] = {"scp", "vreq", "cfg", 0},
 	[SCP_RC_SEL_BIT] = {"scp", "rc-vreq", "bit", 0},
 	[SCP_RC_VAL_BIT] = {"scp", "rc-vreq", "bit", 1},
@@ -140,6 +86,49 @@ static struct rc_dts_predef srclken_dts[DTS_NUM] = {
 };
 
 static struct srclken_hw *hw;
+static const struct srclken_ops *srclken_ops;
+static bool srclken_op_done;
+void set_srclken_ops(const struct srclken_ops *ops)
+{
+	srclken_ops = ops;
+	srclken_op_done = true;
+}
+EXPORT_SYMBOL(set_srclken_ops);
+
+bool srclken_get_bringup_sta(void)
+{
+	if (is_rc_bringup)
+		pr_info("%s: skipped for bring up\n", __func__);
+
+	return is_rc_bringup;
+}
+
+static void __srclken_set_bringup_sta(bool enable)
+{
+	is_rc_bringup = enable;
+}
+
+void srclken_get_bringup_node(struct platform_device *pdev)
+{
+	struct device_node *node = pdev->dev.of_node;
+
+	if (!get_bringup_state_done) {
+		const char *str;
+		int ret = 0;
+
+		ret = of_property_read_string(node,
+			"mediatek,bring-up", &str);
+		if (ret || (!strcmp(str, "enable"))) {
+			pr_info("[%s]: bring up enable\n",
+				__func__);
+			__srclken_set_bringup_sta(true);
+		} else {
+			__srclken_set_bringup_sta(false);
+		}
+
+		get_bringup_state_done = true;
+	}
+}
 
 #if RC_GPIO_DBG_ENABLE
 static void __srclken_gpio_pull(bool enable)
@@ -156,43 +145,119 @@ static void __srclken_gpio_pull(bool enable)
 }
 #endif
 
-static int __srclken_switch_subsys_ctrl(enum sys_id id,
+static int __set_subsys_cfg(enum sys_id id,
 		enum rc_ctrl_m mode, enum rc_ctrl_r req)
 {
-	u32 bit_mask = SW_SRCLKEN_RC_MSK << SW_SRCLKEN_RC_SHFT;
+	int ret = 0;
 
-	if (id >= MAX_SYS_NUM || id < 0) {
-		pr_notice("req_subsys is not available\n");
-		return -1;
+	if (srclken_ops == NULL || srclken_ops->set_subsys_cfg == NULL)
+		return -ENODEV;
+
+	ret = srclken_ops->set_subsys_cfg(id, mode, req);
+	if (ret != 0 && ret != SRCLKEN_INVLAID_REG) {
+		pr_err("read back value err(%d), val = 0x%x\n", ret);
+		return -EINVAL;
 	}
 
-	if ((mode != HW_MODE) && (mode != SW_MODE)) {
-		pr_notice("req_mode is not allowed\n");
-		return -1;
+	return ret;
+}
+
+static int __get_subsys_cfg(enum sys_id id, uint32_t *val)
+{
+	int ret = 0;
+
+	if (srclken_ops == NULL || srclken_ops->get_subsys_cfg == NULL)
+		return -ENODEV;
+
+	ret = srclken_ops->get_subsys_cfg(id, val);
+	if (ret != 0 && ret != SRCLKEN_INVLAID_REG) {
+		pr_err("read subsys ctrl register(%d), val = 0x%x\n", ret, *val);
+		return -EINVAL;
 	}
 
-	if ((req != OFF_REQ) && (req != NO_REQ) &&
-			(req != FPM_REQ) && (req != BBLPM_REQ)) {
-		pr_notice("req_type is not allowed\n");
-		return -1;
+	return ret;
+}
+
+static int __get_subsys_sta(enum sys_id id, uint32_t *val)
+{
+	int ret = 0;
+
+	if (srclken_ops == NULL || srclken_ops->get_subsys_sta == NULL)
+		return -ENODEV;
+
+	ret = srclken_ops->get_subsys_sta(id, val);
+	if (ret != 0 && ret != SRCLKEN_INVLAID_REG) {
+		pr_err("read subsys sta register(%d), val = 0x%x\n", ret, *val);
+		return -EINVAL;
 	}
 
-	if (req == NO_REQ)
-		req = (srclken_read(RC_M00_SRCLKEN_CFG + 4 * id) &
-				(FPM_REQ | BBLPM_REQ));
+	return ret;
+}
 
-	srclken_write(RC_M00_SRCLKEN_CFG + 4 * id,
-			(srclken_read(RC_M00_SRCLKEN_CFG + 4 * id)
-			& ~(bit_mask)) | req | mode);
+static int __get_cfg_reg(enum cfg_id id, uint32_t *val)
+{
+	int ret = 0;
 
-	if ((srclken_read(RC_M00_SRCLKEN_CFG + 4 * id) & bit_mask)
-			== (mode | req))
-		return 0;
+	if (srclken_ops == NULL || srclken_ops->get_cfg_reg == NULL)
+		return -ENODEV;
 
-	pr_info("read back value err.(0x%x)",
-			srclken_read(RC_M00_SRCLKEN_CFG + 4 * id));
-	return -1;
+	ret = srclken_ops->get_cfg_reg(id, val);
+	if (ret != 0 && ret != SRCLKEN_INVLAID_REG) {
+		pr_err("read subsys ctrl register(%d), val = 0x%x\n", ret, *val);
+		return -EINVAL;
+	}
 
+	return ret;
+}
+
+static int __get_sta_reg(enum sta_id id, uint32_t *val)
+{
+	int ret = 0;
+
+	if (srclken_ops == NULL || srclken_ops->get_sta_reg == NULL)
+		return -ENODEV;
+
+	ret = srclken_ops->get_sta_reg(id, val);
+	if (ret != 0 && ret != SRCLKEN_INVLAID_REG) {
+		pr_err("read subsys ctrl register(%d), val = 0x%x\n", ret, *val);
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+static int __get_trace_reg(uint32_t idx, uint32_t *val1, uint32_t *val2)
+{
+	int ret = 0;
+
+	if (srclken_ops == NULL || srclken_ops->get_trace_sta == NULL)
+		return -ENODEV;
+
+	ret = srclken_ops->get_trace_sta(idx, val1, val2);
+	if (ret != 0 && ret != SRCLKEN_INVLAID_REG) {
+		pr_err("read subsys ctrl register(%d), val1 = 0x%x, val2 = 0x%x\n",
+				ret, *val1, *val2);
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+static int __get_timer_reg(uint32_t idx, uint32_t *val1, uint32_t *val2)
+{
+	int ret = 0;
+
+	if (srclken_ops == NULL || srclken_ops->get_timer_latch == NULL)
+		return -ENODEV;
+
+	ret = srclken_ops->get_trace_sta(idx, val1, val2);
+	if (ret != 0 && ret != SRCLKEN_INVLAID_REG) {
+		pr_err("read subsys ctrl register(%d), val1 = 0x%x, val2 = 0x%x\n",
+				ret, *val1, *val2);
+		return -EINVAL;
+	}
+
+	return ret;
 }
 
 static ssize_t __subsys_ctl_store(const char *buf, enum sys_id id)
@@ -203,24 +268,24 @@ static ssize_t __subsys_ctl_store(const char *buf, enum sys_id id)
 		return -EPERM;
 
 	if (!strcmp(mode, "HW"))
-		__srclken_switch_subsys_ctrl(id, HW_MODE, NO_REQ);
+		__set_subsys_cfg(id, HW_MODE, NO_REQ);
 	else if (!strcmp(mode, "SW")) {
 #if RC_GPIO_DBG_ENABLE
 		__srclken_gpio_pull(false);
 #endif
-		__srclken_switch_subsys_ctrl(id, SW_MODE, NO_REQ);
+		__set_subsys_cfg(id, SW_MODE, NO_REQ);
 	} else if (!strcmp(mode, "SW_OFF")) {
 #if RC_GPIO_DBG_ENABLE
 		__srclken_gpio_pull(false);
 #endif
-		__srclken_switch_subsys_ctrl(id, SW_MODE, OFF_REQ);
+		__set_subsys_cfg(id, SW_MODE, OFF_REQ);
 	} else if (!strcmp(mode, "SW_FPM")) {
-		__srclken_switch_subsys_ctrl(id, SW_MODE, FPM_REQ);
+		__set_subsys_cfg(id, SW_MODE, FPM_REQ);
 #if RC_GPIO_DBG_ENABLE
 		__srclken_gpio_pull(true);
 #endif
 	} else if (!strcmp(mode, "SW_BBLPM")) {
-		__srclken_switch_subsys_ctrl(id, SW_MODE, BBLPM_REQ);
+		__set_subsys_cfg(id, SW_MODE, BBLPM_REQ);
 #if RC_GPIO_DBG_ENABLE
 		__srclken_gpio_pull(true);
 #endif
@@ -235,19 +300,23 @@ static ssize_t __subsys_ctl_store(const char *buf, enum sys_id id)
 	return 0;
 }
 
-static ssize_t __subsys_ctl_show(char *buf, enum sys_id id)
+static int __subsys_ctl_show(char *buf, enum sys_id id)
 {
-	u32 sys_sta;
-	u32 filter;
-	u32 cmd_ok;
+	uint32_t sys_sta;
+	uint32_t filter;
+	uint32_t cmd_ok;
 	int len = 0;
+	int ret = 0;
 
-	sys_sta = srclken_read(RC_M00_REQ_STA_0 + (id * 4));
+	ret = __get_subsys_sta(id, &sys_sta);
+	if (ret)
+		return ret;
+
 	filter = (sys_sta >> REQ_FILT_SHFT) & REQ_FILT_MSK;
 	cmd_ok = (sys_sta >> CMD_OK_SHFT) & CMD_OK_MSK;
 
 	len += snprintf(buf+len, PAGE_SIZE-len,
-		"[%s] -\n", subsys_n[id]);
+		"[%s] -\n", sys_cfg[id].name);
 	len += snprintf(buf+len, PAGE_SIZE-len,
 		"\t(req / ack) - FPM(%d/%d), BBLPM(%d/%d)\n",
 		(sys_sta >> FPM_SHFT) & FPM_MSK,
@@ -277,11 +346,10 @@ static ssize_t __subsys_ctl_show(char *buf, enum sys_id id)
 	return len;
 }
 
-bool srclken_get_debug_cfg(void)
+bool srclken_hw_get_debug_cfg(void)
 {
-#if SRCLKEN_RC_BRINGUP
-	return false;
-#endif
+	if (srclken_get_bringup_sta())
+		return false;
 
 #if SRCLKEN_DBG
 	return true;
@@ -290,120 +358,188 @@ bool srclken_get_debug_cfg(void)
 #endif
 }
 
-static u32 __srclken_dump_sta(char *buf, u8 id)
+static int __srclken_dump_sta(char *buf, u8 id)
 {
-	u32 len = 0;
+	int len = 0;
+	int ret = 0;
 
 	switch (id) {
 	case XO_SOC:
-		len = __subsys_ctl_show(buf, SYS_SUSPEND);
-		len += __subsys_ctl_show(buf + len, SYS_DPIDLE);
+		ret = __subsys_ctl_show(buf, SYS_SUSPEND);
+		if (ret < 0)
+			return ret;
+		len += ret;
+		ret = __subsys_ctl_show(buf + len, SYS_DPIDLE);
+		if (ret < 0)
+			return ret;
 		break;
 	case XO_WCN:
 		len = __subsys_ctl_show(buf, SYS_GPS);
-		len += __subsys_ctl_show(buf + len, SYS_BT);
-		len += __subsys_ctl_show(buf + len, SYS_WIFI);
-		len += __subsys_ctl_show(buf + len, SYS_MCU);
-		len += __subsys_ctl_show(buf + len, SYS_COANT);
+		if (ret < 0)
+			return ret;
+		len += ret;
+		ret = __subsys_ctl_show(buf + len, SYS_BT);
+		if (ret < 0)
+			return ret;
+		len += ret;
+		ret = __subsys_ctl_show(buf + len, SYS_WIFI);
+		if (ret < 0)
+			return ret;
+		len += ret;
+		ret = __subsys_ctl_show(buf + len, SYS_MCU);
+		if (ret < 0)
+			return ret;
+		len += ret;
+		ret = __subsys_ctl_show(buf + len, SYS_COANT);
+		if (ret < 0)
+			return ret;
+		len += ret;
 		break;
 	case XO_NFC:
-		len = __subsys_ctl_show(buf, SYS_NFC);
+		ret = __subsys_ctl_show(buf, SYS_NFC);
+		if (ret < 0)
+			return ret;
+		len += ret;
 		break;
 	case XO_CEL:
 		len = __subsys_ctl_show(buf, SYS_RF);
-		len += __subsys_ctl_show(buf + len, SYS_MD);
+		if (ret < 0)
+			return ret;
+		len += ret;
+		ret = __subsys_ctl_show(buf + len, SYS_MD);
+		if (ret < 0)
+			return ret;
+		len += ret;
 		break;
 	case XO_EXT:
 		len = __subsys_ctl_show(buf, SYS_UFS);
+		if (ret < 0)
+			return ret;
+		len += ret;
 		break;
 	default:
 		pr_notice("Not valid xo_buf id\n");
-		break;
+		return SRCLKEN_NOT_SUPPORT;
 	}
 
 	return len;
 }
 
-void srclken_hw_dump_sta_log(void)
+int srclken_hw_dump_sta_log(void)
 {
-	char buf[1024];
-	u32 len = 0;
-	u8 sta = 0;
+	char buf[MAX_BUF_LEN];
+	int ret = 0;
 	u8 id = 0;
 
-	clk_buf_dump_clkbuf_log();
-	pr_notice("%s:\n", __func__);
 	for (id = 0; id < XO_NUMBER; id++) {
-		sta = clk_buf_get_xo_en_sta(id);
-		if (sta) {
-			len = __srclken_dump_sta(buf, id);
-			if (len)
+		ret = clk_buf_get_xo_en_sta(id);
+		if (ret > 0) {
+			ret = __srclken_dump_sta(buf, id);
+			if (ret >= 0)
 				pr_notice("%s\n", buf);
+			else
+				return ret;
 		}
 	}
+
+	return 0;
 }
 
 static int __srclken_dump_cfg(char *buf)
 {
+	uint32_t val = 0;
 	int len = 0;
+	int ret = 0;
+	int i;
 
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"rc cfg : 0x%x\n", srclken_read(SRCLKEN_RC_CFG));
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"centrol 1: 0x%x\n", srclken_read(RC_CENTRAL_CFG1));
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"centrol 2: 0x%x\n", srclken_read(RC_CENTRAL_CFG2));
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"centrol 3: 0x%x\n", srclken_read(RC_CENTRAL_CFG3));
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"cmd cfg: 0x%x\n", srclken_read(RC_CMD_ARB_CFG));
-
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"subsys cfg: = 0x%x\n", srclken_read(SUBSYS_INTF_CFG));
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"pmrc setclr: 0x%x\n",
-		srclken_read(RC_PMIC_RCEN_SET_CLR_ADDR));
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"fpm cfg: 0x%x\n", srclken_read(RC_DCXO_FPM_CFG));
+	for (i = 0; i < CFG_NUM; i++) {
+		ret = __get_cfg_reg(i, &val);
+		if (ret != SRCLKEN_INVLAID_REG && ret)
+			goto ERROR;
+		else if (ret == SRCLKEN_INVLAID_REG)
+			continue;
+		else
+			len += snprintf(buf+len, PAGE_SIZE-len,
+					"%s : 0x%x\n", cfg_n[i], val);
+	}
 
 	return len;
+ERROR:
+	pr_err("%s: read back value err(%d), val = 0x%x\n", __func__, ret, val);
+	return -EINVAL;
 }
 
-void srclken_hw_dump_cfg_log(void)
+int srclken_hw_dump_cfg_log(void)
 {
-	char buf[256];
+	char buf[MAX_BUF_LEN];
+	int ret = 0;
 
-	__srclken_dump_cfg(buf);
+	ret = __srclken_dump_cfg(buf);
+	if (ret)
+		return ret;
 
 	pr_notice("%s: %s\n", __func__, buf);
+
+	return ret;
 }
 
 static int __srclken_dump_last_sta(char *buf, u8 idx)
 {
+	uint32_t val1 = 0, val2 = 0;
 	int len = 0;
+	int ret = 0;
 
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"TRACE%d LSB : 0x%x, ", idx,
-		srclken_read(DBG_TRACE_0_LSB + (idx * 8)));
-	len += snprintf(buf+len, PAGE_SIZE-len,
-		"TRACE%d MSB : 0x%x\n", idx,
-		srclken_read(DBG_TRACE_0_MSB + (idx * 8)));
+	ret = __get_trace_reg(idx, &val1, &val2);
+	if (ret != SRCLKEN_INVLAID_REG && ret)
+		return -EINVAL;
+	else if (ret == SRCLKEN_INVLAID_REG)
+		goto next;
+	else {
+		len += snprintf(buf+len, PAGE_SIZE-len,
+			"TRACE%d LSB : 0x%x, ", idx,
+			val1);
 
+		len += snprintf(buf+len, PAGE_SIZE-len,
+			"TRACE%d MSB : 0x%x\n", idx,
+			val2);
+	}
+
+next:
+	ret = __get_timer_reg(idx, &val1, &val2);
+	if (ret != SRCLKEN_INVLAID_REG && ret)
+		return ret;
+	else if (ret == SRCLKEN_INVLAID_REG)
+		goto done;
+	else {
+		len += snprintf(buf+len, PAGE_SIZE-len,
+			"TIMER LATCH%d LSB : 0x%x, ", idx,
+			val1);
+
+		len += snprintf(buf+len, PAGE_SIZE-len,
+			"TIMER LATCH%d MSB : 0x%x\n", idx,
+			val2);
+	}
+
+done:
 	return len;
 }
 
-void srclken_hw_dump_last_sta_log(void)
+int srclken_hw_dump_last_sta_log(void)
 {
-	char buf[1024];
+	char buf[MAX_BUF_LEN];
+	u32 len = 0;
+	int ret = 0;
 	u8 i;
 
-	pr_notice("%s:\n", __func__);
-
 	for (i = 0; i < TRACE_NUM; i++) {
-		__srclken_dump_last_sta(buf, i);
-
-		pr_notice("%s", buf);
+		ret = __srclken_dump_last_sta(buf + len, i);
+		if (ret < 0)
+			return ret;
+		len += ret;
 	}
+	pr_notice("%s", buf);
+
+	return ret;
 }
 
 #ifdef CONFIG_PM
@@ -422,12 +558,21 @@ static ssize_t trace_ctl_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
 	int len = 0;
+	int ret = 0;
 	u8 i;
 
-	for (i = 0; i < TRACE_NUM; i++)
-		len += __srclken_dump_last_sta(buf, i);
+	for (i = 0; i < TRACE_NUM; i++) {
+		ret = __srclken_dump_last_sta(buf + len, i);
+		if (ret < 0)
+			return ret;
+		len += ret;
+	}
 
-	srclken_dump_sta_log();
+	ret = srclken_hw_dump_sta_log();
+	if (ret) {
+		pr_err("%s: fail to dump sta logs(%d)\n", __func__, ret);
+		return ret;
+	}
 
 	return len;
 }
@@ -660,8 +805,8 @@ static ssize_t all_ctl_show(struct kobject *kobj,
 	int len = 0;
 	int i;
 
-	for (i = 0; i < MAX_SYS_NUM; i++)
-		len += __subsys_ctl_show(buf, i);
+	for (i = 0; i < subsys_num; i++)
+		len += __subsys_ctl_show(buf + len, i);
 
 	return len;
 }
@@ -669,10 +814,15 @@ static ssize_t all_ctl_show(struct kobject *kobj,
 static ssize_t spi_ctl_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	u32 spi_sta;
+	uint32_t spi_sta;
 	int len = 0;
+	int ret = 0;
 
-	spi_sta = srclken_read(RC_SPI_STA_0);
+	ret = __get_sta_reg(SPI_STA, &spi_sta);
+	if (ret) {
+		pr_err("%s: read back value err(%d), val = 0x%x\n", __func__, ret, spi_sta);
+		return -EINVAL;
+	}
 
 	len += snprintf(buf+len, PAGE_SIZE-len,
 		"[SPI] -\n");
@@ -692,9 +842,19 @@ static ssize_t cmd_ctl_show(struct kobject *kobj,
 {
 	u32 cmd_sta_0, cmd_sta_1;
 	int len = 0;
+	int ret  = 0;
 
-	cmd_sta_0 = srclken_read(RC_CMD_STA_0);
-	cmd_sta_1 = srclken_read(RC_CMD_STA_1);
+	ret = __get_sta_reg(CMD_0_STA, &cmd_sta_0);
+	if (ret) {
+		pr_err("%s: read back value err(%d), val = 0x%x\n", __func__, ret, cmd_sta_0);
+		return -EINVAL;
+	}
+
+	ret = __get_sta_reg(CMD_1_STA, &cmd_sta_1);
+	if (ret) {
+		pr_err("%s: read back value err(%d), val = 0x%x\n", __func__, ret, cmd_sta_1);
+		return -EINVAL;
+	}
 
 	len += snprintf(buf+len, PAGE_SIZE-len,
 		"[CMD] -\n");
@@ -716,10 +876,15 @@ static ssize_t cmd_ctl_show(struct kobject *kobj,
 static ssize_t fsm_ctl_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	u32 fsm_sta;
+	uint32_t fsm_sta;
 	int len = 0;
+	int ret = 0;
 
-	fsm_sta = srclken_read(RC_FSM_STA_0);
+	ret = __get_sta_reg(FSM_STA, &fsm_sta);
+	if (ret) {
+		pr_err("%s: read back value err(%d), val = 0x%x\n", __func__, ret, fsm_sta);
+		return -EINVAL;
+	}
 
 	len += snprintf(buf+len, PAGE_SIZE-len,
 		"[FSM] -\n");
@@ -745,10 +910,15 @@ static ssize_t fsm_ctl_show(struct kobject *kobj,
 static ssize_t popi_ctl_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
-	u32 popi_sta;
+	uint32_t popi_sta;
 	int len = 0;
+	int ret = 0;
 
-	popi_sta = srclken_read(RC_PI_PO_STA_0);
+	ret = __get_sta_reg(PIPO_STA, &popi_sta);
+	if (ret) {
+		pr_err("%s: read back value err(%d), val = 0x%x\n", __func__, ret, popi_sta);
+		return -EINVAL;
+	}
 
 	len += snprintf(buf+len, PAGE_SIZE-len,
 		"[POPI] -\n");
@@ -923,13 +1093,13 @@ static struct attribute *srclken_attrs[] = {
 };
 
 static struct attribute_group srclken_attr_group = {
-	.name	= "srclken",
-	.attrs	= srclken_attrs,
+	.name = "srclken",
+	.attrs = srclken_attrs,
 };
 
 int srclken_fs_init(void)
 {
-	int r;
+	int r = 0;
 
 	/* create /sys/kernel/srclken/xxx */
 	r = sysfs_create_group(kernel_kobj, &srclken_attr_group);
@@ -949,7 +1119,7 @@ int srclken_fs_init(void)
 int _srclken_dts_map_internal(struct device_node *node, int idx)
 {
 	char *buf;
-	int ret;
+	int ret = 0;
 
 	buf = kzalloc(sizeof(char)*25, GFP_KERNEL);
 	if (!buf)
@@ -974,63 +1144,78 @@ no_mem:
 			__func__, ret);
 	return -ENOMEM;
 no_property:
+	pr_err("%s can't find property(%s) %d\n",
+			__func__, buf, ret);
 	kfree(buf);
-	pr_err("%s can't find property %d\n",
-			__func__, ret);
+
 	return 0;
 }
 
 int srclken_dts_map(struct platform_device *pdev)
 {
-	struct device_node *node;
-	struct resource *res;
-	int ret;
-	int i, j;
+	struct device_node *node = pdev->dev.of_node;
+	int ret = 0;
 	int cnt = 0;
+	int i, j;
+
+	if (srclken_get_bringup_sta())
+		return SRCLKEN_BRINGUP;
 
 	if (rc_dts_init_done)
 		return 0;
 
-	node = of_find_compatible_node(NULL, NULL,
-		"mediatek,srclken");
-	if (!node) {
-		pr_err("%s can't find compatible node %ld\n",
-			__func__, PTR_ERR(node));
-		return PTR_ERR(node);
-	}
+	if (of_property_match_string(node, "srclken-mode", "full-set") >= 0)
+		rc_cfg = FULL_SET_CFG;
+	else if (of_property_match_string(node, "srclken-mode", "bt-only") >= 0)
+		rc_cfg = BT_ONLY_CFG;
+	else if (of_property_match_string(node, "srclken-mode", "coant-only") >= 0)
+		rc_cfg = COANT_ONLY_CFG;
+	else
+		rc_cfg = NOT_SUPPORT_CFG;
 
-	hw = kzalloc(sizeof(hw), GFP_KERNEL);
+	cnt = of_property_count_strings(node, "subsys");
+	if (cnt > 0) {
+		subsys_num = cnt;
+		sys_cfg = kcalloc(cnt, sizeof(*sys_cfg), GFP_KERNEL);
+		if (!sys_cfg)
+			goto hw_no_mem;
+
+		for (i = 0; i < cnt; i++) {
+			sys_cfg[i].name = kzalloc(sizeof(char) * 10, GFP_KERNEL);
+			if (!sys_cfg[i].name)
+				goto name_no_mem;
+			ret = of_property_read_string_index(node,
+					"subsys", i, &sys_cfg[i].name);
+			if (ret)
+				goto subsys_no_mem;
+		}
+	} else
+		goto no_property;
+
+	hw = kzalloc(sizeof(*hw), GFP_KERNEL);
 	if (!hw)
 		goto hw_no_mem;
-	hw->base = kzalloc(sizeof(void __iomem *) * MAX_BASE_NUM, GFP_KERNEL);
-	if (!hw->base)
-		goto base_no_mem;
+
 	hw->val = kzalloc(sizeof(u32) * DTS_NUM, GFP_KERNEL);
 	if (!hw->val)
 		goto val_no_mem;
 
 	for (i = 0; i < MAX_BASE_NUM; i++) {
-		int start[] = {RC_START, SCP_START, PWRAP_START, GPIO_START};
-		int end[] = {RC_END, SCP_END, PWRAP_END, GPIO_END};
+		int start[] = {SCP_START, GPIO_START};
+		int end[] = {SCP_END, GPIO_END};
 
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-						   base_n[i]);
-		if (!res) {
-			hw->base[i] = NULL;
-			pr_info("missing IO resource %s\n", base_n[i]);
-			continue;
+		hw->base[i] = of_iomap(node, i);
+		if (IS_ERR(hw->base[i])) {
+			ret = PTR_ERR(hw->base[i]);
+			goto no_base;
 		}
 
-		hw->base[i] = of_iomap(node, cnt);
-		cnt++;
 		pr_info("base[%d]0x%pR\n", i, hw->base[i]);
-		if (IS_ERR(hw->base[i]))
-			return PTR_ERR(hw->base[i]);
 
 		for (j = start[i]; j < end[i]; j++) {
 			ret = _srclken_dts_map_internal(node, j);
 			if (ret)
-				goto no_property;
+				goto no_base;
 		}
 	}
 
@@ -1038,18 +1223,22 @@ int srclken_dts_map(struct platform_device *pdev)
 
 	return 0;
 
+no_base:
+	kfree(hw->val);
 val_no_mem:
-	kfree(hw->base);
-base_no_mem:
 	kfree(hw);
 hw_no_mem:
+subsys_no_mem:
+	kfree(sys_cfg->name);
+name_no_mem:
+	kfree(sys_cfg);
 	pr_err("%s can't allocate memory %d\n",
 			__func__, ret);
 	return -ENOMEM;
 no_property:
 	pr_err("%s can't find property %d\n",
 			__func__, ret);
-	return 0;
+	return ret;
 }
 #else /* !CONFIG_OF */
 int srclken_dts_map(struct platform_device *pdev)
@@ -1058,105 +1247,117 @@ int srclken_dts_map(struct platform_device *pdev)
 }
 #endif
 
-void srclken_stage_init(void)
+int srclken_cfg_init(void)
 {
-#if SRCLKEN_RC_BRINGUP
-	pr_info("%s: skipped for bring up\n", __func__);
-	return;
-#else
-	u32 cfg;
+	uint32_t cfg = 0;
+	int ret = 0;
 	int i;
 
-	if (rc_stage_init_done)
-		return;
+	if (srclken_get_bringup_sta())
+		return SRCLKEN_BRINGUP;
+
+	if (rc_cfg_init_done || rc_cfg == NOT_SUPPORT_CFG)
+		goto RC_CFG_DONE;
 
 	for (i = 0; i < DTS_NUM; i++)
 		pr_info("[%d]0x%x\n", i, hw->val[i]);
-	if ((srclken_read(RC_CENTRAL_CFG1)
-			& (1 << SRCLKEN_RC_EN_SHFT)) == 0) {
-		rc_stage = SRCLKEN_NOT_SUPPORT;
-		goto RC_STAGE_DONE;
+
+	ret = __get_cfg_reg(CENTRAL_1_CFG, &cfg);
+	if (ret < 0)
+		goto RC_GET_CFG_FAIL;
+
+	if ((cfg & (1 << SRCLKEN_RC_EN_SHFT)) == 0) {
+		rc_cfg = NOT_SUPPORT_CFG;
+		goto RC_CFG_DONE;
 	}
 
-	for (i = 0; i < MAX_SYS_NUM; i++) {
-		cfg = srclken_read(RC_M00_SRCLKEN_CFG + i * 4);
+	for (i = 0; i < subsys_num; i++) {
+		ret = __get_subsys_cfg(i, &cfg);
 
-		pr_info("cfg[%d]: 0x%x\n", i, cfg);
-		if (i == SYS_BT) {
-			if ((cfg & (SW_MODE | BBLPM_REQ))
-					!= (SW_MODE | BBLPM_REQ))
-				break;
-		} else {
-			if ((cfg & (SW_MODE | OFF_REQ))
-					!= (SW_MODE | OFF_REQ)) {
-				srclken_dbg("%s: [BT-Only]M-%d check fail.\n",
-						__func__, i);
-				break;
-			}
-		}
+		if (ret < 0)
+			goto RC_GET_CFG_FAIL;
 
-		if (i == (MAX_SYS_NUM - 1)) {
-			srclken_dbg("%s: rc bt only mode\n", __func__);
-			rc_stage = SRCLKEN_BT_ONLY;
-			goto RC_STAGE_DONE;
+		/* set id for srclken subsys */
+		if (!strcmp(sys_cfg[i].name, "SUSPEND"))
+			sys_cfg[i].id = SYS_SUSPEND;
+		else if (!strcmp(sys_cfg[i].name, "RF"))
+			sys_cfg[i].id = SYS_RF;
+		else if (!strcmp(sys_cfg[i].name, "DPIDLE"))
+			sys_cfg[i].id = SYS_DPIDLE;
+		else if (!strcmp(sys_cfg[i].name, "MD"))
+			sys_cfg[i].id = SYS_MD;
+		else if (!strcmp(sys_cfg[i].name, "GPS"))
+			sys_cfg[i].id = SYS_GPS;
+		else if (!strcmp(sys_cfg[i].name, "BT"))
+			sys_cfg[i].id = SYS_BT;
+		else if (!strcmp(sys_cfg[i].name, "WIFI"))
+			sys_cfg[i].id = SYS_WIFI;
+		else if (!strcmp(sys_cfg[i].name, "MCU"))
+			sys_cfg[i].id = SYS_MCU;
+		else if (!strcmp(sys_cfg[i].name, "COANT"))
+			sys_cfg[i].id = SYS_COANT;
+		else if (!strcmp(sys_cfg[i].name, "NFC"))
+			sys_cfg[i].id = SYS_NFC;
+		else if (!strcmp(sys_cfg[i].name, "UFS"))
+			sys_cfg[i].id = SYS_UFS;
+		else if (!strcmp(sys_cfg[i].name, "SCP"))
+			sys_cfg[i].id = SYS_SCP;
+		else if (!strcmp(sys_cfg[i].name, "RSV"))
+			sys_cfg[i].id = SYS_RSV;
+		else {
+			rc_cfg = NOT_SUPPORT_CFG;
+			goto RC_CFG_FAIL;
 		}
+		/* set mode for srclken subsys */
+		if ((cfg & SW_MODE) == SW_MODE)
+			sys_cfg[i].mode = SW_MODE;
+		else
+			sys_cfg[i].mode = HW_MODE;
+
+		/* set req for srclken subsys */
+		if ((cfg & BBLPM_REQ) == BBLPM_REQ)
+			sys_cfg[i].req = BBLPM_REQ;
+		else if ((cfg & FPM_REQ) == FPM_REQ)
+			sys_cfg[i].req = FPM_REQ;
+		else
+			sys_cfg[i].req = NO_REQ;
 	}
 
-	for (i = 0; i < MAX_SYS_NUM; i++) {
-		cfg = srclken_read(RC_M00_SRCLKEN_CFG + i * 4);
+RC_CFG_DONE:
+	pr_notice("%s: rc %s verify done(%d)\n", __func__,
+			rc_cfg == BT_ONLY_CFG ? "bt only" :
+			rc_cfg == COANT_ONLY_CFG ? "coant only" :
+			rc_cfg == FULL_SET_CFG ? "full set" :
+			rc_cfg == NOT_SUPPORT_CFG ? "not support" : "init",
+			ret);
+	rc_cfg_init_done = true;
 
-		if (i == SYS_COANT) {
-			if ((cfg & (0x7 << SW_SRCLKEN_RC_SHFT)) != 0)
-				break;
-		} else {
-			if ((cfg & (SW_MODE | OFF_REQ))
-					!= (SW_MODE | OFF_REQ)) {
-				srclken_dbg("%s: [COANT-Only]M-%d check fail.\n",
-						__func__, i);
-				break;
-			}
-		}
+	return ret;
 
-		if (i == (MAX_SYS_NUM - 1)) {
-			srclken_dbg("%s: rc coant only mode\n", __func__);
-			rc_stage = SRCLKEN_BT_ONLY;
-			goto RC_STAGE_DONE;
-		}
-	}
+RC_GET_CFG_FAIL:
+RC_CFG_FAIL:
+	pr_err("%s: %s went wrong, need to check\n", __func__,
+			rc_cfg == BT_ONLY_CFG ? "bt only" :
+			rc_cfg == COANT_ONLY_CFG ? "coant only" :
+			rc_cfg == FULL_SET_CFG ? "full set" : "not support");
+	pr_err("%s: %s cfg fail. (0x%x)\n", __func__, sys_cfg[i].name, cfg);
 
-	for (i = 0; i < MAX_SYS_NUM; i++) {
-		cfg = srclken_read(RC_M00_SRCLKEN_CFG + i * 4);
-
-		if (i == SYS_BT) {
-			if ((cfg & (SW_MODE | BBLPM_REQ))
-					!= (SW_MODE | BBLPM_REQ))
-				break;
-		} else if ((cfg & (1 << SW_SRCLKEN_RC_SHFT)) != 0) {
-			srclken_dbg("%s: [Full-Set] M-%d check fail.\n",
-					__func__, i);
-			break;
-		}
-
-		if (i == (MAX_SYS_NUM - 1)) {
-			srclken_dbg("%s: rc full set mode\n", __func__);
-			rc_stage = SRCLKEN_FULL_SET;
-			goto RC_STAGE_DONE;
-		}
-	}
-
-	pr_err("%s: rc went wrong, need to check\n", __func__);
-	rc_stage = SRCLKEN_ERR;
-
-RC_STAGE_DONE:
-	rc_stage_init_done = true;
-#endif
+	return ret;
 }
 
-enum srclken_config srclken_hw_get_stage(void)
+int srclken_hw_get_cfg(void)
 {
-	if (!rc_stage_init_done)
-		srclken_stage_init();
+	if (!rc_cfg_init_done)
+		srclken_cfg_init();
 
-	return rc_stage;
+	return rc_cfg;
+}
+
+int srclken_hw_is_ready(void)
+{
+	if (!srclken_op_done)
+		return SRCLKEN_NOT_READY;
+
+	return SRCLKEN_OK;
 }
 

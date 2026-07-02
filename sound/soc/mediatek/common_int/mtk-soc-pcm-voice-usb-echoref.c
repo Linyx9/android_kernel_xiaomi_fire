@@ -47,7 +47,9 @@
 #include "mtk-soc-pcm-platform.h"
 #include <linux/dma-mapping.h>
 
-#if 0
+#define CODE_COMMENT
+
+#ifndef CODE_COMMENT
 /* debug */
 #define NUM_DBG_LOG 60
 #define DBG_LOG_LENGTH 256
@@ -149,7 +151,8 @@ static const struct snd_kcontrol_new speech_usb_controls[] = {
 		       0, Audio_USB_Debug_Get, Audio_USB_Debug_Set),
 };
 
-static int mtk_usb_echoref_close(struct snd_pcm_substream *substream)
+static int mtk_usb_echoref_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	int stream = substream->stream;
 
@@ -185,14 +188,13 @@ static int mtk_usb_echoref_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_usb_echoref_open(struct snd_pcm_substream *substream)
+static int mtk_usb_echoref_open(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
 
 	AudDrv_Clk_On();
-
-	pr_debug("%s()\n", __func__);
 
 	runtime->hw = mtk_pcm_hardware;
 	memcpy((void *)(&(runtime->hw)), (void *)&mtk_pcm_hardware,
@@ -205,7 +207,7 @@ static int mtk_usb_echoref_open(struct snd_pcm_substream *substream)
 		pr_debug("snd_pcm_hw_constraint_integer failed\n");
 
 	if (ret < 0) {
-		mtk_usb_echoref_close(substream);
+		mtk_usb_echoref_close(component, substream);
 		return ret;
 	}
 
@@ -213,7 +215,8 @@ static int mtk_usb_echoref_open(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_usb_echoref_prepare(struct snd_pcm_substream *substream)
+static int mtk_usb_echoref_prepare(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int stream = substream->stream;
@@ -269,7 +272,8 @@ static int mtk_usb_echoref_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_usb_echoref_hw_params(struct snd_pcm_substream *substream,
+static int mtk_usb_echoref_hw_params(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream,
 				     struct snd_pcm_hw_params *hw_params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -298,7 +302,8 @@ static int mtk_usb_echoref_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_usb_echoref_hw_free(struct snd_pcm_substream *substream)
+static int mtk_usb_echoref_hw_free(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream)
 {
 	pr_debug("%s(), substream = %p, stream %d\n", __func__, substream,
 		substream->stream);
@@ -335,7 +340,7 @@ static int mtk_usb_echoref_stop(struct snd_pcm_substream *substream)
 
 	pr_debug("%s(), stream %d\n", __func__, stream);
 
-#if 0
+#ifndef CODE_COMMENT
 	if (usb_debug_enable & USB_DBG_ASSERT_AT_STOP) {
 		if (stream == SNDRV_PCM_STREAM_PLAYBACK)
 			print_usb_dbg_log();
@@ -350,7 +355,8 @@ static int mtk_usb_echoref_stop(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_usb_echoref_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_usb_echoref_trigger(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream, int cmd)
 {
 
 	switch (cmd) {
@@ -365,7 +371,8 @@ static int mtk_usb_echoref_trigger(struct snd_pcm_substream *substream, int cmd)
 }
 
 static snd_pcm_uframes_t
-mtk_usb_echoref_pointer(struct snd_pcm_substream *substream)
+mtk_usb_echoref_pointer(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream)
 {
 	unsigned int hw_ptr;
 	int stream = substream->stream;
@@ -383,17 +390,14 @@ mtk_usb_echoref_pointer(struct snd_pcm_substream *substream)
 			       hw_ptr - Afe_Block->pucPhysBufAddr);
 }
 
-static struct snd_pcm_ops mtk_usb_echoref_ops = {
-	.open = mtk_usb_echoref_open,
-	.close = mtk_usb_echoref_close,
-	.ioctl = snd_pcm_lib_ioctl,
-	.hw_params = mtk_usb_echoref_hw_params,
-	.hw_free = mtk_usb_echoref_hw_free,
-	.prepare = mtk_usb_echoref_prepare,
-	.trigger = mtk_usb_echoref_trigger,
-	.pointer = mtk_usb_echoref_pointer,
-	.copy_user = mtk_afe_pcm_copy,
-};
+static int mtk_usb_echoref_copy(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
+				int channel, unsigned long hwoff,
+				struct iov_iter *buf, unsigned long bytes)
+{
+	return  mtk_afe_pcm_copy(substream, channel, hwoff, buf, bytes);
+}
+
 
 static int mtk_usb_echoref_component_probe(struct snd_soc_component *component)
 {
@@ -402,29 +406,39 @@ static int mtk_usb_echoref_component_probe(struct snd_soc_component *component)
 	return 0;
 }
 
-static int mtk_usb_echoref_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int mtk_usb_echoref_pcm_new(struct snd_soc_component *component,
+				   struct snd_soc_pcm_runtime *rtd)
 {
-	size_t size;
+	size_t size = 0;
 	struct snd_card *card = rtd->card->snd_card;
 	struct snd_pcm *pcm = rtd->pcm;
 
 	size = mtk_pcm_hardware.buffer_bytes_max;
 
-	return snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
+	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
 						     card->dev, size, size);
+	return 0;
 }
 
-static void mtk_usb_echoref_pcm_free(struct snd_pcm *pcm)
+static void mtk_usb_echoref_pcm_free(struct snd_soc_component *component,
+				     struct snd_pcm *pcm)
 {
 	snd_pcm_lib_preallocate_free_for_all(pcm);
 }
 
-static struct snd_soc_component_driver mtk_soc_usb_echoref_component = {
+static const struct snd_soc_component_driver mtk_soc_usb_echoref_component = {
 	.name = AFE_PCM_NAME,
-	.ops = &mtk_usb_echoref_ops,
 	.probe = mtk_usb_echoref_component_probe,
-	.pcm_new = mtk_usb_echoref_pcm_new,
-	.pcm_free = mtk_usb_echoref_pcm_free,
+	.pcm_construct = mtk_usb_echoref_pcm_new,
+	.pcm_destruct = mtk_usb_echoref_pcm_free,
+	.open = mtk_usb_echoref_open,
+	.close = mtk_usb_echoref_close,
+	.hw_params = mtk_usb_echoref_hw_params,
+	.hw_free = mtk_usb_echoref_hw_free,
+	.prepare = mtk_usb_echoref_prepare,
+	.trigger = mtk_usb_echoref_trigger,
+	.pointer = mtk_usb_echoref_pointer,
+	.copy = mtk_usb_echoref_copy,
 };
 
 static int mtk_usb_echoref_probe(struct platform_device *pdev)
@@ -447,7 +461,6 @@ static int mtk_usb_echoref_probe(struct platform_device *pdev)
 
 static int mtk_usb_echoref_remove(struct platform_device *pdev)
 {
-	pr_debug("%s()\n", __func__);
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }

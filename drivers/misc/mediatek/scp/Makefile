@@ -10,10 +10,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
-
-obj-$(CONFIG_MTK_TINYSYS_SCP_CM4_SUPPORT) += cm4/
-obj-$(CONFIG_MTK_TINYSYS_SCP_RV_SUPPORT) += rv/
-
-ccflags-y  += -I$(srctree)/drivers/misc/mediatek/include/
-
-
+ifeq ($(CONFIG_MTK_TINYSYS_SCP_CM4_SUPPORT), y)
+obj-y += cm4/
+else
+obj-y += rv/
+endif

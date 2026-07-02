@@ -1,41 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
+#include <dt-bindings/mfd/mt6362.h>
+#include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of_irq.h>
-#include <linux/regmap.h>
 #include <linux/platform_device.h>
+#include <linux/regmap.h>
 #include <linux/regulator/driver.h>
-#include <linux/interrupt.h>
-#include <dt-bindings/mfd/mt6362.h>
 
 #define MT6362_REG_BUCK1_SEQOFFDLY      (0x107)
 #define MT6362_POFF_SEQ_MAX	9
-
-/* Set sub-pmic buck1/2/3/4/5/6&ldo7/6/4 power off seuqence */
-static const u8 def_pwr_off_seq[MT6362_POFF_SEQ_MAX] = {
-	0x24, 0x24, 0x04, 0x22, 0x00, 0x00, 0x00, 0x02, 0x04,
-};
-
-enum {
-	MT6362_IDX_BUCK1 = 0,
-	MT6362_IDX_BUCK2,
-	MT6362_IDX_BUCK3,
-	MT6362_IDX_BUCK4,
-	MT6362_IDX_BUCK5,
-	MT6362_IDX_BUCK6,
-	MT6362_IDX_LDO1,
-	MT6362_IDX_LDO2,
-	MT6362_IDX_LDO3,
-	MT6362_IDX_LDO4,
-	MT6362_IDX_LDO5,
-	MT6362_IDX_LDO6,
-	MT6362_IDX_LDO7,
-	MT6362_IDX_MAX,
-};
 
 #define MT6362_VOL_REGMASK		(0xff)
 #define MT6362_VOL_MAX			(256)
@@ -83,6 +61,28 @@ struct mt6362_regulator_data {
 	struct device *dev;
 	struct regmap *regmap;
 	u8 pwr_off_seq[MT6362_POFF_SEQ_MAX];
+};
+
+/* Set sub-pmic buck1/2/3/4/5/6&ldo7/6/4 power off seuqence */
+static const u8 def_pwr_off_seq[MT6362_POFF_SEQ_MAX] = {
+	0x24, 0x24, 0x04, 0x22, 0x00, 0x00, 0x00, 0x02, 0x04,
+};
+
+enum {
+	MT6362_IDX_BUCK1 = 0,
+	MT6362_IDX_BUCK2,
+	MT6362_IDX_BUCK3,
+	MT6362_IDX_BUCK4,
+	MT6362_IDX_BUCK5,
+	MT6362_IDX_BUCK6,
+	MT6362_IDX_LDO1,
+	MT6362_IDX_LDO2,
+	MT6362_IDX_LDO3,
+	MT6362_IDX_LDO4,
+	MT6362_IDX_LDO5,
+	MT6362_IDX_LDO6,
+	MT6362_IDX_LDO7,
+	MT6362_IDX_MAX,
 };
 
 static int mt6362_enable_poweroff_sequence(struct mt6362_regulator_data *data)
@@ -134,7 +134,7 @@ static int mt6362_general_set_mode(struct regulator_dev *rdev,
 		ret = -EINVAL;
 	}
 
-	return ret ? : 0;
+	return ret;
 }
 
 static unsigned int mt6362_general_get_mode(struct regulator_dev *rdev)
@@ -189,7 +189,7 @@ static const struct regulator_ops mt6362_buck_regulator_ops = {
 	.get_mode		= mt6362_general_get_mode,
 };
 
-static const struct regulator_linear_range lvldo_ranges[] = {
+static const struct linear_range lvldo_ranges[] = {
 	REGULATOR_LINEAR_RANGE(500000, 0x00, 0x0a, 10000),
 	REGULATOR_LINEAR_RANGE(600000, 0x0b, 0x0f, 0),
 	REGULATOR_LINEAR_RANGE(600000, 0x10, 0x1a, 10000),
@@ -224,7 +224,7 @@ static const struct regulator_linear_range lvldo_ranges[] = {
 	REGULATOR_LINEAR_RANGE(2100000, 0xfb, 0xff, 0),
 };
 
-static const struct regulator_linear_range hvldo_ranges[] = {
+static const struct linear_range hvldo_ranges[] = {
 	REGULATOR_LINEAR_RANGE(1200000, 0x00, 0x0a, 10000),
 	REGULATOR_LINEAR_RANGE(1300000, 0x0b, 0x0f, 0),
 	REGULATOR_LINEAR_RANGE(1300000, 0x10, 0x1a, 10000),
@@ -352,9 +352,6 @@ static int mt6362_regulator_irq_register(struct regulator_dev *rdev)
 	struct device_node *np = dev->of_node;
 	int i, irq, rv;
 
-	if (dev == NULL)
-		return -EINVAL;
-
 	for (i = 0; i < ARRAY_SIZE(irqts); i++) {
 		irq = of_irq_get_byname(np, irqts[i].name);
 		if (irq <= 0)
@@ -375,7 +372,7 @@ static int mt6362_reconfigure_voltage_step(struct mt6362_regulator_data *data,
 	const unsigned int buck_fbd2_regs[] = {
 		0x29b, 0x2a3, 0x2ab, 0x2b3, 0x2d1, 0x2d9
 	};
-	unsigned int val = 0;
+	unsigned int val;
 	int rv;
 
 	if (desc->id >= MT6362_IDX_BUCK1 && desc->id <= MT6362_IDX_BUCK6) {
@@ -397,10 +394,10 @@ static int mt6362_parse_dt_data(struct device *dev,
 	int ret;
 
 	memcpy(data->pwr_off_seq, &def_pwr_off_seq, MT6362_POFF_SEQ_MAX);
-	ret = of_property_read_u8_array(np, "pwr_off_seq", data->pwr_off_seq,
+	ret = of_property_read_u8_array(np, "pwr-off-seq", data->pwr_off_seq,
 					MT6362_POFF_SEQ_MAX);
 	if (ret)
-		dev_notice(dev, "%s: undefine pwr_off_seq\n", __func__);
+		dev_notice(dev, "%s: undefine pwr-off-seq\n", __func__);
 	return ret;
 }
 
@@ -476,16 +473,17 @@ static void mt6362_shutdown(struct platform_device *pdev)
 			   "%s: enable power off sequence fail\n", __func__);
 }
 
-static const struct of_device_id __maybe_unused mt6362_regulator_ofid_tbls[] = {
+static const struct of_device_id __maybe_unused
+mt6362_regulator_of_id_tbls[] = {
 	{ .compatible = "mediatek,mt6362-regulator", },
 	{ },
 };
-MODULE_DEVICE_TABLE(of, mt6362_regulator_ofid_tbls);
+MODULE_DEVICE_TABLE(of, mt6362_regulator_of_id_tbls);
 
 static struct platform_driver mt6362_regulator_driver = {
 	.driver = {
 		.name = "mt6362-regulator",
-		.of_match_table = of_match_ptr(mt6362_regulator_ofid_tbls),
+		.of_match_table = of_match_ptr(mt6362_regulator_of_id_tbls),
 	},
 	.probe = mt6362_regulator_probe,
 	.shutdown = mt6362_shutdown,
@@ -493,6 +491,5 @@ static struct platform_driver mt6362_regulator_driver = {
 module_platform_driver(mt6362_regulator_driver);
 
 MODULE_AUTHOR("ChiYuan Huang <cy_huang@richtek.com>");
-MODULE_DESCRIPTION("MT6362 SPMI Regulator Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0.0");

@@ -1166,7 +1166,7 @@ enum Tfa98xx_Error tfa_dsp_patch(struct tfa_device *tfa, int patchLength,
 	if (!status)
 		return Tfa98xx_Error_NoClock; // Only test when we have a clock.
 	/******MCH_TO_TEST**************/
-	if (error == Tfa98xx_Error_Ok) {
+	if (error == Tfa98xx_Error_Ok && (!tfa->is_probus_device)) {
 		error = tfaRunColdboot(tfa, 1);
 		if (error)
 			return Tfa98xx_Error_DSP_not_running;
@@ -3954,7 +3954,8 @@ enum tfa_error tfa_dev_set_state(struct tfa_device *tfa, enum tfa_state state,
 		 */
 		if ((TFA_GET_BF(tfa, MTPOTC) == 1) &&
 			(tfa->tfa_family == 2) &&
-			is_calibration) {
+			is_calibration &&
+			!(tfa->is_probus_device)) {
 			count = MTPEX_WAIT_NTRIES * 4; // Calibration takes a
 						       // lot of time
 			while ((TFA_GET_BF(tfa, MTPEX) != 1) && count) {

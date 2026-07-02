@@ -7,6 +7,7 @@
 #include <linux/arm-smccc.h>
 #include <linux/cpumask.h>
 #include <linux/delay.h>
+#include <linux/io.h>
 #include <linux/kallsyms.h>
 #include <linux/kdebug.h>
 #include <linux/kprobes.h>
@@ -22,6 +23,8 @@
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <uapi/linux/sched/types.h>
+
+#include <clocksource/arm_arch_timer.h>
 
 #include <mt-plat/mrdump.h>
 #include "aed.h"
@@ -48,7 +51,7 @@ static struct notifier_block panic_test = {
 
 void notrace wdt_atf_hang(void)
 {
-	int cpu = get_HW_cpuid();
+	int cpu = raw_smp_processor_id();
 
 	pr_notice(" CPU %d : %s\n", cpu, __func__);
 
@@ -61,7 +64,7 @@ void notrace wdt_atf_hang(void)
 static int kwdt_thread_test(void *arg)
 {
 	struct sched_param param = {.sched_priority = 99 };
-	int cpu = get_HW_cpuid();
+	int cpu = raw_smp_processor_id();
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
 	set_current_state(TASK_INTERRUPTIBLE);
@@ -190,9 +193,12 @@ static ssize_t proc_generate_wdt_write(struct file *file,
 
 	/* create kernel threads and bind on every cpu */
 	for (i = 0; i < nr_cpu_ids; i++) {
-		sprintf(name, "wd-test-%d", i);
+		int len = snprintf(name, sizeof(name), "wd-test-%d", i);
+
+		if (len < 0)
+			pr_notice("%s: snprintf failed\n", __func__);
 		pr_notice("[WDK]thread name: %s\n", name);
-		wk_tsk[i] = kthread_create(kwdt_thread_test, NULL, name);
+		wk_tsk[i] = kthread_create(kwdt_thread_test, NULL, "%s", name);
 		if (IS_ERR(wk_tsk[i])) {
 			int ret = PTR_ERR(wk_tsk[i]);
 
@@ -249,29 +255,11 @@ void handler_post(struct kprobe *p, struct pt_regs *regs, unsigned long flags)
 	}
 }
 
-static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr);
-
 static struct kprobe kp_kpd_irq_handler = {
 	.symbol_name = "kpd_irq_handler",
 	.pre_handler = handler_pre,
 	.post_handler = handler_post,
-	.fault_handler = handler_fault,
 };
-
-/*
- * fault_handler: this is called if an exception is generated for any
- * instruction within the pre- or post-handler, or when Kprobes
- * single-steps the probed instruction.
- */
-static int handler_fault(struct kprobe *p, struct pt_regs *regs, int trapnr)
-{
-	pr_notice("fault_handler: p->addr = 0x%p, trap #%dn", p->addr, trapnr);
-	unregister_kprobe(&kp_kpd_irq_handler);
-	pr_notice("kprobe at %p unregistered\n", kp_kpd_irq_handler.addr);
-
-	/* Return 0 because we don't handle the fault. */
-	return 0;
-}
 
 static int register_kprobe_kpd_irq_handler(void)
 {
@@ -323,9 +311,6 @@ static noinline void double_free(void)
 	char *p = kmalloc(32, GFP_KERNEL);
 	int i;
 
-	if (p == NULL)
-		return;
-
 	pr_info("test case : double free\n");
 	for (i = 0; i < 32; i++)
 		p[i] = (char)i;
@@ -354,8 +339,6 @@ static ssize_t proc_generate_oops_read(struct file *file,
 	char buffer[BUFSIZE];
 
 	len = snprintf(buffer, BUFSIZE, "Oops Generated!\n");
-	if (len <= 0)
-		pr_debug("%s: snprintf error\n", __func__);
 	if (copy_to_user(buf, buffer, len))
 		pr_notice("%s fail to output info.\n", __func__);
 
@@ -504,8 +487,6 @@ static ssize_t proc_generate_ee_read(struct file *file, char __user *buf,
 	kfree(log);
 
 	len = snprintf(buffer, BUFSIZE, "Modem EE Generated\n");
-	if (len <= 0)
-		pr_debug("%s: snprintf error\n", __func__);
 	if (copy_to_user(buf, buffer, len)) {
 		pr_notice("%s fail to output info.\n", __func__);
 		return -EFAULT;
@@ -540,8 +521,6 @@ static ssize_t proc_generate_combo_read(struct file *file, char __user *buf,
 	vfree(ptr);
 
 	len = snprintf(buffer, BUFSIZE, "Combo EE Generated\n");
-	if (len <= 0)
-		pr_debug("%s: snprintf error\n", __func__);
 	if (copy_to_user(buf, buffer, len)) {
 		pr_notice("%s fail to output info.\n", __func__);
 		return -EFAULT;
@@ -579,8 +558,10 @@ static ssize_t proc_generate_md32_read(struct file *file, char __user *buf,
 	vfree(ptr);
 
 	len = snprintf(buffer, BUFSIZE, "MD32 EE Generated\n");
-	if (len < 0)
+	if (len < 0) {
 		pr_info("%s: snprintf failed\n", __func__);
+		return -EFAULT;
+	}
 	if (copy_to_user(buf, buffer, len)) {
 		pr_notice("%s fail to output info.\n", __func__);
 		return -EFAULT;
@@ -620,8 +601,10 @@ static ssize_t proc_generate_scp_read(struct file *file,
 	vfree(ptr);
 
 	len = snprintf(buffer, BUFSIZE, "SCP EE Generated\n");
-	if (len < 0)
+	if (len < 0) {
 		pr_info("%s: snprintf failed\n", __func__);
+		return -EFAULT;
+	}
 	if (copy_to_user(buf, buffer, len)) {
 		pr_notice("%s fail to output info.\n", __func__);
 		return -EFAULT;
@@ -671,6 +654,92 @@ static ssize_t proc_generate_adsp_write(struct file *file,
 	return 0;
 }
 
+static uint32_t test_value[3];
+static ssize_t proc_generate_platform_write(struct file *file,
+					const char __user *buf, size_t size,
+					loff_t *ppos)
+{
+	char msg[BUFSIZE], *name, *cur = msg;
+	int ret = 0, i = 0;
+	void __iomem *base;
+
+	if ((size < 10) || (size > sizeof(msg))) {
+		pr_notice("%s: count = %zx\n", __func__, size);
+		return -EINVAL;
+	}
+	if (!buf) {
+		pr_notice("%s: buf = NULL\n", __func__);
+		return -EINVAL;
+	}
+	if (copy_from_user(msg, buf, size)) {
+		pr_notice("%s: error\n", __func__);
+		return -EFAULT;
+	}
+
+	while ((name = strsep(&cur, " ")) && *name && i < 3) {
+		ret = kstrtoul(name, 16, (unsigned long *)(&test_value[i]));
+		if (ret) {
+			pr_notice("kstrtoul %s error.\n", name);
+			return -EINVAL;
+		}
+		i++;
+	}
+
+	if ((test_value[0] != 0x72656164) && (test_value[0] != 0x77726974))
+		return -EINVAL;
+
+	base = ioremap(test_value[1], 0x100);
+	if (!base) {
+		pr_notice("Couldn't map 0x%x.\n", test_value[1]);
+		return -ENOMEM;
+	}
+
+	pr_info("trigger time: %llx\n", arch_timer_read_counter());
+	if (test_value[0] == 0x72656164 && i == 2) {
+		pr_info("read 0x%x value:", test_value[1]);
+		test_value[2] = readl(base);
+		pr_info("0x%x.\n", test_value[2]);
+	} else if (test_value[0] == 0x77726974 && i == 3) {
+		pr_info("write 0x%x to 0x%x.\n", test_value[2], test_value[1]);
+		writel(test_value[2], base);
+	} else {
+		test_value[0] = 0;
+		test_value[1] = 0;
+		test_value[2] = 0;
+	}
+	pr_info("trigger time: %llx\n", arch_timer_read_counter());
+
+	iounmap(base);
+	return size;
+}
+
+static ssize_t proc_generate_platform_read(struct file *file,
+					char __user *buf, size_t size,
+					loff_t *ppos)
+{
+	char buffer[BUFSIZE];
+	int len = 0;
+
+	if ((*ppos)++)
+		return 0;
+
+	if (test_value[0] == 0x72656164)
+		len = snprintf(buffer, BUFSIZE, "read 0x%x value 0x%x.\n",
+			test_value[1], test_value[2]);
+	else if (test_value[0] == 0x77726974)
+		len = snprintf(buffer, BUFSIZE, "write 0x%x value 0x%x.\n",
+			test_value[1], test_value[2]);
+
+	if (copy_to_user(buf, buffer, len)) {
+		pr_notice("%s fail to output info.\n", __func__);
+		return -EFAULT;
+	}
+	*ppos += len;
+	return len;
+}
+
+
+
 static ssize_t proc_generate_kernel_notify_read(struct file *file,
 						char __user *buf, size_t size,
 						loff_t *ppos)
@@ -678,8 +747,6 @@ static ssize_t proc_generate_kernel_notify_read(struct file *file,
 	char buffer[BUFSIZE];
 	int len = snprintf(buffer, BUFSIZE,
 			   "Usage: write message with format \"R|W|E:Tag:You Message\" into this file to generate kernel warning\n");
-	if (len <= 0)
-		pr_debug("%s: snprintf error\n", __func__);
 	if (*ppos)
 		return 0;
 	if (copy_to_user(buf, buffer, len)) {
@@ -759,22 +826,24 @@ AED_FILE_OPS(generate_combo);
 AED_FILE_OPS(generate_md32);
 AED_FILE_OPS(generate_scp);
 AED_FILE_OPS(generate_adsp);
+AED_FILE_OPS(generate_platform);
 
 int aed_proc_debug_init(struct proc_dir_entry *aed_proc_dir)
 {
 	/* 0600: S_IRUSR | S_IWUSR */
-	AED_PROC_ENTRY(generate-oops, generate_oops, 0600);
+	AED_PROC_ENTRY(aed/generate-oops, generate_oops, 0600);
 	/* 0400: S_IRUSR */
-	AED_PROC_ENTRY(generate-nested-ke, generate_nested_ke, 0400);
+	AED_PROC_ENTRY(aed/generate-nested-ke, generate_nested_ke, 0400);
 	/* 0600: S_IRUSR | S_IWUSR */
-	AED_PROC_ENTRY(generate-kernel-notify, generate_kernel_notify, 0600);
-	AED_PROC_ENTRY(generate-wdt, generate_wdt, 0600);
+	AED_PROC_ENTRY(aed/generate-kernel-notify, generate_kernel_notify, 0600);
+	AED_PROC_ENTRY(aed/generate-wdt, generate_wdt, 0600);
 	/* 0400: S_IRUSR */
-	AED_PROC_ENTRY(generate-ee, generate_ee, 0400);
-	AED_PROC_ENTRY(generate-combo, generate_combo, 0400);
-	AED_PROC_ENTRY(generate-md32, generate_md32, 0400);
-	AED_PROC_ENTRY(generate-scp, generate_scp, 0400);
-	AED_PROC_ENTRY(generate-adsp, generate_adsp, 0400);
+	AED_PROC_ENTRY(aed/generate-ee, generate_ee, 0400);
+	AED_PROC_ENTRY(aed/generate-combo, generate_combo, 0400);
+	AED_PROC_ENTRY(aed/generate-md32, generate_md32, 0400);
+	AED_PROC_ENTRY(aed/generate-scp, generate_scp, 0400);
+	AED_PROC_ENTRY(aed/generate-adsp, generate_adsp, 0400);
+	AED_PROC_ENTRY(aed/generate-platform, generate_platform, 0600);
 
 	return 0;
 }
@@ -790,5 +859,6 @@ int aed_proc_debug_done(struct proc_dir_entry *aed_proc_dir)
 	remove_proc_entry("generate-scp", aed_proc_dir);
 	remove_proc_entry("generate-wdt", aed_proc_dir);
 	remove_proc_entry("generate-adsp", aed_proc_dir);
+	remove_proc_entry("generate-platform", aed_proc_dir);
 	return 0;
 }

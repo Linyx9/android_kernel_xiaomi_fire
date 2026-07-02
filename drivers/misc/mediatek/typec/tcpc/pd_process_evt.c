@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #include "inc/pd_core.h"
@@ -30,13 +30,21 @@ static const char * const pd_ctrl_msg_name[] = {
 	"soft_reset",
 	"ctrlE",
 	"ctrlF",
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 	"no_support",
-	"get_src_cap_ex",
+	"get_src_cap_ext",
 	"get_status",
 	"fr_swap",
 	"get_pps",
 	"get_cc",
+	"get_snk_cap_ext",
+	"ctrl17",
+	"get_rev",
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
+	"get_source_info",
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
 #endif	/* CONFIG_USB_PD_REV30 */
 };
 
@@ -52,7 +60,7 @@ static const char * const pd_data_msg_name[] = {
 	"request",
 	"bist",
 	"sink_cap",
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 	"bat_status",
 	"alert",
 	"get_ci",
@@ -65,7 +73,7 @@ static const char * const pd_data_msg_name[] = {
 	"data9",
 	"dataA",
 	"dataB",
-	"dataC",
+	"rev",
 	"dataD",
 	"dataE",
 	"vdm",
@@ -77,11 +85,11 @@ static inline void print_data_msg_event(struct tcpc_device *tcpc, uint8_t msg)
 		PE_EVT_INFO("%s\n", pd_data_msg_name[msg]);
 }
 
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 
 static const char *const pd_ext_msg_name[] = {
 	"ext0",
-	"src_cap_ex",
+	"src_cap_ext",
 	"status",
 	"get_bat_cap",
 	"get_bat_status",
@@ -95,6 +103,7 @@ static const char *const pd_ext_msg_name[] = {
 	"pps_status",
 	"ci",
 	"cc",
+	"snk_cap_ext",
 };
 
 static inline void print_ext_msg_event(struct tcpc_device *tcpc, uint8_t msg)
@@ -115,11 +124,13 @@ static const char *const pd_hw_msg_name[] = {
 	"vbus_stable",
 	"tx_err",
 	"discard",
-	"retry_vdm",
 
-#ifdef CONFIG_USB_PD_REV30_COLLISION_AVOID
+#if CONFIG_USB_PD_REV30
 	"sink_tx_change",
-#endif	/* CONFIG_USB_PD_REV30_COLLISION_AVOID */
+#endif	/* CONFIG_USB_PD_REV30 */
+#if CONFIG_USB_PD_RETRY_CRC_DISCARD
+	"tx_retransmit",
+#endif	/* CONFIG_USB_PD_RETRY_CRC_DISCARD */
 };
 
 static inline void print_hw_msg_event(struct tcpc_device *tcpc, uint8_t msg)
@@ -146,8 +157,8 @@ static inline void print_pe_msg_event(struct tcpc_device *tcpc, uint8_t msg)
 static const char * const pd_dpm_msg_name[] = {
 	"ack",
 	"nak",
-	"cap_change",
 	"not_support",
+	"cable_not_support",
 };
 
 static inline void print_dpm_msg_event(struct tcpc_device *tcpc, uint8_t msg)
@@ -157,7 +168,7 @@ static inline void print_dpm_msg_event(struct tcpc_device *tcpc, uint8_t msg)
 }
 
 static const char *const tcp_dpm_evt_name[] = {
-	/* TCP_DPM_EVT_UNKONW */
+	/* TCP_DPM_EVT_UNKNOWN */
 	"unknown",
 
 	/* TCP_DPM_EVT_PD_COMMAND */
@@ -172,14 +183,16 @@ static const char *const tcp_dpm_evt_name[] = {
 	"cable_soft_reset",
 	"get_src_cap",
 	"get_snk_cap",
+	"src_cap",
 	"request",
 	"request_ex",
 	"request_again",
 	"bist_cm2",
 	"dummy",
 
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 	"get_src_cap_ext",
+	"get_sink_cap_ext",
 	"get_status",
 	"fr_swap_snk",
 	"fr_swap_src",
@@ -191,39 +204,38 @@ static const char *const tcp_dpm_evt_name[] = {
 	"get_bat_cap",
 	"get_bat_status",
 	"get_mfrs_info",
+	"get_revision",
 #endif	/* CONFIG_USB_PD_REV30 */
 
 	/* TCP_DPM_EVT_VDM_COMMAND */
-	"disc_cable",
+	"disc_cable_id",
 	"disc_id",
-	"disc_svid",
-	"disc_mode",
+	"disc_svids",
+	"disc_modes",
 	"enter_mode",
 	"exit_mode",
 	"attention",
 
-#ifdef CONFIG_USB_PD_ALT_MODE
 	"dp_atten",
-#ifdef CONFIG_USB_PD_ALT_MODE_DFP
 	"dp_status",
 	"dp_config",
-#endif	/* CONFIG_USB_PD_ALT_MODE_DFP */
-#endif	/* CONFIG_USB_PD_ALT_MODE */
 
-#ifdef CONFIG_USB_PD_CUSTOM_VDM
-	"uvdm",
-#endif	/* CONFIG_USB_PD_CUSTOM_VDM */
+	"cvdm",
+
+	"disc_cable_svids",
+	"disc_cable_modes",
 
 	/* TCP_DPM_EVT_IMMEDIATELY */
 	"hard_reset",
 	"error_recovery",
 };
 
-static inline void print_tcp_event(struct tcpc_device *tcpc, uint8_t msg)
+static inline void print_tcp_event(struct tcpc_device *tcpc,
+	uint8_t msg, uint8_t from)
 {
 	if (msg < TCP_DPM_EVT_NR)
-		PE_EVT_INFO("tcp_event(%s), %d\n",
-			tcp_dpm_evt_name[msg], msg);
+		PE_EVT_INFO("tcp_event(%s), %d, %d\n",
+			    tcp_dpm_evt_name[msg], msg, from);
 }
 #endif
 
@@ -242,7 +254,7 @@ static inline void print_event(
 		print_data_msg_event(tcpc, pd_event->msg);
 		break;
 
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 	case PD_EVT_EXT_MSG:
 		print_ext_msg_event(tcpc, pd_event->msg);
 		break;
@@ -261,11 +273,16 @@ static inline void print_event(
 		break;
 
 	case PD_EVT_TIMER_MSG:
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
+		if (pd_event->msg != PD_TIMER_INT_INVAILD)
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
 		PE_EVT_INFO("timer\n");
 		break;
 
 	case PD_EVT_TCP_MSG:
-		print_tcp_event(tcpc, pd_event->msg);
+		print_tcp_event(tcpc, pd_event->msg, pd_event->msg_sec);
 		break;
 	}
 #endif
@@ -295,7 +312,7 @@ bool pd_make_pe_state_transit(struct pd_port *pd_port,
 
 static inline bool pd_process_ready_protocol_error(struct pd_port *pd_port)
 {
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 	bool multi_chunk;
 #endif	/* CONFIG_USB_PD_REV30 */
 
@@ -309,7 +326,7 @@ static inline bool pd_process_ready_protocol_error(struct pd_port *pd_port)
 		return true;
 	}
 
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 	multi_chunk = pd_is_multi_chunk_msg(pd_port);
 
 	if (pd_port->power_role == PD_ROLE_SINK) {
@@ -325,6 +342,67 @@ static inline bool pd_process_ready_protocol_error(struct pd_port *pd_port)
 	return false;
 #endif	/* CONFIG_USB_PD_REV30 */
 }
+
+#if CONFIG_USB_PD_DISCARD_AND_UNEXPECT_MSG
+
+static inline bool pd_process_unexpected_alert(
+	struct pd_port *pd_port, struct pd_event *pd_event)
+{
+#if CONFIG_USB_PD_REV30_ALERT_REMOTE
+	struct tcpc_device __maybe_unused *tcpc = pd_port->tcpc;
+
+	if (pd_event_data_msg_match(pd_event, PD_DATA_ALERT)) {
+		PE_INFO("unexpected_alert\n");
+
+		pd_dpm_inform_alert(pd_port);
+		pd_free_unexpected_event(pd_port);
+		return true;
+	}
+#endif	/* CONFIG_USB_PD_REV30_ALERT_REMOTE */
+
+	return false;
+}
+
+static inline bool pd_process_unexpected_message(
+	struct pd_port *pd_port, struct pd_event *pd_event)
+{
+	struct pe_data *pe_data = &pd_port->pe_data;
+
+
+	// For 1711 series : IC will auto reties discard message ...
+	if (!(pd_port->tcpc->tcpc_flags & TCPC_FLAGS_RETRY_CRC_DISCARD)) {
+		pe_transit_soft_reset_state(pd_port);
+		return true;
+	}
+
+	/* Save Unexpected Msg */
+	if (pe_data->pd_unexpected_event_pending)
+		pd_free_event(pd_port->tcpc, &pe_data->pd_unexpected_event);
+
+	pe_data->pd_unexpected_event = *pd_event;
+	pd_event->pd_msg = NULL;
+	pe_data->pd_unexpected_event_pending = true;
+
+	if (pd_is_pe_wait_pd_transmit_done(pd_port)) {
+		if (pe_data->pd_sent_ams_init_cmd)
+			PE_TRANSIT_STATE(pd_port, PE_SEND_SOFT_RESET_TX_WAIT);
+		else {
+			if (pd_process_unexpected_alert(pd_port, pd_event))
+				return false;
+
+			PE_TRANSIT_STATE(pd_port, PE_UNEXPECTED_TX_WAIT);
+		}
+	} else {
+		if (pe_data->pd_sent_ams_init_cmd)
+			pe_transit_soft_reset_state(pd_port);
+		else
+			pe_transit_ready_state(pd_port);
+	}
+
+	pd_notify_tcp_event_buf_reset(pd_port, TCP_DPM_RET_DROP_UNEXPECTED);
+	return true;
+}
+#endif	/* CONFIG_USB_PD_DISCARD_AND_UNEXPECT_MSG */
 
 bool pd_process_protocol_error(
 	struct pd_port *pd_port, struct pd_event *pd_event)
@@ -351,9 +429,9 @@ bool pd_process_protocol_error(
 
 	switch (pd_port->pe_state_curr) {
 	case PE_SNK_TRANSITION_SINK:
-		/* fall through */
+		fallthrough;
 	case PE_SRC_TRANSITION_SUPPLY:	/* never recv ping for Source =.=*/
-		/* fall through */
+		fallthrough;
 	case PE_SRC_TRANSITION_SUPPLY2:
 		power_change = true;
 		if (pd_event_msg_match(pd_event,
@@ -363,7 +441,20 @@ bool pd_process_protocol_error(
 		}
 		break;
 
-#ifdef CONFIG_USB_PD_PR_SWAP
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
+	/* while send <request msg>, recevied <alert msg> ignore */
+	case PE_SNK_SELECT_CAPABILITY:
+		if (pd_event_msg_match(pd_event,
+				PD_EVT_DATA_MSG, PD_DATA_ALERT)) {
+			PE_INFO("Ignore Alert\n");
+			goto out;
+		}
+		break;
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+
+#if CONFIG_USB_PD_PR_SWAP
 	case PE_PRS_SRC_SNK_WAIT_SOURCE_ON:
 #endif	/* CONFIG_USB_PD_PR_SWAP */
 		if (pd_event_msg_match(pd_event,
@@ -385,15 +476,21 @@ bool pd_process_protocol_error(
 	ret = true;
 
 	if (pd_port->pe_data.during_swap) {
-#ifdef CONFIG_USB_PD_PR_SWAP_ERROR_RECOVERY
+#if CONFIG_USB_PD_PR_SWAP_ERROR_RECOVERY
 		PE_TRANSIT_STATE(pd_port, PE_ERROR_RECOVERY);
 #else
 		pe_transit_hard_reset_state(pd_port);
 #endif
 	} else if (power_change)
 		pe_transit_hard_reset_state(pd_port);
-	else
+	else {
+#if CONFIG_USB_PD_DISCARD_AND_UNEXPECT_MSG
+		if (!pd_process_unexpected_message(pd_port, pd_event))
+			return false;
+#else
 		pe_transit_soft_reset_state(pd_port);
+#endif	/* CONFIG_USB_PD_DISCARD_AND_UNEXPECT_MSG */
+	}
 
 	/*
 	 * event_type: PD_EVT_CTRL_MSG (1), PD_EVT_DATA_MSG (2)
@@ -404,15 +501,31 @@ out:
 	return ret;
 }
 
-bool pd_process_tx_failed(struct pd_port *pd_port)
+bool pd_process_tx_failed_discard(struct pd_port *pd_port, uint8_t msg)
 {
 	struct tcpc_device __maybe_unused *tcpc = pd_port->tcpc;
 
 	if (pd_check_pe_state_ready(pd_port) ||
 		pd_check_pe_during_hard_reset(pd_port)) {
-		PE_DBG("Ignore tx_failed\n");
+		PE_INFO("Ignore tx_failed\n");
 		return false;
 	}
+
+#if CONFIG_USB_PD_DISCARD_AND_UNEXPECT_MSG
+	if (msg == PD_HW_TX_DISCARD &&
+		(tcpc->tcpc_flags & TCPC_FLAGS_RETRY_CRC_DISCARD)) {
+
+		pd_notify_tcp_event_buf_reset(pd_port,
+					      TCP_DPM_RET_DROP_DISCARD);
+
+		if (pd_port->pe_data.pd_sent_ams_init_cmd)
+			PE_TRANSIT_STATE(pd_port, PE_SEND_SOFT_RESET_STANDBY);
+		else
+			pe_transit_ready_state(pd_port);
+
+		return true;
+	}
+#endif	/* CONFIG_USB_PD_DISCARD_AND_UNEXPECT_MSG */
 
 	pe_transit_soft_reset_state(pd_port);
 	return true;
@@ -420,27 +533,21 @@ bool pd_process_tx_failed(struct pd_port *pd_port)
 
 /*---------------------------------------------------------------------------*/
 
-#ifdef CONFIG_USB_PD_RESET_CABLE
 static inline bool pd_process_cable_ctrl_msg_accept(
 	struct pd_port *pd_port, struct pd_event *pd_event)
 {
 	switch (pd_port->pe_state_curr) {
-#ifdef CONFIG_PD_SRC_RESET_CABLE
 	case PE_SRC_CBL_SEND_SOFT_RESET:
-		vdm_put_dpm_discover_cable_event(pd_port);
+		vdm_put_dpm_discover_cable_id_event(pd_port);
 		return false;
-#endif	/* CONFIG_PD_SRC_RESET_CABLE */
 
-#ifdef CONFIG_PD_DFP_RESET_CABLE
 	case PE_DFP_CBL_SEND_SOFT_RESET:
 		pe_transit_ready_state(pd_port);
 		return true;
-#endif	/* CONFIG_PD_DFP_RESET_CABLE */
 	}
 
 	return false;
 }
-#endif	/* CONFIG_USB_PD_RESET_CABLE */
 
 static inline bool pd_process_event_cable(
 	struct pd_port *pd_port, struct pd_event *pd_event)
@@ -448,10 +555,8 @@ static inline bool pd_process_event_cable(
 	bool ret = false;
 	struct tcpc_device __maybe_unused *tcpc = pd_port->tcpc;
 
-#ifdef CONFIG_USB_PD_RESET_CABLE
 	if (pd_event->msg == PD_CTRL_ACCEPT)
 		ret = pd_process_cable_ctrl_msg_accept(pd_port, pd_event);
-#endif	/* CONFIG_USB_PD_RESET_CABLE */
 
 	if (!ret)
 		PE_DBG("Ignore not SOP Ctrl Msg\n");
@@ -469,7 +574,7 @@ static void pd_copy_msg_data(struct pd_port *pd_port,
 	pd_port->pd_msg_data_payload = payload;
 }
 
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 static inline void pd_copy_msg_data_from_ext_evt(
 	struct pd_port *pd_port, struct pd_msg *pd_msg)
 {
@@ -496,7 +601,7 @@ static inline void pd_copy_msg_data_from_evt(
 			pd_get_msg_hdr_cnt(pd_port), sizeof(uint32_t));
 		break;
 
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 	case PD_EVT_EXT_MSG:
 		PD_BUG_ON(pd_msg == NULL);
 		pd_copy_msg_data_from_ext_evt(pd_port, pd_msg);
@@ -520,7 +625,7 @@ static inline void pd_copy_msg_data_from_evt(
 static inline bool pe_is_valid_pd_msg_id(struct pd_port *pd_port,
 			struct pd_event *pd_event, struct pd_msg *pd_msg)
 {
-	uint8_t sop_type = pd_msg->frame_type;
+	enum tcpm_transmit_type sop_type = pd_msg->frame_type;
 	uint8_t msg_id = pd_get_msg_hdr_id(pd_port);
 	struct tcpc_device __maybe_unused *tcpc = pd_port->tcpc;
 
@@ -541,7 +646,7 @@ static inline bool pe_is_valid_pd_msg_id(struct pd_port *pd_port,
 			PE_DBG("Discard_CRC\n");
 			return true;
 
-#ifdef CONFIG_USB_PD_IGNORE_PS_RDY_AFTER_PR_SWAP
+#if CONFIG_USB_PD_IGNORE_PS_RDY_AFTER_PR_SWAP
 		case PD_CTRL_PS_RDY:
 			if (pd_port->msg_id_pr_swap_last == msg_id) {
 				PE_INFO("Repeat ps_rdy\n");
@@ -554,22 +659,27 @@ static inline bool pe_is_valid_pd_msg_id(struct pd_port *pd_port,
 
 	if (pd_port->pe_data.msg_id_rx[sop_type] == msg_id) {
 		PE_INFO("Repeat msg: %c:%d:%d\n",
-			(pd_event->event_type == PD_EVT_CTRL_MSG) ? 'C' : 'D',
+			(pd_event->event_type == PD_EVT_CTRL_MSG) ? 'C' :
+			(pd_event->event_type == PD_EVT_DATA_MSG) ? 'D' : 'E',
 			pd_event->msg, msg_id);
 		return false;
 	}
 
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
 	if (((pd_port->pe_data.msg_id_rx[sop_type] + 2) % PD_MSG_ID_MAX)
-						== msg_id) {
+			== msg_id) {
 		PE_INFO("Miss Msg!!!\n");
 		pd_port->miss_msg = true;
 	}
-	
-	if (pd_port->pe_pd_state == PE_SNK_SEND_SOFT_RESET && 
-						pd_port->pe_data.msg_id_rx[sop_type] == 1) {
+
+	if (pd_port->pe_pd_state == PE_SNK_SEND_SOFT_RESET &&
+			pd_port->pe_data.msg_id_rx[sop_type] == 1) {
 		PE_INFO("Miss Msg!!!\n");
 		pd_port->miss_msg = true;
 	}
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
 
 	pd_port->pe_data.msg_id_rx[sop_type] = msg_id;
 	return true;
@@ -581,9 +691,6 @@ static inline bool pe_is_valid_pd_msg_role(struct pd_port *pd_port,
 	bool ret = true;
 	uint8_t msg_pr, msg_dr;
 	struct tcpc_device __maybe_unused *tcpc = pd_port->tcpc;
-
-	if (pd_msg == NULL)	/* Good-CRC */
-		return true;
 
 	if (pd_msg->frame_type != TCPC_TX_SOP)
 		return true;
@@ -609,7 +716,7 @@ static inline bool pe_is_valid_pd_msg_role(struct pd_port *pd_port,
 	 */
 
 	if (msg_dr == pd_port->data_role) {
-#ifdef CONFIG_USB_PD_CHECK_DATA_ROLE
+#if CONFIG_USB_PD_CHECK_DATA_ROLE
 		ret = false;
 #endif
 		PE_INFO("Wrong DR:%d\n", msg_dr);
@@ -634,11 +741,12 @@ static inline void pe_translate_pd_msg_event(struct pd_port *pd_port,
 	else
 		pd_event->event_type = PD_EVT_CTRL_MSG;
 
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 	if (PD_HEADER_EXT(msg_hdr))
 		pd_event->event_type = PD_EVT_EXT_MSG;
 
-	if (pd_msg->frame_type == TCPC_TX_SOP_PRIME) {
+	if (pd_msg->frame_type == TCPC_TX_SOP_PRIME &&
+	    !pd_event_ctrl_msg_match(pd_event, PD_CTRL_GOOD_CRC)) {
 		pd_sync_sop_prime_spec_revision(
 			pd_port, PD_HEADER_REV(msg_hdr));
 	}
@@ -651,13 +759,13 @@ static inline uint8_t pe_get_startup_state(
 	bool act_as_sink = true;
 	uint8_t startup_state = 0xff;
 
-#ifdef CONFIG_USB_PD_CUSTOM_DBGACC
+#if CONFIG_USB_PD_CUSTOM_DBGACC
 	pd_port->custom_dbgacc = false;
 #endif	/* CONFIG_USB_PD_CUSTOM_DBGACC */
 
 	switch (pd_event->msg_sec) {
 	case TYPEC_ATTACHED_DBGACC_SNK:
-#ifdef CONFIG_USB_PD_CUSTOM_DBGACC
+#if CONFIG_USB_PD_CUSTOM_DBGACC
 		pd_port->custom_dbgacc = true;
 		startup_state = PE_DBG_READY;
 		break;
@@ -673,7 +781,7 @@ static inline uint8_t pe_get_startup_state(
 	}
 
 	/* At least > 4 for Ellisys VNDI PR_SWAP */
-#ifdef CONFIG_USB_PD_ERROR_RECOVERY_ONCE
+#if CONFIG_USB_PD_ERROR_RECOVERY_ONCE
 	if (pd_port->error_recovery_once > 4)
 		startup_state = PE_ERROR_RECOVERY_ONCE;
 #endif	/* CONFIG_USB_PD_ERROR_RECOVERY_ONCE */
@@ -687,11 +795,25 @@ static inline bool pe_transit_startup_state(
 {
 	uint8_t startup_state =
 		pe_get_startup_state(pd_port, pd_event);
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
+	int rv = 0;
+	uint32_t chip_pid = 0;
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
 
 	if (startup_state == 0xff)
 		return false;
 
 	pd_dpm_notify_pe_startup(pd_port);
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
+	rv = tcpci_get_chip_pid(pd_port->tcpc, &chip_pid);
+	if (!rv &&  SC660X_PID == chip_pid) {
+		pd_enable_timer(pd_port, PD_TIMER_INT_INVAILD);
+	}
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
 	PE_TRANSIT_STATE(pd_port, startup_state);
 
 	return true;
@@ -757,7 +879,7 @@ static inline void pe_init_curr_state(struct pd_port *pd_port)
 
 	pd_port->curr_unsupported_msg = false;
 
-#ifdef CONFIG_USB_PD_CUSTOM_DBGACC
+#if CONFIG_USB_PD_CUSTOM_DBGACC
 	if (pd_port->custom_dbgacc)
 		pd_port->curr_ready_state = PE_DBG_READY;
 #endif	/* CONFIG_USB_PD_CUSTOM_DBGACC */
@@ -769,8 +891,13 @@ bool pd_process_event(
 	bool ret = false;
 	struct pd_msg *pd_msg = pd_event->pd_msg;
 	uint8_t tii = pe_check_trap_in_idle_state(pd_port, pd_event);
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
 	int rv = 0;
 	uint32_t chip_id = 0;
+	uint32_t chip_pid = 0;
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
 
 	if (tii < TII_PE_RUNNING)
 		return tii;
@@ -785,6 +912,8 @@ bool pd_process_event(
 #endif
 		print_event(pd_port, pd_event);
 
+	pd_copy_msg_data_from_evt(pd_port, pd_event);
+
 	if ((pd_event->event_type < PD_EVT_PD_MSG_END) && (pd_msg != NULL)) {
 
 		if (!pe_is_valid_pd_msg_id(pd_port, pd_event, pd_msg))
@@ -794,13 +923,16 @@ bool pd_process_event(
 			PE_TRANSIT_STATE(pd_port, PE_ERROR_RECOVERY);
 			return true;
 		}
-
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
 		rv = tcpci_get_chip_id(pd_port->tcpc, &chip_id);
-		if (!rv && (SC2150A_DID == chip_id) &&pd_port->miss_msg) {
+		rv |= tcpci_get_chip_pid(pd_port->tcpc, &chip_pid);
+		if (!rv && SC2150A_DID == chip_id &&
+			SC2150_PID == chip_pid && pd_port->miss_msg) {
 			pd_port->miss_msg = false;
 			if (pd_port->pe_pd_state == PE_SNK_TRANSITION_SINK) {
-				if (!(pd_event->msg == PD_CTRL_PS_RDY && 
-							pd_event->event_type == PD_EVT_CTRL_MSG)) {
+				if (!(pd_event->msg == PD_CTRL_PS_RDY &&
+						pd_event->event_type == PD_EVT_CTRL_MSG)) {
 					pd_add_miss_msg(pd_port,pd_event,PD_CTRL_PS_RDY);
 					return false;
 				}
@@ -808,11 +940,11 @@ bool pd_process_event(
 				if (pd_event->msg == PD_CTRL_PS_RDY &&
 						pd_event->event_type == PD_EVT_CTRL_MSG) {
 					pd_add_miss_msg(pd_port,pd_event,PD_CTRL_ACCEPT);
-					return false;		
+					return false;
 				} else if (pd_event->msg == PD_DATA_SOURCE_CAP &&
 						pd_event->event_type == PD_EVT_DATA_MSG) {
 					pd_add_miss_msg(pd_port,pd_event,PD_CTRL_REJECT);
-					return false;		
+					return false;
 				}
 			} else if (pd_port->pe_pd_state == PE_SNK_SEND_SOFT_RESET) {
 				if (pd_event->msg == PD_DATA_SOURCE_CAP &&
@@ -822,9 +954,9 @@ bool pd_process_event(
 				}
 			}
 		}
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
 	}
-
-	pd_copy_msg_data_from_evt(pd_port, pd_event);
 
 	if (pd_curr_is_vdm_evt(pd_port))
 		return pd_process_event_vdm(pd_port, pd_event);
@@ -832,7 +964,7 @@ bool pd_process_event(
 	if (pd_event->event_type == PD_EVT_TCP_MSG)
 		return pd_process_event_tcp(pd_port, pd_event);
 
-#ifdef CONFIG_USB_PD_CUSTOM_DBGACC
+#if CONFIG_USB_PD_CUSTOM_DBGACC
 	if (pd_port->custom_dbgacc)
 		return pd_process_event_dbg(pd_port, pd_event);
 #endif	/* CONFIG_USB_PD_CUSTOM_DBGACC */
@@ -846,19 +978,19 @@ bool pd_process_event(
 		return true;
 
 	switch (pd_port->state_machine) {
-#ifdef CONFIG_USB_PD_DR_SWAP
+#if CONFIG_USB_PD_DR_SWAP
 	case PE_STATE_MACHINE_DR_SWAP:
 		ret = pd_process_event_drs(pd_port, pd_event);
 		break;
 #endif	/* CONFIG_USB_PD_DR_SWAP */
 
-#ifdef CONFIG_USB_PD_PR_SWAP
+#if CONFIG_USB_PD_PR_SWAP
 	case PE_STATE_MACHINE_PR_SWAP:
 		ret = pd_process_event_prs(pd_port, pd_event);
 		break;
 #endif	/* CONFIG_USB_PD_PR_SWAP */
 
-#ifdef CONFIG_USB_PD_VCONN_SWAP
+#if CONFIG_USB_PD_VCONN_SWAP
 	case PE_STATE_MACHINE_VCONN_SWAP:
 		ret = pd_process_event_vcs(pd_port, pd_event);
 		break;

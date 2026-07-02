@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2021 MediaTek Inc.
-*/
+ */
 
 #ifndef __MFD_MT6357_IRQ_H__
 #define __MFD_MT6357_IRQ_H__

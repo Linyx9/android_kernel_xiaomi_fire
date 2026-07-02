@@ -1,0 +1,22 @@
+/*
+ * this is the dtsi sample for UPM2388.
+ * update date:2024.04.15
+ */
+
+upm2388-switching@38 {
+	status = "ok";
+	compatible = "up,upm2388-switching-main";
+	reg = <0x38>;
+	limiter,en_gpio = <&pio 111 1>;
+	limiter,intr_gpio = <&pio 18 1>;
+	limiter,chg_current_limit = <6000>;
+	limiter,dischg_current_limit = <8500>;
+	limiter,recharge_volatge = <4380>;
+	limiter,float_voltage = <4480>;
+	limiter,eoc = <300>;
+	limiter,hys_vchg = <250>;
+	limiter,hys_vbat = <250>;
+	limiter,hys_ichg = <500>;
+	limiter,hys_idischg = <500>;
+	//limiter,tsd-en;
+};

@@ -46,6 +46,13 @@ struct sensor_comm_batch {
 struct sensor_comm_timesync {
 	int64_t host_timestamp;
 	int64_t host_archcounter;
+	int64_t sched_clock;
+	int32_t usecond;
+	int32_t second;
+	int32_t minute;
+	int32_t hour;
+	int32_t day;
+	int32_t month;
 } __packed __aligned(4);
 
 struct sensor_comm_share_mem {
@@ -62,7 +69,7 @@ struct sensor_comm_ctrl {
 	uint8_t command;
 	uint8_t length;
 	uint8_t crc8;
-	uint8_t data[0] __aligned(4);
+	uint8_t data[] __aligned(4);
 } __packed __aligned(4);
 
 struct sensor_comm_ack {

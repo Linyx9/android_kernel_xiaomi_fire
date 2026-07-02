@@ -7,7 +7,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <asm-generic/io.h>
+#include <linux/io.h>
 
 #include "devapc-mt6833.h"
 
@@ -56,11 +56,11 @@ static struct INFRAAXI_ID_INFO infra_mi_id_to_master[] = {
 	{"HWCCF",             { 0, 0, 1, 0,	0, 1, 0, 0,	1, 1, 2, 2,	0, 0 } },
 	{"DX_CC",             { 0, 0, 1, 0,	1, 1, 0, 2,	2, 2, 2, 0,	0, 0 } },
 	{"GCE",               { 0, 0, 1, 0,	0, 0, 1, 2,	2, 0, 0, 0,	0, 0 } },
-	{"CPUEB",             { 0, 0, 1, 0,	1, 0, 1, 2,	2, 2, 2, 2,	2, 0 } },
+	{"MCUPM",             { 0, 0, 1, 0,	1, 0, 1, 2,	2, 2, 2, 2,	2, 0 } },
 	{"DPMAIF",            { 0, 1, 1, 0,	2, 2, 2, 2,	0, 0, 0, 0,	0, 0 } },
 	{"SSPM",              { 0, 0, 0, 1,	2, 2, 0, 0,	0, 0, 0, 0,	0, 0 } },
 	{"UFS",               { 0, 1, 0, 1,	2, 2, 0, 0,	0, 0, 0, 0,	0, 0 } },
-	{"CPUEB",             { 0, 0, 1, 1,	2, 2, 2, 2,	2, 2, 0, 0,	0, 0 } },
+	{"MCUPM",             { 0, 0, 1, 1,	2, 2, 2, 2,	2, 2, 0, 0,	0, 0 } },
 	{"APMCU_Write",       { 1, 2, 2, 2,	2, 0, 0, 0,	0, 0, 0, 0,	0, 0 } },
 	{"APMCU_Write",       { 1, 2, 2, 2,	2, 0, 0, 1,	0, 0, 0, 0,	0, 0 } },
 	{"APMCU_Write",       { 1, 2, 2, 2,	2, 2, 2, 2,	2, 1, 0, 0,	0, 0 } },
@@ -159,17 +159,14 @@ static bool is_addr_in_mmsys_mali(uint32_t addr)
 }
 
 static const char *mt6833_bus_id_to_master(uint32_t bus_id, uint32_t vio_addr,
-		int slave_type, int shift_sta_bit, int domain)
+		int slave_type, int shift_sta_bit, uint32_t domain)
 {
 	const char *err_master = "UNKNOWN_MASTER";
-	uint8_t h_1byte;
 
 	pr_debug(PFX "[DEVAPC] %s:0x%x, %s:0x%x, %s:0x%x, %s:%d\n",
 		"bus_id", bus_id, "vio_addr", vio_addr,
 		"slave_type", slave_type,
 		"shift_sta_bit", shift_sta_bit);
-
-	h_1byte = (vio_addr >> 24) & 0xFF;
 
 	if ((vio_addr >= TINYSYS_START_ADDR && vio_addr <= TINYSYS_END_ADDR) ||
 	    (vio_addr >= MD_START_ADDR && vio_addr <= MD_END_ADDR)) {
@@ -289,7 +286,7 @@ static void mm2nd_vio_handler(void __iomem *infracfg,
 	int i;
 
 	if (!infracfg) {
-		pr_err(PFX "%s, param check failed, infracfg ptr is NULL\n",
+		pr_info(PFX "%s, param check failed, infracfg ptr is NULL\n",
 				__func__);
 		return;
 	}
@@ -298,16 +295,16 @@ static void mm2nd_vio_handler(void __iomem *infracfg,
 		vio_sta_num = INFRACFG_MDP_VIO_STA_NUM;
 		vio0_offset = INFRACFG_MDP_SEC_VIO0_OFFSET;
 
-		strncpy(mm_str, "INFRACFG_MDP_SEC_VIO", sizeof(mm_str));
+		strscpy(mm_str, "INFRACFG_MDP_SEC_VIO", sizeof(mm_str));
 
 	} else if (mmsys_vio) {
 		vio_sta_num = INFRACFG_MM_VIO_STA_NUM;
 		vio0_offset = INFRACFG_MM_SEC_VIO0_OFFSET;
 
-		strncpy(mm_str, "INFRACFG_MM_SEC_VIO", sizeof(mm_str));
+		strscpy(mm_str, "INFRACFG_MM_SEC_VIO", sizeof(mm_str));
 
 	} else {
-		pr_err(PFX "%s: param check failed, %s:%s, %s:%s, %s:%s\n",
+		pr_info(PFX "%s: param check failed, %s:%s, %s:%s, %s:%s\n",
 				__func__,
 				"mdp_vio", mdp_vio ? "true" : "false",
 				"disp2_vio", disp2_vio ? "true" : "false",
@@ -368,7 +365,7 @@ static uint32_t mt6833_shift_group_get(int slave_type, uint32_t vio_idx)
 		else if (vio_idx >= 71 && vio_idx <= 346)
 			return 7;
 
-		pr_err(PFX "%s:%d Wrong vio_idx:0x%x\n",
+		pr_info(PFX "%s:%d Wrong vio_idx:0x%x\n",
 				__func__, __LINE__, vio_idx);
 
 	} else if (slave_type == SLAVE_TYPE_PERI) {
@@ -405,7 +402,7 @@ static uint32_t mt6833_shift_group_get(int slave_type, uint32_t vio_idx)
 			 vio_idx == 163)
 			return 11;
 
-		pr_err(PFX "%s:%d Wrong vio_idx:0x%x\n",
+		pr_info(PFX "%s:%d Wrong vio_idx:0x%x\n",
 				__func__, __LINE__, vio_idx);
 
 	} else if (slave_type == SLAVE_TYPE_PERI2) {
@@ -446,7 +443,7 @@ static uint32_t mt6833_shift_group_get(int slave_type, uint32_t vio_idx)
 			 vio_idx == 219)
 			return 9;
 
-		pr_err(PFX "%s:%d Wrong vio_idx:0x%x\n",
+		pr_info(PFX "%s:%d Wrong vio_idx:0x%x\n",
 				__func__, __LINE__, vio_idx);
 
 	} else if (slave_type == SLAVE_TYPE_PERI_PAR) {
@@ -463,31 +460,16 @@ static uint32_t mt6833_shift_group_get(int slave_type, uint32_t vio_idx)
 			 vio_idx == 60)
 			return 2;
 
-		pr_err(PFX "%s:%d Wrong vio_idx:0x%x\n",
+		pr_info(PFX "%s:%d Wrong vio_idx:0x%x\n",
 				__func__, __LINE__, vio_idx);
 
 	}
 
-	pr_err(PFX "%s:%d Wrong slave_type:0x%x\n",
+	pr_info(PFX "%s:%d Wrong slave_type:0x%x\n",
 			__func__, __LINE__, slave_type);
 
 	return 31;
 }
-
-void devapc_catch_illegal_range(phys_addr_t phys_addr, size_t size)
-{
-	/*
-	 * Catch BROM addr mapped
-	 */
-	if (phys_addr >= 0x0 && phys_addr < SRAM_START_ADDR) {
-		pr_err(PFX "%s: %s %s:(%pa), %s:(0x%lx)\n",
-				"catch BROM address mapped!",
-				__func__, "phys_addr", &phys_addr,
-				"size", size);
-		BUG_ON(1);
-	}
-}
-EXPORT_SYMBOL(devapc_catch_illegal_range);
 
 static struct mtk_devapc_dbg_status mt6833_devapc_dbg_stat = {
 	.enable_ut = PLAT_DBG_UT_DEFAULT,
@@ -554,6 +536,7 @@ static const uint32_t mt6833_devapc_pds[] = {
 	PD_SHIFT_STA_OFFSET,
 	PD_SHIFT_SEL_OFFSET,
 	PD_SHIFT_CON_OFFSET,
+	PD_VIO_DBG3_OFFSET,
 };
 
 static struct mtk_devapc_soc mt6833_data = {

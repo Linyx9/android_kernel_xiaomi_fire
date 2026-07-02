@@ -397,7 +397,7 @@ int gz_test_chm(void *args)
 
 #if IS_ENABLED(CONFIG_MTK_PROT_MEM_SUPPORT)
 	/*simple test target: protected chmem*/
-	gz_test_chm_main(SSMR_FEAT_PROT_SHAREDMEM, MTEE_MCHUNKS_PROT);
+	gz_test_chm_main(SSMR_FEAT_PROT_REGION, MTEE_MCHUNKS_PROT);
 #else
 	KREE_INFO("[%s]CONFIG_MTK_PROT_MEM_SUPPORT disabled\n", __func__);
 	KREE_INFO("[%s]This UT is not supported.\n", __func__);

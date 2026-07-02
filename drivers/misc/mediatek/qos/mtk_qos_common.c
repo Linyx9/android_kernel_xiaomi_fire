@@ -11,50 +11,50 @@
 #include <linux/platform_device.h>
 #include <linux/of_device.h>
 #include <linux/kthread.h>
-
-#include <sspm_ipi.h>
-#include <sspm_ipi_pin.h>
+#include <linux/io.h>
 
 #include "mtk_qos_ipi.h"
 #include "mtk_qos_sram.h"
 #include "mtk_qos_bound.h"
 #include "mtk_qos_sysfs.h"
+#include "mtk_qos_share.h"
 #include "mtk_qos_common.h"
+
+#if IS_ENABLED(CONFIG_MTK_QOS_LEGACY) || IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_V2)
+//add for 32bit recovery mode
+struct tag_bootmode {
+	u32 size;
+	u32 tag;
+	u32 bootmode;
+	u32 boottype;
+};
+#endif
 
 struct mtk_qos *m_qos;
 static void __iomem *qos_sram_base;
 static unsigned int qos_sram_bound;
 
-int qos_ipi_to_sspm_command(void *buffer, int slot)
+unsigned int mtk_qos_enable = 1;
+
+unsigned int is_mtk_qos_enable(void)
 {
-#if defined(CONFIG_MTK_TINYSYS_SSPM_SUPPORT)
-	int ack_data = 0;
-	struct qos_ipi_data *qos_ipi = buffer;
+	return mtk_qos_enable;
+}
+
+int qos_get_ipi_cmd(int idx)
+{
+	int cmd;
 
 	if (!m_qos)
 		return -EACCES;
-	if (m_qos->soc->ipi_pin[qos_ipi->cmd].valid == false)
+	if (m_qos->soc->ipi_pin[idx].valid == false)
 		return -EPERM;
 
-	qos_ipi->cmd = m_qos->soc->ipi_pin[qos_ipi->cmd].id;
-	sspm_ipi_send_sync(IPI_ID_QOS, IPI_OPT_POLLING,
-			buffer, slot, &ack_data, 1);
+	cmd = m_qos->soc->ipi_pin[idx].id;
 
-	return ack_data;
-#else
-	return 0;
-#endif
+	return cmd;
 }
-
-
-void qos_ipi_init(struct mtk_qos *qos)
-{
-	if (qos->soc->qos_ipi_recv_handler)
-		kthread_run(qos->soc->qos_ipi_recv_handler,
-			qos, "qos_ipi_recv");
-}
-
-
+EXPORT_SYMBOL_GPL(qos_get_ipi_cmd);
 
 u32 qos_sram_read(u32 id)
 {
@@ -73,6 +73,7 @@ u32 qos_sram_read(u32 id)
 
 	return readl(qos_sram_base + offset);
 }
+EXPORT_SYMBOL_GPL(qos_sram_read);
 
 void qos_sram_write(u32 id, u32 val)
 {
@@ -91,6 +92,7 @@ void qos_sram_write(u32 id, u32 val)
 
 	writel(val, qos_sram_base + offset);
 }
+EXPORT_SYMBOL_GPL(qos_sram_write);
 
 void qos_sram_init(void __iomem *regs, unsigned int bound)
 {
@@ -98,19 +100,43 @@ void qos_sram_init(void __iomem *regs, unsigned int bound)
 
 	qos_sram_base = regs;
 	qos_sram_bound = bound;
-	pr_info("qos_sram addr:0x%x len:%d\n",
+	pr_info("qos_sram addr:0x%p len:%d\n",
 		qos_sram_base, qos_sram_bound);
 
 	for (i = 0; i < bound; i += 4)
 		writel(0x0, qos_sram_base+i);
 }
 
+#if IS_ENABLED(CONFIG_MTK_QOS_LEGACY) || IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_V2)
+unsigned int mtk_qos_get_boot_mode(void)
+{
+	struct device_node *qos_dev = NULL;
+	struct tag_bootmode *tag_boot = NULL;
+	unsigned int boot_mode = 0;
+
+	qos_dev = of_find_node_by_path("/chosen");
+	if (!qos_dev)
+		qos_dev = of_find_node_by_path("/chosen@0");
+	if (qos_dev) {
+		pr_info("get chosen_dev!\n");
+		tag_boot = (struct tag_bootmode *)of_get_property(qos_dev, "atag,boot", NULL);
+		if (tag_boot)
+			boot_mode = tag_boot->bootmode;
+		else
+			pr_info("qos failed to get boot mode\n");
+		}
+	pr_info("qos get boot mode = %d\n", boot_mode);
+	return boot_mode;
+}
+#endif
 
 int mtk_qos_probe(struct platform_device *pdev,
 			const struct mtk_qos_soc *soc)
 {
 	struct resource *res;
 	struct mtk_qos *qos;
+	struct device_node *node = pdev->dev.of_node;
+	int ret;
 
 	qos = devm_kzalloc(&pdev->dev, sizeof(*qos), GFP_KERNEL);
 	if (!qos)
@@ -120,6 +146,29 @@ int mtk_qos_probe(struct platform_device *pdev,
 	if (!qos->soc)
 		return -EINVAL;
 
+	ret = of_property_read_u32(node,
+			"mediatek,enable", &mtk_qos_enable);
+
+	if (!ret)
+		pr_info("mtkqos: dts enable = %d\n", mtk_qos_enable);
+	else {
+		ret = of_property_read_u32(node,
+				"mediatek,qos_enable", &mtk_qos_enable);
+		if (!ret)
+			pr_info("mtkqos: dts qos enable = %d\n", mtk_qos_enable);
+		else {
+			pr_info("mtkqos: default enable\n");
+			mtk_qos_enable = 1;
+		}
+	}
+
+#if IS_ENABLED(CONFIG_MTK_QOS_LEGACY) || IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_V2)
+		//Not enable mtk qos in recovery mode
+	if (mtk_qos_get_boot_mode() == 2) {
+		mtk_qos_enable = 0;
+		pr_info("mtkqos, recovery mode, disable qos\n");
+	}
+#endif
 
 	qos->soc = soc;
 	qos->dev = &pdev->dev;
@@ -128,18 +177,49 @@ int mtk_qos_probe(struct platform_device *pdev,
 	qos->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(qos->regs))
 		return PTR_ERR(qos->regs);
-	qos->regsize = (unsigned int) resource_size(res);
-	m_qos = qos;
-	qos_sram_init(qos->regs, qos->regsize);
 	qos_add_interface(&pdev->dev);
-	qos_ipi_init(qos);
+	qos->regsize = (unsigned int) resource_size(res);
+	qos_sram_init(qos->regs, qos->regsize);
 
-	if (qos->soc->ipi_pin[QOS_IPI_QOS_BOUND].valid == true)
-		qos_bound_init();
+#if !(IS_ENABLED(CONFIG_MTK_QOS_LEGACY) || IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_V2))
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	qos->regs = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(qos->regs))
+			return PTR_ERR(qos->regs);
+	else {
+		pr_info("mtkqos: find share sram node\n");
+		qos->regsize = (unsigned int) resource_size(res);
+		qos_share_init_sram(qos->regs, qos->regsize);
+	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+	qos->regs = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(qos->regs))
+		pr_info("mtkqos: not using ext share sram\n");
+	else {
+		pr_info("mtkqos: find share sram ext node\n");
+		qos->regsize = (unsigned int) resource_size(res);
+		qos_share_init_sram_ext(qos->regs, qos->regsize);
+	}
+#endif
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_SUPPORT)
+	if (mtk_qos_enable) {
+		m_qos = qos;
+		qos_ipi_init(qos);
+
+		if (qos->soc->ipi_pin[QOS_IPI_QOS_BOUND].valid == true)
+			qos_bound_init();
+
+		qos_ipi_recv_init(qos);
+		qos_init_rec_share();
+	} else {
+		m_qos = NULL;
+	}
+#endif
 
 	platform_set_drvdata(pdev, qos);
 
-	pr_info("mtkqos:%s done\n", __func__);
+	pr_info("mtkqos:%s done (enable=%d)\n", __func__, mtk_qos_enable);
 
 	return 0;
 }

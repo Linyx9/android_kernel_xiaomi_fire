@@ -5,11 +5,12 @@
 
 #ifndef __MTK_LP_SYSFS__
 #define __MTK_LP_SYSFS__
+#include <linux/list.h>
 
 #define MTK_LP_SYSFS_HAS_ENTRY		(1)
 
 #define MTK_LP_SYSFS_ENTRY_NAME		"mtk_lpm"
-#define MTK_LP_SYSFS_BUF_READSZ		8192
+#define MTK_LP_SYSFS_BUF_READSZ		12288
 #define MTK_LP_SYSFS_BUF_WRITESZ	512
 
 typedef ssize_t (*f_mtk_idle_sysfs_show)(char *ToUserBuf
@@ -17,14 +18,24 @@ typedef ssize_t (*f_mtk_idle_sysfs_show)(char *ToUserBuf
 typedef ssize_t (*f_mtk_idle_sysfs_write)(char *FromUserBuf
 			, size_t sz, void *priv);
 
-struct mtk_lp_sysfs_handle {
-	void *_current;
-};
+
+#define MTK_LP_SYSFS_TYPE_ENTRY		(1 << 0ul)
+#define MTK_LP_SYSFS_BUF_SZ		(1 << 1ul)
+#define MTK_LP_SYSFS_FREEZABLE		(1 << 2ul)
 
 struct mtk_lp_sysfs_op {
+	unsigned int buf_sz;
 	f_mtk_idle_sysfs_show	fs_read;
 	f_mtk_idle_sysfs_write	fs_write;
 	void *priv;
+};
+
+struct mtk_lp_sysfs_handle {
+	const char *name;
+	unsigned int flag;
+	void *_current;
+	struct list_head dr;
+	struct list_head np;
 };
 
 struct mtk_lp_sysfs_attr {
@@ -89,9 +100,9 @@ struct mtk_lp_sysfs_group {
 
 #define IS_MTK_LP_SYS_HANDLE_VALID(x)\
 	({ struct mtk_lp_sysfs_handle *Po = x;\
-	if ((Po == NULL) || (Po->_current == NULL))\
+	if ((!Po) || (!Po->_current))\
 		Po = NULL;\
-	(Po != NULL); })
+	(Po); })
 
 int mtk_lp_sysfs_entry_func_create(const char *name, int mode,
 			struct mtk_lp_sysfs_handle *parent,
@@ -109,8 +120,5 @@ int mtk_lp_sysfs_entry_func_group_create(const char *name,
 		int mode, struct mtk_lp_sysfs_group *_group,
 		struct mtk_lp_sysfs_handle *parent,
 		struct mtk_lp_sysfs_handle *handle);
-
-int mtk_lp_sysfs_get_path(struct mtk_lp_sysfs_handle *handle,
-		char *name, int namelen);
 
 #endif

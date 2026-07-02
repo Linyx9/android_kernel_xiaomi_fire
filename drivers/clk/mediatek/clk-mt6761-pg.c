@@ -61,8 +61,6 @@ while (0)
 
 #define clk_readl(addr)			__raw_readl(IOMEM(addr))
 
-void __attribute__((weak)) mtk_wcn_cmb_stub_clock_fail_dump(void) {}
-
 /*
  * MTCMOS
  */
@@ -527,7 +525,7 @@ static void ram_console_update(void)
 		/* print_log with enabled clk/mux/pll */
 		/* print_enabled_clks_once(); */
 		/* wmt callback function for their debug logs */
-		mtk_wcn_cmb_stub_clock_fail_dump();
+		//mtk_wcn_cmb_stub_clock_fail_dump();
 		/* debug callback hook searching */
 		list_for_each_entry_reverse(pgcb, &pgcb_list, list) {
 			if (pgcb->debug_dump)
@@ -595,7 +593,7 @@ static void ram_console_update(void)
 			spm_read(INFRA_MCI_SI2_STA));
 	}
 
-#ifdef CONFIG_MTK_RAM_CONSOLE
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 	for (i = 0; ARRAY_SIZE(data) < 8; i++)
 		aee_rr_rec_clk(i, data[i]);
 	/*todo: add each domain's debug register to ram console*/
@@ -2795,18 +2793,18 @@ struct mtk_power_gate {
 /* FIXME: all values needed to be verified */
 static struct mtk_power_gate scp_clks[] = {
 	PGATE(SCP_SYS_MD1, pg_md1, NULL, CLK_NONE, CLK_NONE, SYS_MD1),
-	PGATE(SCP_SYS_CONN, pg_conn, NULL, CLK_NONE, CLK_NONE, SYS_CONN),
-	PGATE(SCP_SYS_DPY, pg_dpy, NULL, CLK_NONE, CLK_NONE, SYS_DPY),
-	PGATE(SCP_SYS_DIS, pg_dis, NULL, CLK_MM, CLK_MM, SYS_DIS),
+	// PGATE(SCP_SYS_CONN, pg_conn, NULL, CLK_NONE, CLK_NONE, SYS_CONN),
+	// PGATE(SCP_SYS_DPY, pg_dpy, NULL, CLK_NONE, CLK_NONE, SYS_DPY),
+	// PGATE(SCP_SYS_DIS, pg_dis, NULL, CLK_MM, CLK_MM, SYS_DIS),
 	PGATE(SCP_SYS_MFG, pg_mfg, pg_mfg_async, CLK_NONE, CLK_NONE, SYS_MFG),
-	PGATE(SCP_SYS_IFR, pg_ifr, NULL, CLK_NONE, CLK_NONE, SYS_IFR),
+	// PGATE(SCP_SYS_IFR, pg_ifr, NULL, CLK_NONE, CLK_NONE, SYS_IFR),
 	PGATE(SCP_SYS_MFG_CORE0, pg_mfg_core0, pg_mfg,
 			CLK_NONE, CLK_NONE, SYS_MFG_CORE0),
 	PGATE(SCP_SYS_MFG_ASYNC, pg_mfg_async, NULL, CLK_MFG, CLK_NONE,
 			SYS_MFG_ASYNC),
-	PGATE(SCP_SYS_CAM, pg_cam, pg_dis, CLK_NONE, CLK_CAMSYS, SYS_CAM),
-	PGATE(SCP_SYS_VCODEC, pg_vcodec, pg_dis, CLK_NONE, CLK_NONE,
-			SYS_VCODEC),
+	// PGATE(SCP_SYS_CAM, pg_cam, pg_dis, CLK_NONE, CLK_CAMSYS, SYS_CAM),
+	// PGATE(SCP_SYS_VCODEC, pg_vcodec, pg_dis, CLK_NONE, CLK_NONE,
+			// SYS_VCODEC),
 };
 
 static struct clk *mt_clk_register_power_gate(const char *name,
@@ -2908,7 +2906,7 @@ static int init_clks(struct platform_device *pdev, struct clk **clk)
 
 		tmp = devm_clk_get(&pdev->dev, clk_names[i]);
 		if (IS_ERR(tmp)) {
-			pr_err("fail to get scpsys %s clk = (%d)\n",
+			pr_err("fail to get scpsys %s clk = (%ld)\n",
 				clk_names[i], PTR_ERR(tmp));
 
 			continue;
@@ -3021,7 +3019,7 @@ static int clk_mt6761_scpsys_probe(struct platform_device *pdev)
 	struct clk_onecell_data *clk_data;
 	int ret = 0;
 
-	pr_notice("%s: start\n", __func__);
+	pr_notice("clk mt6761 scpsys probe start\n");
 
 	infracfg_base = get_reg(node, 0);
 	spm_base = get_reg(node, 1);
@@ -3090,7 +3088,7 @@ static int clk_mt6761_scpsys_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id of_match_clk_mt6761_scpsys[] = {
-	{ .compatible = "mediatek,mt6761-scpsys", },
+	{ .compatible = "mediatek,mt6761-scpsys-clk", },
 	{}
 };
 

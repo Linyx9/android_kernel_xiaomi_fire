@@ -1,0 +1,38 @@
+/*[TN.NJDC] audio overlay file.start*/
+/* fs1816 audiopa_fsm */
+&i2c7 {
+	status = "ok";
+
+	fs18xx@34 {
+		status = "ok";
+		compatible = "foursemi,fs1815";
+		reg = <0x34>;
+	};
+	fs18xx@35 {
+		status = "ok";
+		compatible = "foursemi,fs1815";
+		reg = <0x35>;
+	};
+};
+&mt6660 {
+	status = "disabled";
+};
+/* aw87xxx audiopa_aw */
+&i2c7 {
+	aw87xxx_pa@58 {
+		compatible = "awinic,aw87xxx_pa";
+		reg = <0x58>;
+		reset-gpio = <&pio 169 0>;
+		dev_index = < 0 >;
+		status = "okay";
+	};
+
+	aw87xxx_pa@5B {
+		compatible = "awinic,aw87xxx_pa";
+		reg = <0x5B>;
+		reset-gpio = <&pio 107 0>;
+		dev_index = < 1 >;
+		status = "okay";
+	};
+};
+/*[TN.NJDC] audio overlay file.end*/

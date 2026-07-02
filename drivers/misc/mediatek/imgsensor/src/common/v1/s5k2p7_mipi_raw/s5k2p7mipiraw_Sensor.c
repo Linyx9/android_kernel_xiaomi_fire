@@ -342,12 +342,17 @@ static void set_dummy(void)
 
 static kal_uint16 table_write_cmos_sensor(kal_uint16 *para, kal_uint32 len)
 {
-	char puSendCmd[I2C_BUFFER_LEN];
+	char *puSendCmd = NULL;
 	kal_uint32 tosend, IDX;
 	kal_uint16 addr = 0, addr_last = 0, data;
 
 	tosend = 0;
 	IDX = 0;
+	puSendCmd = kmalloc(I2C_BUFFER_LEN, GFP_KERNEL);
+	if (puSendCmd == NULL) {
+		pr_info("Error! allocate table failed\n");
+		return 0;
+	}
 
 	while (len > IDX) {
 		addr = para[IDX];
@@ -378,6 +383,7 @@ static kal_uint16 table_write_cmos_sensor(kal_uint16 *para, kal_uint32 len)
 
 #endif
 	}
+	kfree(puSendCmd);
 	return 0;
 }
 
@@ -678,14 +684,6 @@ static void set_mirror_flip(kal_uint8 image_mirror)
  * GLOBALS AFFECTED
  *
  *************************************************************************/
-#if 0
-static void night_mode(kal_bool enable)
-{
-/*No Need to implement this function*/
-}	/*	night_mode	*/
-#endif
-
-
 #define USE_TNP_BURST	1
 #if USE_TNP_BURST
 const u16 uTnpArrayA[] = {
@@ -2393,17 +2391,17 @@ static kal_uint32 set_test_pattern_mode(kal_uint32 modes,
 			Color_Gr = (pdata->COLOR_Gr >> 22) & 0x3FF;
 			Color_B = (pdata->COLOR_B >> 22) & 0x3FF;
 			Color_Gb = (pdata->COLOR_Gb >> 22) & 0x3FF;
-			write_cmos_sensor(0x0602, (Color_R >> 8) & 0x3);
-			write_cmos_sensor(0x0603, Color_R & 0xFF);
-			write_cmos_sensor(0x0604, (Color_Gr >> 8) & 0x3);
-			write_cmos_sensor(0x0605, Color_Gr & 0xFF);
-			write_cmos_sensor(0x0606, (Color_B >> 8) & 0x3);
-			write_cmos_sensor(0x0607, Color_B & 0xFF);
-			write_cmos_sensor(0x0608, (Color_Gb >> 8) & 0x3);
-			write_cmos_sensor(0x0609, Color_Gb & 0xFF);
+			write_cmos_sensor_8(0x0602, (Color_R >> 8) & 0x3);
+			write_cmos_sensor_8(0x0603, Color_R & 0xFF);
+			write_cmos_sensor_8(0x0604, (Color_Gr >> 8) & 0x3);
+			write_cmos_sensor_8(0x0605, Color_Gr & 0xFF);
+			write_cmos_sensor_8(0x0606, (Color_B >> 8) & 0x3);
+			write_cmos_sensor_8(0x0607, Color_B & 0xFF);
+			write_cmos_sensor_8(0x0608, (Color_Gb >> 8) & 0x3);
+			write_cmos_sensor_8(0x0609, Color_Gb & 0xFF);
 		}
 	} else
-		write_cmos_sensor(0x0600, 0x00); /*No pattern*/
+		write_cmos_sensor_8(0x0600, 0x00); /*No pattern*/
 	spin_lock(&imgsensor_drv_lock);
 	imgsensor.test_pattern = modes;
 	spin_unlock(&imgsensor_drv_lock);

@@ -1,0 +1,39 @@
+sgm41600@6e {
+	status = "okay";
+	compatible = "sgm,sgm41600-master";
+	reg = <0x6e>;
+	//sgm41600,intr_gpio = <&gpio2 9 IRQ_TYPE_EDGE_FALLING>;
+	sgm41600,intr_gpio = <&gpio1 RK_PD1 IRQ_TYPE_EDGE_FALLING>;    /*GPIO1_D1*/
+	charger_name = "primary_dvchg";
+	charger_name_v4_19 = "primary_divider_chg";
+
+	sgm,sgm41600,vbat-ovp-dis = <0>;
+	sgm,sgm41600,vbat-ovp = <15>;	//4V + BAT_OVP[5:0] × 25mV
+	sgm,sgm41600,ibat-ocp-dis = <0>;
+	sgm,sgm41600,ibat-ocp  = <28>; //3A + IBAT_OCP[5:0] × 100mA
+	sgm,sgm41600,vac-ovp-dis = <0>;
+	sgm,sgm41600,vac-ovp = <9>;//4V + AC_OVP[3:0] × 1V
+	sgm,sgm41600,vbus-ovp-dis = <0>;
+	sgm,sgm41600,vbus-ovp = <46>; //4V + BUS_OVP[6:0] × 100mV
+	sgm,sgm41600,ibus-ocp-dis = <0>;
+	sgm,sgm41600,ibus-ocp  = <14>; // 1.5A + IBUS_OCP[4:0] × 100mA; bypass mode:2.5A + IBUS_OCP[4:0] × 100mA
+	sgm,sgm41600,vout-ovp-dis = <0>;
+	sgm,sgm41600,vout-ovp = <1>;	//4.6V + VOUT_OVP[1:0] × 200mV
+	sgm,sgm41600,ibus-ucp-fall-dis = <0>;
+	sgm,sgm41600,ibus-ucp-fall  = <2>; /*0:10us 1:8ms 2:64ms 3:256ms*/
+
+	sgm,sgm41600,ibat-reg = <0>;/*0:200mA 1:300mA 2:400mA 3:500mA*/
+	sgm,sgm41600,vbat-reg = <0>;/*0:50mV 1:100mV 2:150mV 3:200mV*/
+	sgm,sgm41600,vbus-low-en = <1>;
+	sgm,sgm41600,vbus-low = <3>;/*0:1.01 1:1.02 2:1.03 3:1.04*/
+	sgm,sgm41600,vbus-high-en = <1>;
+	sgm,sgm41600,vbus-high = <0>;/*0:1.10 1:1.15 2:1.20 3:1.25*/
+	sgm,sgm41600,vdrop-ovp-en = <1>;
+	sgm,sgm41600,vdrop-ovp-deg = <0>;/*0:10us 1:5ms*/
+	sgm,sgm41600,vdrop-ovp = <5>;/*Range: 50mV (000) - 400mV (111)*/
+	sgm,sgm41600,fsw-set = <2>;/*0:300kHz 1:375 2:500 3:600 4:750 5:833 6:1000 7:1250*/
+	sgm,sgm41600,wdt-dis = <1>;
+	sgm,sgm41600,wd-timeout = <3>; /*0:0.5s 1:1s 2:2s 3:5s 4:10s 5:20s 6:40s 7:80s*/
+	sgm,sgm41600,ibat-sns-r = <0>; /*0:2mho 1:5mho*/
+	sgm,sgm41600,mode = <0>; /*0:off 1:bypass 2: Forward Charge-pump mode */
+};

@@ -5,7 +5,9 @@
 
 #include "imgsensor_common.h"
 #include "imgsensor_i2c.h"
+#include "kd_imgsensor_api.h"
 #include <linux/ratelimit.h>
+#include <linux/thermal.h>
 
 struct IMGSENSOR_I2C gi2c;
 #ifdef SENSOR_PARALLEISM
@@ -87,75 +89,107 @@ static const struct of_device_id gof_device_id_7[] = {
 
 #endif
 
-static int imgsensor_i2c_probe_0(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int imgsensor_get_temp(struct thermal_zone_device *tz, int *temperature)
+{
+	u32 ret;
+	u8 valid;
+	s32 temp;
+
+	ret = Get_Camera_Temperature(
+		(enum CAMERA_DUAL_CAMERA_SENSOR_ENUM)tz->devdata,
+		&valid, &temp);
+
+	if (ret != IMGSENSOR_RETURN_SUCCESS ||
+		!(valid & SENSOR_TEMPERATURE_VALID)) {
+		*temperature = THERMAL_TEMP_INVALID;
+		return 0;
+	}
+
+	*temperature = temp * 1000;
+
+	return 0;
+}
+
+static const struct thermal_zone_device_ops imgsensor_tz_ops = {
+	.get_temp = imgsensor_get_temp,
+};
+
+static int imgsensor_i2c_probe_0(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_0].pi2c_client = client;
+	devm_thermal_of_zone_register(&client->dev, 0,
+		(void *)DUAL_CAMERA_MAIN_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 
-static int imgsensor_i2c_probe_1(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int imgsensor_i2c_probe_1(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_1].pi2c_client = client;
+	devm_thermal_of_zone_register(&client->dev, 0,
+		(void *)DUAL_CAMERA_SUB_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 
-static int imgsensor_i2c_probe_2(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int imgsensor_i2c_probe_2(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_2].pi2c_client = client;
+	devm_thermal_of_zone_register(&client->dev, 0,
+		(void *)DUAL_CAMERA_MAIN_2_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 
 #ifdef IMGSENSOR_I2C_DRV_NAME_3
-static int imgsensor_i2c_probe_3(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int imgsensor_i2c_probe_3(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_3].pi2c_client = client;
+	devm_thermal_of_zone_register(&client->dev, 0,
+		(void *)DUAL_CAMERA_SUB_2_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 #endif
 
 #ifdef IMGSENSOR_I2C_DRV_NAME_4
-static int imgsensor_i2c_probe_4(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int imgsensor_i2c_probe_4(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_4].pi2c_client = client;
+	devm_thermal_of_zone_register(&client->dev, 0,
+		(void *)DUAL_CAMERA_MAIN_3_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 #endif
 
 #ifdef IMGSENSOR_I2C_DRV_NAME_5
-static int imgsensor_i2c_probe_5(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int imgsensor_i2c_probe_5(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_5].pi2c_client = client;
+	devm_thermal_of_zone_register(&client->dev, 0,
+		(void *)DUAL_CAMERA_SUB_3_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 #endif
 
 #ifdef IMGSENSOR_I2C_DRV_NAME_6
-static int imgsensor_i2c_probe_6(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int imgsensor_i2c_probe_6(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_6].pi2c_client = client;
+	devm_thermal_of_zone_register(&client->dev, 0,
+		(void *)DUAL_CAMERA_MAIN_4_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 #endif
 
 #ifdef IMGSENSOR_I2C_DRV_NAME_7
-static int imgsensor_i2c_probe_7(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int imgsensor_i2c_probe_7(struct i2c_client *client)
 {
 	gi2c.inst[IMGSENSOR_I2C_DEV_7].pi2c_client = client;
+	devm_thermal_of_zone_register(&client->dev, 0,
+		(void *)DUAL_CAMERA_SUB_4_SENSOR, &imgsensor_tz_ops);
 	return 0;
 }
 #endif
 
-static int imgsensor_i2c_remove(struct i2c_client *client)
+static void imgsensor_i2c_remove(struct i2c_client *client)
 {
-	return 0;
 }
 
 static struct i2c_driver gi2c_driver[IMGSENSOR_I2C_DEV_MAX_NUM] = {
@@ -348,7 +382,7 @@ enum IMGSENSOR_RETURN imgsensor_i2c_read(
 	int i2c_ret = 0;
 
 	if (pinst->pi2c_client == NULL) {
-		PK_PR_ERR("pi2c_client is NULL!\n");
+		pr_info("NOTICE: pi2c_client is NULL!\n");
 		return IMGSENSOR_RETURN_ERROR;
 	}
 
@@ -376,7 +410,7 @@ enum IMGSENSOR_RETURN imgsensor_i2c_read(
 		static DEFINE_RATELIMIT_STATE(ratelimit, 1 * HZ, 30);
 
 		if (__ratelimit(&ratelimit))
-			pr_info("I2C read failed (%d)! speed(0=%d) (0x%x)\n",
+			pr_info("NOTICE: I2C read failed (%d)! speed(0=%d) (0x%x)\n",
 				i2c_ret, speed, *pwrite_data);
 		ret = IMGSENSOR_RETURN_ERROR;
 	}
@@ -403,7 +437,7 @@ enum IMGSENSOR_RETURN imgsensor_i2c_write(
 	int i2c_ret = 0;
 
 	if (pinst->pi2c_client == NULL) {
-		PK_PR_ERR("pi2c_client is NULL!\n");
+		pr_info("NOTICE: slave_id %d pi2c_client is NULL!\n", id);
 		return IMGSENSOR_RETURN_ERROR;
 	}
 
@@ -453,11 +487,15 @@ void imgsensor_i2c_filter_msg(struct IMGSENSOR_I2C_CFG *pi2c_cfg, bool en)
 #include <linux/syscalls.h>
 
 
+
 struct IMGSENSOR_I2C_CFG *pgi2c_cfg_legacy[IMGSENSOR_SENSOR_IDX_MAX_NUM];
 pid_t tid_mapping[IMGSENSOR_SENSOR_IDX_MAX_NUM];
 #else
 struct IMGSENSOR_I2C_CFG *pgi2c_cfg_legacy;
+
 #endif
+
+
 
 void imgsensor_i2c_set_device(struct IMGSENSOR_I2C_CFG *pi2c_cfg)
 {
@@ -487,9 +525,10 @@ void imgsensor_i2c_set_device(struct IMGSENSOR_I2C_CFG *pi2c_cfg)
 	/* PK_DBG("set tid = %d i = %d pi2c_cfg %p\n", _tid, i, pi2c_cfg); */
 #else
 	pgi2c_cfg_legacy = pi2c_cfg;
-#endif
-}
 
+#endif
+
+}
 struct IMGSENSOR_I2C_CFG *imgsensor_i2c_get_device(void)
 {
 #ifdef SENSOR_PARALLEISM

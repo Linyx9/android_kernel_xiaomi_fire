@@ -60,6 +60,8 @@
 #include "mtk_pe2.h"
 #include "mtk_charger_algorithm_class.h"
 
+static bool algo_waiver_test;
+module_param(algo_waiver_test, bool, 0644);
 
 static int pe2_dbg_level = PE2_DEBUG_LEVEL;
 
@@ -91,7 +93,6 @@ static int pe2_plugout_reset(struct chg_alg_device *alg)
 		mutex_lock(&pe2->cable_out_lock);
 		pe2->is_cable_out_occur = true;
 		mutex_unlock(&pe2->cable_out_lock);
-
 		while (mutex_trylock(&pe2->access_lock) == 0) {
 			pe2_err("%s:pe2 is running state:%d cnt:%d\n",
 				__func__, pe2->state,
@@ -106,6 +107,10 @@ static int pe2_plugout_reset(struct chg_alg_device *alg)
 
 		pe2->idx = -1;
 		pe2->vbus = 5000000; /* mV */
+
+		pe2_hal_vbat_mon_en(alg, CHG1, false);
+		pe2->old_cv = 0;
+		pe2->stop_6pin_re_en = 0;
 
 		/* Enable OVP */
 		ret = pe2_hal_enable_vbus_ovp(alg, true);
@@ -183,6 +188,10 @@ int pe2_reset_ta_vchr(struct chg_alg_device *alg)
 		retry_cnt++;
 	} while (retry_cnt < 3);
 
+	pe2_hal_vbat_mon_en(alg, CHG1, false);
+	pe2->old_cv = 0;
+	pe2->stop_6pin_re_en = 0;
+
 	if (ret_value != 0) {
 		pe2_err("%s: failed, ret = %d\n", __func__, ret);
 		ret = pe2_hal_set_mivr(alg, CHG1, pe2->vbus - 500000);
@@ -201,12 +210,13 @@ int pe2_reset_ta_vchr(struct chg_alg_device *alg)
 static void pe2_check_cable_impedance(struct chg_alg_device *alg)
 {
 	int ret = 0;
-	int vchr1, vchr2, cable_imp;
-	unsigned int aicr_value;
+	int vchr1 = 0, vchr2 = 0, cable_imp = 0;
+	unsigned int aicr_value = 0;
 	bool mivr_state = false;
-	struct timespec ptime[2], diff;
+	ktime_t ptime[2], ktime_diff;
+	struct timespec64 diff;
 	struct mtk_pe20 *pe2;
-	int input_current;
+	int input_current = 0;
 
 
 	pe2_dbg("%s: starts type:%d\n", __func__,
@@ -231,15 +241,16 @@ static void pe2_check_cable_impedance(struct chg_alg_device *alg)
 	/* Disable cable drop compensation */
 	pe2_hal_enable_cable_drop_comp(alg, false);
 
-	get_monotonic_boottime(&ptime[0]);
+	ptime[0] = ktime_get_boottime();
 
 	/* Set ichg = 2500mA, set MIVR */
 	pe2_hal_set_charging_current(alg, CHG1, 2500000);
 	mdelay(240);
 	pe2_hal_set_mivr(alg, CHG1, pe2->min_charger_voltage);
 
-	get_monotonic_boottime(&ptime[1]);
-	diff = timespec_sub(ptime[1], ptime[0]);
+	ptime[1] = ktime_get_boottime();
+	ktime_diff = ktime_sub(ptime[1], ptime[0]);
+	diff = ktime_to_timespec64(ktime_diff);
 
 	aicr_value = 800000;
 	pe2_hal_set_input_current(alg, CHG1, aicr_value);
@@ -248,7 +259,7 @@ static void pe2_check_cable_impedance(struct chg_alg_device *alg)
 	msleep(150);
 
 	ret = pe2_hal_get_mivr_state(alg, CHG1, &mivr_state);
-	if (ret != -ENOTSUPP && mivr_state) {
+	if (ret != -EOPNOTSUPP && mivr_state) {
 		pe2->aicr_cable_imp = 1000000;
 		goto end;
 	}
@@ -301,8 +312,8 @@ static int _pe20_set_ta_vchr(struct chg_alg_device *alg, u32 chr_volt)
 {
 	int ret = 0, ret_value = 0;
 	struct mtk_pe20 *pe2;
-	int chg_cnt, i;
-	bool is_chip_enabled;
+	int chg_cnt = 0, i = 0;
+	bool is_chip_enabled = false;
 
 	pe2_dbg("%s: starts\n", __func__);
 	pe2 = dev_get_drvdata(&alg->dev);
@@ -339,7 +350,7 @@ static int _pe20_set_ta_vchr(struct chg_alg_device *alg, u32 chr_volt)
 static int pe20_set_ta_vchr(struct chg_alg_device *alg, u32 chr_volt)
 {
 	int ret = 0, ret_value = 0;
-	int vchr_before, vchr_after, vchr_delta;
+	int vchr_before = 0, vchr_after = 0, vchr_delta = 0;
 	const u32 sw_retry_cnt_max = 3;
 	const u32 retry_cnt_max = 5;
 	u32 sw_retry_cnt = 0, retry_cnt = 0;
@@ -438,7 +449,7 @@ static int __pe2_check_charger(struct chg_alg_device *alg)
 {
 	int ret = 0, ret_value = 0;
 	struct mtk_pe20 *pe2;
-	int uisoc;
+	int uisoc = 0;
 
 	pe2 = dev_get_drvdata(&alg->dev);
 	uisoc = pe2_hal_get_uisoc(alg);
@@ -458,7 +469,8 @@ static int __pe2_check_charger(struct chg_alg_device *alg)
 	if (pe2->is_cable_out_occur)
 		goto out;
 
-	if (uisoc < pe2->ta_start_battery_soc ||
+	if ((uisoc < pe2->ta_start_battery_soc &&
+	    pe2->ref_vbat > pe2->vbat_threshold) ||
 		uisoc >= pe2->ta_stop_battery_soc) {
 		ret_value = ALG_TA_CHECKING;
 		goto out;
@@ -488,7 +500,7 @@ out:
 
 	if (ret_value == 0)
 		ret_value = ALG_TA_NOT_SUPPORT;
-	pe2_dbg("%s:SOC:(%d,%d,%d),state:%d,chr_type:%d,ret:%d,plugout:%d\n",
+	pe2_dbg("%s:SOC:(%d,%d,%d),state:%d,chr_type:%d,ret:%d,plugout:%d ref_vbat:%d\n",
 		__func__,
 		pe2_hal_get_uisoc(alg),
 		pe2->ta_start_battery_soc,
@@ -496,7 +508,8 @@ out:
 		pe2->state,
 		pe2_hal_get_charger_type(alg),
 		ret,
-		pe2->is_cable_out_occur);
+		pe2->is_cable_out_occur,
+		pe2->ref_vbat);
 	return ret_value;
 }
 
@@ -533,7 +546,7 @@ static int pe2_leave(struct chg_alg_device *alg)
 static int _pe2_init_algo(struct chg_alg_device *alg)
 {
 	struct mtk_pe20 *pe2;
-	int ret, cnt;
+	int ret = 0, cnt = 0, log_level = 0;
 
 	pe2 = dev_get_drvdata(&alg->dev);
 	mutex_lock(&pe2->access_lock);
@@ -542,6 +555,11 @@ static int _pe2_init_algo(struct chg_alg_device *alg)
 		pe2_err("%s:init hw fail\n", __func__);
 	} else
 		pe2->state = PE2_HW_READY;
+
+	pe2_hal_vbat_mon_en(alg, CHG1, false);
+	pe2->old_cv = 0;
+	pe2->stop_6pin_re_en = 0;
+
 	ret = pe2_hal_set_efficiency_table(pe2->alg);
 	if (ret != 0)
 		pe2_err("%s: use default table, %d\n", __func__, ret);
@@ -558,6 +576,12 @@ static int _pe2_init_algo(struct chg_alg_device *alg)
 			alg->config = SINGLE_CHARGER;
 	} else
 		alg->config = SINGLE_CHARGER;
+
+	log_level = pe2_hal_get_log_level(alg);
+	pr_notice("%s: log_level=%d", __func__, log_level);
+	if (log_level > 0)
+		pe2_dbg_level = log_level;
+
 	mutex_unlock(&pe2->access_lock);
 	pe2_dbg("%s config:%d\n", __func__, alg->config);
 	return 0;
@@ -591,12 +615,17 @@ static char *pe2_state_to_str(int state)
 static int _pe2_is_algo_ready(struct chg_alg_device *alg)
 {
 	struct mtk_pe20 *pe2;
-	int ret_value, uisoc;
+	int ret_value = 0, uisoc = 0;
 
 	pe2 = dev_get_drvdata(&alg->dev);
 
 	mutex_lock(&pe2->access_lock);
 	__pm_stay_awake(pe2->suspend_lock);
+
+	if (algo_waiver_test) {
+		ret_value = ALG_WAIVER;
+		goto skip;
+	}
 	pe2_dbg("%s state:%s\n", __func__,
 		pe2_state_to_str(pe2->state));
 
@@ -610,11 +639,13 @@ static int _pe2_is_algo_ready(struct chg_alg_device *alg)
 		if (pe2_hal_get_charger_type(alg) !=
 			POWER_SUPPLY_TYPE_USB_DCP) {
 			ret_value = ALG_TA_NOT_SUPPORT;
-		} else if (uisoc < pe2->ta_start_battery_soc ||
-			uisoc >= pe2->ta_stop_battery_soc ||
-			pe2->charging_current_limit1 != -1 ||
+		} else if (pe2->charging_current_limit1 != -1 ||
 			pe2->charging_current_limit2 != -1) {
 			ret_value = ALG_NOT_READY;
+		} else if ((uisoc < pe2->ta_start_battery_soc &&
+			pe2->ref_vbat > pe2->vbat_threshold) ||
+			uisoc >= pe2->ta_stop_battery_soc) {
+			ret_value = ALG_WAIVER;
 		} else {
 			ret_value = ALG_READY;
 		}
@@ -631,6 +662,7 @@ static int _pe2_is_algo_ready(struct chg_alg_device *alg)
 		ret_value = ALG_INIT_FAIL;
 		break;
 	}
+skip:
 	__pm_relax(pe2->suspend_lock);
 	mutex_unlock(&pe2->access_lock);
 
@@ -641,7 +673,7 @@ static int pe2_sc_set_charger(struct chg_alg_device *alg)
 {
 	struct mtk_pe20 *pe2;
 	int ichg1_min = -1, aicr1_min = -1;
-	int ret;
+	int ret = 0;
 
 	pe2 = dev_get_drvdata(&alg->dev);
 
@@ -659,7 +691,7 @@ static int pe2_sc_set_charger(struct chg_alg_device *alg)
 			pe2->charging_current1 =
 				pe2->charging_current_limit1;
 		ret = pe2_hal_get_min_charging_current(alg, CHG1, &ichg1_min);
-		if (ret != -ENOTSUPP &&
+		if (ret != -EOPNOTSUPP &&
 			pe2->charging_current_limit1 < ichg1_min)
 			pe2->charging_current1 = 0;
 	} else
@@ -670,7 +702,7 @@ static int pe2_sc_set_charger(struct chg_alg_device *alg)
 		pe2->sc_input_current) {
 		pe2->input_current1 = pe2->input_current_limit1;
 		ret = pe2_hal_get_min_input_current(alg, CHG1, &aicr1_min);
-		if (ret != -ENOTSUPP &&
+		if (ret != -EOPNOTSUPP &&
 			pe2->input_current_limit1 < aicr1_min)
 			pe2->input_current1 = 0;
 	} else
@@ -690,17 +722,34 @@ static int pe2_sc_set_charger(struct chg_alg_device *alg)
 		CHG1, pe2->charging_current1);
 	pe2_hal_set_input_current(alg,
 		CHG1, pe2->input_current1);
-	pe2_hal_set_cv(alg,
-		CHG1, pe2->cv);
 
-	pe2_dbg("%s m:%d s:%d cv:%d chg1:%d,%d min:%d:%d\n", __func__,
+	if (pe2->old_cv == 0 || (pe2->old_cv != pe2->cv) || pe2->pe2_6pin_en == 0) {
+		pe2_hal_vbat_mon_en(alg, CHG1, false);
+		pe2_hal_set_cv(alg, CHG1, pe2->cv);
+		if (pe2->pe2_6pin_en && pe2->stop_6pin_re_en != 1)
+			pe2_hal_vbat_mon_en(alg, CHG1, true);
+
+		pe2_dbg("%s old_cv=%d, new_cv=%d, pe2_6pin_en=%d\n", __func__,
+			pe2->old_cv, pe2->cv, pe2->pe2_6pin_en);
+
+		pe2->old_cv = pe2->cv;
+	} else {
+		if (pe2->pe2_6pin_en && pe2->stop_6pin_re_en != 1) {
+			pe2->stop_6pin_re_en = 1;
+			pe2_hal_vbat_mon_en(alg, CHG1, true);
+		}
+	}
+
+	pe2_dbg("%s m:%d s:%d cv:%d chg1:%d,%d min:%d:%d, 6pin_en:%d, 6pin_re_en=%d\n", __func__,
 		alg->config,
 		pe2->state,
 		pe2->cv,
 		pe2->input_current1,
 		pe2->charging_current1,
 		ichg1_min,
-		aicr1_min);
+		aicr1_min,
+		pe2->pe2_6pin_en,
+		pe2->stop_6pin_re_en);
 
 	return 0;
 }
@@ -711,7 +760,7 @@ static int pe2_dcs_set_charger(struct chg_alg_device *alg)
 	//bool chg1_enable = true;
 	bool chg2_enable = true;
 	bool chg2_chip_enabled = false;
-	int ret;
+	int ret = 0;
 	int ichg1_min = -1, ichg2_min = -1;
 	int aicr1_min = -1;
 
@@ -730,7 +779,7 @@ static int pe2_dcs_set_charger(struct chg_alg_device *alg)
 		pe2->dcs_input_current) {
 		pe2->input_current1 = pe2->input_current_limit1;
 		ret = pe2_hal_get_min_input_current(alg, CHG1, &aicr1_min);
-		if (ret != -ENOTSUPP &&
+		if (ret != -EOPNOTSUPP &&
 			pe2->input_current_limit1 < aicr1_min)
 			pe2->input_current1 = 0;
 	} else
@@ -741,7 +790,7 @@ static int pe2_dcs_set_charger(struct chg_alg_device *alg)
 		pe2->dcs_chg1_charger_current) {
 		pe2->charging_current1 = pe2->charging_current_limit1;
 		ret = pe2_hal_get_min_charging_current(alg, CHG1, &ichg1_min);
-		if (ret != -ENOTSUPP &&
+		if (ret != -EOPNOTSUPP &&
 			pe2->charging_current_limit1 < ichg1_min)
 			pe2->charging_current1 = 0;
 	} else
@@ -755,7 +804,7 @@ static int pe2_dcs_set_charger(struct chg_alg_device *alg)
 		pe2->charging_current2) {
 		pe2->charging_current2 = pe2->charging_current_limit2;
 		ret = pe2_hal_get_min_charging_current(alg, CHG2, &ichg1_min);
-		if (ret != -ENOTSUPP &&
+		if (ret != -EOPNOTSUPP &&
 			pe2->charging_current_limit2 < ichg1_min)
 			pe2->charging_current2 = 0;
 	}
@@ -831,12 +880,12 @@ static int pe2_dcs_set_charger(struct chg_alg_device *alg)
 static int __pe2_run(struct chg_alg_device *alg)
 {
 	struct mtk_pe20 *pe2;
-	int i;
-	int vbat, vbus, ichg;
-	int pre_vbus, pre_idx;
+	unsigned int i = 0;
+	int vbat = 0, vbus = 0, ichg = 0;
+	int pre_vbus = 0, pre_idx = 0;
 	int tune = 0, pes = 0; /* For log, to know the state of PE+20 */
-	u32 size;
-	int ret = 0, ret_value = 0, vchr, uisoc;
+	u32 size = 0;
+	int ret = 0, ret_value = 0, vchr = 0, uisoc = 0;
 
 	pe2 = dev_get_drvdata(&alg->dev);
 
@@ -953,7 +1002,7 @@ static int _pe2_start_algo(struct chg_alg_device *alg)
 {
 	int ret = 0, ret_value = 0;
 	struct mtk_pe20 *pe2;
-	bool again;
+	bool again = false;
 
 	pe2 = dev_get_drvdata(&alg->dev);
 	mutex_lock(&pe2->access_lock);
@@ -997,7 +1046,7 @@ static int _pe2_start_algo(struct chg_alg_device *alg)
 			if (ret == ALG_TA_NOT_SUPPORT)
 				pe2->state = PE2_TA_NOT_SUPPORT;
 			else if (ret == ALG_TA_CHECKING) {
-				pe2->state = PE2_RUN;
+				pe2->state = PE2_HW_READY;
 				again = true;
 			} else if (ret == ALG_DONE)
 				pe2->state = PE2_HW_READY;
@@ -1078,7 +1127,7 @@ static int pe2_full_event(struct chg_alg_device *alg)
 			if (!chg_en || !chg2_enabled) {
 				/* notify eoc , fix me */
 				pe2->state = PE2_HW_READY;
-				pe2_err("charging done:%d %d\n",
+				pe2_err("%s: charging done:%d %d\n",
 					__func__, chg_en, chg2_enabled);
 				if (alg->is_polling_mode == false)
 					ret_value = 1;
@@ -1087,7 +1136,7 @@ static int pe2_full_event(struct chg_alg_device *alg)
 					alg, CHG2, &ichg2);
 				ret = pe2_hal_get_min_charging_current(
 					alg, CHG2, &ichg2_min);
-				if (ret == -ENOTSUPP)
+				if (ret == -EOPNOTSUPP)
 					ichg2_min = 100000;
 
 				pe2_err("ichg2:%d, ichg2_min:%d state:%d\n",
@@ -1142,10 +1191,16 @@ static int _pe2_notifier_call(struct chg_alg_device *alg,
 
 	switch (notify->evt) {
 	case EVT_PLUG_OUT:
+		pe2->stop_6pin_re_en = 0;
 		ret_value = pe2_plugout_reset(alg);
 		break;
 	case EVT_FULL:
+		pe2->stop_6pin_re_en = 1;
 		ret_value = pe2_full_event(alg);
+		break;
+	case EVT_BATPRO_DONE:
+		pe2->pe2_6pin_en = 0;
+		ret_value = 0;
 		break;
 	default:
 		ret_value = -EINVAL;
@@ -1162,6 +1217,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	/* PE 2.0 */
 	if (of_property_read_u32(np, "pe20_ichg_level_threshold", &val) >= 0)
 		pe2->pe20_ichg_level_threshold = val;
+	else if (of_property_read_u32(np, "pe20-ichg-level-threshold", &val) >= 0)
+		pe2->pe20_ichg_level_threshold = val;
 	else {
 		pr_notice("use default PE20_ICHG_LEAVE_THRESHOLD:%d\n",
 			PE20_ICHG_LEAVE_THRESHOLD);
@@ -1171,6 +1228,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 
 	if (of_property_read_u32(np, "ta_start_battery_soc", &val) >= 0)
 		pe2->ta_start_battery_soc = val;
+	else if (of_property_read_u32(np, "ta-start-battery-soc", &val) >= 0)
+		pe2->ta_start_battery_soc = val;
 	else {
 		pr_notice("use default TA_START_BATTERY_SOC:%d\n",
 			TA_START_BATTERY_SOC);
@@ -1178,6 +1237,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	}
 
 	if (of_property_read_u32(np, "ta_stop_battery_soc", &val) >= 0)
+		pe2->ta_stop_battery_soc = val;
+	else if (of_property_read_u32(np, "ta-stop-battery-soc", &val) >= 0)
 		pe2->ta_stop_battery_soc = val;
 	else {
 		pr_notice("use default TA_STOP_BATTERY_SOC:%d\n",
@@ -1187,6 +1248,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 
 	if (of_property_read_u32(np, "min_charger_voltage", &val) >= 0)
 		pe2->min_charger_voltage = val;
+	else if (of_property_read_u32(np, "min-charger-voltage", &val) >= 0)
+		pe2->min_charger_voltage = val;
 	else {
 		pr_notice("use default V_CHARGER_MIN:%d\n", PE20_V_CHARGER_MIN);
 		pe2->min_charger_voltage = PE20_V_CHARGER_MIN;
@@ -1195,6 +1258,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	/* cable measurement impedance */
 	if (of_property_read_u32(np, "cable_imp_threshold", &val) >= 0)
 		pe2->cable_imp_threshold = val;
+	else if (of_property_read_u32(np, "cable-imp-threshold", &val) >= 0)
+		pe2->cable_imp_threshold = val;
 	else {
 		pr_notice("use default CABLE_IMP_THRESHOLD:%d\n",
 			PE2_CABLE_IMP_THRESHOLD);
@@ -1202,6 +1267,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	}
 
 	if (of_property_read_u32(np, "vbat_cable_imp_threshold", &val) >= 0)
+		pe2->vbat_cable_imp_threshold = val;
+	else if (of_property_read_u32(np, "vbat-cable-imp-threshold", &val) >= 0)
 		pe2->vbat_cable_imp_threshold = val;
 	else {
 		pr_notice("use default VBAT_CABLE_IMP_THRESHOLD:%d\n",
@@ -1212,6 +1279,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	/* single charger */
 	if (of_property_read_u32(np, "sc_input_current", &val) >= 0)
 		pe2->sc_input_current = val;
+	else if (of_property_read_u32(np, "sc-input-current", &val) >= 0)
+		pe2->sc_input_current = val;
 	else {
 		pr_notice("use default SC_INPUT_CURRENT:%d\n",
 			SC_INPUT_CURRENT);
@@ -1219,6 +1288,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	}
 
 	if (of_property_read_u32(np, "sc_charger_current", &val) >= 0)
+		pe2->sc_charger_current = val;
+	else if (of_property_read_u32(np, "sc-charger-current", &val) >= 0)
 		pe2->sc_charger_current = val;
 	else {
 		pr_notice("use default SC_CHARGING_CURRENT:%d\n",
@@ -1229,6 +1300,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	/* dual charger in series */
 	if (of_property_read_u32(np, "dcs_input_current", &val) >= 0)
 		pe2->dcs_input_current = val;
+	else if (of_property_read_u32(np, "dcs-input-current", &val) >= 0)
+		pe2->dcs_input_current = val;
 	else {
 		pr_notice("use default DCS_INPUT_CURRENT:%d\n",
 			DCS_INPUT_CURRENT);
@@ -1236,6 +1309,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	}
 
 	if (of_property_read_u32(np, "dcs_chg1_charger_current", &val) >= 0)
+		pe2->dcs_chg1_charger_current = val;
+	else if (of_property_read_u32(np, "dcs-chg1-charger-current", &val) >= 0)
 		pe2->dcs_chg1_charger_current = val;
 	else {
 		pr_notice("use default DCS_CHG1_CHARGER_CURRENT:%d\n",
@@ -1245,6 +1320,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 
 	if (of_property_read_u32(np, "dcs_chg2_charger_current", &val) >= 0)
 		pe2->dcs_chg2_charger_current = val;
+	else if (of_property_read_u32(np, "dcs-chg2-charger-current", &val) >= 0)
+		pe2->dcs_chg2_charger_current = val;
 	else {
 		pr_notice("use default DCS_CHG2_CHARGER_CURRENT:%d\n",
 			SC_CHARGING_CURRENT);
@@ -1252,6 +1329,8 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 	}
 
 	if (of_property_read_u32(np, "slave_mivr_diff", &val) >= 0)
+		pe2->pe2_slave_mivr_diff = val;
+	else if (of_property_read_u32(np, "slave-mivr-diff", &val) >= 0)
 		pe2->pe2_slave_mivr_diff = val;
 	else {
 		pr_notice("use default slave_mivr_diff:%d\n",
@@ -1261,11 +1340,22 @@ static void mtk_pe2_parse_dt(struct mtk_pe20 *pe2,
 
 	if (of_property_read_u32(np, "dual_polling_ieoc", &val) >= 0)
 		pe2->dual_polling_ieoc = val;
+	else if (of_property_read_u32(np, "dual-polling-ieoc", &val) >= 0)
+		pe2->dual_polling_ieoc = val;
 	else {
 		pr_notice("use default dual_polling_ieoc :%d\n", 750000);
 		pe2->dual_polling_ieoc = 750000;
 	}
 
+	if (of_property_read_u32(np, "vbat_threshold", &val) >= 0)
+		pe2->vbat_threshold = val;
+	else if (of_property_read_u32(np, "vbat-threshold", &val) >= 0)
+		pe2->vbat_threshold = val;
+	else {
+		pr_notice("turn off vbat_threshold checking:%d\n",
+			DISABLE_VBAT_THRESHOLD);
+		pe2->vbat_threshold = DISABLE_VBAT_THRESHOLD;
+	}
 
 }
 
@@ -1284,7 +1374,23 @@ int _pe2_get_prop(struct chg_alg_device *alg,
 int _pe2_set_prop(struct chg_alg_device *alg,
 		enum chg_alg_props s, int value)
 {
+	struct mtk_pe20 *pe2;
+
 	pr_notice("%s %d %d\n", __func__, s, value);
+
+	pe2 = dev_get_drvdata(&alg->dev);
+
+	switch (s) {
+	case ALG_LOG_LEVEL:
+		pe2_dbg_level = value;
+		break;
+	case ALG_REF_VBAT:
+		pe2->ref_vbat = value;
+		break;
+	default:
+		break;
+	}
+
 	return 0;
 }
 
@@ -1293,22 +1399,26 @@ int _pe2_set_setting(struct chg_alg_device *alg_dev,
 {
 	struct mtk_pe20 *pe2;
 
-	pe2_dbg("%s cv:%d icl:%d,%d cc:%d,%d\n",
+	pe2 = dev_get_drvdata(&alg_dev->dev);
+
+	pe2_dbg("%s cv:%d icl:%d,%d cc:%d,%d, 6pin_en:%d\n",
 		__func__,
 		setting->cv,
 		setting->input_current_limit1,
 		setting->input_current_limit2,
 		setting->charging_current_limit1,
-		setting->charging_current_limit2);
-	pe2 = dev_get_drvdata(&alg_dev->dev);
+		setting->charging_current_limit2,
+		setting->vbat_mon_en);
 
 	mutex_lock(&pe2->access_lock);
 	__pm_stay_awake(pe2->suspend_lock);
 	pe2->cv = setting->cv;
+	pe2->pe2_6pin_en = setting->vbat_mon_en;
 	pe2->input_current_limit1 = setting->input_current_limit1;
 	pe2->charging_current_limit1 = setting->charging_current_limit1;
 	pe2->input_current_limit2 = setting->input_current_limit2;
 	pe2->charging_current_limit2 = setting->charging_current_limit2;
+
 	__pm_relax(pe2->suspend_lock);
 	mutex_unlock(&pe2->access_lock);
 
@@ -1368,17 +1478,17 @@ static int mtk_pe2_probe(struct platform_device *pdev)
 	pe2->profile[9].vbat = 4300000;
 
 	/*
-	pe2->profile[0].vchr = 8000000;
-	pe2->profile[1].vchr = 8500000;
-	pe2->profile[2].vchr = 8500000;
-	pe2->profile[3].vchr = 9000000;
-	pe2->profile[4].vchr = 9000000;
-	pe2->profile[5].vchr = 9000000;
-	pe2->profile[6].vchr = 9500000;
-	pe2->profile[7].vchr = 9500000;
-	pe2->profile[8].vchr = 10000000;
-	pe2->profile[9].vchr = 10000000;
-	*/
+	 * pe2->profile[0].vchr = 8000000;
+	 * pe2->profile[1].vchr = 8500000;
+	 * pe2->profile[2].vchr = 8500000;
+	 * pe2->profile[3].vchr = 9000000;
+	 * pe2->profile[4].vchr = 9000000;
+	 * pe2->profile[5].vchr = 9000000;
+	 * pe2->profile[6].vchr = 9500000;
+	 * pe2->profile[7].vchr = 9500000;
+	 * pe2->profile[8].vchr = 10000000;
+	 * pe2->profile[9].vchr = 10000000;
+	 */
 	pe2->profile[0].vchr = 8000000;
 	pe2->profile[1].vchr = 8000000;
 	pe2->profile[2].vchr = 8000000;
@@ -1432,7 +1542,7 @@ static int __init mtk_pe2_init(void)
 {
 	return platform_driver_register(&pe2_driver);
 }
-late_initcall(mtk_pe2_init);
+module_init(mtk_pe2_init);
 
 static void __exit mtk_pe2_exit(void)
 {
@@ -1444,4 +1554,3 @@ module_exit(mtk_pe2_exit);
 MODULE_AUTHOR("wy.chuang <wy.chuang@mediatek.com>");
 MODULE_DESCRIPTION("MTK Pump Express 2 algorithm Driver");
 MODULE_LICENSE("GPL");
-

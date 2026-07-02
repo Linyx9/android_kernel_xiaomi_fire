@@ -27,7 +27,7 @@
 #include <linux/math64.h>
 #include "mt-plat/mtk_thermal_platform.h"
 
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 #include <linux/suspend.h>
 #endif
 /*=============================================================
@@ -58,7 +58,7 @@ static void mtkts_dctm_unregister_thermal(void);
  */
 static kuid_t uid = KUIDT_INIT(0);
 static kgid_t gid = KGIDT_INIT(1000);
-static DEFINE_SEMAPHORE(sem_mutex);
+static DEFINE_SEMAPHORE(sem_mutex, 1);
 
 static unsigned int interval = 1;	/* seconds, 0 : no auto polling */
 static struct thermal_zone_device *thz_dev;
@@ -68,6 +68,7 @@ static int num_trip = 1;
 static int trip_temp[10] = { 120000, 110000, 100000, 90000,
 	80000, 70000, 65000, 60000, 55000, 50000 };
 static int g_THERMAL_TRIP[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static struct thermal_trip trips[10];
 static char g_bind[10][20] = {"mtktsdctm-sysrst", "no-cooler",
 "no-cooler", "no-cooler", "no-cooler", "no-cooler", "no-cooler",
 "no-cooler", "no-cooler", "no-cooler"};
@@ -286,11 +287,11 @@ static int mtkts_dctm_get_temp(struct thermal_zone_device *thermal, int *t)
 		pr_notice("%s, wakeup_ta_algo out of memory\n", __func__);
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -351,31 +352,11 @@ static int mtkts_dctm_unbind(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-static int mtkts_dctm_get_mode(struct thermal_zone_device *thermal,
-	enum thermal_device_mode *mode)
-{
-	*mode = (kernelmode) ? THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
-	return 0;
-}
 
-static int mtkts_dctm_set_mode(struct thermal_zone_device *thermal,
+static int mtkts_dctm_change_mode(struct thermal_zone_device *thermal,
 	enum thermal_device_mode mode)
 {
 	kernelmode = mode;
-	return 0;
-}
-
-static int mtkts_dctm_get_trip_type(struct thermal_zone_device *thermal,
-	int trip, enum thermal_trip_type *type)
-{
-	*type = g_THERMAL_TRIP[trip];
-	return 0;
-}
-
-static int mtkts_dctm_get_trip_temp(struct thermal_zone_device *thermal,
-	int trip, int *temp)
-{
-	*temp = trip_temp[trip];
 	return 0;
 }
 
@@ -391,10 +372,7 @@ static struct thermal_zone_device_ops mtkts_dctm_dev_ops = {
 	.bind = mtkts_dctm_bind,
 	.unbind = mtkts_dctm_unbind,
 	.get_temp = mtkts_dctm_get_temp,
-	.get_mode = mtkts_dctm_get_mode,
-	.set_mode = mtkts_dctm_set_mode,
-	.get_trip_type = mtkts_dctm_get_trip_type,
-	.get_trip_temp = mtkts_dctm_get_trip_temp,
+	.change_mode = mtkts_dctm_change_mode,
 	.get_crit_temp = mtkts_dctm_get_crit_temp,
 };
 
@@ -489,7 +467,7 @@ static ssize_t mtkts_dctm_write(struct file *file, const char __user *buffer,
 		mtkts_dctm_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 				DB_OPT_DEFAULT, "mtkts_dctm_write",
 				"Bad argument");
@@ -553,6 +531,11 @@ static ssize_t mtkts_dctm_write(struct file *file, const char __user *buffer,
 		mtkts_dctm_dprintk("[%s] mtkts_dctm_register_thermal\n",
 			__func__);
 
+		for (i = 0; i < num_trip; i++) {
+			trips[i].temperature = trip_temp[i];
+			trips[i].type = g_THERMAL_TRIP[i];
+		}
+
 		mtkts_dctm_register_thermal();
 		up(&sem_mutex);
 
@@ -561,7 +544,7 @@ static ssize_t mtkts_dctm_write(struct file *file, const char __user *buffer,
 	}
 
 	mtkts_dctm_dprintk("[%s] bad argument\n", __func__);
-    #ifdef CONFIG_MTK_AEE_FEATURE
+    #if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__,
 		DB_OPT_DEFAULT, "mtkts_dctm_write",
 		"Bad argument");
@@ -569,31 +552,7 @@ static ssize_t mtkts_dctm_write(struct file *file, const char __user *buffer,
 	kfree(ptr_tmp_data);
 	return -EINVAL;
 }
-#if 0
-static void mtkts_dctm_cancel_thermal_timer(void)
-{
-	/* cancel timer */
-	/* mtkts_dctm_printk("mtkts_dctm_cancel_thermal_timer\n"); */
-
-	/* stop thermal framework polling when entering deep idle */
-
-	if (thz_dev)
-		cancel_delayed_work(&(thz_dev->poll_queue));
-}
-
-static void mtkts_dctm_start_thermal_timer(void)
-{
-	/* mtkts_dctm_printk("mtkts_dctm_start_thermal_timer\n"); */
-
-	/* resume thermal framework polling when leaving deep idle */
-
-	if (thz_dev != NULL && interval != 0)
-		mod_delayed_work(system_freezable_power_efficient_wq,
-			&(thz_dev->poll_queue),
-			round_jiffies(msecs_to_jiffies(3000)));
-}
-#endif
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 static int dctm_pm_event(
 		struct notifier_block *notifier,
 		unsigned long pm_event, void *unused)
@@ -627,7 +586,7 @@ static int mtkts_dctm_register_thermal(void)
 	mtkts_dctm_dprintk("[%s]\n", __func__);
 
 	/* trips : trip 0~1 */
-	thz_dev = mtk_thermal_zone_device_register("mtktsdctm", num_trip, NULL,
+	thz_dev = mtk_thermal_zone_device_register("mtktsdctm", trips, num_trip, NULL,
 						   &mtkts_dctm_dev_ops, 0, 0, 0,
 						   interval * 1000);
 
@@ -649,13 +608,12 @@ static int mtkts_dctm_open(struct inode *inode, struct file *file)
 	return single_open(file, mtkts_dctm_read, NULL);
 }
 
-static const struct file_operations mtkts_dctm_fops = {
-	.owner = THIS_MODULE,
-	.open = mtkts_dctm_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtkts_dctm_write,
-	.release = single_release,
+static const struct proc_ops mtkts_dctm_fops = {
+	.proc_open = mtkts_dctm_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtkts_dctm_write,
+	.proc_release = single_release,
 };
 
 static int tzdctm_cfg_matrix_read(struct seq_file *m, void *v)
@@ -758,13 +716,12 @@ static int tzdctm_cfg_matrix_open(struct inode *inode, struct file *file)
 	return single_open(file, tzdctm_cfg_matrix_read, NULL);
 }
 
-static const struct file_operations tzdctm_cfg_matrix_fops = {
-	.owner = THIS_MODULE,
-	.open = tzdctm_cfg_matrix_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = tzdctm_cfg_matrix_write,
-	.release = single_release,
+static const struct proc_ops tzdctm_cfg_matrix_fops = {
+	.proc_open = tzdctm_cfg_matrix_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = tzdctm_cfg_matrix_write,
+	.proc_release = single_release,
 };
 
 static int tzdctm_cfg_read(struct seq_file *m, void *v)
@@ -822,13 +779,12 @@ static int tzdctm_cfg_open(struct inode *inode, struct file *file)
 	return single_open(file, tzdctm_cfg_read, NULL);
 }
 
-static const struct file_operations tzdctm_cfg_fops = {
-	.owner = THIS_MODULE,
-	.open = tzdctm_cfg_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = tzdctm_cfg_write,
-	.release = single_release,
+static const struct proc_ops tzdctm_cfg_fops = {
+	.proc_open = tzdctm_cfg_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = tzdctm_cfg_write,
+	.proc_release = single_release,
 };
 
 static int tzdctm_drc_cfg_read(struct seq_file *m, void *v)
@@ -915,20 +871,20 @@ static int tzdctm_drc_cfg_open(struct inode *inode, struct file *file)
 	return single_open(file, tzdctm_drc_cfg_read, NULL);
 }
 
-static const struct file_operations tzdctm_drc_cfg_fops = {
-	.owner = THIS_MODULE,
-	.open = tzdctm_drc_cfg_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = tzdctm_drc_cfg_write,
-	.release = single_release,
+static const struct proc_ops tzdctm_drc_cfg_fops = {
+	.proc_open = tzdctm_drc_cfg_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = tzdctm_drc_cfg_write,
+	.proc_release = single_release,
 };
 
-static int __init mtkts_dctm_init(void)
+int mtkts_dctm_init(void)
 {
+	int i = 0;
 	struct proc_dir_entry *entry = NULL;
 	struct proc_dir_entry *mtkts_dir = NULL;
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 	int ret = -1;
 #endif
 	mtkts_dctm_printk("[%s]\n", __func__);
@@ -963,13 +919,13 @@ static int __init mtkts_dctm_init(void)
 	mtkts_dctm_drc_reset = 1;
 	tskinInit(tpcbinit);
 
+	for (i = 0; i < num_trip; i++) {
+		trips[i].temperature = trip_temp[i];
+		trips[i].type = g_THERMAL_TRIP[i];
+	}
+
 	mtkts_dctm_register_thermal();
-#if 0
-		mtkTTimer_register("mtktsdctm",
-			mtkts_dctm_start_thermal_timer,
-			mtkts_dctm_cancel_thermal_timer);
-#endif
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 	ret = register_pm_notifier(&dctm_pm_notifier_func);
 	if (ret)
 		pr_notice("Failed to register dctm PM notifier.\n");
@@ -977,14 +933,13 @@ static int __init mtkts_dctm_init(void)
 	return 0;
 }
 
-static void __exit mtkts_dctm_exit(void)
+void  mtkts_dctm_exit(void)
 {
 	mtkts_dctm_dprintk("[%s]\n", __func__);
 	mtkts_dctm_unregister_thermal();
-#if 0
-	mtkTTimer_unregister("mtktsdctm");
-#endif
 }
 
-module_init(mtkts_dctm_init);
-module_exit(mtkts_dctm_exit);
+//module_init(mtkts_dctm_init);
+//module_exit(mtkts_dctm_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

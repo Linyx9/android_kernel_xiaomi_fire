@@ -40,10 +40,13 @@
 #include "kd_imgsensor_errcode.h"
 
 #include "imx576mipiraw_Sensor.h"
+#include "platform_common.h"
 
 #define PFX "IMX576_camera_sensor"
 #define NO_USE_3HDR 1
 #define LSC_DEBUG 0
+
+static unsigned int g_platform_id;
 
 #define MULTI_WRITE 1
 #if MULTI_WRITE
@@ -2549,7 +2552,6 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	UINT32 *feature_data_32 = (UINT32 *) feature_para;
 	unsigned long long *feature_data = (unsigned long long *) feature_para;
 
-	struct SET_PD_BLOCK_INFO_T *PDAFinfo;
 	struct SENSOR_WINSIZE_INFO_STRUCT *wininfo;
 	struct SENSOR_VC_INFO_STRUCT *pvcinfo;
 
@@ -2607,11 +2609,11 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 			break;
 		}
 		break;
-#ifdef IMGSENSOR_MT6885
 	case SENSOR_FEATURE_GET_OFFSET_TO_START_OF_EXPOSURE:
-		*(MUINT32 *)(uintptr_t)(*(feature_data + 1)) = 1500000;
+		if (IS_MT6885(g_platform_id) ||
+			IS_MT6877(g_platform_id) || IS_MT6873(g_platform_id))
+			*(MUINT32 *)(uintptr_t)(*(feature_data + 1)) = 1500000;
 		break;
-#endif
 	case SENSOR_FEATURE_GET_PERIOD_BY_SCENARIO:
 		switch (*feature_data) {
 		case MSDK_SCENARIO_ID_CAMERA_CAPTURE_JPEG:
@@ -2937,8 +2939,6 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 			"SENSOR_FEATURE_GET_PDAF_INFO scenarioId:%d\n",
 			*feature_data);
 		#endif
-		PDAFinfo =
-		(struct SET_PD_BLOCK_INFO_T *)(uintptr_t)(*(feature_data+1));
 		switch (*feature_data) {
 		case MSDK_SCENARIO_ID_CAMERA_CAPTURE_JPEG:
 			/*
@@ -3040,13 +3040,20 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	return ERROR_NONE;
 }	/*	feature_control()  */
 
+static void set_platform_info(unsigned int platform_id)
+{
+	g_platform_id = platform_id;
+	pr_info("%s id:%x\n", __func__, g_platform_id);
+}
+
 static struct SENSOR_FUNCTION_STRUCT sensor_func = {
 	open,
 	get_info,
 	get_resolution,
 	feature_control,
 	control,
-	close
+	close,
+	set_platform_info
 };
 
 /* kin0603 */

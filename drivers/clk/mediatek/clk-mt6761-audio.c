@@ -117,3 +117,4 @@ static void __exit clk_mt6761_audio_exit(void)
 postcore_initcall(clk_mt6761_audio_init);
 module_exit(clk_mt6761_audio_exit);
 MODULE_LICENSE("GPL");
+

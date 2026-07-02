@@ -7,7 +7,7 @@
 #define __MT_PWM_H__
 
 #include <linux/types.h>
-#include <mach/mtk_pwm_hal.h>
+#include <mt-plat/mtk_pwm_hal.h>
 
 struct pwm_easy_config {
 	u32 pwm_no;
@@ -59,7 +59,7 @@ struct pwm_spec_config {
 			u16 LDURATION;
 			u16 GDURATION;
 			dma_addr_t BUF0_BASE_ADDR;
-			u32 BUF0_SIZE;
+			u16 BUF0_SIZE;
 			u16 WAVE_NUM;
 		} PWM_MODE_MEMORY_REGS;
 
@@ -72,9 +72,9 @@ struct pwm_spec_config {
 			u16 LDURATION;
 			u16 GDURATION;
 			dma_addr_t BUF0_BASE_ADDR;
-			u32 BUF0_SIZE;
+			u16 BUF0_SIZE;
 			dma_addr_t BUF1_BASE_ADDR;
-			u32 BUF1_SIZE;
+			u16 BUF1_SIZE;
 			u16 WAVE_NUM;
 			u32 VALID;
 		} PWM_MODE_RANDOM_REGS;

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2018 MediaTek Inc.
  */
 
 #ifndef __MTK_DCM_INTERNAL_H__
@@ -20,13 +20,11 @@
 
 /* #define CTRL_BIGCORE_DCM_IN_KERNEL */
 
-/* #define reg_read(addr)	__raw_readl(IOMEM(addr)) */
-#define reg_read(addr) readl((void *)addr)
-/*#define reg_write(addr, val)	mt_reg_sync_writel((val), ((void *)addr))*/
+#define reg_read(addr)	readl((void *)addr)
 #define reg_write(addr, val) \
-	do { writel(val, (void *)addr); wmb(); } while (0) /* sync write */
+		do { writel(val, (void *)addr); wmb(); } while (0) /* sync write */
 
-#if defined(CONFIG_ARM_PSCI) || defined(CONFIG_MTK_PSCI)
+#if IS_ENABLED(CONFIG_ARM_PSCI) || IS_ENABLED(CONFIG_MTK_PSCI)
 #define MCUSYS_SMC_WRITE(addr, val)  mcusys_smc_write_phy(addr##_PHYS, val)
 #ifndef mcsi_reg_read
 #define mcsi_reg_read(offset) \
@@ -44,16 +42,135 @@
 #define MCSI_SMC_READ(addr)  reg_read(addr)
 #endif
 
-#define REG_DUMP(addr) \
-	dcm_pr_info("%-30s(0x%08lx): 0x%08x\n", #addr, addr, reg_read(addr))
-#define SECURE_REG_DUMP(addr) \
-	dcm_pr_info("%-30s(0x%08lx): 0x%08x\n", \
-	#addr, addr, mcsi_reg_read(addr##_PHYS & 0xFFFF))
+enum {
+	ARMCORE_DCM_OFF = DCM_OFF,
+	ARMCORE_DCM_MODE1 = DCM_ON,
+	ARMCORE_DCM_MODE2 = DCM_ON+1,
+};
+
+enum {
+	INFRA_DCM_OFF = DCM_OFF,
+	INFRA_DCM_ON = DCM_ON,
+};
+
+enum {
+	PERI_DCM_OFF = DCM_OFF,
+	PERI_DCM_ON = DCM_ON,
+};
+
+enum {
+	MCUSYS_DCM_OFF = DCM_OFF,
+	MCUSYS_DCM_ON = DCM_ON,
+};
+
+enum {
+	DRAMC_AO_DCM_OFF = DCM_OFF,
+	DRAMC_AO_DCM_ON = DCM_ON,
+};
+
+enum {
+	DDRPHY_DCM_OFF = DCM_OFF,
+	DDRPHY_DCM_ON = DCM_ON,
+};
+
+enum {
+	EMI_DCM_OFF = DCM_OFF,
+	EMI_DCM_ON = DCM_ON,
+};
+
+enum {
+	STALL_DCM_OFF = DCM_OFF,
+	STALL_DCM_ON = DCM_ON,
+};
+
+enum {
+	BIG_CORE_DCM_OFF = DCM_OFF,
+	BIG_CORE_DCM_ON = DCM_ON,
+};
+
+enum {
+	GIC_SYNC_DCM_OFF = DCM_OFF,
+	GIC_SYNC_DCM_ON = DCM_ON,
+};
+
+enum {
+	LAST_CORE_DCM_OFF = DCM_OFF,
+	LAST_CORE_DCM_ON = DCM_ON,
+};
+
+enum {
+	RGU_DCM_OFF = DCM_OFF,
+	RGU_DCM_ON = DCM_ON,
+};
+
+enum {
+	TOPCKG_DCM_OFF = DCM_OFF,
+	TOPCKG_DCM_ON = DCM_ON,
+};
+
+enum {
+	LPDMA_DCM_OFF = DCM_OFF,
+	LPDMA_DCM_ON = DCM_ON,
+};
+
+enum {
+	PWRAP_DCM_OFF = DCM_OFF,
+	PWRAP_DCM_ON = DCM_ON,
+};
+
+enum {
+	MCSI_DCM_OFF = DCM_OFF,
+	MCSI_DCM_ON = DCM_ON,
+};
+
+enum {
+	ARMCORE_DCM = 0,
+	MCUSYS_DCM,
+	INFRA_DCM,
+	PERI_DCM,
+	EMI_DCM,
+	DRAMC_DCM,
+	DDRPHY_DCM,
+	STALL_DCM,
+	BIG_CORE_DCM,
+	GIC_SYNC_DCM,
+	LAST_CORE_DCM,
+	RGU_DCM,
+	TOPCKG_DCM,
+	LPDMA_DCM,
+	MCSI_DCM,
+	NR_DCM,
+};
+
+enum {
+	ARMCORE_DCM_TYPE	= (1U << ARMCORE_DCM),
+	MCUSYS_DCM_TYPE		= (1U << MCUSYS_DCM),
+	INFRA_DCM_TYPE		= (1U << INFRA_DCM),
+	PERI_DCM_TYPE		= (1U << PERI_DCM),
+	EMI_DCM_TYPE		= (1U << EMI_DCM),
+	DRAMC_DCM_TYPE		= (1U << DRAMC_DCM),
+	DDRPHY_DCM_TYPE		= (1U << DDRPHY_DCM),
+	STALL_DCM_TYPE		= (1U << STALL_DCM),
+	BIG_CORE_DCM_TYPE	= (1U << BIG_CORE_DCM),
+	GIC_SYNC_DCM_TYPE	= (1U << GIC_SYNC_DCM),
+	LAST_CORE_DCM_TYPE	= (1U << LAST_CORE_DCM),
+	RGU_DCM_TYPE		= (1U << RGU_DCM),
+	TOPCKG_DCM_TYPE		= (1U << TOPCKG_DCM),
+	LPDMA_DCM_TYPE		= (1U << LPDMA_DCM),
+	MCSI_DCM_TYPE		= (1U << MCSI_DCM),
+	NR_DCM_TYPE = NR_DCM,
+};
+
+enum {
+	DCM_CPU_CLUSTER_LL	= (1U << 0),
+	DCM_CPU_CLUSTER_L	= (1U << 1),
+	DCM_CPU_CLUSTER_B	= (1U << 2),
+};
 
 /* Sync DCM related RG bit definitions. */
 /* TODO: Why not autogen? */
-#define SYNC_DCM_CLK_MIN_FREQ			26
-#define SYNC_DCM_MAX_DIV_VAL			127
+#define SYNC_DCM_CLK_MIN_FREQ			312
+#define SYNC_DCM_MAX_DIV_VAL			4
 
 #define MCUCFG_SYNC_DCM_MP0_REG			SYNC_DCM_CONFIG
 #define MCUCFG_SYNC_DCM_MP1_REG			SYNC_DCM_CONFIG
@@ -132,17 +249,13 @@ int sync_dcm_set_cpu_freq(
 unsigned int cci, unsigned int mp0, unsigned int mp1, unsigned int mp2);
 int sync_dcm_set_cpu_div(
 unsigned int cci, unsigned int mp0, unsigned int mp1, unsigned int mp2);
-short is_dcm_bringup(void);
 
-/*remove for new arch extern struct DCM dcm_array[NR_DCM_TYPE];*/
+extern struct DCM dcm_array[];
 
 extern void *mt_dramc_chn_base_get(int channel);
 extern void *mt_ddrphy_chn_base_get(int channel);
 extern void __iomem *mt_cen_emi_base_get(void);
 extern void __iomem *mt_chn_emi_base_get(int chn);
-
-/**/
-void dcm_array_register(void);
 
 #endif /* #ifndef __MTK_DCM_INTERNAL_H__ */
 

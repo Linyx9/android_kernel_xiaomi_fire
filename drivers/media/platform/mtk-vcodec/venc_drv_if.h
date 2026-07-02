@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: Daniel Hsiao <daniel.hsiao@mediatek.com>
+ *              Jungchang Tsao <jungchang.tsao@mediatek.com>
+ *              Tiffany Lin <tiffany.lin@mediatek.com>
  */
 
 #ifndef _VENC_DRV_IF_H_
@@ -59,6 +62,8 @@ struct venc_done_result {
 	__u32 is_key_frm;
 	unsigned long bs_va;
 	unsigned long frm_va;
+	__u32 is_last_slc;
+	__u32 flags;
 };
 
 /*
@@ -130,11 +135,14 @@ int venc_if_encode(struct mtk_vcodec_ctx *ctx,
 				   struct venc_done_result *result);
 
 
+int venc_if_dev_ctx_init(struct mtk_vcodec_dev *dev);
+void venc_if_dev_ctx_deinit(struct mtk_vcodec_dev *dev);
+
 void venc_encode_prepare(void *ctx_prepare,
 		unsigned int core_id, unsigned long *flags);
 void venc_encode_unprepare(void *ctx_unprepare,
 		unsigned int core_id, unsigned long *flags);
-
+void venc_check_release_lock(void *ctx_check);
 int venc_lock(void *ctx_lock, int core_id, bool sec);
 void venc_unlock(void *ctx_unlock, int core_id);
 

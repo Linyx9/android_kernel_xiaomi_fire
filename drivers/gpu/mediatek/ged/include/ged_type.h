@@ -15,6 +15,7 @@
 #define GED_ERROR_CMD_NOT_PROCESSED	  6
 #define GED_ERROR_INVALID_PARAMS      7
 #define GED_ERROR_INTENTIONAL_BLOCK   8
+#define GED_ERROR_VENDOR_NOT_SUPPORT  9
 #define GED_ERROR                     int
 
 #define GED_HANDLE                    void*
@@ -75,11 +76,18 @@
 #define GED_VSYNC_HW_EVENT	1
 #define GED_VSYNC_TYPE      int
 
+#define GED_SWD_FENCE_DEQUEUE   0
+#define GED_SWD_FENCE_QUEUE     1
+#define GED_SWD_FENCE_TYPE      int
+
 enum {
 	GAS_CATEGORY_GAME,
 	GAS_CATEGORY_OTHERS,
 };
 
+#define MT6985W_CZA_SEGMENT 0
+#define MT6985W_TCZA_SEGMENT 1
+#define NO_SEGMENT 0xFF
 
 #define	GED_BOOST_GPU_FREQ_LEVEL_MAX  100
 #define GED_BOOST_GPU_FREQ_LEVEL      int

@@ -23,28 +23,23 @@
 #include <linux/slab.h>
 #include <linux/sched/task.h>
 #include <linux/sched/signal.h>
-#include <linux/sched/mm.h>
 /*=============================================================
  *Weak functions
  *=============================================================
  */
-int __attribute__ ((weak))
-mtk_wcn_cmb_stub_query_ctrl(void)
-{
-	pr_notice("E_WF: %s doesn't exist\n", __func__);
-	return 0;
-}
+//int __attribute__ ((weak))
+//mtk_wcn_cmb_stub_query_ctrl(void)
+//{
+	//pr_notice("E_WF: %s doesn't exist\n", __func__);
+	//return 0;
+//}
 /*=============================================================*/
 static kuid_t uid = KUIDT_INIT(0);
 static kgid_t gid = KGIDT_INIT(1000);
-static DEFINE_SEMAPHORE(sem_mutex);
-
-#define MAX_PROCTITLE_AUDIT_LEN 128
-
+static DEFINE_SEMAPHORE(sem_mutex, 1);
 static int isTimerCancelled;
 
 static int wmt_tm_debug_log;
-static DEFINE_MUTEX(WMT_pg_task_lock);
 #define wmt_tm_dprintk(fmt, args...)   \
 do { \
 	if (wmt_tm_debug_log) \
@@ -116,8 +111,8 @@ static unsigned int tm_wfd_stat;
 static struct task_struct *pg_task;
 
 /* + Cooler info + */
-static int g_num_trip = 1;
-static char g_bind0[20] = "mtktswmt-sysrst";
+static int g_num_trip;
+static char g_bind0[20] = { 0 };
 static char g_bind1[20] = { 0 };
 static char g_bind2[20] = { 0 };
 static char g_bind3[20] = { 0 };
@@ -149,6 +144,7 @@ static unsigned int g_trip_temp[COOLER_NUM] = { 125000, 115000, 105000, 85000,
  *	{10 * ONE_MBITS_PER_SEC, 5 * ONE_MBITS_PER_SEC, 1 * ONE_MBITS_PER_SEC};
  */
 static int g_thermal_trip[COOLER_NUM] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static struct thermal_trip trips[10];
 /* - Cooler info - */
 
 static struct wmt_tm_t g_wmt_tm;
@@ -221,20 +217,15 @@ static int wmt_send_signal(int level)
 	if (ret == 0 && tm_input_pid != tm_pid) {
 		tm_pid = tm_input_pid;
 
-		if (pg_task != NULL){
-			mutex_lock(&WMT_pg_task_lock);
+		if (pg_task != NULL)
 			put_task_struct(pg_task);
-			mutex_unlock(&WMT_pg_task_lock);
-		}
-
-		rcu_read_lock();
 		pg_task = get_pid_task(find_vpid(tm_pid), PIDTYPE_PID);
-		rcu_read_unlock();
 	}
 
 	if (ret == 0 && pg_task) {
-		siginfo_t info;
+		struct kernel_siginfo info;
 
+		clear_siginfo(&info);
 		info.si_signo = SIGIO;
 		info.si_code = 4;
 		info.si_errno = thro;
@@ -445,28 +436,32 @@ static void heterogeneous_resource_allocator(int temp)
 	}
 }
 
-static unsigned long get_tx_bytes(void)
+static unsigned long get_tx_bytes(unsigned long pre_tx_bytes)
 {
 	struct net_device *dev;
 	struct net *net;
 	unsigned long tx_bytes = 0;
 
-	read_lock(&dev_base_lock);
-	for_each_net(net) {
-		for_each_netdev(net, dev) {
-			if (!strncmp(dev->name, "wlan", 4)
-				|| !strncmp(dev->name, "ap", 2)
-				|| !strncmp(dev->name, "p2p", 3)) {
+	if (read_trylock(&dev_base_lock)) {
+		for_each_net(net) {
+			for_each_netdev(net, dev) {
+				if (!strncmp(dev->name, "wlan", 4)
+					|| !strncmp(dev->name, "ap", 2)
+					|| !strncmp(dev->name, "p2p", 3)) {
 
-				struct rtnl_link_stats64 temp;
-				const struct rtnl_link_stats64 *stats =
-						dev_get_stats(dev, &temp);
+					struct rtnl_link_stats64 temp;
+					const struct rtnl_link_stats64 *stats =
+							dev_get_stats(dev, &temp);
 
-				tx_bytes = tx_bytes + stats->tx_bytes;
+					tx_bytes = tx_bytes + stats->tx_bytes;
+				}
 			}
 		}
+		read_unlock(&dev_base_lock);
+	} else {
+		tx_bytes = pre_tx_bytes;
+		wmt_tm_dprintk("[%s] skip get tx bytes for lock is busy!\n", __func__);
 	}
-	read_unlock(&dev_base_lock);
 	return tx_bytes;
 }
 
@@ -477,33 +472,33 @@ int tswmt_get_WiFi_tx_tput(void)
 static void wmt_cal_stats(struct timer_list *t)
 {
 	struct wmt_stats *stats_info = &wmt_stats_info;
-	struct timeval cur_time;
+	struct timespec64 cur_time;
 
 	wmt_tm_dprintk("[%s] pre_time=%lu, pre_data=%lu\n", __func__, pre_time,
 		       stats_info->pre_tx_bytes);
 
-	do_gettimeofday(&cur_time);
+	ktime_get_real_ts64(&cur_time);
 
 	if (pre_time != 0 && cur_time.tv_sec > pre_time) {
-		unsigned long tx_bytes = get_tx_bytes();
+		unsigned long tx_bytes = get_tx_bytes(stats_info->pre_tx_bytes);
 
 		if (tx_bytes > stats_info->pre_tx_bytes) {
 
 			tx_throughput =
-			    ((tx_bytes - stats_info->pre_tx_bytes)
-					/ (cur_time.tv_sec - pre_time)) >> 7;
+			    div_u64((tx_bytes - stats_info->pre_tx_bytes),
+					(cur_time.tv_sec - pre_time)) >> 7;
 
 			wmt_tm_dprintk(
-				"[%s] cur_time=%lu, cur_data=%lu, tx_throughput=%luK bit/s(%luK Byte/s)\n",
+				"[%s] cur_time=%llu, cur_data=%lu, tx_throughput=%luK bit/s(%luK Byte/s)\n",
 				__func__, cur_time.tv_sec, tx_bytes,
 				tx_throughput, tx_throughput >> 3);
 
 			stats_info->pre_tx_bytes = tx_bytes;
 		} else if (tx_bytes < stats_info->pre_tx_bytes) {
 			/* Overflow */
-			tx_throughput = ((0xffffffff -
-					stats_info->pre_tx_bytes + tx_bytes)
-					/ (cur_time.tv_sec - pre_time)) >> 7;
+			tx_throughput = div_u64((0xffffffff -
+					stats_info->pre_tx_bytes + tx_bytes),
+					(cur_time.tv_sec - pre_time)) >> 7;
 
 			stats_info->pre_tx_bytes = tx_bytes;
 			wmt_tm_dprintk("[%s] cur_tx(%lu) < pre_tx\n", __func__,
@@ -517,12 +512,12 @@ static void wmt_cal_stats(struct timer_list *t)
 	} else {
 		/* Overflow possible ?? */
 		tx_throughput = 0;
-		wmt_tm_printk("[%s] cur_time(%lu) < pre_time\n", __func__,
+		wmt_tm_printk("[%s] cur_time(%llu) < pre_time\n", __func__,
 							cur_time.tv_sec);
 	}
 
 	pre_time = cur_time.tv_sec;
-	wmt_tm_dprintk("[%s] pre_time=%lu, tv_sec=%lu\n", __func__,
+	wmt_tm_dprintk("[%s] pre_time=%lu, tv_sec=%llu\n", __func__,
 						pre_time, cur_time.tv_sec);
 
 	wmt_stats_timer.expires = jiffies + 1 * HZ;
@@ -533,7 +528,7 @@ static void wmt_cal_stats(struct timer_list *t)
 static int wmt_thz_bind(struct thermal_zone_device *thz_dev,
 			struct thermal_cooling_device *cool_dev)
 {
-	struct linux_thermal_ctrl_if *p_linux_if = 0;
+	struct linux_thermal_ctrl_if *p_linux_if __maybe_unused = 0;
 	int table_val = 0;
 
 	wmt_tm_dprintk("%s\n", __func__);
@@ -589,7 +584,7 @@ static int wmt_thz_bind(struct thermal_zone_device *thz_dev,
 static int wmt_thz_unbind(struct thermal_zone_device *thz_dev,
 			  struct thermal_cooling_device *cool_dev)
 {
-	struct linux_thermal_ctrl_if *p_linux_if = 0;
+	struct linux_thermal_ctrl_if *p_linux_if __maybe_unused = 0;
 	int table_val = 0;
 
 	wmt_tm_dprintk("%s\n", __func__);
@@ -665,7 +660,7 @@ static int wmt_thz_get_temp(struct thermal_zone_device *thz_dev, int *pv)
 
 	g_prev_temp = g_curr_temp;
 	if (sensor_select < 0 || sensor_select >= NR_TS_SENSORS) {
-		#ifdef CONFIG_MTK_AEE_FEATURE
+		#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 					"%s ",
 					"sensor_select: %d\n",
@@ -687,41 +682,18 @@ static int wmt_thz_get_temp(struct thermal_zone_device *thz_dev, int *pv)
 	}
 
 	if ((int)*pv >= polling_trip_temp1)
-		thz_dev->polling_delay = g_wmt_tm.linux_if.interval;
+		thz_dev->polling_delay_jiffies = g_wmt_tm.linux_if.interval;
 	else if ((int)*pv < polling_trip_temp2)
-		thz_dev->polling_delay = g_wmt_tm.linux_if.interval
+		thz_dev->polling_delay_jiffies = g_wmt_tm.linux_if.interval
 							* polling_factor2;
 	else
-		thz_dev->polling_delay = g_wmt_tm.linux_if.interval
+		thz_dev->polling_delay_jiffies = g_wmt_tm.linux_if.interval
 							* polling_factor1;
 
 	return 0;
 }
 
-static int wmt_thz_get_mode(
-struct thermal_zone_device *thz_dev, enum thermal_device_mode *mode)
-{
-	struct linux_thermal_ctrl_if *p_linux_if = 0;
-/* int    kernel_mode = 0; */
-
-	wmt_tm_dprintk("[%s]\n", __func__);
-
-	if (pg_wmt_tm) {
-		p_linux_if = &pg_wmt_tm->linux_if;
-	} else {
-		wmt_tm_dprintk("[%s] fail!\n", __func__);
-		return -EINVAL;
-	}
-
-	wmt_tm_dprintk("[%s] %d\n", __func__, p_linux_if->kernel_mode);
-
-	*mode = (p_linux_if->kernel_mode) ?
-			THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
-
-	return 0;
-}
-
-static int wmt_thz_set_mode(
+static int wmt_thz_change_mode(
 struct thermal_zone_device *thz_dev, enum thermal_device_mode mode)
 {
 	struct linux_thermal_ctrl_if *p_linux_if = 0;
@@ -741,22 +713,6 @@ struct thermal_zone_device *thz_dev, enum thermal_device_mode mode)
 
 	return 0;
 
-}
-
-static int wmt_thz_get_trip_type(
-struct thermal_zone_device *thz_dev, int trip, enum thermal_trip_type *type)
-{
-	wmt_tm_dprintk("[mtktspa_get_trip_type] %d\n", trip);
-	*type = g_thermal_trip[trip];
-	return 0;
-}
-
-static int wmt_thz_get_trip_temp(
-struct thermal_zone_device *thz_dev, int trip, int *pv)
-{
-	wmt_tm_dprintk("[mtktspa_get_trip_temp] %d\n", trip);
-	*pv = g_trip_temp[trip];
-	return 0;
 }
 
 static int wmt_thz_get_crit_temp(
@@ -798,7 +754,7 @@ struct thermal_cooling_device *cool_dev, unsigned long v)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 	}
 
 	return 0;
@@ -1165,7 +1121,7 @@ int wmt_wifi_tx_thro_read(struct seq_file *m, void *v)
 
 static int wmt_wifi_tx_thro_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_wifi_tx_thro_read, PDE_DATA(inode));
+	return single_open(file, wmt_wifi_tx_thro_read, pde_data(inode));
 }
 
 
@@ -1180,83 +1136,8 @@ int wmt_wifi_tx_thro_limit_read(struct seq_file *m, void *v)
 
 static int wmt_wifi_tx_thro_limit_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_wifi_tx_thro_limit_read, PDE_DATA(inode));
+	return single_open(file, wmt_wifi_tx_thro_limit_read, pde_data(inode));
 }
-
-
-
-/******************************************************************************
- * aee_get_cmdline is a copy of get_cmdline in mm/util.c, please pay attension to
- * whether this function has changed when the kernel version is upgraded.
- *****************************************************************************/
-static int aee_get_cmdline(struct task_struct *task, char *buffer, int buflen)
-{
-	int res = 0;
-	unsigned int len = 0;
-	struct mm_struct *mm = get_task_mm(task);
-	unsigned long arg_start = 0;
-	unsigned long arg_end = 0;
-	unsigned long env_start = 0;
-	unsigned long env_end = 0;
-
-	if (!mm || !buffer || !buflen)
-		goto out;
-	if (!mm->arg_end)
-		goto out_mm;	/* Shh! No looking before we're done */
-
-	arg_start = mm->arg_start;
-	arg_end = mm->arg_end;
-	env_start = mm->env_start;
-	env_end = mm->env_end;
-
-	len = arg_end - arg_start;
-
-	if (len > buflen)
-		len = buflen;
-
-	res = access_process_vm(task, arg_start, buffer, len, FOLL_FORCE);
-
-	/*
-	 * If the nul at the end of args has been overwritten, then
-	 * assume application is using setproctitle(3).
-	 */
-	if (res > 0 && buffer[res-1] != '\0' && len < buflen) {
-		len = strnlen(buffer, res);
-		if (len < res) {
-			res = len;
-		} else {
-			len = env_end - env_start;
-			if (len > buflen - res)
-				len = buflen - res;
-			res += access_process_vm(task, env_start,
-						 buffer+res, len,
-						 FOLL_FORCE);
-			res = strnlen(buffer, res);
-		}
-	}
-out_mm:
-	mmput(mm);
-out:
-	return res;
-}
-
-static int compare_cmdline(void)
-{
-	int len = 0;
-	char buf[MAX_PROCTITLE_AUDIT_LEN] = {0};
-
-	len = aee_get_cmdline(current, buf, MAX_PROCTITLE_AUDIT_LEN);
-
-	if (len == 0)
-		return -1;
-
-	if (!strncmp(buf, "thermal", 7) || !strncmp(buf, "/vendor/bin/thermal", 19))
-		return 0;
-
-	wmt_tm_printk("%s: task %s open %s failed!\n",__func__, current->comm, buf);
-	return -1;
-}
-
 
 int wmt_test_thro;
 /* New Wifi throttling Algo+ */
@@ -1353,14 +1234,14 @@ int wmt_wifi_algo_read(struct seq_file *m, void *v)
 
 static int wmt_wifi_algo_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_wifi_algo_read, PDE_DATA(inode));
+	return single_open(file, wmt_wifi_algo_read, pde_data(inode));
 }
 /* New Wifi throttling Algo- */
 
 ssize_t wmt_tm_wfd_write(
 struct file *filp, const char __user *buf, size_t len, loff_t *data)
 {
-	int ret = 0;
+	int ret __maybe_unused = 0;
 	char tmp[MAX_LEN] = { 0 };
 
 	len = (len < (MAX_LEN - 1)) ? len : (MAX_LEN - 1);
@@ -1369,11 +1250,6 @@ struct file *filp, const char __user *buf, size_t len, loff_t *data)
 		return -EFAULT;
 
 	ret = kstrtoint(tmp, 10, &tm_wfd_stat);
-
-#if 0
-	wmt_tm_printk("[%s] %s = %d, len=%d, ret=%d\n"
-		, __func__, tmp, tm_wfd_stat, len, ret);
-#endif
 
 	return len;
 }
@@ -1396,7 +1272,7 @@ int wmt_tm_wfd_read(struct seq_file *m, void *v)
 
 static int wmt_tm_wfd_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_tm_wfd_read, PDE_DATA(inode));
+	return single_open(file, wmt_tm_wfd_read, pde_data(inode));
 }
 
 ssize_t wmt_wifi_in_soc_write(
@@ -1439,7 +1315,7 @@ struct file *filp, const char __user *buf, size_t len, loff_t *data)
 		tt_wifi_low, tp_wifi_rise, tp_wifi_fall);
 
 	if (sensor_select < 0 || sensor_select >= NR_TS_SENSORS) {
-		#ifdef CONFIG_MTK_AEE_FEATURE
+		#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 					"%s ",
 					"sensor_select: %d\n",
@@ -1475,7 +1351,7 @@ int wmt_wifi_in_soc_read(struct seq_file *m, void *v)
 
 static int wmt_wifi_in_soc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_wifi_in_soc_read, PDE_DATA(inode));
+	return single_open(file, wmt_wifi_in_soc_read, pde_data(inode));
 }
 
 ssize_t wmt_tm_pid_write(
@@ -1483,8 +1359,6 @@ struct file *filp, const char __user *buf, size_t len, loff_t *data)
 {
 	int ret = 0;
 	char tmp[MAX_LEN] = { 0 };
-	if (compare_cmdline() != 0)
-		return -1;
 
 	len = (len < (MAX_LEN - 1)) ? len : (MAX_LEN - 1);
 	/* write data to the buffer */
@@ -1507,6 +1381,7 @@ int wmt_tm_pid_read(struct seq_file *m, void *v)
 
 	seq_printf(m, "%d\n", tm_input_pid);
 	/* ret = strlen(tmp); */
+
 	/* memcpy(buf, tmp, ret*sizeof(char)); */
 
 	wmt_tm_printk("[%s] %d\n", __func__, tm_input_pid);
@@ -1516,7 +1391,7 @@ int wmt_tm_pid_read(struct seq_file *m, void *v)
 
 static int wmt_tm_pid_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_tm_pid_read, PDE_DATA(inode));
+	return single_open(file, wmt_tm_pid_read, pde_data(inode));
 }
 
 #define check_str(x) (x[0] == '\0'?"none\t":x)
@@ -1581,10 +1456,7 @@ static struct thermal_zone_device_ops wmt_thz_dev_ops = {
 	.bind = wmt_thz_bind,
 	.unbind = wmt_thz_unbind,
 	.get_temp = wmt_thz_get_temp,
-	.get_mode = wmt_thz_get_mode,
-	.set_mode = wmt_thz_set_mode,
-	.get_trip_type = wmt_thz_get_trip_type,
-	.get_trip_temp = wmt_thz_get_trip_temp,
+	.change_mode = wmt_thz_change_mode,
 	.get_crit_temp = wmt_thz_get_crit_temp,
 };
 
@@ -1637,7 +1509,7 @@ static int wmt_tm_thz_cl_register(void)
 
 	/* trips */
 	p_linux_if->thz_dev =
-		mtk_thermal_zone_device_register("mtktswmt", g_num_trip, NULL,
+		mtk_thermal_zone_device_register("mtktswmt", trips, g_num_trip, NULL,
 						&wmt_thz_dev_ops, 0, 0, 0,
 						p_linux_if->interval);
 
@@ -1686,7 +1558,7 @@ static int wmt_tm_read(struct seq_file *m, void *v)
 
 static int wmt_tm_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, wmt_tm_read, PDE_DATA(inode));
+	return single_open(file, wmt_tm_read, pde_data(inode));
 }
 
 static ssize_t wmt_tm_write(
@@ -1767,7 +1639,7 @@ struct file *filp, const char __user *buf, size_t count, loff_t *data)
 		}
 
 		if (g_num_trip < 0 || g_num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 						DB_OPT_DEFAULT, "wmt_tm_write",
 						"Bad argument");
@@ -1845,16 +1717,20 @@ struct file *filp, const char __user *buf, size_t count, loff_t *data)
 		wmt_tm_dprintk("[%s] polling time=%d\n", __func__,
 							p_linux_if->interval);
 
-		/* p_linux_if->thz_dev->polling_delay
+		/* p_linux_if->thz_dev->polling_delay_jiffies
 		 *			= p_linux_if->interval*1000;
 		 */
 
 		/* thermal_zone_device_update(p_linux_if->thz_dev); */
 
+		for (i = 0; i < g_num_trip; i++) {
+			trips[i].temperature = g_trip_temp[i];
+			trips[i].type = g_thermal_trip[i];
+		}
 		/* register */
 		wmt_tm_dprintk("[%s] mtktswmt register thermal\n", __func__);
 		p_linux_if->thz_dev =
-			mtk_thermal_zone_device_register("mtktswmt",
+			mtk_thermal_zone_device_register("mtktswmt", trips,
 						g_num_trip, NULL,
 						&wmt_thz_dev_ops, 0, 0, 0,
 						p_linux_if->interval);
@@ -1869,7 +1745,7 @@ struct file *filp, const char __user *buf, size_t count, loff_t *data)
 	}
 
 	wmt_tm_info("[%s] bad argument = %s\n", __func__, ptr_tm_data->desc);
-    #ifdef CONFIG_MTK_AEE_FEATURE
+    #if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 							"wmt_tm_write",
 							"Bad argument");
@@ -1878,65 +1754,58 @@ struct file *filp, const char __user *buf, size_t count, loff_t *data)
 	return -EINVAL;
 }
 
-static const struct file_operations _wmt_tm_fops = {
-	.owner = THIS_MODULE,
-	.open = wmt_tm_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = wmt_tm_write,
-	.release = single_release,
+static const struct proc_ops _wmt_tm_fops = {
+	.proc_open = wmt_tm_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = wmt_tm_write,
+	.proc_release = single_release,
 };
 
-static const struct file_operations _tm_pid_fops = {
-	.owner = THIS_MODULE,
-	.open = wmt_tm_pid_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = wmt_tm_pid_write,
-	.release = single_release,
+static const struct proc_ops _tm_pid_fops = {
+	.proc_open = wmt_tm_pid_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = wmt_tm_pid_write,
+	.proc_release = single_release,
 };
 
-static const struct file_operations _wmt_val_fops = {
-	.owner = THIS_MODULE,
-	.open = wmt_wifi_algo_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = wmt_wifi_algo_write,
-	.release = single_release,
+static const struct proc_ops _wmt_val_fops = {
+	.proc_open = wmt_wifi_algo_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = wmt_wifi_algo_write,
+	.proc_release = single_release,
 };
 
-static const struct file_operations _tx_thro_fops = {
-	.owner = THIS_MODULE,
-	.open = wmt_wifi_tx_thro_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops _tx_thro_fops = {
+	.proc_open = wmt_wifi_tx_thro_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
-static const struct file_operations _tx_thro_limit_fops = {
-	.owner = THIS_MODULE,
-	.open = wmt_wifi_tx_thro_limit_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops _tx_thro_limit_fops = {
+	.proc_open = wmt_wifi_tx_thro_limit_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
-static const struct file_operations _wfd_stat_fops = {
-	.owner = THIS_MODULE,
-	.open = wmt_tm_wfd_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = wmt_tm_wfd_write,
-	.release = single_release,
+static const struct proc_ops _wfd_stat_fops = {
+	.proc_open = wmt_tm_wfd_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = wmt_tm_wfd_write,
+	.proc_release = single_release,
 };
 
-static const struct file_operations _wifi_in_soc_fops = {
-	.owner = THIS_MODULE,
-	.open = wmt_wifi_in_soc_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = wmt_wifi_in_soc_write,
-	.release = single_release,
+static const struct proc_ops _wifi_in_soc_fops = {
+	.proc_open = wmt_wifi_in_soc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = wmt_wifi_in_soc_write,
+	.proc_release = single_release,
 };
 
 static int wmt_tm_proc_register(void)
@@ -2033,9 +1902,10 @@ static int wmt_tm_thz_cl_unregister(void)
 	return 0;
 }
 
-static int __init wmt_tm_init(void)
+int  wmt_tm_init(void)
 {
 	int err = 0;
+	int i = 0;
 
 	wmt_tm_printk("[%s] start -->\n", __func__);
 
@@ -2050,6 +1920,10 @@ static int __init wmt_tm_init(void)
 	wmt_stats_timer.expires = jiffies + 1 * HZ;
 	add_timer(&wmt_stats_timer);
 
+	for (i = 0; i < g_num_trip; i++) {
+		trips[i].temperature = g_trip_temp[i];
+		trips[i].type = g_thermal_trip[i];
+	}
 
 	err = wmt_tm_thz_cl_register();
 	if (err)
@@ -2063,7 +1937,7 @@ static int __init wmt_tm_init(void)
 	return 0;
 }
 
-static void __exit wmt_tm_deinit(void)
+void wmt_tm_deinit(void)
 {
 	int err = 0;
 
@@ -2082,5 +1956,7 @@ static void __exit wmt_tm_deinit(void)
 }
 
 /* EXPORT_SYMBOL(wifi_in_soc_throttle_enable); */
-module_init(wmt_tm_init);
-module_exit(wmt_tm_deinit);
+//module_init(wmt_tm_init);
+//module_exit(wmt_tm_deinit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

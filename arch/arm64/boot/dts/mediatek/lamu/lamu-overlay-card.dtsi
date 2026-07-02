@@ -1,0 +1,6 @@
+/*[TN.NJDC] card overlay file.start*/
+&mmc1 {
+  cd-gpios = <&pio 18 GPIO_ACTIVE_HIGH>;
+  vmmc-supply = <&mt6358_vmch_eint_low>;
+};
+/*[TN.NJDC] card overlay file.end*/

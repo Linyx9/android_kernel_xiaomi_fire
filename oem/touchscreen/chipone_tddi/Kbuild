@@ -1,0 +1,22 @@
+ifdef CONFIG_OEM_LAMU_TOUCHSCREEN
+	TP_OBJS += cts_driver.o
+	TP_OBJS += cts_core.o
+	TP_OBJS += cts_sfctrlv2.o
+	TP_OBJS += cts_spi_flash.o
+	TP_OBJS += cts_firmware.o
+	TP_OBJS += cts_test.o
+	TP_OBJS += cts_charger_detect.o
+	TP_OBJS += cts_earjack_detect.o
+	TP_OBJS += cts_tcs.o
+	TP_OBJS += cts_platform.o
+	TP_OBJS += cts_tool.o
+	TP_OBJS += cts_sysfs.o
+	TP_OBJS += cts_strerror.o
+	TP_OBJS += cts_oem.o
+endif
+
+
+
+obj-$(CONFIG_OEM_LAMU_TOUCHSCREEN) += chipone_tddi.o
+chipone_tddi-y := $(TP_OBJS)
+

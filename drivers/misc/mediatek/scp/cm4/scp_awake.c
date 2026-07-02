@@ -44,8 +44,9 @@ struct mutex scp_awake_mutexs[SCP_CORE_TOTAL];
  * return  0 :get lock success
  *        -1 :get lock timeout
  */
-int scp_awake_lock(enum scp_core_id scp_id)
+int scp_awake_lock(void *_scp_id)
 {
+	enum scp_core_id scp_id = (enum scp_core_id) _scp_id;
 	unsigned long spin_flags;
 	char *core_id;
 	int *scp_awake_count;
@@ -97,7 +98,7 @@ int scp_awake_lock(enum scp_core_id scp_id)
 		udelay(10);
 	}
 	/* clear status */
-	writel(readl(INFRA_IRQ_SET), INFRA_IRQ_CLEAR);
+	writel(0xA0 | (1 << AP_AWAKE_LOCK), INFRA_IRQ_CLEAR);
 
 	/* scp lock awake success*/
 	if (ret != -1)
@@ -127,8 +128,9 @@ EXPORT_SYMBOL_GPL(scp_awake_lock);
  * return  0 :release lock success
  *        -1 :release lock fail
  */
-int scp_awake_unlock(enum scp_core_id scp_id)
+int scp_awake_unlock(void *_scp_id)
 {
+	enum scp_core_id scp_id = (enum scp_core_id) _scp_id;
 	unsigned long spin_flags;
 	int *scp_awake_count;
 	char *core_id;
@@ -175,7 +177,7 @@ int scp_awake_unlock(enum scp_core_id scp_id)
 		udelay(10);
 	}
 	/* clear status */
-	writel(readl(INFRA_IRQ_SET), INFRA_IRQ_CLEAR);
+	writel(0xA0 | (1 << AP_AWAKE_UNLOCK), INFRA_IRQ_CLEAR);
 
 	/* scp unlock awake success*/
 	if (ret != -1) {

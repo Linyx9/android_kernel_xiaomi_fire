@@ -17,6 +17,14 @@
 #include <linux/device.h>
 #include <linux/mutex.h>
 
+#define PE_ID    (1 << 0)
+#define PE2_ID   (1 << 1)
+#define PDC_ID   (1 << 2)
+#define PE4_ID   (1 << 3)
+#define PE5_ID   (1 << 4)
+#define HVBP_ID  (1 << 5)
+#define PE5P_ID  (1 << 6)
+
 struct chg_alg_properties {
 	const char *alias_name;
 };
@@ -26,6 +34,7 @@ struct chg_alg_properties {
  * ALG_TA_NOT_SUPPORT: TA does not support
  * ALG_TA_CHECKING: checking TA
  * ALG_NOT_READY: TA support & not meet the conditions
+ * ALG_WAIVER: alg waives being executed
  * ALG_READY: TA support & meet the conditions
  * ALG_RUNNING: alg is running
  * ALG_DONE: alg done
@@ -35,6 +44,7 @@ enum chg_alg_state {
 	ALG_TA_CHECKING,
 	ALG_TA_NOT_SUPPORT,
 	ALG_NOT_READY,
+	ALG_WAIVER,
 	ALG_READY,
 	ALG_RUNNING,
 	ALG_DONE,
@@ -43,6 +53,11 @@ enum chg_alg_state {
 enum chg_idx {
 	CHG1,
 	CHG2,
+	BUCKBSTCHG,
+	DVCHG1,
+	DVCHG2,
+	HVDVCHG1,
+	HVDVCHG2,
 	CHG_MAX,
 };
 
@@ -50,6 +65,10 @@ enum charger_configuration {
 	SINGLE_CHARGER,
 	DUAL_CHARGERS_IN_SERIES,
 	DUAL_CHARGERS_IN_PARALLEL,
+	DIVIDER_CHARGER,
+	DUAL_DIVIDER_CHARGERS,
+	HVDIVIDER_CHARGER,
+	DUAL_HVDIVIDER_CHARGERS,
 };
 
 struct chg_alg_device {
@@ -62,13 +81,30 @@ struct chg_alg_device {
 	void	*driver_data;
 	void	*driver_hal_data;
 	bool is_polling_mode;
+	int alg_id;
+	int adapter_priority;
 };
 
 enum chg_alg_notifier_events {
 	EVT_PLUG_IN,
 	EVT_PLUG_OUT,
 	EVT_FULL,
-	EVT_RECHARGE
+	EVT_RECHARGE,
+	EVT_DETACH,
+	EVT_HARDRESET,
+	EVT_SOFTRESET,
+	EVT_VBUSOVP,
+	EVT_IBUSOCP,
+	EVT_IBUSUCP_FALL,
+	EVT_VBATOVP,
+	EVT_IBATOCP,
+	EVT_VOUTOVP,
+	EVT_VDROVP,
+	EVT_VBATOVP_ALARM,
+	EVT_VBUSOVP_ALARM,
+	EVT_BATPRO_DONE,
+	EVT_ALGO_STOP,
+	EVT_MAX,
 };
 
 struct chg_alg_notify {
@@ -76,16 +112,33 @@ struct chg_alg_notify {
 	int value;
 };
 
+enum PROTOCAL_SETTING {
+	UFCS_FIRST,
+	UFCS_FIRST_AND_WAIT,
+	PD_FIRST_AND_WAIT,
+};
+
 struct chg_limit_setting {
 	int cv;
 	int input_current_limit1;
 	int input_current_limit2;
+	int input_current_limit_dvchg1;
 	int charging_current_limit1;
 	int charging_current_limit2;
+	bool vbat_mon_en;
+	int adapter_priority;
+/* TN Begin modified by xinjun.lu/860715 20240729 CR/EKLAMU-202 */
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
+	int pe50_current_limit_dvchg1;
+	int pe50_fcc_limit;
+#endif
+/* TN End modified by xinjun.lu/860715 20240729 CR/EKLAMU-202 */
 };
 
 enum chg_alg_props {
 	ALG_MAX_VBUS,
+	ALG_LOG_LEVEL,
+	ALG_REF_VBAT,
 };
 
 struct chg_alg_ops {
@@ -149,6 +202,7 @@ extern int chg_alg_init_algo(struct chg_alg_device *alg_dev);
 extern int chg_alg_is_algo_ready(struct chg_alg_device *alg_dev);
 extern int chg_alg_start_algo(struct chg_alg_device *alg_dev);
 extern int chg_alg_is_algo_running(struct chg_alg_device *alg_dev);
+extern int chg_alg_plugout_reset(struct chg_alg_device *alg_dev);
 extern int chg_alg_stop_algo(struct chg_alg_device *alg_dev);
 extern int chg_alg_get_prop(struct chg_alg_device *alg_dev,
 	enum chg_alg_props s, int *value);
@@ -159,5 +213,6 @@ extern int chg_alg_set_current_limit(struct chg_alg_device *alg_dev,
 extern int chg_alg_notifier_call(struct chg_alg_device *alg_dev,
 	struct chg_alg_notify *notify);
 extern char *chg_alg_state_to_str(int state);
-
+extern const char *const
+chg_alg_notify_evt_tostring(enum chg_alg_notifier_events evt);
 #endif /* __MTK_CHARGER_ALGORITHM_CLASS_H__ */

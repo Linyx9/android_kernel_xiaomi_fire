@@ -213,8 +213,6 @@ static int mtk_set_src_1_param(struct mtk_base_afe *afe, int id)
 							      &iir_coeff_num);
 
 		if (iir_coeff_num == 0 || !iir_coeff) {
-			dev_warn(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
-				 __func__, iir_coeff_num, iir_coeff);
 			AUDIO_AEE("iir coeff error");
 			return -EINVAL;
 		}
@@ -309,8 +307,6 @@ static int mtk_set_src_2_param(struct mtk_base_afe *afe, int id)
 							      &iir_coeff_num);
 
 		if (iir_coeff_num == 0 || !iir_coeff) {
-			dev_warn(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
-				 __func__, iir_coeff_num, iir_coeff);
 			AUDIO_AEE("iir coeff error");
 			return -EINVAL;
 		}
@@ -475,7 +471,7 @@ static const struct snd_kcontrol_new mtk_hw_src_2_in_ch1_mix[] = {
 				    I_DL2_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL3_CH1", AFE_CONN42,
 				    I_DL3_CH1, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH1", AFE_CONN42,
+	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH1", AFE_CONN42_1,
 				    I_DL4_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL5_CH1", AFE_CONN42_1,
 				    I_DL5_CH1, 1, 0),
@@ -492,7 +488,7 @@ static const struct snd_kcontrol_new mtk_hw_src_2_in_ch2_mix[] = {
 				    I_DL2_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL3_CH2", AFE_CONN43,
 				    I_DL3_CH2, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH2", AFE_CONN43,
+	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH2", AFE_CONN43_1,
 				    I_DL4_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL5_CH2", AFE_CONN43_1,
 				    I_DL5_CH2, 1, 0),
@@ -686,7 +682,6 @@ static const struct snd_soc_dai_ops mtk_dai_src_ops = {
 #define MTK_SRC_FORMATS (SNDRV_PCM_FMTBIT_S16_LE |\
 			 SNDRV_PCM_FMTBIT_S24_LE |\
 			 SNDRV_PCM_FMTBIT_S32_LE)
-
 
 static struct snd_soc_dai_driver mtk_dai_src_driver[] = {
 	{

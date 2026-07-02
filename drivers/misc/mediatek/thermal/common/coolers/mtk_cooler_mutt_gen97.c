@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/version.h>
 #include <linux/kernel.h>
@@ -18,7 +18,6 @@
 #include <linux/uidgid.h>
 #include <mtk_cooler_setting.h>
 #include <linux/debugfs.h>
-#include <mtk_cooler_mutt_gen97.h>
 
 
 /****************************************************************************
@@ -37,7 +36,6 @@
 #define TMC_IMS_ONLY_LEVEL		(TMC_COOLER_LV7)
 #define TMC_NO_IMS_LEVEL		(TMC_COOLER_LV8)
 #define TMC_MD_OFF_LEVEL		(0xFF)
-#if 0
 #define TMC_CA_CTRL_CA_ON \
 	(TMC_CTRL_CMD_CA_CTRL | TMC_CA_ON << 8)
 #define TMC_CA_CTRL_CA_OFF \
@@ -76,21 +74,8 @@
 	| (TMC_TW_PWR_REDUCE_NR_MAX_TX_EVENT << 16)	\
 	| (pwr << 24))
 
-#endif
-
-#if 0
-/*
- * No UL data(except IMS): active = 1; suspend = 255; bit0 in reserved =0;
- * No UL data(no IMS): active = 1; suspend = 255; bit0 in reserved =1;
- */
-#define BIT_MD_CL_NO_IMS MUTT_ENABLE_IMS_DISABLE /*IMS disable*/
-#define MD_CL_NO_UL_DATA (0xFF010000 | MUTT_ENABLE_IMS_ENABLE) /*IMS only*/
-#endif
-
 /* State of "MD off & noIMS" are not included. */
-
-//#define MAX_NUM_INSTANCE_MTK_COOLER_MUTT  8
-
+#define MAX_NUM_INSTANCE_MTK_COOLER_MUTT  8
 #define MAX_NUM_TX_PWR_LV  3
 
 #define MTK_CL_MUTT_GET_LIMIT(limit, state) \
@@ -119,7 +104,7 @@ do { \
 
 /* LOG */
 #define mtk_cooler_mutt_dprintk_always(fmt, args...) \
-pr_notice("[Thermal/TC/mutt]" fmt, ##args)
+pr_debug("[Thermal/TC/mutt]" fmt, ##args)
 
 #define mtk_cooler_mutt_dprintk(fmt, args...) \
 do { \
@@ -135,17 +120,16 @@ static int clmutt_ ## name ## _proc_open(                                     \
 	struct inode *inode, struct file *file)                               \
 {                                                                             \
 	return single_open(file, clmutt_ ## name ## _proc_read,               \
-		PDE_DATA(inode));                                             \
+		pde_data(inode));                                             \
 }                                                                             \
-static const struct file_operations clmutt_ ## name ## _proc_fops = {         \
-	.owner	= THIS_MODULE,                                                \
-	.open	= clmutt_ ## name ## _proc_open,                              \
-	.read	= seq_read,                                                   \
-	.llseek	= seq_lseek,                                                  \
-	.release	= single_release,                                     \
-	.write	= clmutt_ ## name ## _proc_write,                             \
+static const struct proc_ops clmutt_ ## name ## _proc_fops = {         \
+	.proc_open	= clmutt_ ## name ## _proc_open,                              \
+	.proc_read	= seq_read,                                                   \
+	.proc_lseek	= seq_lseek,                                                  \
+	.proc_release	= single_release,                                     \
+	.proc_write	= clmutt_ ## name ## _proc_write,                             \
 }
-#if 0
+
 enum mutt_type {
 	MUTT_LTE,
 	MUTT_NR,
@@ -154,7 +138,6 @@ enum mutt_type {
 };
 
 /*enum mapping must be align with MD site*/
-
 enum tmc_ctrl_cmd_enum {
 	TMC_CTRL_CMD_THROTTLING = 0,
 	TMC_CTRL_CMD_CA_CTRL,
@@ -220,7 +203,6 @@ enum tmc_tx_pwr_event_enum {
 	TMC_TW_PWR_REDUCE_NR_MAX_TX_EVENT,
 	TMC_TW_PWR_EVENT_MAX_NUM,
 };
-#endif
 
 #if FEATURE_THERMAL_DIAG
 /*
@@ -368,15 +350,15 @@ static struct clmutt_param clmutt_data = {
  *  Weak Function
  ****************************************************************************/
 unsigned long __attribute__ ((weak))
-ccci_get_md_boot_count(int md_id)
+ccci_get_md_boot_count(void)
 {
 	pr_notice("E_WF: %s doesn't exist\n", __func__);
 	return 0;
 }
 
 int __attribute__ ((weak))
-exec_ccci_kern_func_by_md_id(
-int md_id, unsigned int id, char *buf, unsigned int len)
+exec_ccci_kern_func(
+unsigned int id, char *buf, unsigned int len)
 {
 	pr_notice("E_WF: %s doesn't exist\n", __func__);
 	return -316;
@@ -417,7 +399,7 @@ static void clmutt_cooler_param_reset(unsigned long mdoff_state)
 	}
 }
 
-unsigned int clmutt_level_selection(int lv, unsigned int type)
+static unsigned int clmutt_level_selection(int lv, unsigned int type)
 {
 	unsigned int ctrl_lv = 0;
 
@@ -458,7 +440,7 @@ unsigned int clmutt_level_selection(int lv, unsigned int type)
 		? ctrl_lv | TMC_COOLER_LV_RAT_NR
 		: ctrl_lv | TMC_COOLER_LV_RAT_LTE;
 
-	mtk_cooler_mutt_dprintk_always(
+	mtk_cooler_mutt_dprintk(
 		"[%s] type(%d) lv(%d):ctrl_lv: 0x%08x\n",
 		__func__, type, lv, ctrl_lv);
 
@@ -471,21 +453,21 @@ static int clmutt_send_tmc_cmd(unsigned int cmd)
 
 	if (cmd != clmutt_data.cur_limit) {
 		clmutt_data.cur_limit = cmd;
-		clmutt_data.last_md_boot_cnt = ccci_get_md_boot_count(MD_SYS1);
-		ret = exec_ccci_kern_func_by_md_id(MD_SYS1,
-			ID_THROTTLING_CFG, (char *) &cmd, 4);
+		clmutt_data.last_md_boot_cnt = ccci_get_md_boot_count();
+		ret = exec_ccci_kern_func(
+			ID_THROTTLING_CFG, (char *) &cmd,4);
 
 		mtk_cooler_mutt_dprintk_always(
 			"[%s] ret %d param 0x%08x bcnt %lu\n", __func__,
 			ret, cmd, clmutt_data.last_md_boot_cnt);
 
 	} else if (cmd != MUTT_TMC_COOLER_LV_DISABLE) {
-		unsigned long cur_md_bcnt = ccci_get_md_boot_count(MD_SYS1);
+		unsigned long cur_md_bcnt = ccci_get_md_boot_count();
 
 		if (clmutt_data.last_md_boot_cnt != cur_md_bcnt) {
 			clmutt_data.last_md_boot_cnt = cur_md_bcnt;
-			ret = exec_ccci_kern_func_by_md_id(MD_SYS1,
-				ID_THROTTLING_CFG, (char *) &cmd, 4);
+			ret = exec_ccci_kern_func(
+				ID_THROTTLING_CFG, (char *) &cmd,4);
 
 			mtk_cooler_mutt_dprintk_always(
 				"[%s] mdrb ret %d param 0x%08x bcnt %lu\n",
@@ -525,8 +507,9 @@ static int clmutt_send_tmd_signal(int level)
 	}
 
 	if (ret == 0 && clmutt_data.ptmd_task) {
-		siginfo_t info;
+		struct kernel_siginfo info;
 
+		clear_siginfo(&info);
 		info.si_signo = SIGIO;
 		info.si_errno = 0;
 		info.si_code = level;
@@ -578,7 +561,7 @@ static int clmutt_send_tm_signal(enum mutt_type type, unsigned long state)
 		ret = -1;
 	}
 
-	mtk_cooler_mutt_dprintk_always("[%s] %s:pid is %d, %d; MD off=%d\n",
+	mtk_cooler_mutt_dprintk_always("[%s] %s:pid is %d, %d; MD off=%lu\n",
 		__func__, clmutt_data.cooler_param[type].name,
 		clmutt_data.tm_pid, clmutt_data.tm_input_pid, state);
 
@@ -592,8 +575,9 @@ static int clmutt_send_tm_signal(enum mutt_type type, unsigned long state)
 	}
 
 	if (ret == 0 && clmutt_data.pg_task) {
-		siginfo_t info;
+		struct kernel_siginfo info;
 
+		clear_siginfo(&info);
 		info.si_signo = SIGIO;
 		info.si_errno = TM_CLIENT_clmutt;
 		info.si_code = state; /* Toggle MD ON: 0 OFF: 1*/
@@ -823,7 +807,7 @@ static void mtk_cl_mutt_set_onIMS(enum mutt_type type, unsigned long state)
 		clmutt_data.cooler_param[type].noIMS_state = state;
 		clmutt_data.cooler_param[type].target_level = target_lv;
 		clmutt_data.cur_level = target_lv;
-		mtk_cooler_mutt_dprintk_always("[%s] %s:set noIMS state=%d\n",
+		mtk_cooler_mutt_dprintk_always("[%s] %s:set noIMS state=%lu\n",
 			__func__, clmutt_data.cooler_param[type].name, state);
 	}
 }
@@ -2084,7 +2068,7 @@ PROC_FOPS_RW(cooler_lv);
 PROC_FOPS_RW(scg_off);
 PROC_FOPS_RW(tx_pwr);
 
-static int __init mtk_cooler_mutt_init(void)
+int  mtk_cooler_mutt_init(void)
 {
 	int err = 0;
 
@@ -2099,7 +2083,7 @@ static int __init mtk_cooler_mutt_init(void)
 		struct proc_dir_entry *dir_entry = NULL;
 		struct pentry {
 			const char *name;
-			const struct file_operations *fops;
+			const struct proc_ops *fops;
 		};
 
 		const struct pentry entries[] = {
@@ -2144,7 +2128,7 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtk_cooler_mutt_exit(void)
+void  mtk_cooler_mutt_exit(void)
 {
 	mtk_cooler_mutt_dprintk("exit\n");
 
@@ -2153,5 +2137,5 @@ static void __exit mtk_cooler_mutt_exit(void)
 
 	mtk_cooler_mutt_unregister_ltf();
 }
-module_init(mtk_cooler_mutt_init);
-module_exit(mtk_cooler_mutt_exit);
+//module_init(mtk_cooler_mutt_init);
+//module_exit(mtk_cooler_mutt_exit);

@@ -63,7 +63,8 @@ static struct snd_dma_buffer *Dl1_Hp_Playback_dma_buf;
  */
 
 static int mtk_soc_hp_impedance_probe(struct platform_device *pdev);
-static int mtk_soc_pcm_hp_impedance_close(struct snd_pcm_substream *substream);
+static int mtk_soc_pcm_hp_impedance_close(struct snd_soc_component *component,
+					  struct snd_pcm_substream *substream);
 static int mtk_asoc_dhp_impedance_component_probe(struct snd_soc_component *component);
 
 static struct snd_pcm_hardware mtk_pcm_hp_impedance_hardware = {
@@ -83,12 +84,14 @@ static struct snd_pcm_hardware mtk_pcm_hp_impedance_hardware = {
 };
 
 static snd_pcm_uframes_t
-mtk_pcm_hp_impedance_pointer(struct snd_pcm_substream *substream)
+mtk_pcm_hp_impedance_pointer(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream)
 {
 	return 0;
 }
 
-static int mtk_pcm_hp_impedance_params(struct snd_pcm_substream *substream,
+static int mtk_pcm_hp_impedance_params(struct snd_soc_component *component,
+				       struct snd_pcm_substream *substream,
 				       struct snd_pcm_hw_params *hw_params)
 {
 	int ret = 0;
@@ -110,11 +113,9 @@ static int mtk_pcm_hp_impedance_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_pcm_hp_impedance_hw_free(struct snd_pcm_substream *substream)
+static int mtk_pcm_hp_impedance_hw_free(struct snd_soc_component *component,
+					struct snd_pcm_substream *substream)
 {
-#if defined(AUD_DEBUG_LOG)
-	pr_debug("%s()\n", __func__);
-#endif
 	return 0;
 }
 
@@ -124,13 +125,12 @@ static struct snd_pcm_hw_constraint_list constraints_hp_sample_rates = {
 		.mask = 0,
 };
 
-static int mtk_pcm_hp_impedance_open(struct snd_pcm_substream *substream)
+static int mtk_pcm_hp_impedance_open(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
-#if defined(AUD_DEBUG_LOG)
-	pr_debug("%s()\n", __func__);
-#endif
+
 	AudDrv_Clk_On();
 	AudDrv_Emi_Clk_On();
 	pHp_impedance_MemControl =
@@ -145,14 +145,15 @@ static int mtk_pcm_hp_impedance_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_err("mtk_soc_pcm_hp_impedance_close\n");
-		mtk_soc_pcm_hp_impedance_close(substream);
+		mtk_soc_pcm_hp_impedance_close(component, substream);
 		return ret;
 	}
 	return 0;
 }
 
 bool mPrepareDone;
-static int mtk_pcm_hp_impedance_prepare(struct snd_pcm_substream *substream)
+static int mtk_pcm_hp_impedance_prepare(struct snd_soc_component *component,
+					struct snd_pcm_substream *substream)
 {
 	bool mI2SWLen;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -200,11 +201,11 @@ static int mtk_pcm_hp_impedance_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_soc_pcm_hp_impedance_close(struct snd_pcm_substream *substream)
+static int mtk_soc_pcm_hp_impedance_close(struct snd_soc_component *component,
+					  struct snd_pcm_substream *substream)
 {
 	/* struct snd_pcm_runtime *runtime = substream->runtime; */
 #if defined(AUD_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	if (mPrepareDone == true) {
 		SetIntfConnection(Soc_Aud_InterCon_DisConnect,
@@ -224,7 +225,8 @@ static int mtk_soc_pcm_hp_impedance_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_hp_impedance_trigger(struct snd_pcm_substream *substream,
+static int mtk_pcm_hp_impedance_trigger(struct snd_soc_component *component,
+					struct snd_pcm_substream *substream,
 					int cmd)
 {
 #if defined(AUD_DEBUG_LOG)
@@ -240,7 +242,8 @@ static int mtk_pcm_hp_impedance_trigger(struct snd_pcm_substream *substream,
 	return -EINVAL;
 }
 
-static int mtk_pcm_hp_impedance_copy(struct snd_pcm_substream *substream,
+static int mtk_pcm_hp_impedance_copy(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream,
 				     int channel,
 				     unsigned long pos,
 				     void __user *buf,
@@ -249,47 +252,35 @@ static int mtk_pcm_hp_impedance_copy(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int mtk_pcm_hp_impedance_silence(struct snd_pcm_substream *substream,
-					int channel,
-					unsigned long pos,
-					unsigned long bytes)
-{
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
 static struct page *
-mtk_pcm_hp_impedance_page(struct snd_pcm_substream *substream,
+mtk_pcm_hp_impedance_page(struct snd_soc_component *component,
+			  struct snd_pcm_substream *substream,
 			  unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_hp_impedance_ops = {
+static const struct snd_soc_component_driver mtk_soc_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_asoc_dhp_impedance_component_probe,
 	.open = mtk_pcm_hp_impedance_open,
 	.close = mtk_soc_pcm_hp_impedance_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_pcm_hp_impedance_params,
 	.hw_free = mtk_pcm_hp_impedance_hw_free,
 	.prepare = mtk_pcm_hp_impedance_prepare,
 	.trigger = mtk_pcm_hp_impedance_trigger,
 	.pointer = mtk_pcm_hp_impedance_pointer,
-	.copy_user = mtk_pcm_hp_impedance_copy,
-	.fill_silence = mtk_pcm_hp_impedance_silence,
+	.copy = mtk_pcm_hp_impedance_copy,
 	.page = mtk_pcm_hp_impedance_page,
-};
 
-static const struct snd_soc_component_driver mtk_soc_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_hp_impedance_ops,
-	.probe = mtk_asoc_dhp_impedance_component_probe,
 };
 
 static int mtk_soc_hp_impedance_probe(struct platform_device *pdev)
 {
 #if defined(AUD_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -328,7 +319,7 @@ static int mtk_hp_impedance_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id Mt_soc_pcm_hp_impedance_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_hp_impedance",
@@ -341,7 +332,7 @@ static struct platform_driver mtk_hp_impedance_driver = {
 
 			.name = MT_SOC_HP_IMPEDANCE_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = Mt_soc_pcm_hp_impedance_of_ids,
 #endif
 		},
@@ -358,7 +349,6 @@ static int __init mtk_soc_hp_impedance_platform_init(void)
 	int ret;
 
 #if defined(AUD_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 #ifndef CONFIG_OF
 	soc_mtk_hp_impedance_dev =

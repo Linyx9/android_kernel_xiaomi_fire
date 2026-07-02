@@ -5,6 +5,7 @@
  */
 
 #include <asm/cputype.h>
+#include <linux/arm-smccc.h>
 #include <linux/atomic.h>
 #include <linux/bug.h>
 #include <linux/delay.h>
@@ -19,15 +20,28 @@
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/printk.h>
+#include <linux/workqueue.h>
 #include <linux/sched/clock.h>
 #include <linux/soc/mediatek/mtk_sip_svc.h>
-#include <linux/workqueue.h>
-#include <linux/arm-smccc.h>
 #include <mt-plat/aee.h>
 #include "sda.h"
+#include "dbg_error_flag.h"
 
 #define MCU_BP_IRQ_TRIGGER_THRESHOLD	(2)
 #define INFRA_BP_IRQ_TRIGGER_THRESHOLD	(2)
+
+#define DBG_ERR_FLAG_STATUS0 0x88
+#define DBG_ERR_FLAG_STATUS1 0x8c
+
+#define BUS_TRACER_COMPATIBLE "mediatek,bus_tracer-v1"
+#define DBG_ERR_FLAG_COMPATIBLE "mediatek, soc-dbg-error-flag"
+
+/*
+ * The base address of dbgao is placed in bus_tracer node
+ * temporarily, and will be moved out latter.
+ */
+
+static struct device_node *err_flag_node;
 
 union bus_parity_err {
 	struct _mst {
@@ -53,6 +67,8 @@ struct bus_parity_elem {
 	void __iomem *base;
 	unsigned int type;
 	unsigned int data_len;
+	unsigned int rd0_wd0_offset;
+	unsigned int fail_bit_shift;
 	union bus_parity_err bpr;
 };
 
@@ -63,15 +79,19 @@ struct bus_parity {
 	unsigned long long ts;
 	struct work_struct wk;
 	void __iomem *parity_sta;
+	void __iomem *dbgao_base;
 	unsigned int irq;
 	char *dump;
 };
-
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 #define BPR_LOG(fmt, ...) \
 	do { \
 		pr_notice(fmt, __VA_ARGS__); \
 		aee_sram_printk(fmt, __VA_ARGS__); \
 	} while (0)
+#else
+#define BPR_LOG(fmt, ...)
+#endif
 
 static struct bus_parity mcu_bp, infra_bp;
 static DEFINE_SPINLOCK(mcu_bp_isr_lock);
@@ -118,41 +138,14 @@ static void mcu_bp_irq_work(struct work_struct *w)
 		else
 			continue;
 	}
-
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_exception("MCU Bus Parity", mcu_bp.dump);
-
+#endif
 	if (mcu_bp.nr_err < MCU_BP_IRQ_TRIGGER_THRESHOLD)
 		enable_irq(mcu_bp.irq);
 	else
 		BPR_LOG("%s disable irq %d due to trigger over than %d times.\n",
 			__func__, mcu_bp.irq, MCU_BP_IRQ_TRIGGER_THRESHOLD);
-}
-
-static void infra_bp_irq_work(struct work_struct *w)
-{
-	struct bus_parity_elem *bpm;
-	union bus_parity_err *bpr;
-	int i;
-
-	for (i = 0; i < infra_bp.nr_bpm; i++) {
-		bpm = &infra_bp.bpm[i];
-		bpr = &infra_bp.bpm[i].bpr;
-
-		if (!bpm->type && (bpr->mst.is_err == true))
-			bpr->mst.is_err = false;
-		else if (bpm->type && (bpr->slv.is_err == true))
-			bpr->slv.is_err = false;
-		else
-			continue;
-	}
-
-	aee_kernel_exception("Infra Bus Parity", infra_bp.dump);
-
-	if (infra_bp.nr_err < INFRA_BP_IRQ_TRIGGER_THRESHOLD)
-		enable_irq(infra_bp.irq);
-	else
-		BPR_LOG("%s disable irq %d due to trigger over than %d times.\n",
-			__func__, infra_bp.irq, INFRA_BP_IRQ_TRIGGER_THRESHOLD);
 }
 
 static void mcu_bp_dump(void)
@@ -300,7 +293,7 @@ static irqreturn_t mcu_bp_isr(int irq, void *dev_id)
 
 	status = readl(mcu_bp.parity_sta);
 	for (i = 0; i < mcu_bp.nr_bpm; i++) {
-		if (status & (0x1<<i)) {
+		if (status & (0x1<<mcu_bp.bpm[i].fail_bit_shift)) {
 			bpm = &mcu_bp.bpm[i];
 			bpr = &mcu_bp.bpm[i].bpr;
 
@@ -310,7 +303,7 @@ static irqreturn_t mcu_bp_isr(int irq, void *dev_id)
 				bpr->mst.rid = readl(bpm->base+0x8);
 				for (j = 0; j < bpm->data_len; j++)
 					bpr->mst.rdata[j] =
-						readl(bpm->base+0x10+(j<<2));
+						readl(bpm->base+bpm->rd0_wd0_offset+(j<<2));
 			} else {
 				bpr->slv.is_err = true;
 				bpr->slv.parity_data = readl(bpm->base+0x4);
@@ -321,21 +314,9 @@ static irqreturn_t mcu_bp_isr(int irq, void *dev_id)
 				bpr->slv.araddr[0] = readl(bpm->base+0x18);
 				bpr->slv.araddr[1] = readl(bpm->base+0x1C);
 				bpr->slv.wid = readl(bpm->base+0x20);
-				if (bpm->data_len == 2) {
-					bpr->slv.wdata[0] =
-						readl(bpm->base+0x28);
-					bpr->slv.wdata[1] =
-						readl(bpm->base+0x2C);
-				} else {
-					bpr->slv.wdata[0] =
-						readl(bpm->base+0x30);
-					bpr->slv.wdata[1] =
-						readl(bpm->base+0x34);
-					bpr->slv.wdata[2] =
-						readl(bpm->base+0x38);
-					bpr->slv.wdata[3] =
-						readl(bpm->base+0x3C);
-				}
+				for (j = 0; j < bpm->data_len; j++)
+					bpr->slv.wdata[j] =
+						readl(bpm->base+bpm->rd0_wd0_offset+(j<<2));
 			}
 		} else
 			continue;
@@ -348,6 +329,10 @@ static irqreturn_t mcu_bp_isr(int irq, void *dev_id)
 	arm_smccc_smc(MTK_SIP_SDA_CONTROL, SDA_BUS_PARITY, BP_MCU_CLR, status,
 			0, 0, 0, 0, &res);
 
+	if (res.a0)
+		pr_notice("%s: can't clear mcu bus pariity(0x%lx)\n",
+				__func__, res.a0);
+
 	spin_unlock(&mcu_bp_isr_lock);
 
 	mcu_bp_dump();
@@ -356,15 +341,14 @@ static irqreturn_t mcu_bp_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t infra_bp_isr(int irq, void *dev_id)
+static void infra_bp_dump_flow(void)
 {
 	int i;
 	unsigned int status;
 	struct bus_parity_elem *bpm;
 	union bus_parity_err *bpr;
 
-	disable_irq_nosync(irq);
-
+	/* infra parity dump */
 	if (!infra_bp.nr_err)
 		infra_bp.ts = local_clock();
 	infra_bp.nr_err++;
@@ -375,11 +359,11 @@ static irqreturn_t infra_bp_isr(int irq, void *dev_id)
 			bpm = &infra_bp.bpm[i];
 			bpr = &infra_bp.bpm[i].bpr;
 
-			if (!bpm->type) {
+			if (!bpm->type) { /* infra master */
 				bpr->mst.is_err = true;
 				bpr->mst.parity_data = (status << 1) >> 16;
 				bpr->mst.rid = readl(bpm->base+0x4);
-			} else {
+			} else if (bpm->type == 1) { /* infra slave */
 				bpr->slv.is_err = true;
 				bpr->slv.parity_data = (status << 1) >> 10;
 				bpr->slv.awaddr[0] = readl(bpm->base+0x4);
@@ -391,12 +375,21 @@ static irqreturn_t infra_bp_isr(int irq, void *dev_id)
 				status = readl(bpm->base+0x10);
 				bpr->slv.araddr[1] = (status << 27) >> 27;
 				bpr->slv.arid = (status << 14) >> 19;
+			} else if (bpm->type == 2) { /* emi slave */
+				bpr->slv.is_err = true;
+				bpr->slv.parity_data = (status << 1) >> 4;
+				bpr->slv.araddr[0] = readl(bpm->base+0x4);
+				bpr->slv.arid = readl(bpm->base+0x8);
+				bpr->slv.araddr[1] = readl(bpm->base+0xC);
+				bpr->slv.wid = readl(bpm->base+0x10);
+				bpr->slv.awaddr[0] = readl(bpm->base+0x14);
+				bpr->slv.awid = readl(bpm->base+0x18);
+				bpr->slv.awaddr[1] = readl(bpm->base+0x1C);
 			}
-		} else
+		} else {
 			continue;
+		}
 	}
-
-	schedule_work(&infra_bp.wk);
 
 	spin_lock(&infra_bp_isr_lock);
 
@@ -412,14 +405,50 @@ static irqreturn_t infra_bp_isr(int irq, void *dev_id)
 
 	infra_bp_dump();
 	BPR_LOG("%s", infra_bp.dump);
-
-	return IRQ_HANDLED;
 }
+
+static int infra_bp_dump_event(struct notifier_block *this,
+				unsigned long err_flag_status,
+				void *ptr)
+{
+	unsigned long infra_bp_err_status;
+
+	infra_bp_err_status = get_dbg_error_flag_mask(MCU2SUB_EMI_M1_PARITY) |
+				get_dbg_error_flag_mask(MCU2SUB_EMI_M0_PARITY) |
+				get_dbg_error_flag_mask(MCU2EMI_M1_PARITY) |
+				get_dbg_error_flag_mask(MCU2EMI_M0_PARITY) |
+				get_dbg_error_flag_mask(MCU2INFRA_REG_PARITY) |
+				get_dbg_error_flag_mask(INFRA_L3_CACHE2MCU_PARITY) |
+				get_dbg_error_flag_mask(EMI_PARITY_CEN);
+
+
+	if (!(err_flag_status & infra_bp_err_status)) {
+		BPR_LOG("err_flag_status %lx, infra_bp_err_status %lx\n",
+			err_flag_status,
+			infra_bp_err_status);
+		return 0;
+	}
+
+	/* infra parity dump */
+	infra_bp_dump_flow();
+
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
+	aee_kernel_exception("INFRA Bus Parity", infra_bp.dump);
+#endif
+
+	return 0;
+}
+
+static struct notifier_block dbg_error_flag_notifier = {
+	.notifier_call = infra_bp_dump_event,
+};
 
 static int bus_parity_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *np = pdev->dev.of_node;
+	struct device_node *np_chosen;
+	struct tag_chipid *chipid;
 	size_t size;
 	int ret, i;
 
@@ -429,18 +458,17 @@ static int bus_parity_probe(struct platform_device *pdev)
 	infra_bp.nr_err = 0;
 
 	INIT_WORK(&mcu_bp.wk, mcu_bp_irq_work);
-	INIT_WORK(&infra_bp.wk, infra_bp_irq_work);
 
 	ret = of_property_count_strings(np, "mcu-names");
 	if (ret < 0) {
-		dev_notice(dev, "can't count mcu-names(%d)\n", ret);
+		dev_err(dev, "can't count mcu-names(%d)\n", ret);
 		return ret;
 	}
 	mcu_bp.nr_bpm = ret;
 
 	ret = of_property_count_strings(np, "infra-names");
 	if (ret < 0) {
-		dev_notice(dev, "can't count infra-names(%d)\n", ret);
+		dev_err(dev, "can't count infra-names(%d)\n", ret);
 		return ret;
 	}
 	infra_bp.nr_bpm = ret;
@@ -462,7 +490,7 @@ static int bus_parity_probe(struct platform_device *pdev)
 		ret = of_property_read_string_index(np, "mcu-names", i,
 				&mcu_bp.bpm[i].name);
 		if (ret) {
-			dev_notice(dev, "can't read mcu-names(%d)\n", ret);
+			dev_err(dev, "can't read mcu-names(%d)\n", ret);
 			return ret;
 		}
 	}
@@ -471,7 +499,7 @@ static int bus_parity_probe(struct platform_device *pdev)
 		ret = of_property_read_string_index(np, "infra-names", i,
 				&infra_bp.bpm[i].name);
 		if (ret) {
-			dev_notice(dev, "can't read infra-names(%d)\n", ret);
+			dev_err(dev, "can't read infra-names(%d)\n", ret);
 			return ret;
 		}
 	}
@@ -479,7 +507,7 @@ static int bus_parity_probe(struct platform_device *pdev)
 	for (i = 0; i < mcu_bp.nr_bpm; i++) {
 		mcu_bp.bpm[i].base = of_iomap(np, i);
 		if (!mcu_bp.bpm[i].base) {
-			dev_notice(dev, "can't map mcu_bp(%d)\n", i);
+			dev_err(dev, "can't map mcu_bp(%d)\n", i);
 			return -ENXIO;
 		}
 	}
@@ -487,14 +515,14 @@ static int bus_parity_probe(struct platform_device *pdev)
 	for (i = 0; i < infra_bp.nr_bpm; i++) {
 		infra_bp.bpm[i].base = of_iomap(np, mcu_bp.nr_bpm + i);
 		if (!infra_bp.bpm[i].base) {
-			dev_notice(dev, "can't map infra_bp(%d)\n", i);
+			dev_err(dev, "can't map infra_bp(%d)\n", i);
 			return -ENXIO;
 		}
 	}
 
 	mcu_bp.parity_sta = of_iomap(np, mcu_bp.nr_bpm + infra_bp.nr_bpm);
 	if (!mcu_bp.parity_sta) {
-		dev_notice(dev, "can't map mcu_bp status\n");
+		dev_err(dev, "can't map mcu_bp status\n");
 		return -ENXIO;
 	}
 
@@ -502,7 +530,7 @@ static int bus_parity_probe(struct platform_device *pdev)
 		ret = of_property_read_u32_index(np, "mcu-types", i,
 				&mcu_bp.bpm[i].type);
 		if (ret) {
-			dev_notice(dev, "can't read mcu-types(%d)\n", ret);
+			dev_err(dev, "can't read mcu-types(%d)\n", ret);
 			return ret;
 		}
 	}
@@ -511,8 +539,26 @@ static int bus_parity_probe(struct platform_device *pdev)
 		ret = of_property_read_u32_index(np, "infra-types", i,
 				&infra_bp.bpm[i].type);
 		if (ret) {
-			dev_notice(dev, "can't read infra-types(%d)\n", ret);
+			dev_err(dev, "can't read infra-types(%d)\n", ret);
 			return ret;
+		}
+	}
+
+	for (i = 0; i < mcu_bp.nr_bpm; i++) {
+		ret = of_property_read_u32_index(np, "mcu-rd0wd0-offset", i,
+				&mcu_bp.bpm[i].rd0_wd0_offset);
+		if (ret) {
+			dev_notice(dev, "can't read mcu-rd0-offset(%d)\n", ret);
+			mcu_bp.bpm[i].rd0_wd0_offset = 0x10;
+		}
+	}
+
+	for (i = 0; i < mcu_bp.nr_bpm; i++) {
+		ret = of_property_read_u32_index(np, "mcu-fail-bit-shift", i,
+		&mcu_bp.bpm[i].fail_bit_shift);
+		if (ret) {
+			dev_notice(dev, "can't read mcu-fail-bit-shift(%d)\n", ret);
+			mcu_bp.bpm[i].fail_bit_shift = i;
 		}
 	}
 
@@ -525,6 +571,23 @@ static int bus_parity_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* find the bus_tracer node from dts */
+	err_flag_node = of_find_compatible_node(NULL, NULL, BUS_TRACER_COMPATIBLE);
+	if (err_flag_node == NULL) {
+		dev_info(dev, "can't find node '%s' from dts.\n", BUS_TRACER_COMPATIBLE);
+		err_flag_node = of_find_compatible_node(NULL, NULL, DBG_ERR_FLAG_COMPATIBLE);
+		if (err_flag_node == NULL) {
+			dev_info(dev, "can't find node '%s' from dts.\n", DBG_ERR_FLAG_COMPATIBLE);
+			return -EINVAL;
+		}
+		dev_info(dev, "find node '%s' from dts.\n", DBG_ERR_FLAG_COMPATIBLE);
+		/* get the base address for error flag from bus_tracer node. */
+		infra_bp.dbgao_base = of_iomap(err_flag_node, 0);
+	} else {
+		/* get the base address for error flag from bus_tracer node. */
+		infra_bp.dbgao_base = of_iomap(err_flag_node, 1);
+	}
+
 	mcu_bp.dump = devm_kzalloc(dev, PAGE_SIZE, GFP_KERNEL);
 	if (!mcu_bp.dump)
 		return -ENOMEM;
@@ -535,29 +598,40 @@ static int bus_parity_probe(struct platform_device *pdev)
 
 	mcu_bp.irq = irq_of_parse_and_map(np, 0);
 	if (!mcu_bp.irq) {
-		dev_notice(dev, "can't map mcu-bus-parity irq\n");
+		dev_err(dev, "can't map mcu-bus-parity irq\n");
 		return -EINVAL;
 	}
 
 	ret = devm_request_irq(dev, mcu_bp.irq, mcu_bp_isr, IRQF_ONESHOT |
 			IRQF_TRIGGER_NONE, "mcu-bus-parity", NULL);
 	if (ret) {
-		dev_notice(dev, "can't request mcu-bus-parity irq(%d)\n", ret);
+		dev_err(dev, "can't request mcu-bus-parity irq(%d)\n", ret);
 		return ret;
 	}
 
-	infra_bp.irq = irq_of_parse_and_map(np, 1);
-	if (!infra_bp.irq) {
-		dev_notice(dev, "can't map infra-bus-parity irq\n");
-		return -EINVAL;
+	/* register error flag notifier to dump infra parity status for error flag mcu irq */
+	dbg_error_flag_register_notify(&dbg_error_flag_notifier);
+
+	np_chosen = of_find_node_by_path("/chosen");
+	if (!np_chosen)
+		np_chosen = of_find_node_by_path("/chosen@0");
+
+	if (np_chosen) {
+		chipid = (struct tag_chipid *) of_get_property(np_chosen,
+				"atag,chipid", NULL);
+		if (!chipid)
+			return 0;
+
+		pr_info("get chipid 0x%x:0x%x:0x%x:0x%x.\n",
+			chipid->hw_code, chipid->hw_subcode, chipid->hw_ver, chipid->sw_ver);
+
+		/* XXX for SLV_L3GIC check */
+		if (chipid->hw_code == 0x1229 && chipid->hw_subcode == 0x8a00
+			&& chipid->hw_ver == 0xca00 && chipid->sw_ver == 0x0000) {
+			mcu_bp.nr_bpm = mcu_bp.nr_bpm - 1;
+		}
 	}
 
-	ret = devm_request_irq(dev, infra_bp.irq, infra_bp_isr, IRQF_ONESHOT |
-			IRQF_TRIGGER_NONE,  "infra-bus-parity", NULL);
-	if (ret) {
-		dev_notice(dev, "can't request infra-bus-parity irq(%d)\n", ret);
-		return ret;
-	}
 	return 0;
 }
 
@@ -574,7 +648,6 @@ static int bus_parity_remove(struct platform_device *pdev)
 static const struct of_device_id bus_parity_of_ids[] = {
 	{ .compatible = "mediatek,bus-parity", },
 	{ .compatible = "mediatek,mt6885-bus-parity", },
-	{ .compatible = "mediatek,mt6877-bus-parity", },
 	{}
 };
 

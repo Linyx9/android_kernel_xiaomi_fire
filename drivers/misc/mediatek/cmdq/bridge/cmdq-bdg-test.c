@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2021 MediaTek Inc.
+ * Copyright (c) 2015 MediaTek Inc.
  */
 
 #include <linux/platform_device.h>
@@ -9,11 +9,12 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/of.h>
+//#include <stdlib.h>
 
 #include "cmdq-bdg.h"
 
 #if IS_ENABLED(CONFIG_MTK_CMDQ_MBOX_EXT)
-#include <linux/soc/mediatek/mtk-cmdq.h>
+#include <linux/soc/mediatek/mtk-cmdq-ext.h>
 #else
 #include <cmdq_record.h>
 #endif
@@ -133,16 +134,33 @@ static void cmdq_bdg_test_mbox_tasks(struct cmdq_bdg_test *test,
 	const enum flush_flag flag, const u32 count, const bool error)
 {
 #if IS_ENABLED(CONFIG_MTK_CMDQ_MBOX_EXT)
-	struct cmdq_pkt *pkt[count];
-	struct cmdq_flush_completion cmplt[count];
+	struct cmdq_pkt **pkt;
+	struct cmdq_flush_completion **cmplt;
 #else
 	struct cmdqRecStruct *rec[count];
 #endif
 	const dma_addr_t pa = CMDQ_GPR_R32(GCE_BASE, CMDQ_GPR_R15);
 	s32 val, err = UINT_MAX, i;
+	u32 pktSizeCount = count * sizeof(struct pkt *);
+	u32 cmpltSizeCount = count * sizeof(struct cmplt *);
+
+	pkt = kzalloc(pktSizeCount, GFP_KERNEL);
+	if (!pkt) {
+		cmdq_msg("pkt not init");
+		return;
+	}
+
+	cmplt = kzalloc(cmpltSizeCount, GFP_KERNEL);
+	if (!cmplt) {
+		cmdq_msg("cmplt cmdq_flush_completion not init");
+		kfree(pkt);
+		return;
+	}
 
 	if (flag == sync) {
 		cmdq_err("%s: count:%u flag:%d", __func__, count, flag);
+		kfree(pkt);
+		kfree(cmplt);
 		return;
 	}
 
@@ -166,8 +184,8 @@ static void cmdq_bdg_test_mbox_tasks(struct cmdq_bdg_test *test,
 		cmdq_pkt_write(pkt[i], NULL, pa, count - i, UINT_MAX);
 
 		if (flag == async) {
-			init_completion(&cmplt[i].cmplt);
-			cmplt[i].pkt = pkt[i];
+			init_completion(&cmplt[i]->cmplt);
+			cmplt[i]->pkt = pkt[i];
 			cmdq_pkt_flush_async(pkt[i],
 				cmdq_bdg_test_mbox_async_cb, &cmplt[i]);
 		} else if (flag == threaded)
@@ -204,8 +222,8 @@ static void cmdq_bdg_test_mbox_tasks(struct cmdq_bdg_test *test,
 		msleep_interruptible(10);
 
 		if (flag == async) {
-			wait_for_completion(&cmplt[i].cmplt);
-			err = cmplt[i].err;
+			wait_for_completion(&cmplt[i]->cmplt);
+			err = cmplt[i]->err;
 			cmdq_pkt_destroy(pkt[i]);
 		}
 	}
@@ -219,6 +237,10 @@ static void cmdq_bdg_test_mbox_tasks(struct cmdq_bdg_test *test,
 	else
 		cmdq_msg("%s: count:%u flag:%d pa:%pa val:%#x err:%d ans:%#x",
 			__func__, count, flag, &pa, val, err, count);
+
+	kfree(pkt);
+	kfree(cmplt);
+
 }
 
 static void cmdq_bdg_test_mbox_threads(struct cmdq_bdg_test *test,
@@ -297,7 +319,7 @@ static ssize_t cmdq_bdg_test_write(struct file *filp, const char *buf,
 
 	if (copy_from_user(str, buf, count)) {
 		cmdq_err("copy_from_user buf:%s count:%ld str:%s failed",
-			buf, count, str);
+			buf, (long)count, str);
 		return count;
 	}
 
@@ -361,7 +383,7 @@ static int cmdq_bdg_test_probe(struct platform_device *pdev)
 {
 	struct cmdq_bdg_test *test;
 	struct dentry *dir, *fs;
-	s32 ret;
+	s32 ret __maybe_unused;
 
 	test = devm_kzalloc(&pdev->dev, sizeof(*test), GFP_KERNEL);
 	if (!test)
@@ -426,3 +448,5 @@ static struct platform_driver cmdq_bdg_test_drv = {
 };
 
 module_platform_driver(cmdq_bdg_test_drv);
+
+MODULE_LICENSE("GPL v2");

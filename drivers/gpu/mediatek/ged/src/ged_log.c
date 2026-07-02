@@ -26,6 +26,10 @@
 #include "ged_hashtable.h"
 #include "ged_sysfs.h"
 
+#define CREATE_TRACE_POINTS
+#include "ged_tracepoint.h"
+#include "ged_eb.h"
+
 enum {
 	/* 0x00 - 0xff reserved for internal buffer type */
 
@@ -99,8 +103,7 @@ static struct dentry *gpsGEDLogBufsDir;
 
 static GED_HASHTABLE_HANDLE ghHashTable;
 
-unsigned int ged_log_trace_enable;
-unsigned int ged_log_perf_trace_enable;
+static unsigned int ged_log_perf_trace_enable;
 
 static struct kobject *gpu_debug_kobj;
 static unsigned int gpu_debug_log_enable;
@@ -190,15 +193,15 @@ GED_ERROR __ged_log_buf_vprint(struct GED_LOG_BUF *psGEDLogBuf,
 
 	/* record the user time */
 	if (attrs & GED_LOG_ATTR_TIME_TPT) {
-		struct timeval time;
+		struct timespec64 time;
 		unsigned long local_time;
 
-		do_gettimeofday(&time);
+		ktime_get_real_ts64(&time);
 		local_time = (u32)(time.tv_sec - (sys_tz.tz_minuteswest * 60));
 
 		curline->tattrs = GED_LOG_ATTR_TIME_TPT;
 		curline->time = local_time;
-		curline->time_usec = time.tv_usec;
+		curline->time_usec = (unsigned int)(time.tv_nsec / 1000);
 		curline->pid = current->tgid;
 		curline->tid = current->pid;
 	}
@@ -290,10 +293,7 @@ static int __ged_log_buf_write(struct GED_LOG_BUF *psGEDLogBuf,
 
 	cnt = (i32Count >= 256) ? 255 : i32Count;
 
-	if (ged_copy_from_user(buf, pszBuffer, cnt) != 0) {
-		GED_LOGE("Fail to ged_copy_from_user\n");
-		return 0;
-	}
+	ged_copy_from_user(buf, pszBuffer, cnt);
 
 	buf[cnt] = 0;
 
@@ -394,7 +394,7 @@ static int ged_log_buf_seq_show_print(struct seq_file *psSeqFile,
 			struct rtc_time tm;
 
 			local_time = line->time;
-			rtc_time_to_tm(local_time, &tm);
+			rtc_time64_to_tm(local_time, &tm);
 
 			seq_printf(psSeqFile,
 				"%02d-%02d %02d:%02d:%02d.%06lu %5d %5d ",
@@ -418,10 +418,10 @@ static int ged_log_buf_seq_show(struct seq_file *psSeqFile, void *pvData)
 	if (psGEDLogBuf != NULL) {
 		int i;
 
-#ifdef CONFIG_MTK_GPU_SUPPORT /* Only enable when GPU isn't kerenl module */
-#if defined(CONFIG_MACH_MT8167) || defined(CONFIG_MACH_MT8173)\
-|| defined(CONFIG_MACH_MT6739) || defined(CONFIG_MACH_MT6761)\
-|| defined(CONFIG_MACH_MT6765)
+#if IS_BUILTIN(CONFIG_MTK_GPU_SUPPORT)
+#if defined(CONFIG_GPU_MT8167) || defined(CONFIG_GPU_MT8173)\
+|| defined(CONFIG_GPU_MT6739) || defined(CONFIG_GPU_MT6761)\
+|| defined(CONFIG_GPU_MT6765)
 		if (strncmp(psGEDLogBuf->acName, "PowerLog", 8) == 0)
 			ged_dump_fw();
 #endif
@@ -854,6 +854,8 @@ GED_ERROR ged_log_buf_print(GED_LOG_BUF_HANDLE hLogBuf, const char *fmt, ...)
 		va_start(args, fmt);
 		err = __ged_log_buf_vprint(psGEDLogBuf,
 			fmt, args, psGEDLogBuf->attrs);
+		if (err != GED_OK)
+			GED_LOGD("@%s err:%d\n", __func__, err);
 		va_end(args);
 	}
 
@@ -875,6 +877,8 @@ GED_ERROR ged_log_buf_print2(GED_LOG_BUF_HANDLE hLogBuf,
 		va_start(args, fmt);
 		err = __ged_log_buf_vprint(psGEDLogBuf, fmt,
 			args, psGEDLogBuf->attrs | i32LogAttrs);
+		if (err != GED_OK)
+			GED_LOGD("@%s err:%d\n", __func__, err);
 		va_end(args);
 	}
 
@@ -1008,6 +1012,7 @@ unsigned int is_gpu_ged_log_enable(void)
 {
 	return gpu_debug_log_enable;
 }
+EXPORT_SYMBOL(is_gpu_ged_log_enable);
 
 static ssize_t gpu_debug_log_store(struct kobject *kobj, struct kobj_attribute *attr,
 		const char *buf, size_t count)
@@ -1074,18 +1079,15 @@ GED_ERROR ged_log_system_init(void)
 		goto ERROR;
 	}
 
-	ged_log_trace_enable = 0;
-	ged_log_perf_trace_enable = 0;
-
 	err = ged_sysfs_create_dir(NULL, "gpu_debug", &gpu_debug_kobj);
 	if (unlikely(err != GED_OK)) {
-		GED_LOGE("ged: failed to create gpu_debug dir!\n");
+		GED_LOGE("Failed to create gpu_debug dir!\n");
 		goto ERROR;
 	}
 
 	err = ged_sysfs_create_file(gpu_debug_kobj, &kobj_attr_gpu_debug_log);
 	if (unlikely(err != GED_OK)) {
-		GED_LOGE("ged: failed to create gpu_debug_log entry!\n");
+		GED_LOGE("Failed to create gpu_debug_log entry!\n");
 		goto ERROR;
 	}
 	gpu_debug_log_enable = 0;
@@ -1134,7 +1136,7 @@ static int ged_log_buf_dump(struct GED_LOG_BUF *psGEDLogBuf, int i)
 			t = line->time;
 			nanosec_rem = do_div(t, 1000000000);
 
-			pr_debug("[%5llu.%06lu] ", t, nanosec_rem / 1000);
+			pr_info("[%5llu.%06lu] ", t, nanosec_rem / 1000);
 		}
 
 #if defined(CONFIG_RTC_LIB)
@@ -1143,16 +1145,16 @@ static int ged_log_buf_dump(struct GED_LOG_BUF *psGEDLogBuf, int i)
 			struct rtc_time tm;
 
 			local_time = line->time;
-			rtc_time_to_tm(local_time, &tm);
+			rtc_time64_to_tm(local_time, &tm);
 
-			pr_debug("%02d-%02d %02d:%02d:%02d.%06lu %5d %5d ",
+			pr_info("%02d-%02d %02d:%02d:%02d.%06lu %5d %5d ",
 					tm.tm_mon + 1, tm.tm_mday,
 					tm.tm_hour, tm.tm_min, tm.tm_sec,
 					line->time_usec, line->pid, line->tid);
 		}
 #endif
 
-		pr_debug("%s\n", psGEDLogBuf->pcBuffer + line->offset);
+		pr_info("%s\n", psGEDLogBuf->pcBuffer + line->offset);
 	}
 
 	return err;
@@ -1169,7 +1171,7 @@ void ged_log_dump(GED_LOG_BUF_HANDLE hLogBuf)
 			psGEDLogBuf->ulIRQFlags);
 
 		if (psGEDLogBuf->acName[0] != '\0')
-			pr_debug("---------- %s (%d/%d) ----------\n",
+			pr_info("---------- %s (%d/%d) ----------\n",
 				psGEDLogBuf->acName,
 				psGEDLogBuf->i32BufferCurrent,
 				psGEDLogBuf->i32BufferSize);
@@ -1188,83 +1190,106 @@ void ged_log_dump(GED_LOG_BUF_HANDLE hLogBuf)
 				if (ged_log_buf_dump(psGEDLogBuf, i) != 0)
 					break;
 
+		if (psGEDLogBuf->acName[0] != '\0')
+			pr_info("-------------------------------\n");
+
 		spin_unlock_irqrestore(&psGEDLogBuf->sSpinLock,
 			psGEDLogBuf->ulIRQFlags);
 	}
 }
+EXPORT_SYMBOL(ged_log_dump);
 
-static unsigned long __read_mostly tracing_mark_write_addr;
-static inline void __mt_update_tracing_mark_write_addr(void)
+int ged_timer_or_trace_enable(void)
 {
-/*
- * kallsyms_lookup_name can only be used by build-in module in
- * kernel-4.19, and it cause build error in gki flavor, so we check
- * CONFIG_MTK_GPU_SUPPORT=y
- */
-#ifdef CONFIG_MTK_GPU_SUPPORT
-	if (unlikely(tracing_mark_write_addr == 0)) {
-		tracing_mark_write_addr =
-			kallsyms_lookup_name("tracing_mark_write");
-	}
-#endif
-}
-void ged_log_trace_begin(char *name)
-{
-	if (ged_log_trace_enable) {
-		__mt_update_tracing_mark_write_addr();
-#ifdef ENABLE_GED_SYSTRACE_UTIL
-		preempt_disable();
-		event_trace_printk(tracing_mark_write_addr,
-			"B|%d|%s\n", current->tgid, name);
-		preempt_enable();
-#endif
-	}
-}
-EXPORT_SYMBOL(ged_log_trace_begin);
-void ged_log_trace_end(void)
-{
-	if (ged_log_trace_enable) {
-		__mt_update_tracing_mark_write_addr();
-#ifdef ENABLE_GED_SYSTRACE_UTIL
-		preempt_disable();
-		event_trace_printk(tracing_mark_write_addr, "E\n");
-		preempt_enable();
-#endif
-	}
-}
-EXPORT_SYMBOL(ged_log_trace_end);
-void ged_log_trace_counter(char *name, int count)
-{
-	if (ged_log_trace_enable) {
-		__mt_update_tracing_mark_write_addr();
-#ifdef ENABLE_GED_SYSTRACE_UTIL
-		preempt_disable();
-		event_trace_printk(tracing_mark_write_addr,
-			"C|5566|%s|%d\n", name, count);
-		preempt_enable();
-#endif
-	}
-}
-EXPORT_SYMBOL(ged_log_trace_counter);
-void ged_log_perf_trace_counter(char *name, long long count, int pid,
-	unsigned long frameID, u64 BQID)
-{
-	if (ged_log_perf_trace_enable) {
-		__mt_update_tracing_mark_write_addr();
-/*
- * event_trace_printk cause build error in gki flavor, so we also check
- * CONFIG_MTK_GPU_SUPPORT=y
- */
-#if (defined(CONFIG_EVENT_TRACING) && defined(CONFIG_MTK_GPU_SUPPORT))
-		preempt_disable();
-		event_trace_printk(tracing_mark_write_addr,
-			"C|%d|%s|%lld|%llu|%lu\n", pid,
-			name, count, (unsigned long long)BQID, frameID);
-		preempt_enable();
-#endif
-	}
-}
-EXPORT_SYMBOL(ged_log_perf_trace_counter);
+	int fdvfs_enable = is_fdvfs_enable();
 
-module_param(ged_log_trace_enable, uint, 0644);
-module_param(ged_log_perf_trace_enable, uint, 0644);
+	/* timer enable if no EB dvfs or EB dvfs need to dump trace*/
+	return (fdvfs_enable == 0) ||
+		(fdvfs_enable && ged_log_perf_trace_enable);
+}
+
+static int set_ged_log_perf_trace_enable(const char *val,
+	const struct kernel_param *kp)
+{
+	int ret = param_set_uint(val, kp);
+
+	if (ret)
+		return ret;
+
+	// enable/disable ged tracepoints
+	if (ged_log_perf_trace_enable == 0)
+		trace_set_clr_event("ged", NULL, 0);
+	else if (ged_log_perf_trace_enable == 1)
+		trace_set_clr_event("ged", NULL, 1);
+
+	ged_eb_dvfs_task(EB_SET_FTRACE, ged_log_perf_trace_enable);
+
+	return 0;
+}
+
+static const struct kernel_param_ops ged_log_perf_trace_enable_ops = {
+	.set = set_ged_log_perf_trace_enable,
+	.get = param_get_uint,
+};
+
+module_param_cb(ged_log_perf_trace_enable, &ged_log_perf_trace_enable_ops,
+	&ged_log_perf_trace_enable, 0644);
+
+static int sys_get_process_name_by_pid(int pid, char *buf, int len)
+{
+	struct task_struct *task;
+	char *name = NULL;
+
+	rcu_read_lock();
+	task = find_task_by_vpid(pid);
+	rcu_read_unlock();
+
+	if (task != NULL) {
+		// name = task->comm;
+		name = kstrdup_quotable_cmdline(task, GFP_KERNEL);
+		strscpy(buf, name, len);
+	}
+
+	if(name != NULL)
+		kfree(name);
+	if (strstr(buf, "/system/bin/sh") != NULL)
+		return 1;
+	else if (strstr(buf, "mtkpower") != NULL)
+		return 2;
+
+	return 0;
+}
+
+void init_cmd_info(struct cmd_info *cmd, unsigned int value)
+{
+	char *initial = "initial";
+
+	cmd->pid = 0;
+	cmd->value = value;
+	cmd->ori_value = value;
+	cmd->ts = 0;
+	strscpy(cmd->buffer, initial, MAX_NAME_SIZE);
+	cmd->user_id = 0;
+}
+
+void set_cmd_info(struct cmd_info *cmd, unsigned int ori_value, unsigned int value)
+{
+	cmd->pid = current->tgid;
+	cmd->value = value;
+	cmd->ori_value = ori_value;
+	cmd->ts = ged_get_time();
+	cmd->user_id = sys_get_process_name_by_pid(cmd->pid, cmd->buffer, MAX_NAME_SIZE);
+}
+
+ssize_t get_cmd_info_dump(char *buf, int sz, ssize_t pos, struct cmd_info *cmd)
+{
+	int length;
+
+	length = scnprintf(buf + pos, sz - pos,
+					  "%llu:pid:%u ori:%u value:%u user_id:%d(%s) ",
+					  cmd->ts, cmd->pid, cmd->value, cmd->ori_value, cmd->user_id, cmd->buffer);
+	pos += length;
+
+	return pos;
+}
+

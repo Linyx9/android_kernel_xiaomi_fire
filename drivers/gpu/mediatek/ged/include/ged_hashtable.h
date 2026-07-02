@@ -27,7 +27,7 @@ GED_ERROR ged_hashtable_set(GED_HASHTABLE_HANDLE hHashTable,
 	unsigned long ulID, void *pvoid);
 
 void ged_hashtable_iterator(GED_HASHTABLE_HANDLE hHashTable,
-	GED_BOOL (*iterator)(unsigned long ulID, void *pvoid, void *pvParam),
+	GED_BOOL(*iterator)(unsigned long ulID, void *pvoid, void *pvParam),
 	void *pvParam);
 
 void *ged_hashtable_search(GED_HASHTABLE_HANDLE hHashTable,
@@ -35,8 +35,8 @@ void *ged_hashtable_search(GED_HASHTABLE_HANDLE hHashTable,
 	void *pvParam);
 
 void ged_hashtable_iterator_delete(GED_HASHTABLE_HANDLE hHashTable,
-	GED_BOOL (*pFunc)(unsigned long ulID, void *pvoid, void *pvParam,
-	GED_BOOL *pbDeleted),
+	GED_BOOL(*pFunc)(unsigned long ulID, void *pvoid, void *pvParam,
+	GED_BOOL * pbDeleted),
 	void *pvParam);
 
 unsigned long ged_hashtable_get_count(GED_HASHTABLE_HANDLE hHashTable);

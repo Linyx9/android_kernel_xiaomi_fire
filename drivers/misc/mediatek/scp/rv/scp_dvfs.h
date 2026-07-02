@@ -6,28 +6,25 @@
 #ifndef __SCP_DVFS_H__
 #define __SCP_DVFS_H__
 
-#define PLL_ENABLE			(1)
-#define PLL_DISABLE			(0)
+#define PLL_DISABLE             (0)
+#define PLL_ENABLE              (1)
+#define MAX_SUPPORTED_PLL_NUM   (10)
+#define CLK_26M                 (26)
 
-#define CLK_26M				(26)
+#define CORE_ONLINE_MSK         (0x1)
+#define REG_MAX_MASK            (0xFFFFFFFF)
+#define SCP_ULPOSC_SEL_CORE     (0x4)
+#define SCP_ULPOSC_SEL_PERI     (0x8)
 
-#define CALI_CONFIG_ELEM_CNT	(3)
-#define OPP_ELEM_CNT			(8)
-
-#define REG_MAX_MASK			(0xFFFFFFFF)
-#define SCP_ULPOSC_SEL_CORE		(0x4)
-#define SCP_ULPOSC_SEL_PERI		(0x8)
-
-#define CAL_EXT_BITS		(2)
-#define CAL_MIN_VAL_EXT		(0)
-#define CAL_MAX_VAL_EXT		(0x2)
-#define CAL_BITS			(7)
-#define CAL_MIN_VAL			(0)
-#define CAL_MAX_VAL			(0x7F)
-#define CALI_MIS_RATE			(40)
-#define CALI_DIV_VAL			(512)
-
-#define MAX_SUPPORTED_PLL_NUM 9
+#define CAL_EXT_BITS            (2)
+#define CAL_MIN_VAL_EXT         (0)
+#define CAL_MAX_VAL_EXT         (0x2)
+#define CAL_BITS                (7)
+#define CAL_MIN_VAL             (0)
+#define CAL_MAX_VAL             (0x7F)
+#define CALI_MIS_RATE           (20)
+#define CALI_DIV_VAL            (512)
+#define CAL_U2_DIVIIDER         (2)
 
 #define REG_DEFINE_WITH_INIT(reg, offset, mask, shift, init, set_clr)	\
 	._##reg = {							\
@@ -41,10 +38,18 @@
 #define REG_DEFINE(reg, ofs, msk, bit)					\
 	REG_DEFINE_WITH_INIT(reg, ofs, msk, bit, 0, 0)
 
-enum {
+enum scp_core_enum {
 	SCP_CORE_0,
 	SCP_CORE_1,
+	SCP_CORE_2,
 	SCP_MAX_CORE_NUM,
+};
+
+enum scp_core_mask_enum {
+	SCP_CORE_0_ONLINE_MASK = BIT(SCP_CORE_0),
+	SCP_CORE_1_ONLINE_MASK = BIT(SCP_CORE_1),
+	SCP_CORE_2_ONLINE_MASK = BIT(SCP_CORE_2),
+	SCP_ALL_CORE_ONLINE_MASK = BIT(SCP_MAX_CORE_NUM) - 1,
 };
 
 enum scp_dvfs_err_enum {
@@ -61,13 +66,17 @@ enum scp_dvfs_err_enum {
 	ESCP_DVFS_INIT_FAILED,
 	ESCP_DVFS_DBG_INVALID_CMD,
 	ESCP_DVFS_DVS_SHOULD_BE_BYPASSED,
+	ESCP_DVFS_UNKOWN_CALI_ALGORITHM,
 };
 
+/* SMC Code Command Table */
 enum scp_cmd_type {
-	VCORE_ACQUIRE,
+	VCORE_ACQUIRE, /* vcore only */
 	RESOURCE_REQ,
 	ULPOSC2_TURN_ON,
 	ULPOSC2_TURN_OFF,
+	SCP2SPM_VOL_SET, /* vcore only */
+	ULPOSC2_CALI_DONE,
 };
 
 enum scp_req_r {
@@ -94,7 +103,7 @@ enum scp_power_status {
 	POW_ON = 1 << 1, /* 1: cpu-on, 0: cpu-off */
 };
 
-enum {
+enum scp_ipi_cmd {
 	SCP_SLEEP_OFF,
 	SCP_SLEEP_ON,
 	SCP_SLEEP_NO_WAKEUP,
@@ -112,17 +121,33 @@ enum {
 	SCP_SLEEP_BLOCK_BY_SLP_DISABLED_CNT,
 	SCP_SLEEP_BLOCK_BY_SLP_BUSY_CNT,
 	SCP_SLEEP_BLOCK_BY_HARD1_BUSY_CNT,
+	SCP_SLEEP_START_RES_PROF,
+	SCP_SLEEP_STOP_RES_PROF,
+	SCP_SLEEP_IPS_GET,
 	SCP_SLEEP_CMD_MAX,
+};
+
+enum u2_cali_algorithm_enum {
+	U2_CALI_ALG_V0, /* topck */
+	U2_CALI_ALG_V1, /* vlpck v1 */
+	U2_CALI_ALG_V2, /* vlpck v2 */
+	U2_CALI_ALG_MAX,
 };
 
 enum ulposc_ver_enum {
 	ULPOSC_VER_1, /* APMIXED_SYS */
+	ULPOSC_VER_2, /* VLP_CKSYS */
+	ULPOSC_VER_3, /* VLP_CKSYS */
 	MAX_ULPOSC_VERSION,
 };
 
-enum clk_dbg_ver_enum {
-	CLK_DBG_VER_1,
-	MAX_CLK_DBG_VERSION,
+enum scp_dvfs_chip_hw_enum {
+	MT6853,
+	MT6873,
+	MT6877,
+	MT6893,
+	MT6833,
+	MAX_SCP_DVFS_CHIP_HW,
 };
 
 enum scp_clk_ver_enum {
@@ -154,6 +179,7 @@ struct ulposc_cali_regs {
 	struct reg_info _cali_ext;	/* turning factor 1, maybe unused,  */
 	struct reg_info _cali;		/* turning factor 2 */
 	struct reg_info _con1;
+	struct reg_info _osc2_outsel;
 	struct reg_info _con2;
 };
 
@@ -163,41 +189,25 @@ struct ulposc_cali_config {
 	unsigned int con2_val;
 };
 
-struct clk_cali_regs {
-	struct reg_info _clk_misc_cfg0;
-	struct reg_info _meter_div;
-
-	struct reg_info _clk_dbg_cfg;
-	struct reg_info _fmeter_ck_sel;
-	struct reg_info _abist_clk;
-
-	struct reg_info _clk26cali_0;
-	struct reg_info _fmeter_rst; /* using carefully, if set to 0, fmeter will reset */
-	struct reg_info _fmeter_en;
-	struct reg_info _trigger_cal;
-
-	struct reg_info _clk26cali_1;
-	struct reg_info _cal_cnt;
-	struct reg_info _load_cnt;
-};
-
 struct ulposc_cali_hw {
 	struct regmap *fmeter_regmap;
 	struct regmap *ulposc_regmap;
 	struct ulposc_cali_regs *ulposc_regs;
 	struct ulposc_cali_config *cali_configs;
-	struct clk_cali_regs *clkdbg_regs;
+	unsigned int ulposc_reg_ver;
 	unsigned int cali_nums;
+	unsigned int cali_alg_ver;
 	unsigned short *cali_val_ext;
 	unsigned short *cali_val;
 	unsigned short *cali_freq;
 	bool do_ulposc_cali;
 	bool cali_failed;
-	unsigned int fmeter_id_ulposc2;
+	bool need_ext_cali_phase;
 };
 
 struct scp_clk_hw {
 	struct regmap *scp_clk_regmap;
+	struct regmap *vlp_scp_clk_regmap;
 	struct reg_info _clk_high_en;
 	struct reg_info _ulposc2_en;
 	struct reg_info _ulposc2_cg;
@@ -222,7 +232,6 @@ struct dvfs_opp {
 	unsigned int freq;
 	unsigned int clk_mux;
 	unsigned int resource_req;
-	unsigned int uv_idx;
 };
 
 struct scp_dvfs_hw {
@@ -234,34 +243,61 @@ struct scp_dvfs_hw {
 	bool ccf_fmeter_support; /* Has CCF provided fmeter api to use? */
 	int ccf_fmeter_id;
 	int ccf_fmeter_type;
-	bool vlpck_support; /* Using 2-phase calibration if vlpck_bypass_phase1 not set */
-	bool vlpck_bypass_phase1;
+	int ccf_fmeter_id_result;
+	int ccf_fmeter_type_result;
 	bool vlp_support; /* Moving regulator & PMIC setting into SCP side */
+	bool ips_support;
+	bool has_pll_opp;
 	bool pmic_sshub_en;
-	bool ipi_init_done;
+	bool sleep_init_done;
 	bool pre_mux_en;
 	u32 scp_opp_nums;
 	int vow_lp_en_gear;
 	int cur_dbg_core;
 	u32 core_nums;
+	u32 core_online_msk;
+	unsigned int secure_access_scp;
+	bool bypass_pmic_rg_access;
+	bool legacy_support_v1;
+};
+
+#define RES_TYPE_MAX 8
+#define configMAX_LOCK_NAME_LEN 7
+
+struct res_duration_t {
+	uint8_t user;
+	uint64_t duration; // ms
+	uint64_t total_duration; // ms
+};
+
+struct wlock_duration_t {
+	char pcLockName[configMAX_LOCK_NAME_LEN];
+	uint64_t duration; // ms
+	uint64_t total_duration; // ms
+};
+
+struct slp_ack_t {
+	struct wlock_duration_t wlock;
+	struct res_duration_t res;
+	uint64_t suspend_time;
 };
 
 extern int scp_pll_ctrl_set(unsigned int pll_ctrl_flag, unsigned int pll_sel);
 extern int scp_request_freq(void);
 extern int scp_resource_req(unsigned int req);
 extern uint32_t scp_get_freq(void);
-extern unsigned int scp_get_dvfs_opp(void);
 extern void scp_init_vcore_request(void);
-extern void scp_pll_mux_set(unsigned int pll_ctrl_flag);
 extern void wait_scp_dvfs_init_done(void);
-extern void sync_ulposc_cali_data_to_scp(void);
+extern bool sync_ulposc_cali_data_to_scp(void);
 extern int __init scp_dvfs_init(void);
-extern void __exit scp_dvfs_exit(void);
+extern void scp_dvfs_exit(void);
 extern int scp_dvfs_feature_enable(void);
 
 /* scp dvfs variable*/
 extern unsigned int last_scp_expected_freq;
+extern unsigned int last_sap_expected_freq;
 extern unsigned int scp_expected_freq;
+extern unsigned int sap_expected_freq;
 extern unsigned int scp_current_freq;
 extern spinlock_t scp_awake_spinlock;
 

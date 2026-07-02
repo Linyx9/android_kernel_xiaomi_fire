@@ -17,9 +17,10 @@
 #include "mt-plat/mtk_thermal_monitor.h"
 #include <linux/uidgid.h>
 #include <linux/notifier.h>
-#include <linux/fb.h>
 #include "mach/mtk_thermal.h"
 #include <linux/power_supply.h>
+#include "mtk_disp_notify.h"
+#include <linux/fb.h>
 
 
 #define mtk_cooler_bcct_2nd_dprintk_always(fmt, args...) \
@@ -765,16 +766,15 @@ static int _cl_bcct_2nd_read(struct seq_file *m, void *v)
 
 static int _cl_bcct_2nd_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_bcct_2nd_read, PDE_DATA(inode));
+	return single_open(file, _cl_bcct_2nd_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_bcct_2nd_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_bcct_2nd_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_bcct_2nd_write,
-	.release = single_release,
+static const struct proc_ops _cl_bcct_2nd_fops = {
+	.proc_open = _cl_bcct_2nd_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_bcct_2nd_write,
+	.proc_release = single_release,
 };
 
 static ssize_t _cl_abcct_2nd_write(
@@ -845,16 +845,15 @@ static int _cl_abcct_2nd_read(struct seq_file *m, void *v)
 
 static int _cl_abcct_2nd_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_abcct_2nd_read, PDE_DATA(inode));
+	return single_open(file, _cl_abcct_2nd_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_abcct_2nd_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_abcct_2nd_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_abcct_2nd_write,
-	.release = single_release,
+static const struct proc_ops _cl_abcct_2nd_fops = {
+	.proc_open = _cl_abcct_2nd_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_abcct_2nd_write,
+	.proc_release = single_release,
 };
 
 static ssize_t _cl_abcct_2nd_lcmoff_write(
@@ -933,16 +932,15 @@ static int _cl_abcct_2nd_lcmoff_read(struct seq_file *m, void *v)
 
 static int _cl_abcct_2nd_lcmoff_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_abcct_2nd_lcmoff_read, PDE_DATA(inode));
+	return single_open(file, _cl_abcct_2nd_lcmoff_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_abcct_2nd_lcmoff_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_abcct_2nd_lcmoff_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_abcct_2nd_lcmoff_write,
-	.release = single_release,
+static const struct proc_ops _cl_abcct_2nd_lcmoff_fops = {
+	.proc_open = _cl_abcct_2nd_lcmoff_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_abcct_2nd_lcmoff_write,
+	.proc_release = single_release,
 };
 
 static void bcct_2nd_lcmoff_switch(int onoff)
@@ -973,7 +971,7 @@ struct notifier_block *self, unsigned long event, void *data)
 	/* skip if policy is not enable */
 	if (!x_chrlmt_lcmoff_policy_enable)
 		return 0;
-
+	pr_info("enter bcct 2nd lcmoff fb!\n");
 	blank = *(int *)evdata->data;
 	mtk_cooler_bcct_2nd_dprintk("%s: blank = %d, event = %lu\n",
 							__func__, blank, event);
@@ -991,7 +989,7 @@ struct notifier_block *self, unsigned long event, void *data)
 	default:
 		break;
 	}
-
+	pr_info("exit bcct 2nd lcmoff fb!\n");
 	return 0;
 }
 
@@ -1022,15 +1020,14 @@ static int _cl_x_chrlmt_read(struct seq_file *m, void *v)
 
 static int _cl_x_chrlmt_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_x_chrlmt_read, PDE_DATA(inode));
+	return single_open(file, _cl_x_chrlmt_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_x_chrlmt_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_x_chrlmt_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops _cl_x_chrlmt_fops = {
+	.proc_open = _cl_x_chrlmt_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 
@@ -1042,7 +1039,7 @@ int mtk_cooler_is_abcct_2nd_unlimit(void)
 EXPORT_SYMBOL(mtk_cooler_is_abcct_2nd_unlimit);
 
 
-static int __init mtk_cooler_bcct_2nd_init(void)
+int mtk_cooler_bcct_2nd_init(void)
 {
 	int err = 0;
 	int i;
@@ -1072,7 +1069,7 @@ static int __init mtk_cooler_bcct_2nd_init(void)
 	if (err)
 		goto err_unreg;
 
-	if (fb_register_client(&bcct_2nd_lcmoff_fb_notifier)) {
+	if (mtk_disp_notifier_register("thermal_bcct_2nd", &bcct_2nd_lcmoff_fb_notifier)) {
 		mtk_cooler_bcct_2nd_dprintk_always(
 				"%s: register FB client failed!\n", __func__);
 		err = -EINVAL;
@@ -1134,7 +1131,7 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtk_cooler_bcct_2nd_exit(void)
+void mtk_cooler_bcct_2nd_exit(void)
 {
 	mtk_cooler_bcct_2nd_dprintk("%s\n", __func__);
 
@@ -1154,8 +1151,5 @@ static void __exit mtk_cooler_bcct_2nd_exit(void)
 	mtk_cooler_abcct_2nd_unregister_ltf();
 	mtk_cooler_abcct_2nd_lcmoff_unregister_ltf();
 
-	fb_unregister_client(&bcct_2nd_lcmoff_fb_notifier);
+	mtk_disp_notifier_unregister(&bcct_2nd_lcmoff_fb_notifier);
 }
-
-module_init(mtk_cooler_bcct_2nd_init);
-module_exit(mtk_cooler_bcct_2nd_exit);

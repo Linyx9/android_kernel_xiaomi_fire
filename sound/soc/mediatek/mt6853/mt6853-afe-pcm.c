@@ -14,11 +14,7 @@
 #include <linux/pm_runtime.h>
 #include <sound/soc.h>
 #include <linux/arm-smccc.h> /* for Kernel Native SMC API */
-#include <mt-plat/mtk_secure_api.h> /* for SMC ID table */
-
-#ifdef CONFIG_MTK_ACAO_SUPPORT
-#include "mtk_mcdi_governor_hint.h"
-#endif
+#include <linux/soc/mediatek/mtk_sip_svc.h> /* for SMC ID table */
 
 #include "../common/mtk-afe-debug.h"
 #include "../common/mtk-afe-platform-driver.h"
@@ -26,29 +22,22 @@
 #include "../common/mtk-sp-pcm-ops.h"
 #include "../common/mtk-sram-manager.h"
 #include "../common/mtk-mmap-ion.h"
-
 #include "mt6853-afe-common.h"
 #include "mt6853-afe-clk.h"
 #include "mt6853-afe-gpio.h"
 #include "mt6853-interconnection.h"
-
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-#include "../audio_dsp/v2/mtk-dsp-common.h"
-#include <adsp_core.h>
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#include "../audio_dsp/mtk-dsp-common.h"
 #endif
-#if defined(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
-#include "../scp_spk/mtk-scp-spk-common.h"
+#if IS_ENABLED(CONFIG_MTK_ULTRASND_PROXIMITY)
+#include "../ultrasound/ultra_scp/mtk-scp-ultra-common.h"
 #endif
-
-#if defined(CONFIG_MTK_ULTRASND_PROXIMITY)
-#include "../scp_ultra/mtk-scp-ultra-common.h"
-#endif
-
 /* FORCE_FPGA_ENABLE_IRQ use irq in fpga */
 /* #define FORCE_FPGA_ENABLE_IRQ */
 
 static const struct snd_pcm_hardware mt6853_afe_hardware = {
 	.info = (SNDRV_PCM_INFO_MMAP |
+		 SNDRV_PCM_INFO_NO_PERIOD_WAKEUP |
 		 SNDRV_PCM_INFO_INTERLEAVED |
 		 SNDRV_PCM_INFO_MMAP_VALID),
 	.formats = (SNDRV_PCM_FMTBIT_S16_LE |
@@ -68,7 +57,8 @@ static int mt6853_fe_startup(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	int memif_num = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int memif_num = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	const struct snd_pcm_hardware *mtk_afe_hardware = afe->mtk_afe_hardware;
 	int ret;
@@ -83,7 +73,7 @@ static int mt6853_fe_startup(struct snd_pcm_substream *substream,
 	ret = snd_pcm_hw_constraint_integer(runtime,
 					    SNDRV_PCM_HW_PARAM_PERIODS);
 	if (ret < 0)
-		dev_err(afe->dev, "snd_pcm_hw_constraint_integer failed\n");
+		dev_info(afe->dev, "snd_pcm_hw_constraint_integer failed\n");
 
 	/* dynamic allocate irq to memif */
 	if (memif->irq_usage < 0) {
@@ -93,7 +83,7 @@ static int mt6853_fe_startup(struct snd_pcm_substream *substream,
 			/* link */
 			memif->irq_usage = irq_id;
 		} else {
-			dev_err(afe->dev, "%s() error: no more asys irq\n",
+			dev_info(afe->dev, "%s() error: no more asys irq\n",
 				__func__);
 			ret = -EBUSY;
 		}
@@ -108,7 +98,8 @@ void mt6853_fe_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt6853_afe_private *afe_priv = afe->platform_priv;
-	int memif_num = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int memif_num = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	int irq_id = memif->irq_usage;
 
@@ -130,7 +121,8 @@ int mt6853_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 	struct snd_pcm_runtime * const runtime = substream->runtime;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt6853_afe_private *afe_priv = afe->platform_priv;
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[id];
 	int irq_id = memif->irq_usage;
 	struct mtk_base_afe_irq *irqs = &afe->irqs[irq_id];
@@ -140,27 +132,25 @@ int mt6853_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 	int fs;
 	int ret = 0;
 
-	dev_info(afe->dev, "%s(), %s cmd %d, irq_id %d\n",
-		 __func__, memif->data->name, cmd, irq_id);
+	if (!in_interrupt())
+		dev_info(afe->dev,
+			 "%s(), %s cmd %d, irq_id %d, is_afe_need_triggered %d, no_period_wakeup %d\n",
+			 __func__, memif->data->name, cmd, irq_id,
+			 is_afe_need_triggered(memif),
+			 runtime->no_period_wakeup);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
-		/* set memif enable */
-		if (memif->vow_bargein_enable)
-			/* memif will be set by scp */
-			ret = 0;
-		else
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-			/* with dsp enable, not to set when stop_threshold = ~(0U) */
-			if (runtime->stop_threshold == ~(0U))
-				ret = 0;
-			else
-				/* only when adsp enable using hw semaphore to set memif */
-				ret = mtk_dsp_memif_set_enable(afe, id);
-#else
+		if (is_afe_need_triggered(memif)) {
 			ret = mtk_memif_set_enable(afe, id);
-#endif
+			if (ret) {
+				dev_info(afe->dev,
+					"%s(), error, id %d, memif enable, ret %d\n",
+					__func__, id, ret);
+				return ret;
+			}
+		}
 
 		/*
 		 * for small latency record
@@ -171,43 +161,25 @@ int mt6853_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 				udelay(300);
 		}
 
-		if (ret) {
-			dev_err(afe->dev, "%s(), error, id %d, memif enable, ret %d\n",
-				__func__, id, ret);
-			return ret;
-		}
-
 		/* set irq counter */
 		if (afe_priv->irq_cnt[id] > 0)
 			counter = afe_priv->irq_cnt[id];
 
 		mtk_regmap_update_bits(afe->regmap, irq_data->irq_cnt_reg,
-				       irq_data->irq_cnt_maskbit
-				       << irq_data->irq_cnt_shift,
-				       counter << irq_data->irq_cnt_shift);
+				   irq_data->irq_cnt_maskbit,
+				   counter, irq_data->irq_cnt_shift);
 
 		/* set irq fs */
 		fs = afe->irq_fs(substream, runtime->rate);
-
 		if (fs < 0)
 			return -EINVAL;
 
 		mtk_regmap_update_bits(afe->regmap, irq_data->irq_fs_reg,
-				       irq_data->irq_fs_maskbit
-				       << irq_data->irq_fs_shift,
-				       fs << irq_data->irq_fs_shift);
+				   irq_data->irq_fs_maskbit,
+				   fs, irq_data->irq_fs_shift);
 
-		/* enable interrupt */
-		/* barge-in set stop_threshold == ~(0U), interrupt is set by scp */
-		if (runtime->stop_threshold != ~(0U))
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-			mtk_dsp_irq_set_enable(afe, irq_data);
-#else
-			mtk_regmap_update_bits(afe->regmap,
-					       irq_data->irq_en_reg,
-					       1 << irq_data->irq_en_shift,
-					       1 << irq_data->irq_en_shift);
-#endif
+		if (!runtime->no_period_wakeup)
+			mtk_irq_set_enable(afe, irq_data, id);
 
 		return 0;
 	case SNDRV_PCM_TRIGGER_STOP:
@@ -217,48 +189,30 @@ int mt6853_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 				int avail = snd_pcm_capture_avail(runtime);
 
 				if (avail >= runtime->buffer_size) {
-					dev_warn(afe->dev, "%s(), id %d, xrun assert\n",
+					dev_info(afe->dev, "%s(), id %d, xrun assert\n",
 						 __func__, id);
-					AUDIO_AEE("xrun assert");
 				}
 			}
 		}
 
-		/* set memif disable */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-		if (runtime->stop_threshold != ~(0U) || (!is_adsp_system_running()) ||
-		    mtk_audio_get_adsp_reset_status())
-			ret = mtk_dsp_memif_set_disable(afe, id);
-#else
-		/* barge-in set stop_threshold == ~(0U), memif is set by scp */
-		if (runtime->stop_threshold != ~(0U))
+		if (is_afe_need_triggered(memif)) {
 			ret = mtk_memif_set_disable(afe, id);
-#endif
-		if (ret) {
-			dev_err(afe->dev, "%s(), error, id %d, memif enable, ret %d\n",
-				__func__, id, ret);
+			if (ret) {
+				dev_info(afe->dev,
+					"%s(), error, id %d, memif enable, ret %d\n",
+					__func__, id, ret);
+			}
 		}
 
-		/* disable interrupt */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-		if (runtime->stop_threshold != ~(0U) || (!is_adsp_system_running()) ||
-			mtk_audio_get_adsp_reset_status())
-			mtk_dsp_irq_set_disable(afe, irq_data);
-#else
-		/* barge-in set stop_threshold == ~(0U), interrupt is set by scp */
-		if (runtime->stop_threshold != ~(0U))
-			mtk_regmap_update_bits(afe->regmap,
-					       irq_data->irq_en_reg,
-					       1 << irq_data->irq_en_shift,
-					       0 << irq_data->irq_en_shift);
-#endif
-		/* clear pending IRQ */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) || defined(CONFIG_MTK_VOW_SUPPORT)
-		/* TODO: check memif->vow_barge_in_enable */
-		if (runtime->stop_threshold != ~(0U))
-#endif
+		if (!runtime->no_period_wakeup) {
+			/* disable interrupt */
+			mtk_irq_set_disable(afe, irq_data, id);
+
+			/* clear pending IRQ */
 			regmap_write(afe->regmap, irq_data->irq_clr_reg,
 				     1 << irq_data->irq_clr_shift);
+		}
+
 		return ret;
 	default:
 		return -EINVAL;
@@ -272,7 +226,8 @@ static int mt6853_memif_fs(struct snd_pcm_substream *substream,
 	struct snd_soc_component *component =
 		snd_soc_rtdcom_lookup(rtd, AFE_PCM_NAME);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 
 	return mt6853_rate_transform(afe->dev, rate, id);
 }
@@ -303,14 +258,15 @@ int mt6853_get_memif_pbuf_size(struct snd_pcm_substream *substream)
 		return MT6853_MEMIF_PBUF_SIZE_32_BYTES;
 }
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 int mt6853_fe_prepare(struct snd_pcm_substream *substream,
 		      struct snd_soc_dai *dai)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_pcm_runtime * const runtime = substream->runtime;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[id];
 	int irq_id = memif->irq_usage;
 	struct mtk_base_afe_irq *irqs = &afe->irqs[irq_id];
@@ -325,9 +281,8 @@ int mt6853_fe_prepare(struct snd_pcm_substream *substream,
 
 	/* set irq counter */
 	mtk_regmap_update_bits(afe->regmap, irq_data->irq_cnt_reg,
-			       irq_data->irq_cnt_maskbit
-			       << irq_data->irq_cnt_shift,
-			       counter << irq_data->irq_cnt_shift);
+			       irq_data->irq_cnt_maskbit,
+			       counter, irq_data->irq_cnt_shift);
 
 	/* set irq fs */
 	fs = afe->irq_fs(substream, runtime->rate);
@@ -336,9 +291,8 @@ int mt6853_fe_prepare(struct snd_pcm_substream *substream,
 		return -EINVAL;
 
 	mtk_regmap_update_bits(afe->regmap, irq_data->irq_fs_reg,
-			       irq_data->irq_fs_maskbit
-			       << irq_data->irq_fs_shift,
-			       fs << irq_data->irq_fs_shift);
+			       irq_data->irq_fs_maskbit,
+			       fs, irq_data->irq_fs_shift);
 exit:
 	return ret;
 }
@@ -350,7 +304,7 @@ static const struct snd_soc_dai_ops mt6853_memif_dai_ops = {
 	.shutdown	= mt6853_fe_shutdown,
 	.hw_params	= mtk_afe_fe_hw_params,
 	.hw_free	= mtk_afe_fe_hw_free,
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	.prepare	= mt6853_fe_prepare,
 #else
 	.prepare	= mtk_afe_fe_prepare,
@@ -862,17 +816,10 @@ static int mt6853_deep_scene_set(struct snd_kcontrol *kcontrol,
 
 	afe_priv->deep_playback_state = ucontrol->value.integer.value[0];
 
-	if (afe_priv->deep_playback_state == 1) {
+	if (afe_priv->deep_playback_state == 1)
 		memif->ack_enable = true;
-#ifdef CONFIG_MTK_ACAO_SUPPORT
-		system_idle_hint_request(SYSTEM_IDLE_HINT_USER_AUDIO, 1);
-#endif
-	} else {
+	else
 		memif->ack_enable = false;
-#ifdef CONFIG_MTK_ACAO_SUPPORT
-		system_idle_hint_request(SYSTEM_IDLE_HINT_USER_AUDIO, 0);
-#endif
-	}
 
 	return 0;
 }
@@ -1035,7 +982,7 @@ static int mt6853_vow_barge_in_irq_id_get(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(cmpnt);
-	int memif_num = MT6853_BARGEIN_MEMIF;
+	int memif_num = MT6853_BARGE_IN_MEMIF;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	int irq_id = memif->irq_usage;
 
@@ -1043,7 +990,8 @@ static int mt6853_vow_barge_in_irq_id_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 static int mt6853_adsp_ref_mem_get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
@@ -1267,10 +1215,11 @@ static int mt6853_mmap_ion_get(struct snd_kcontrol *kcontrol,
 static int mt6853_mmap_ion_set(struct snd_kcontrol *kcontrol,
 			       struct snd_ctl_elem_value *ucontrol)
 {
-	/* for bring up */
-#if 1
-	mtk_get_ion_buffer();
-#endif
+	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
+	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(cmpnt);
+
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
+	mtk_exporter_init(afe->dev);
 	return 0;
 }
 
@@ -1342,8 +1291,8 @@ static const struct snd_kcontrol_new mt6853_pcm_kcontrols[] = {
 	SOC_SINGLE_EXT("sram_size", SND_SOC_NOPM, 0, 0xffffffff, 0,
 		       mt6853_sram_size_get, NULL),
 	SOC_SINGLE_EXT("vow_barge_in_irq_id", SND_SOC_NOPM, 0, 0x3ffff, 0,
-		       mt6853_vow_barge_in_irq_id_get, NULL),
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+			   mt6853_vow_barge_in_irq_id_get, NULL),
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	SOC_SINGLE_EXT("adsp_primary_sharemem_scenario",
 		       SND_SOC_NOPM, 0, 0x1, 0,
 		       mt6853_adsp_mem_get,
@@ -1433,7 +1382,7 @@ static int ul_tinyconn_event(struct snd_soc_dapm_widget *w,
 	} else {
 		reg_shift = AWB2_USE_TINY_SFT;
 		reg_mask_shift = AWB2_USE_TINY_MASK_SFT;
-		pr_err("%s(), error widget name %s, default use UL4",
+		pr_info("%s(), error widget name %s, default use UL4",
 		       __func__, w->name);
 	}
 
@@ -1511,8 +1460,6 @@ static const struct snd_kcontrol_new memif_ul2_ch1_mix[] = {
 				    I_DL5_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL6_CH1", AFE_CONN5_1,
 				    I_DL6_CH1, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("DL7_CH1", AFE_CONN5_1,
-				    I_DL7_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("PCM_1_CAP_CH1", AFE_CONN5,
 				    I_PCM_1_CAP_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("PCM_2_CAP_CH1", AFE_CONN5,
@@ -1531,19 +1478,17 @@ static const struct snd_kcontrol_new memif_ul2_ch2_mix[] = {
 	SOC_DAPM_SINGLE_AUTODISABLE("DL1_CH2", AFE_CONN6,
 				    I_DL1_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL12_CH2", AFE_CONN6,
-				    I_DL12_CH2, 1, 0),
+				    I_DL12_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL2_CH2", AFE_CONN6,
 				    I_DL2_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL3_CH2", AFE_CONN6,
 				    I_DL3_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL4_CH2", AFE_CONN6_1,
-				    I_DL4_CH2, 1, 0),
+				    I_DL4_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL5_CH2", AFE_CONN6_1,
 				    I_DL5_CH2, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("DL6_CH2", AFE_CONN6_1,
-				    I_DL6_CH2, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("DL7_CH2", AFE_CONN6_1,
-				    I_DL7_CH2, 1, 0),
+				    I_DL6_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("PCM_1_CAP_CH1", AFE_CONN6,
 				    I_PCM_1_CAP_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("PCM_2_CAP_CH1", AFE_CONN6,
@@ -1613,8 +1558,6 @@ static const struct snd_kcontrol_new memif_ul6_ch1_mix[] = {
 				    I_PCM_1_CAP_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("PCM_2_CAP_CH1", AFE_CONN46,
 				    I_PCM_2_CAP_CH1, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("GAIN1_OUT_CH1", AFE_CONN46,
-				    I_GAIN1_OUT_CH1, 1, 0),
 };
 
 static const struct snd_kcontrol_new memif_ul6_ch2_mix[] = {
@@ -1636,8 +1579,6 @@ static const struct snd_kcontrol_new memif_ul6_ch2_mix[] = {
 				    I_PCM_1_CAP_CH1, 1, 0),
 	SOC_DAPM_SINGLE_AUTODISABLE("PCM_2_CAP_CH1", AFE_CONN47,
 				    I_PCM_2_CAP_CH1, 1, 0),
-	SOC_DAPM_SINGLE_AUTODISABLE("GAIN1_OUT_CH2", AFE_CONN47,
-				    I_GAIN1_OUT_CH2, 1, 0),
 };
 
 static const struct snd_kcontrol_new memif_ul7_ch1_mix[] = {
@@ -1846,8 +1787,6 @@ static const struct snd_soc_dapm_route mt6853_memif_routes[] = {
 	{"UL2_CH2", "DL4_CH2", "Hostless_UL2 UL"},
 	{"UL2_CH1", "DL5_CH1", "Hostless_UL2 UL"},
 	{"UL2_CH2", "DL5_CH2", "Hostless_UL2 UL"},
-	{"UL2_CH1", "DL7_CH1", "Hostless_UL2 UL"},
-	{"UL2_CH2", "DL7_CH2", "Hostless_UL2 UL"},
 
 	{"Hostless_UL2 UL", NULL, "UL2_VIRTUAL_INPUT"},
 
@@ -1920,8 +1859,6 @@ static const struct snd_soc_dapm_route mt6853_memif_routes[] = {
 	{"UL6_CH2", "PCM_1_CAP_CH1", "PCM 1 Capture"},
 	{"UL6_CH1", "PCM_2_CAP_CH1", "PCM 2 Capture"},
 	{"UL6_CH2", "PCM_2_CAP_CH1", "PCM 2 Capture"},
-	{"UL6_CH1", "GAIN1_OUT_CH1", "HW Gain 1 Out"},
-	{"UL6_CH2", "GAIN1_OUT_CH2", "HW Gain 1 Out"},
 
 	{"UL7", NULL, "UL7_CH1"},
 	{"UL7", NULL, "UL7_CH2"},
@@ -1975,10 +1912,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL1_CON0,
-		.pbuf_mask_shift = DL1_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL1_PBUF_SIZE_MASK,
 		.pbuf_shift = DL1_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL1_CON0,
-		.minlen_mask_shift = DL1_MINLEN_MASK_SFT,
+		.minlen_mask = DL1_MINLEN_MASK,
 		.minlen_shift = DL1_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL12] = {
@@ -2004,10 +1941,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL12_CON0,
-		.pbuf_mask_shift = DL12_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL12_PBUF_SIZE_MASK,
 		.pbuf_shift = DL12_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL12_CON0,
-		.minlen_mask_shift = DL12_MINLEN_MASK_SFT,
+		.minlen_mask = DL12_MINLEN_MASK,
 		.minlen_shift = DL12_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL2] = {
@@ -2033,10 +1970,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL2_CON0,
-		.pbuf_mask_shift = DL2_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL2_PBUF_SIZE_MASK,
 		.pbuf_shift = DL2_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL2_CON0,
-		.minlen_mask_shift = DL2_MINLEN_MASK_SFT,
+		.minlen_mask = DL2_MINLEN_MASK,
 		.minlen_shift = DL2_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL3] = {
@@ -2062,10 +1999,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL3_CON0,
-		.pbuf_mask_shift = DL3_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL3_PBUF_SIZE_MASK,
 		.pbuf_shift = DL3_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL3_CON0,
-		.minlen_mask_shift = DL3_MINLEN_MASK_SFT,
+		.minlen_mask = DL3_MINLEN_MASK,
 		.minlen_shift = DL3_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL4] = {
@@ -2091,10 +2028,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL4_CON0,
-		.pbuf_mask_shift = DL4_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL4_PBUF_SIZE_MASK,
 		.pbuf_shift = DL4_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL4_CON0,
-		.minlen_mask_shift = DL4_MINLEN_MASK_SFT,
+		.minlen_mask = DL4_MINLEN_MASK,
 		.minlen_shift = DL4_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL5] = {
@@ -2120,10 +2057,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL5_CON0,
-		.pbuf_mask_shift = DL5_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL5_PBUF_SIZE_MASK,
 		.pbuf_shift = DL5_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL5_CON0,
-		.minlen_mask_shift = DL5_MINLEN_MASK_SFT,
+		.minlen_mask = DL5_MINLEN_MASK,
 		.minlen_shift = DL5_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL6] = {
@@ -2149,10 +2086,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL6_CON0,
-		.pbuf_mask_shift = DL6_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL6_PBUF_SIZE_MASK,
 		.pbuf_shift = DL6_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL6_CON0,
-		.minlen_mask_shift = DL6_MINLEN_MASK_SFT,
+		.minlen_mask = DL6_MINLEN_MASK,
 		.minlen_shift = DL6_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL7] = {
@@ -2178,10 +2115,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL7_CON0,
-		.pbuf_mask_shift = DL7_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL7_PBUF_SIZE_MASK,
 		.pbuf_shift = DL7_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL7_CON0,
-		.minlen_mask_shift = DL7_MINLEN_MASK_SFT,
+		.minlen_mask = DL7_MINLEN_MASK,
 		.minlen_shift = DL7_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL8] = {
@@ -2207,10 +2144,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL8_CON0,
-		.pbuf_mask_shift = DL8_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL8_PBUF_SIZE_MASK,
 		.pbuf_shift = DL8_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL8_CON0,
-		.minlen_mask_shift = DL8_MINLEN_MASK_SFT,
+		.minlen_mask = DL8_MINLEN_MASK,
 		.minlen_shift = DL8_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DL9] = {
@@ -2236,10 +2173,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL9_CON0,
-		.pbuf_mask_shift = DL9_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL9_PBUF_SIZE_MASK,
 		.pbuf_shift = DL9_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL9_CON0,
-		.minlen_mask_shift = DL9_MINLEN_MASK_SFT,
+		.minlen_mask = DL9_MINLEN_MASK,
 		.minlen_shift = DL9_MINLEN_SFT,
 	},
 	[MT6853_MEMIF_DAI] = {
@@ -2329,7 +2266,7 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.mono_reg = AFE_VUL12_CON0,
 		.mono_shift = VUL12_MONO_SFT,
 		.quad_ch_reg = AFE_VUL12_CON0,
-		.quad_ch_mask_shift = VUL12_4CH_EN_MASK_SFT,
+		.quad_ch_mask = VUL12_4CH_EN_MASK,
 		.quad_ch_shift = VUL12_4CH_EN_SFT,
 		.enable_reg = AFE_DAC_CON0,
 		.enable_shift = VUL12_ON_SFT,
@@ -2515,8 +2452,8 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.fs_maskbit = -1,
 		.mono_reg = -1,
 		.mono_shift = -1,
-		.enable_reg = AFE_DAC_CON0,
-		.enable_shift = HDMI_OUT_ON_SFT,
+		.enable_reg = -1,	/* control in tdm for sync start */
+		.enable_shift = -1,
 		.hd_reg = AFE_HDMI_OUT_CON0,
 		.hd_shift = HDMI_OUT_HD_MODE_SFT,
 		.agent_disable_reg = -1,
@@ -2524,10 +2461,10 @@ static const struct mtk_base_memif_data memif_data[MT6853_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_HDMI_OUT_CON0,
-		.pbuf_mask_shift = HDMI_OUT_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = HDMI_OUT_PBUF_SIZE_MASK,
 		.pbuf_shift = HDMI_OUT_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_HDMI_OUT_CON0,
-		.minlen_mask_shift = HDMI_OUT_MINLEN_MASK_SFT,
+		.minlen_mask = HDMI_OUT_MINLEN_MASK,
 		.minlen_shift = HDMI_OUT_MINLEN_SFT,
 	},
 };
@@ -3316,7 +3253,7 @@ static irqreturn_t mt6853_afe_irq_handler(int irq_id, void *dev)
 	status_mcu = status & mcu_en & AFE_IRQ_STATUS_BITS;
 
 	if (ret || status_mcu == 0) {
-		dev_err(afe->dev, "%s(), irq status err, ret %d, status 0x%x, mcu_en 0x%x\n",
+		dev_info(afe->dev, "%s(), irq status err, ret %d, status 0x%x, mcu_en 0x%x\n",
 			__func__, ret, status, mcu_en);
 
 		goto err_irq;
@@ -3353,7 +3290,7 @@ static int mt6853_afe_runtime_suspend(struct device *dev)
 	unsigned int value = 0;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	if (!afe->regmap)
 		goto skip_regmap;
@@ -3368,7 +3305,7 @@ static int mt6853_afe_runtime_suspend(struct device *dev)
 				       20,
 				       1 * 1000 * 1000);
 	if (ret)
-		dev_warn(afe->dev, "%s(), ret %d\n", __func__, ret);
+		dev_info(afe->dev, "%s(), ret %d\n", __func__, ret);
 
 	/* make sure all irq status are cleared */
 	regmap_write(afe->regmap, AFE_IRQ_MCU_CLR, 0xffffffff);
@@ -3395,7 +3332,7 @@ static int mt6853_afe_runtime_resume(struct device *dev)
 	struct mt6853_afe_private *afe_priv = afe->platform_priv;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	ret = mt6853_afe_enable_clock(afe);
 	if (ret)
@@ -3408,7 +3345,7 @@ static int mt6853_afe_runtime_resume(struct device *dev)
 	regcache_sync(afe->regmap);
 
 	/* enable audio sys DCM for power saving */
-	regmap_update_bits(afe_priv->infracfg_ao,
+	regmap_update_bits(afe_priv->infracfg,
 			   PERI_BUS_DCM_CTRL, 0x1 << 29, 0x1 << 29);
 	regmap_update_bits(afe->regmap, AUDIO_TOP_CON0, 0x1 << 29, 0x1 << 29);
 
@@ -3425,26 +3362,6 @@ static int mt6853_afe_runtime_resume(struct device *dev)
 
 skip_regmap:
 	return 0;
-}
-
-static int mt6853_afe_pcm_copy(struct snd_pcm_substream *substream,
-			       int channel, unsigned long hwoff,
-			       void *buf, unsigned long bytes,
-			       mtk_sp_copy_f sp_copy)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_component *component =
-		snd_soc_rtdcom_lookup(rtd, AFE_PCM_NAME);
-	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
-	int ret = 0;
-
-	mt6853_set_audio_int_bus_parent(afe, CLK_TOP_MAINPLL_D4_D4);
-
-	ret = sp_copy(substream, channel, hwoff, buf, bytes);
-
-	mt6853_set_audio_int_bus_parent(afe, CLK_CLK26M);
-
-	return ret;
 }
 
 static int mt6853_set_memif_sram_mode(struct device *dev,
@@ -3551,21 +3468,23 @@ static const struct mtk_audio_sram_ops mt6853_sram_ops = {
 	.set_sram_mode = mt6853_set_sram_mode,
 };
 
-static int mt6853_afe_pcm_platform_probe(struct snd_soc_component *platform)
+static int mt6853_afe_component_probe(struct snd_soc_component *component)
 {
-	mtk_afe_add_sub_dai_control(platform);
-	mt6853_add_misc_control(platform);
+	mtk_afe_add_sub_dai_control(component);
+	mt6853_add_misc_control(component);
 	return 0;
 }
 
-const struct snd_soc_component_driver mt6853_afe_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_afe_pcm_ops,
-	.pcm_new = mtk_afe_pcm_new,
-	.pcm_free = mtk_afe_pcm_free,
-	.probe = mt6853_afe_pcm_platform_probe,
+static const struct snd_soc_component_driver mt6853_afe_component = {
+	.name           = AFE_PCM_NAME,
+	.probe          = mt6853_afe_component_probe,
+	.open           = mtk_afe_pcm_open,
+	.pointer        = mtk_afe_pcm_pointer,
+	.pcm_construct  = mtk_afe_pcm_new,
+	.copy           = mtk_afe_pcm_copy_user,
 };
 
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 static ssize_t mt6853_debugfs_read(struct file *file, char __user *buf,
 				   size_t count, loff_t *pos)
 {
@@ -3664,13 +3583,13 @@ static ssize_t mt6853_debugfs_read(struct file *file, char __user *buf,
 	n += scnprintf(buffer + n, size - n,
 		       "APLL2_TUNER_CON0 = 0x%x\n", value);
 
-	regmap_read(afe_priv->infracfg_ao, PERI_BUS_DCM_CTRL, &value);
+	regmap_read(afe_priv->infracfg, PERI_BUS_DCM_CTRL, &value);
 	n += scnprintf(buffer + n, size - n,
 		       "PERI_BUS_DCM_CTRL = 0x%x\n", value);
-	regmap_read(afe_priv->infracfg_ao, MODULE_SW_CG_1_STA, &value);
+	regmap_read(afe_priv->infracfg, MODULE_SW_CG_1_STA, &value);
 	n += scnprintf(buffer + n, size - n,
 		       "MODULE_SW_CG_1_STA = 0x%x\n", value);
-	regmap_read(afe_priv->infracfg_ao, MODULE_SW_CG_2_STA, &value);
+	regmap_read(afe_priv->infracfg, MODULE_SW_CG_2_STA, &value);
 	n += scnprintf(buffer + n, size - n,
 		       "MODULE_SW_CG_2_STA = 0x%x\n", value);
 
@@ -5969,6 +5888,7 @@ static const struct file_operations mt6853_debugfs_ops = {
 	.write = mtk_afe_debugfs_write,
 	.read = mt6853_debugfs_read,
 };
+#endif
 
 static const struct snd_soc_component_driver mt6853_afe_pcm_component = {
 	.name = "mt6853-afe-pcm-dai",
@@ -6020,6 +5940,8 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 	struct device *dev;
 	struct arm_smccc_res smccc_res;
 
+	pr_info("+%s()\n", __func__);
+
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(34));
 	if (ret)
 		return ret;
@@ -6027,6 +5949,7 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 	afe = devm_kzalloc(&pdev->dev, sizeof(*afe), GFP_KERNEL);
 	if (!afe)
 		return -ENOMEM;
+
 	platform_set_drvdata(pdev, afe);
 	mt6853_set_local_afe(afe);
 
@@ -6034,6 +5957,7 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 					  GFP_KERNEL);
 	if (!afe->platform_priv)
 		return -ENOMEM;
+
 	afe_priv = afe->platform_priv;
 
 	afe->dev = &pdev->dev;
@@ -6042,13 +5966,20 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 	/* init audio related clock */
 	ret = mt6853_init_clock(afe);
 	if (ret) {
-		dev_err(dev, "init clock error\n");
+		dev_info(dev, "init clock error: %d\n", ret);
 		return ret;
 	}
 
 	pm_runtime_enable(&pdev->dev);
 	if (!pm_runtime_enabled(&pdev->dev))
 		goto err_pm_disable;
+
+	/* Audio device is part of genpd.
+	 * Set audio as syscore device to prevent
+	 * genpd automatically power off audio
+	 * device when suspend
+	 */
+	dev_pm_syscore_device(&pdev->dev, true);
 
 	/* regmap init */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -6060,7 +5991,7 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 	/* enable clock for regcache get default value from hw */
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret)
-		dev_err(dev, "get_ret:%d, rpm_error:%d\n",
+		dev_info(dev, "get_ret:%d, rpm_error:%d\n",
 			ret, dev->power.runtime_error);
 
 	afe->regmap = devm_regmap_init_mmio(&pdev->dev, afe->base_addr,
@@ -6070,13 +6001,14 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 
 	ret = pm_runtime_put_sync(&pdev->dev);
 	if (ret)
-		dev_err(dev, "put_ret:%d, rpm_error:%d\n",
+		dev_info(dev, "put_ret:%d, rpm_error:%d\n",
 			ret, dev->power.runtime_error);
+
 
 	/* init gpio */
 	ret = mt6853_afe_gpio_init(afe);
 	if (ret)
-		dev_err(dev, "init gpio error\n");
+		dev_info(dev, "init gpio error\n");
 
 	/* init sram */
 	afe->sram = devm_kzalloc(&pdev->dev, sizeof(struct mtk_audio_sram),
@@ -6089,7 +6021,6 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 		return ret;
 
 	/* init memif */
-	afe->memif_32bit_supported = 1;
 	afe->memif_size = MT6853_MEMIF_NUM;
 	afe->memif = devm_kcalloc(dev, afe->memif_size, sizeof(*afe->memif),
 				  GFP_KERNEL);
@@ -6121,20 +6052,19 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 	/* request irq */
 	irq_id = platform_get_irq(pdev, 0);
 	if (irq_id <= 0) {
-		dev_err(dev, "%pOFn no irq found\n", dev->of_node);
+		dev_info(dev, "%pOFn no irq found\n", dev->of_node);
 		return irq_id < 0 ? irq_id : -ENXIO;
 	}
 	ret = devm_request_irq(dev, irq_id, mt6853_afe_irq_handler,
 			       IRQF_TRIGGER_NONE,
 			       "Afe_ISR_Handle", (void *)afe);
 	if (ret) {
-		dev_err(dev, "could not request_irq for Afe_ISR_Handle\n");
+		dev_info(dev, "could not request_irq for Afe_ISR_Handle\n");
 		return ret;
 	}
-
 	ret = enable_irq_wake(irq_id);
 	if (ret < 0)
-		dev_err(dev, "enable_irq_wake %d err: %d\n", irq_id, ret);
+		dev_info(dev, "enable_irq_wake %d err: %d\n", irq_id, ret);
 #endif
 
 	/* init arm_smccc_smc call */
@@ -6147,7 +6077,7 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 	for (i = 0; i < ARRAY_SIZE(dai_register_cbs); i++) {
 		ret = dai_register_cbs[i](afe);
 		if (ret) {
-			dev_warn(afe->dev, "dai register i %d fail, ret %d\n",
+			dev_info(afe->dev, "dai register i %d fail, ret %d\n",
 				 i, ret);
 			goto err_pm_disable;
 		}
@@ -6156,7 +6086,7 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 	/* init dai_driver and component_driver */
 	ret = mtk_afe_combine_sub_dai(afe);
 	if (ret) {
-		dev_warn(afe->dev, "mtk_afe_combine_sub_dai fail, ret %d\n",
+		dev_info(afe->dev, "mtk_afe_combine_sub_dai fail, ret %d\n",
 			 ret);
 		goto err_pm_disable;
 	}
@@ -6174,20 +6104,19 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 	afe->request_dram_resource = mt6853_afe_dram_request;
 	afe->release_dram_resource = mt6853_afe_dram_release;
 
-	afe->copy = mt6853_afe_pcm_copy;
-
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	/* debugfs */
 	afe->debug_cmds = mt6853_debug_cmds;
 	afe->debugfs = debugfs_create_file("mtksocaudio",
 					   S_IFREG | 0444, NULL,
 					   afe, &mt6853_debugfs_ops);
-
-	/* register platform */
+#endif
+	/* register component */
 	ret = devm_snd_soc_register_component(&pdev->dev,
 					     &mt6853_afe_component, NULL, 0);
 	if (ret) {
-		dev_warn(dev, "err_platform\n");
-		goto err_dai_component;
+		dev_info(dev, "err_platform\n");
+		goto err_pm_disable;
 	}
 
 	ret = devm_snd_soc_register_component(&pdev->dev,
@@ -6195,19 +6124,16 @@ static int mt6853_afe_pcm_dev_probe(struct platform_device *pdev)
 					      afe->dai_drivers,
 					      afe->num_dai_drivers);
 	if (ret) {
-		dev_warn(dev, "err_dai_component\n");
+		dev_info(dev, "err_dai_component\n");
 		goto err_dai_component;
 	}
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
-	defined(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	audio_set_dsp_afe(afe);
 #endif
-
-#if defined(CONFIG_MTK_ULTRASND_PROXIMITY)
-	ultra_set_afe_base(afe);
+#if IS_ENABLED(CONFIG_MTK_ULTRASND_PROXIMITY)
+	ultra_set_dsp_afe(afe);
 #endif
-
 	return 0;
 
 err_dai_component:
@@ -6247,7 +6173,7 @@ static struct platform_driver mt6853_afe_pcm_driver = {
 	.driver = {
 		   .name = "mt6853-audio",
 		   .of_match_table = mt6853_afe_pcm_dt_match,
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 		   .pm = &mt6853_afe_pm_ops,
 #endif
 	},
@@ -6259,4 +6185,4 @@ module_platform_driver(mt6853_afe_pcm_driver);
 
 MODULE_DESCRIPTION("Mediatek ALSA SoC AFE platform driver for 6853");
 MODULE_AUTHOR("Shane Chien <shane.chien@mediatek.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

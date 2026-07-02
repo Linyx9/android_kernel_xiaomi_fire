@@ -103,22 +103,6 @@
 		};
 	};
 
-	mtk_gauge: mtk_gauge {
-		compatible = "mediatek,mt6357-gauge";
-		charger = <&mt6370_chg>;
-		bootmode = <&chosen>;
-		io-channels = <&pmic_auxadc AUXADC_BAT_TEMP>,
-				<&pmic_auxadc AUXADC_BATADC>,
-				<&pmic_auxadc AUXADC_VBIF>,
-				<&pmic_auxadc AUXADC_IMP>;
-		io-channel-names = "pmic_battery_temp",
-				"pmic_battery_voltage",
-				"pmic_bif_voltage",
-				"pmic_ptim_voltage";
-		nvmem-cells = <&fg_init>, <&fg_soc>;
-		nvmem-cell-names = "initialization", "state-of-charge";
-	};
-
 	mtk_charger_type: mtk_charger_type {
 		compatible = "mediatek,mt6357-charger-type";
 		io-channels = <&pmic_auxadc AUXADC_VCDT>;
@@ -149,7 +133,6 @@
 		interconnects = <&pmic_auxadc 1>;
 		#interconnect-cells = <1>;
 	};
-
 	mt6357_ts_buck1: mt6357_ts_buck1 {
 		compatible = "mediatek,mt6357_ts_buck1";
 		io-channels =
@@ -168,11 +151,31 @@
 		interconnects = <&mtk_ts_pmic 1>;
 
 	};
-
-	pmic_efuse: pmic_efuse {
+	pmic_efuse: mt6357-efuse {
 		compatible = "mediatek,mt6357-efuse";
 		#address-cells = <1>;
 		#size-cells = <1>;
+		thermal_efuse_data1: e_data1 {
+			reg = <0x3e 12>;
+		};
+	};
+
+	mt6357_ts_buck1: mt6357_ts_buck1 {
+				compatible = "mediatek,mt6357_ts_buck1";
+				io-channels =
+					<&pmic_auxadc AUXADC_VCORE_TEMP>;
+				io-channel-names =
+					"pmic_buck1_temp";
+				interconnects = <&mtk_ts_pmic 1>;
+	};
+
+	mt6357ts_buck2: mt6357_ts_buck2 {
+				compatible = "mediatek,mt6357_ts_buck2";
+				io-channels =
+					<&pmic_auxadc AUXADC_VPROC_TEMP>;
+				io-channel-names =
+					"pmic_buck2_temp";
+				interconnects = <&mtk_ts_pmic 1>;
 	};
 
 	mt6357regulator: mt6357regulator {
@@ -183,7 +186,6 @@
 			regulator-max-microvolt = <2200000>;
 			regulator-ramp-delay = <12500>;
 			regulator-enable-ramp-delay = <220>;
-			regulator-always-on;
 		};
 		mt_pmic_vmodem_buck_reg: buck_vmodem {
 			regulator-name = "vmodem";
@@ -191,7 +193,6 @@
 			regulator-max-microvolt = <1193750>;
 			regulator-ramp-delay = <6250>;
 			regulator-enable-ramp-delay = <220>;
-			regulator-always-on;
 		};
 		mt_pmic_vcore_buck_reg: buck_vcore {
 			regulator-name = "vcore";
@@ -199,7 +200,6 @@
 			regulator-max-microvolt = <1312500>;
 			regulator-ramp-delay = <6250>;
 			regulator-enable-ramp-delay = <220>;
-			regulator-always-on;
 		};
 		mt_pmic_vproc_buck_reg: buck_vproc {
 			regulator-name = "vproc";
@@ -207,7 +207,6 @@
 			regulator-max-microvolt = <1312500>;
 			regulator-ramp-delay = <6250>;
 			regulator-enable-ramp-delay = <220>;
-			regulator-always-on;
 		};
 		mt_pmic_vpa_buck_reg: buck_vpa {
 			regulator-name = "vpa";
@@ -227,7 +226,6 @@
 			regulator-min-microvolt = <2200000>;
 			regulator-max-microvolt = <2400000>;
 			regulator-enable-ramp-delay = <110>;
-			regulator-always-on;
 		};
 		mt_pmic_vrf18_ldo_reg: ldo_vrf18 {
 			regulator-name = "vrf18";
@@ -301,7 +299,6 @@
 			regulator-max-microvolt = <1312500>;
 			regulator-ramp-delay = <6250>;
 			regulator-enable-ramp-delay = <110>;
-			regulator-always-on;
 		};
 		mt_pmic_vsram_proc_ldo_reg: ldo_vsram_proc {
 			regulator-name = "vsram_proc";
@@ -309,42 +306,36 @@
 			regulator-max-microvolt = <1312500>;
 			regulator-ramp-delay = <6250>;
 			regulator-enable-ramp-delay = <110>;
-			regulator-always-on;
 		};
 		mt_pmic_vaux18_ldo_reg: ldo_vaux18 {
 			regulator-name = "vaux18";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-enable-ramp-delay = <264>;
-			regulator-always-on;
 		};
 		mt_pmic_vaud28_ldo_reg: ldo_vaud28 {
 			regulator-name = "vaud28";
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-enable-ramp-delay = <264>;
-			regulator-always-on;
 		};
 		mt_pmic_vio28_ldo_reg: ldo_vio28 {
 			regulator-name = "vio28";
 			regulator-min-microvolt = <2800000>;
 			regulator-max-microvolt = <2800000>;
 			regulator-enable-ramp-delay = <264>;
-			regulator-always-on;
 		};
 		mt_pmic_vio18_ldo_reg: ldo_vio18 {
 			regulator-name = "vio18";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-enable-ramp-delay = <264>;
-			regulator-always-on;
 		};
 		mt_pmic_vdram_ldo_reg: ldo_vdram {
 			regulator-name = "vdram";
 			regulator-min-microvolt = <1100000>;
 			regulator-max-microvolt = <1200000>;
 			regulator-enable-ramp-delay = <3300>;
-			regulator-always-on;
 		};
 		mt_pmic_vmc_ldo_reg: ldo_vmc {
 			regulator-name = "vmc";
@@ -363,7 +354,6 @@
 			regulator-min-microvolt = <2900000>;
 			regulator-max-microvolt = <3300000>;
 			regulator-enable-ramp-delay = <44>;
-			regulator-always-on;
 		};
 		mt_pmic_vsim1_ldo_reg: ldo_vsim1 {
 			regulator-name = "vsim1";
@@ -388,7 +378,28 @@
 			regulator-min-microvolt = <3000000>;
 			regulator-max-microvolt = <3100000>;
 			regulator-enable-ramp-delay = <264>;
-			regulator-always-on;
+		};
+	};
+
+	mt6357_clkbuf: mt6357-clkbuf {
+		compatible = "mediatek,mt6357-clkbuf";
+		XO-SOC {
+			xo-id = <0>;
+		};
+		XO-WCN {
+			xo-id = <1>;
+		};
+		XO-NFC {
+			xo-id = <2>;
+		};
+		XO-CEL {
+			xo-id = <3>;
+		};
+		XO-RSV2 {
+			xo-id = <5>;
+		};
+		XO-EXT {
+			xo-id = <6>;
 		};
 	};
 
@@ -419,6 +430,16 @@
 		compatible = "mediatek,mt63xx-oc-debug";
 	};
 
+	leds-mt6357 {
+		compatible = "mediatek,mt6357_leds";
+		Isink1 {
+			reg = <1>;
+			label = "red";
+			linux,default-trigger = "none";
+			default-state = "off";
+		};
+	};
+
 	mtk_rtc: mtk_rtc {
 		compatible = "mediatek,mt6357-rtc";
 		#address-cells = <1>;
@@ -441,7 +462,6 @@
 
 	pmic_codec: pmic_codec {
 		compatible = "mediatek,mt6357-sound";
-		mediatek,pwrap-regmap = <&pwrap>;
 		nvmem = <&pmic_efuse>;
 		nvmem-names = "pmic-hp-efuse";
 		io-channels =
@@ -454,37 +474,8 @@
 		use_ul_260k = <0>; /* select 1: use, 0: not use */
 	};
 
-	clock_buffer_ctrl: clock_buffer_ctrl {
-		compatible = "mediatek,clock_buffer";
-		n-clkbuf-pmic-dependent = <5>;
-		clkbuf-pmic-dependent = "pmic-drvcurr",
-					"pmic-auxout-sel",
-					"pmic-auxout-xo",
-					"pmic-auxout-drvcurr",
-					"pmic-auxout-bblpm-en";
-
-		pmic-dcxo-cw = <0x788>;
-		pmic-xo-mode = <0x788 0 0x788 3 0x788 6 0x788 9
-			0xffff 0xffff 0x7a2 8 0x7a2 11>;
-		pmic-xo-en = <0x788 2 0x788 5 0x788 8 0x788 11
-			0xffff 0xffff 0x7a2 10 0x7a2 13>;
-		pmic-bblpm-sw = <0x788 12>;
-		pmic-srclkeni3 = <0x44a 0>;
-
-		n-pmic-drvcurr = <7>;
-		pmic-drvcurr = <0x7b0 0 0x7b0 2 0x7b0 4 0x7b0 6
-			0xffff 0xffff 0x7b0 10 0x7b0 12>;
-		n-pmic-auxout-sel = <6>;
-		pmic-auxout-sel = <0x7b4 0 0x7b4 5 0x7b4 6 0x7b4 7
-			0x7b4 6 0x7b4 24>;
-		n-pmic-auxout-xo = <7>;
-		pmic-auxout-xo = <0x7b6 0 0x7b6 6 0x7b6 0 0x7b6 6
-			0xffff 0xffff 0x7b6 6 0x7b6 12>;
-		n-pmic-auxout-drvcurr = <7>;
-		pmic-auxout-drvcurr = <0x7b6 1 0x7b6 7 0x7b6 1
-			0x7b6 7 0xffff 0xffff 0x7b6 1 0x7b6 12>;
-		n-pmic-auxout-bblpm-en = <1>;
-		pmic-auxout-bblpm-en = <0x7b6 0>;
+	mt6357_consys: mt6357_consys {
+		compatible = "mediatek,mt6357-consys";
 	};
 };
 

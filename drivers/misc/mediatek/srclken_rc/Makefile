@@ -1,25 +1,14 @@
-PLAT_TOP = $(srctree)/drivers/misc/mediatek/include/mt-plat
+CLKBUF_TOP = $(DEVICE_MODULES_PATH)/drivers/misc/mediatek/clkbuf/src
 
-ccflags-y += -I$(src)/src/ \
-	     -I$(srctree)/include/ \
-	     -I$(PLAT_TOP)/
+ccflags-y += -I$(srctree)$(src)/src/ \
+     -I$(CLKBUF_TOP)/
 
-ifeq ($(CONFIG_MTK_SRCLKEN_RC),y)
-
-ccflags-y += -I$(src)/src/ \
-	     -I$(srctree)/include/ \
-	     -I$(CLKBUF_TOP)/ \
-	     -I$(PLAT_TOP)/
+obj-$(CONFIG_MTK_SRCLKEN_RC) += srclken-spm.o
+srclken-spm-$(CONFIG_MTK_SRCLKEN_RC) += src/mtk-srclken-rc-spm.o
 
 obj-$(CONFIG_MTK_SRCLKEN_RC) += srclken.o
 
-srclken-y += src/mtk-srclken-rc.o \
-			src/mtk-srclken-rc-hw.o \
-			mtk-srclken-bridge.o
-else
-ccflags-y += -I$(srctree)/include/ \
-	     -I$(PLAT_TOP)/
+srclken-$(CONFIG_MTK_SRCLKEN_RC) += src/mtk-srclken-rc.o \
+		src/mtk-srclken-rc-hw.o
 
-obj-y += mtk-srclken-bridge.o
-endif
 

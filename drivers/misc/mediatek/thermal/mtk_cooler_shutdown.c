@@ -35,12 +35,8 @@
 #define MAX_LEN	256
 #endif
 
-#if 1
 #define mtk_cooler_shutdown_dprintk(fmt, args...)	\
 	pr_notice("thermal/cooler/shutdown " fmt, ##args)
-#else
-#define mtk_cooler_shutdown_dprintk(fmt, args...)
-#endif
 
 struct sd_state {
 	unsigned long state;
@@ -109,16 +105,15 @@ int _mtk_cl_sd_rst_read(struct seq_file *m, void *v)
 
 static int _mtk_cl_sd_rst_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _mtk_cl_sd_rst_read, PDE_DATA(inode));
+	return single_open(file, _mtk_cl_sd_rst_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_sd_rst_fops = {
-	.owner = THIS_MODULE,
-	.open = _mtk_cl_sd_rst_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _mtk_cl_sd_rst_write,
-	.release = single_release,
+static const struct proc_ops _cl_sd_rst_fops = {
+	.proc_open = _mtk_cl_sd_rst_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _mtk_cl_sd_rst_write,
+	.proc_release = single_release,
 };
 
 	static ssize_t _mtk_cl_sd_pid_write
@@ -152,16 +147,15 @@ static int _mtk_cl_sd_pid_read(struct seq_file *m, void *v)
 
 static int _mtk_cl_sd_pid_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _mtk_cl_sd_pid_read, PDE_DATA(inode));
+	return single_open(file, _mtk_cl_sd_pid_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_sd_pid_fops = {
-	.owner = THIS_MODULE,
-	.open = _mtk_cl_sd_pid_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _mtk_cl_sd_pid_write,
-	.release = single_release,
+static const struct proc_ops _cl_sd_pid_fops = {
+	.proc_open = _mtk_cl_sd_pid_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _mtk_cl_sd_pid_write,
+	.proc_release = single_release,
 };
 
 	static ssize_t _mtk_cl_sd_debouncet_write
@@ -203,16 +197,15 @@ static int _mtk_cl_sd_debouncet_read(struct seq_file *m, void *v)
 
 static int _mtk_cl_sd_debouncet_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _mtk_cl_sd_debouncet_read, PDE_DATA(inode));
+	return single_open(file, _mtk_cl_sd_debouncet_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_sd_debouncet_fops = {
-	.owner = THIS_MODULE,
-	.open = _mtk_cl_sd_debouncet_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _mtk_cl_sd_debouncet_write,
-	.release = single_release,
+static const struct proc_ops _cl_sd_debouncet_fops = {
+	.proc_open = _mtk_cl_sd_debouncet_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _mtk_cl_sd_debouncet_write,
+	.proc_release = single_release,
 };
 
 static int _mtk_cl_sd_send_signal(void)
@@ -236,13 +229,13 @@ static int _mtk_cl_sd_send_signal(void)
 	}
 
 	if (ret == 0 && pg_task) {
-		siginfo_t info;
+		struct kernel_siginfo info;
 
 		info.si_signo = SIGIO;
 		info.si_errno = 0;
 		info.si_code = 1;
 		info.si_addr = NULL;
-		ret = do_send_sig_info(SIGIO, &info, pg_task, false);   //JOSH
+		ret = send_sig_info(SIGIO, &info, pg_task);   //JOSH
 	}
 
 	if (ret != 0)
@@ -285,7 +278,7 @@ static int _mtk_cl_sd_send_signal(void)
 {
 	struct sd_state *cl_state = (struct sd_state *) cdev->devdata;
 #if defined(MTK_COOLER_SHUTDOWN_SIGNAL)
-	unsigned long original_state;
+	unsigned long original_state __maybe_unused;
 #endif
 	/* mtk_cooler_shutdown_dprintk(
 	 * "mtk_cl_shutdown_set_cur_state() %s %d\n",
@@ -375,7 +368,7 @@ static void mtk_cooler_shutdown_unregister_ltf(void)
 }
 
 
-static int __init mtk_cooler_shutdown_init(void)
+int  mtk_cooler_shutdown_init(void)
 {
 	int err = 0;
 	int i;
@@ -444,10 +437,12 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtk_cooler_shutdown_exit(void)
+void  mtk_cooler_shutdown_exit(void)
 {
 	mtk_cooler_shutdown_dprintk("exit\n");
 	mtk_cooler_shutdown_unregister_ltf();
 }
-module_init(mtk_cooler_shutdown_init);
-module_exit(mtk_cooler_shutdown_exit);
+//module_init(mtk_cooler_shutdown_init);
+//module_exit(mtk_cooler_shutdown_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

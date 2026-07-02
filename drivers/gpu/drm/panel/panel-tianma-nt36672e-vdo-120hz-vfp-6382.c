@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2022 MediaTek Inc.
  */
 
 #include <linux/backlight.h>
 #include <linux/delay.h>
-#include <drm/drmP.h>
-#include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_mipi_dsi.h>
+#include <drm/drm_connector.h>
+#include <drm/drm_device.h>
+#include <drm/drm_modes.h>
+
+#include <linux/gpio/consumer.h>
+#include <linux/regulator/consumer.h>
 
 #include <video/mipi_display.h>
 #include <video/of_videomode.h>
@@ -21,13 +26,12 @@
 
 #define CONFIG_MTK_PANEL_EXT
 #if defined(CONFIG_MTK_PANEL_EXT)
-#include "../mediatek/mtk_panel_ext.h"
-#include "../mediatek/mtk_log.h"
-#include "../mediatek/mtk_drm_graphics_base.h"
+#include "../mediatek/mediatek_v2/mtk_panel_ext.h"
+#include "../mediatek/mediatek_v2/mtk_drm_graphics_base.h"
 #include "include/panel-tianma-nt36672e-vdo-120hz-vfp-6382.h"
 #endif
 
-#if defined(CONFIG_RT4831A_I2C)
+#if IS_ENABLED(CONFIG_RT4831A_I2C)
 #include "../../../misc/mediatek/gate_ic/gate_i2c.h"
 #endif
 
@@ -52,6 +56,7 @@ struct tianma {
 
 static char bl_tb0[] = { 0x51, 0xff };
 static int current_fps = 60;
+static u32 bdg_support;
 
 #define tianma_dcs_write_seq(ctx, seq...)                                     \
 	({                                                                     \
@@ -83,7 +88,7 @@ static int tianma_dcs_read(struct tianma *ctx, u8 cmd, void *data, size_t len)
 
 	ret = mipi_dsi_dcs_read(dsi, cmd, data, len);
 	if (ret < 0) {
-		DDPMSG("[error]error %d reading dcs seq:(%#x)\n", ret, cmd);
+		dev_info(ctx->dev, "error %d reading dcs seq:(%#x)\n", ret, cmd);
 		ctx->error = ret;
 	}
 
@@ -124,7 +129,7 @@ static void tianma_dcs_write(struct tianma *ctx, const void *data, size_t len)
 	else
 		ret = mipi_dsi_generic_write(dsi, data, len);
 	if (ret < 0) {
-		DDPMSG("[error]error %zd writing seq: %ph\n", ret, data);
+		dev_info(ctx->dev, "error %zd writing seq: %ph\n", ret, data);
 		ctx->error = ret;
 	}
 }
@@ -135,7 +140,7 @@ static void tianma_panel_init(struct tianma *ctx)
 {
 	ctx->reset_gpio = devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		DDPMSG("[error]%s: cannot get reset_gpio %ld\n",
+		dev_info(ctx->dev, "%s: cannot get reset_gpio %ld\n",
 			__func__, PTR_ERR(ctx->reset_gpio));
 		return;
 	}
@@ -488,6 +493,7 @@ static void tianma_panel_init(struct tianma *ctx)
 	tianma_dcs_write_seq_static(ctx, 0xFB, 0x01);
 	tianma_dcs_write_seq_static(ctx, 0x53, 0x22);
 	tianma_dcs_write_seq_static(ctx, 0x54, 0x02);
+	pr_info("%s, fps:%d\n", __func__, current_fps);
 	tianma_dcs_write_seq_static(ctx, 0XFF, 0X25);
 	tianma_dcs_write_seq_static(ctx, 0XFB, 0X01);
 	tianma_dcs_write_seq_static(ctx, 0X18, 0X20);
@@ -544,13 +550,13 @@ static int tianma_unprepare(struct drm_panel *panel)
 
 	if (!ctx->prepared)
 		return 0;
-	pr_info("%s\n", __func__);
+	pr_info("%s+\n", __func__);
 
 	tianma_dcs_write_seq_static(ctx, 0x28);
 	tianma_dcs_write_seq_static(ctx, 0x10);
 	msleep(120);
 
-#if defined(CONFIG_RT4831A_I2C)
+#if IS_ENABLED(CONFIG_RT4831A_I2C)
 	/*this is rt4831a*/
 	_gate_ic_i2c_panel_bias_enable(0);
 	_gate_ic_Power_off();
@@ -558,7 +564,7 @@ static int tianma_unprepare(struct drm_panel *panel)
 	ctx->reset_gpio =
 		devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		DDPMSG("[error]%s: cannot get reset_gpio %ld\n",
+		dev_info(ctx->dev, "%s: cannot get reset_gpio %ld\n",
 			__func__, PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
@@ -569,7 +575,7 @@ static int tianma_unprepare(struct drm_panel *panel)
 	ctx->bias_neg = devm_gpiod_get_index(ctx->dev,
 		"bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		DDPMSG("[error]%s: cannot get bias_neg %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias_neg %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
@@ -581,7 +587,7 @@ static int tianma_unprepare(struct drm_panel *panel)
 	ctx->bias_pos = devm_gpiod_get_index(ctx->dev,
 		"bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		DDPMSG("[error]%s: cannot get bias_pos %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias_pos %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -600,10 +606,10 @@ static int tianma_prepare(struct drm_panel *panel)
 	struct tianma *ctx = panel_to_tianma(panel);
 	int ret;
 
-	pr_info("%s\n", __func__);
+	pr_info("%s+\n", __func__);
 	if (ctx->prepared)
 		return 0;
-#if defined(CONFIG_RT4831A_I2C)
+#if IS_ENABLED(CONFIG_RT4831A_I2C)
 	_gate_ic_Power_on();
 	/*rt4831a co-work with leds_i2c*/
 	_gate_ic_i2c_panel_bias_enable(1);
@@ -611,7 +617,7 @@ static int tianma_prepare(struct drm_panel *panel)
 	ctx->bias_pos = devm_gpiod_get_index(ctx->dev,
 		"bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		DDPMSG("[error]%s: cannot get bias_pos %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias_pos %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -623,7 +629,7 @@ static int tianma_prepare(struct drm_panel *panel)
 	ctx->bias_neg = devm_gpiod_get_index(ctx->dev,
 		"bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		DDPMSG("[error]%s: cannot get bias_neg %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias_neg %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
@@ -645,6 +651,7 @@ static int tianma_prepare(struct drm_panel *panel)
 	tianma_panel_get_data(ctx);
 #endif
 
+	pr_info("%s-\n", __func__);
 	return ret;
 }
 
@@ -666,7 +673,7 @@ static int tianma_enable(struct drm_panel *panel)
 }
 
 static const struct drm_display_mode default_mode = {
-	.clock = 289452,
+	.clock = 373419,
 	.hdisplay = FRAME_WIDTH,
 	.hsync_start = FRAME_WIDTH + MODE_0_HFP,
 	.hsync_end = FRAME_WIDTH + MODE_0_HFP + HSA,
@@ -675,11 +682,10 @@ static const struct drm_display_mode default_mode = {
 	.vsync_start = FRAME_HEIGHT + MODE_0_VFP,
 	.vsync_end = FRAME_HEIGHT + MODE_0_VFP + VSA,
 	.vtotal = FRAME_HEIGHT + MODE_0_VFP + VSA + VBP,
-	.vrefresh = MODE_0_FPS,
 };
 
 static const struct drm_display_mode performance_mode_1 = {
-	.clock = 336420,
+	.clock = 372925,
 	.hdisplay = FRAME_WIDTH,
 	.hsync_start = FRAME_WIDTH + MODE_1_HFP,
 	.hsync_end = FRAME_WIDTH + MODE_1_HFP + HSA,
@@ -688,13 +694,10 @@ static const struct drm_display_mode performance_mode_1 = {
 	.vsync_start = FRAME_HEIGHT + MODE_1_VFP,
 	.vsync_end = FRAME_HEIGHT + MODE_1_VFP + VSA,
 	.vtotal = FRAME_HEIGHT + MODE_1_VFP + VSA + VBP,
-	.vrefresh = MODE_1_FPS,
-
-
 };
 
 static const struct drm_display_mode performance_mode_2 = {
-	.clock = 383239,
+	.clock = 373115,
 	.hdisplay = FRAME_WIDTH,
 	.hsync_start = FRAME_WIDTH + MODE_2_HFP,
 	.hsync_end = FRAME_WIDTH + MODE_2_HFP + HSA,
@@ -703,14 +706,12 @@ static const struct drm_display_mode performance_mode_2 = {
 	.vsync_start = FRAME_HEIGHT + MODE_2_VFP,
 	.vsync_end = FRAME_HEIGHT + MODE_2_VFP + VSA,
 	.vtotal = FRAME_HEIGHT + MODE_2_VFP + VSA + VBP,
-	.vrefresh = MODE_2_FPS,
-
 };
 
 #if defined(CONFIG_MTK_PANEL_EXT)
 
 static struct mtk_panel_params ext_params = {
-	.vfp_low_power = 4180,
+	.vfp_low_power = 4120,
 	.cust_esd_check = 0,
 	.esd_check_enable = 1,
 	.lcm_esd_check_table[0] = {
@@ -756,12 +757,15 @@ static struct mtk_panel_params ext_params = {
 		.rc_tgt_offset_lo      =  DSC_RC_TGT_OFFSET_LO,
 	},
 	.data_rate = DATA_RATE,
-	.bdg_ssc_disable = 1,
-	.ssc_disable = 1,
+	.bdg_ssc_enable = 0,
+	.ssc_enable = 0,
 	.dyn = {
 		.switch_en = 1,
-		.pll_clk = 501,
-		.hbp = 20,
+		.pll_clk = 498,
+		.hfp = 141,
+		.vfp = 2481,
+		.vsa = 7,
+		.vfp_lp_dyn = 4121,
 	},
 };
 
@@ -812,12 +816,15 @@ static struct mtk_panel_params ext_params_mode_1 = {
 		.rc_tgt_offset_lo      =  DSC_RC_TGT_OFFSET_LO,
 	},
 	.data_rate = DATA_RATE,
-	.bdg_ssc_disable = 1,
-	.ssc_disable = 1,
+	.bdg_ssc_enable = 0,
+	.ssc_enable = 0,
 	.dyn = {
 		.switch_en = 1,
-		.pll_clk = 501,
-		.hbp = 20,
+		.pll_clk = 498,
+		.hfp = 141,
+		.vfp = 838,
+		.vsa = 7,
+		.vfp_lp_dyn = 2481,
 	},
 };
 
@@ -868,12 +875,15 @@ static struct mtk_panel_params ext_params_mode_2 = {
 		.rc_tgt_offset_lo      =  DSC_RC_TGT_OFFSET_LO,
 	},
 	.data_rate = DATA_RATE,
-	.bdg_ssc_disable = 1,
-	.ssc_disable = 1,
+	.bdg_ssc_enable = 0,
+	.ssc_enable = 0,
 	.dyn = {
 		.switch_en = 1,
-		.pll_clk = 501,
-		.hbp = 20,
+		.pll_clk = 498,
+		.hfp = 141,
+		.vfp = 21,
+		.vsa = 7,
+		.vfp_lp_dyn = 2481,
 	},
 };
 
@@ -892,13 +902,13 @@ static int tianma_setbacklight_cmdq(void *dsi, dcs_write_gce cb,
 	return 0;
 }
 
-static struct drm_display_mode *get_mode_by_id(struct drm_panel *panel,
+static struct drm_display_mode *get_mode_by_id(struct drm_connector *connector,
 	unsigned int mode)
 {
 	struct drm_display_mode *m;
 	unsigned int i = 0;
 
-	list_for_each_entry(m, &panel->connector->modes, head) {
+	list_for_each_entry(m, &connector->modes, head) {
 		if (i == mode)
 			return m;
 		i++;
@@ -907,22 +917,26 @@ static struct drm_display_mode *get_mode_by_id(struct drm_panel *panel,
 }
 
 static int mtk_panel_ext_param_set(struct drm_panel *panel,
-			 unsigned int mode)
+			 struct drm_connector *connector, unsigned int mode)
 {
 	struct mtk_panel_ext *ext = find_panel_ext(panel);
 	int ret = 0;
-	struct drm_display_mode *m = get_mode_by_id(panel, mode);
+	struct drm_display_mode *m = get_mode_by_id(connector, mode);
 
-	if (m->vrefresh == MODE_0_FPS)
+	if (m == NULL) {
+		pr_info("%s:%d invalid display_mode\n", __func__, __LINE__);
+		return -1;
+	}
+	if (drm_mode_vrefresh(m) == MODE_0_FPS)
 		ext->params = &ext_params;
-	else if (m->vrefresh == MODE_1_FPS)
+	else if (drm_mode_vrefresh(m) == MODE_1_FPS)
 		ext->params = &ext_params_mode_1;
-	else if (m->vrefresh == MODE_2_FPS)
+	else if (drm_mode_vrefresh(m) == MODE_2_FPS)
 		ext->params = &ext_params_mode_2;
 	else
 		ret = 1;
 	if (!ret)
-		current_fps = m->vrefresh;
+		current_fps = drm_mode_vrefresh(m);
 	return ret;
 }
 
@@ -933,7 +947,7 @@ static int panel_ext_reset(struct drm_panel *panel, int on)
 	ctx->reset_gpio =
 		devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		DDPMSG("[error]%s: cannot get reset_gpio %ld\n",
+		dev_info(ctx->dev, "%s: cannot get reset_gpio %ld\n",
 			__func__, PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
@@ -954,16 +968,16 @@ static int panel_ata_check(struct drm_panel *panel)
 
 	ret = mipi_dsi_dcs_read(dsi, 0x4, data, 3);
 	if (ret < 0) {
-		DDPMSG("[error]%s error\n", __func__);
+		pr_info("%s error\n", __func__);
 		return 0;
 	}
 
-	DDPINFO("ATA read data %x %x %x\n", data[0], data[1], data[2]);
+	pr_info("ATA read data %x %x %x\n", data[0], data[1], data[2]);
 
 	if (data[0] == id[0])
 		return 1;
 
-	DDPINFO("ATA expect read data is %x %x %x\n",
+	pr_info("ATA expect read data is %x %x %x\n",
 			id[0], id[1], id[2]);
 #endif
 	return 1;
@@ -1008,50 +1022,51 @@ struct panel_desc {
 	} delay;
 };
 
-static int tianma_get_modes(struct drm_panel *panel)
+static int tianma_get_modes(struct drm_panel *panel,
+			struct drm_connector *connector)
 {
 	struct drm_display_mode *mode;
 	struct drm_display_mode *mode_1;
 	struct drm_display_mode *mode_2;
 
-	mode = drm_mode_duplicate(panel->drm, &default_mode);
+	mode = drm_mode_duplicate(connector->dev, &default_mode);
 	if (!mode) {
-		DDPMSG("[error]failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			default_mode.hdisplay, default_mode.vdisplay,
-			default_mode.vrefresh);
+			drm_mode_vrefresh(&default_mode));
 		return -ENOMEM;
 	}
 	drm_mode_set_name(mode);
 	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	drm_mode_probed_add(panel->connector, mode);
+	drm_mode_probed_add(connector, mode);
 
-	mode_1 = drm_mode_duplicate(panel->drm, &performance_mode_1);
+	mode_1 = drm_mode_duplicate(connector->dev, &performance_mode_1);
 	if (!mode_1) {
-		DDPMSG("[error]failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			performance_mode_1.hdisplay,
 			performance_mode_1.vdisplay,
-			performance_mode_1.vrefresh);
+			drm_mode_vrefresh(&performance_mode_1));
 		return -ENOMEM;
 	}
 	drm_mode_set_name(mode_1);
 	mode_1->type = DRM_MODE_TYPE_DRIVER;
-	drm_mode_probed_add(panel->connector, mode_1);
+	drm_mode_probed_add(connector, mode_1);
 
 
-	mode_2 = drm_mode_duplicate(panel->drm, &performance_mode_2);
+	mode_2 = drm_mode_duplicate(connector->dev, &performance_mode_2);
 	if (!mode_2) {
-		DDPMSG("[error]failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			performance_mode_2.hdisplay,
 			performance_mode_2.vdisplay,
-			performance_mode_2.vrefresh);
+			drm_mode_vrefresh(&performance_mode_2));
 		return -ENOMEM;
 	}
 	drm_mode_set_name(mode_2);
 	mode_2->type = DRM_MODE_TYPE_DRIVER;
-	drm_mode_probed_add(panel->connector, mode_2);
+	drm_mode_probed_add(connector, mode_2);
 
-	panel->connector->display_info.width_mm = 64;
-	panel->connector->display_info.height_mm = 129;
+	connector->display_info.width_mm = 64;
+	connector->display_info.height_mm = 129;
 
 	return 3;
 }
@@ -1064,13 +1079,28 @@ static const struct drm_panel_funcs tianma_drm_funcs = {
 	.get_modes = tianma_get_modes,
 };
 
+static void check_is_bdg_support(struct device *dev)
+{
+	unsigned int ret = 0;
+
+	ret = of_property_read_u32(dev->of_node, "bdg-support", &bdg_support);
+	if (!ret && bdg_support == 1) {
+		pr_info("%s, bdg support 1", __func__);
+	} else {
+		pr_info("%s, bdg support 0", __func__);
+		bdg_support = 0;
+	}
+}
+
 static int tianma_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
+	struct device_node *dsi_node, *remote_node = NULL, *endpoint = NULL;
 	struct tianma *ctx;
 	struct device_node *backlight;
 	int ret;
-	struct device_node *dsi_node, *remote_node = NULL, *endpoint = NULL;
+
+	pr_info("%s+ tianma,nt36672e,vdo,120hz,6382\n", __func__);
 
 	dsi_node = of_get_parent(dev->of_node);
 	if (dsi_node) {
@@ -1111,16 +1141,16 @@ static int tianma_probe(struct mipi_dsi_device *dsi)
 
 	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		DDPMSG("[error]cannot get reset-gpios %ld\n",
+		dev_info(dev, "cannot get reset-gpios %ld\n",
 			PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
 	devm_gpiod_put(dev, ctx->reset_gpio);
 
-#ifndef CONFIG_RT4831A_I2C
+#if !IS_ENABLED(CONFIG_RT4831A_I2C)
 	ctx->bias_pos = devm_gpiod_get_index(dev, "bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		DDPMSG("[error]%s: cannot get bias-pos 0 %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias-pos 0 %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -1128,7 +1158,7 @@ static int tianma_probe(struct mipi_dsi_device *dsi)
 
 	ctx->bias_neg = devm_gpiod_get_index(dev, "bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		DDPMSG("[error]%s: cannot get bias-neg 1 %ld\n",
+		dev_info(ctx->dev, "[error]%s: cannot get bias-neg 1 %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
@@ -1138,45 +1168,46 @@ static int tianma_probe(struct mipi_dsi_device *dsi)
 	ctx->prepared = true;
 	ctx->enabled = true;
 
-	drm_panel_init(&ctx->panel);
-	ctx->panel.dev = dev;
-	ctx->panel.funcs = &tianma_drm_funcs;
+	drm_panel_init(&ctx->panel, dev, &tianma_drm_funcs, DRM_MODE_CONNECTOR_DSI);
 
-	ret = drm_panel_add(&ctx->panel);
-	if (ret < 0)
-		return ret;
+	drm_panel_add(&ctx->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
 		drm_panel_remove(&ctx->panel);
 
+	check_is_bdg_support(dev);
 #if defined(CONFIG_MTK_PANEL_EXT)
 	mtk_panel_tch_handle_reg(&ctx->panel);
 	ret = mtk_panel_ext_create(dev, &ext_params, &ext_funcs, &ctx->panel);
 	if (ret < 0)
 		return ret;
 #endif
-
-	pr_info("%s+\n", __func__);
+	pr_info("%s-\n", __func__);
 
 	return ret;
 }
 
-static int tianma_remove(struct mipi_dsi_device *dsi)
+static void tianma_remove(struct mipi_dsi_device *dsi)
 {
 	struct tianma *ctx = mipi_dsi_get_drvdata(dsi);
-
+#if defined(CONFIG_MTK_PANEL_EXT)
+	struct mtk_panel_ctx *ext_ctx = find_panel_ctx(&ctx->panel);
+#endif
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
-
-	return 0;
+#if defined(CONFIG_MTK_PANEL_EXT)
+	mtk_panel_detach(ext_ctx);
+	mtk_panel_remove(ext_ctx);
+#endif
 }
 
 static const struct of_device_id tianma_of_match[] = {
 	{
 		.compatible = "tianma,nt36672e,vdo,120hz,6382",
 	},
-	{} };
+	{}
+};
 
 MODULE_DEVICE_TABLE(of, tianma_of_match);
 
@@ -1194,5 +1225,4 @@ module_mipi_dsi_driver(tianma_driver);
 
 MODULE_AUTHOR("Jingjing Liu <jingjing.liu@mediatek.com>");
 MODULE_DESCRIPTION("tianma nt36672E vdo 120hz 6382 Panel Driver");
-MODULE_LICENSE("GPL v2");
-
+MODULE_LICENSE("GPL");

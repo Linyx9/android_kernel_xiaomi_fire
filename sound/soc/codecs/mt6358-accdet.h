@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
- * Author: Argus Lin <argus.lin@mediatek.com>
+ * Copyright (C) 2022 MediaTek Inc.
+ * Author: Kevin Huang <shang-ming.huang@mediatek.com>
  */
 
 #ifndef _ACCDET_H_
@@ -130,11 +130,11 @@ enum {
 
 extern int accdet_read_audio_res(unsigned int res_value);
 /* just be called by audio module for DC trim */
-extern void accdet_late_init(unsigned long data);
+extern void mt6358_accdet_late_init(unsigned long data);
 extern const struct file_operations *accdet_get_fops(void);
 extern void mt_accdet_remove(void);
 extern void mt_accdet_suspend(void);
 extern void mt_accdet_resume(void);
 extern void accdet_set_debounce(int state, unsigned int debounce);
-
+extern int mt6358_accdet_init(struct snd_soc_component *component, struct snd_soc_card *card);
 #endif

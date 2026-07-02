@@ -17,10 +17,16 @@
 #include "mt-plat/mtk_thermal_monitor.h"
 #include <linux/uidgid.h>
 #include <linux/notifier.h>
-#include <linux/fb.h>
 #include "mach/mtk_thermal.h"
 #include <linux/power_supply.h>
+#include "mtk_disp_notify.h"
+#include <linux/fb.h>
 
+/*TN add begin by libei.guo/860712 20240821/EKLAMU-3328*/
+#if IS_ENABLED(CONFIG_OEM_DEVINFO)
+#include "../../../../../../oem/devinfo/dev_info.h"
+#endif
+/*TN add end by libei.guo/860712 20240821/EKLAMU-3328*/
 
 static int cl_bcct_klog_on;
 
@@ -217,6 +223,7 @@ struct chrlmt_handle *handle, int chr_input_curr_limit, int bat_char_curr_limit)
 	int i;
 	int min_char_input_curr_limit = 0xFFFFFF;
 	int min_bat_char_curr_limit = 0xFFFFFF;
+
 	if (!handle)
 		return -1;
 
@@ -357,11 +364,19 @@ static int mtk_cooler_bcct_register_ltf(void)
 
 	chrlmt_register(&cl_bcct_chrlmt_handle);
 
+/*TN add begin by libei.guo/860712 20240821/EKLAMU-3328*/
 #if (MAX_NUM_INSTANCE_MTK_COOLER_BCCT == 3)
-	MTK_CL_BCCT_SET_LIMIT(1000, cl_bcct_state[0]);
-	MTK_CL_BCCT_SET_LIMIT(500, cl_bcct_state[1]);
-	MTK_CL_BCCT_SET_LIMIT(0, cl_bcct_state[2]);
+	if (oem_pcba_charge_power() == CHARGE_POWER_33W) {
+		MTK_CL_BCCT_SET_LIMIT(4500, cl_bcct_state[0]);
+		MTK_CL_BCCT_SET_LIMIT(3500, cl_bcct_state[1]);
+		MTK_CL_BCCT_SET_LIMIT(1000, cl_bcct_state[2]);
+	} else {
+		MTK_CL_BCCT_SET_LIMIT(3200, cl_bcct_state[0]);
+		MTK_CL_BCCT_SET_LIMIT(2500, cl_bcct_state[1]);
+		MTK_CL_BCCT_SET_LIMIT(1000, cl_bcct_state[2]);
+	}
 #endif
+/*TN add end by libei.guo/860712 20240821/EKLAMU-3328*/
 
 	for (i = MAX_NUM_INSTANCE_MTK_COOLER_BCCT; i-- > 0;) {
 		char temp[20] = { 0 };
@@ -516,6 +531,7 @@ struct thermal_cooling_device *cdev, unsigned long temp)
 	long delta, pterm, dterm;
 	int limit;
 	static int i;
+
 	if (++i < abcct_times_of_ts_polling_interval)
 		return 0;
 
@@ -856,16 +872,15 @@ static int _cl_bcct_read(struct seq_file *m, void *v)
 
 static int _cl_bcct_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_bcct_read, PDE_DATA(inode));
+	return single_open(file, _cl_bcct_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_bcct_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_bcct_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_bcct_write,
-	.release = single_release,
+static const struct proc_ops _cl_bcct_fops = {
+	.proc_open = _cl_bcct_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_bcct_write,
+	.proc_release = single_release,
 };
 
 static ssize_t _cl_abcct_write(
@@ -964,16 +979,15 @@ static int _cl_abcct_read(struct seq_file *m, void *v)
 
 static int _cl_abcct_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_abcct_read, PDE_DATA(inode));
+	return single_open(file, _cl_abcct_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_abcct_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_abcct_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_abcct_write,
-	.release = single_release,
+static const struct proc_ops _cl_abcct_fops = {
+	.proc_open = _cl_abcct_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_abcct_write,
+	.proc_release = single_release,
 };
 
 static ssize_t _cl_abcct_lcmoff_write(
@@ -1050,16 +1064,15 @@ static int _cl_abcct_lcmoff_read(struct seq_file *m, void *v)
 
 static int _cl_abcct_lcmoff_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_abcct_lcmoff_read, PDE_DATA(inode));
+	return single_open(file, _cl_abcct_lcmoff_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_abcct_lcmoff_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_abcct_lcmoff_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_abcct_lcmoff_write,
-	.release = single_release,
+static const struct proc_ops _cl_abcct_lcmoff_fops = {
+	.proc_open = _cl_abcct_lcmoff_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_abcct_lcmoff_write,
+	.proc_release = single_release,
 };
 
 static void bcct_lcmoff_switch(int onoff)
@@ -1090,7 +1103,7 @@ struct notifier_block *self, unsigned long event, void *data)
 	/* skip if policy is not enable */
 	if (!chrlmt_lcmoff_policy_enable)
 		return 0;
-
+	pr_info("enter bcct lcmoff fb!\n");
 	blank = *(int *)evdata->data;
 	mtk_cooler_bcct_dprintk("%s: blank = %d, event = %lu\n",
 						__func__, blank, event);
@@ -1107,7 +1120,7 @@ struct notifier_block *self, unsigned long event, void *data)
 	default:
 		break;
 	}
-
+	pr_info("exit bcct lcmoff fb!\n");
 	return 0;
 }
 
@@ -1137,15 +1150,14 @@ static int _cl_chrlmt_read(struct seq_file *m, void *v)
 
 static int _cl_chrlmt_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_chrlmt_read, PDE_DATA(inode));
+	return single_open(file, _cl_chrlmt_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_chrlmt_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_chrlmt_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops _cl_chrlmt_fops = {
+	.proc_open = _cl_chrlmt_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int _cl_battery_status_read(struct seq_file *m, void *v)
@@ -1162,15 +1174,14 @@ static int _cl_battery_status_read(struct seq_file *m, void *v)
 
 static int _cl_battery_status_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_battery_status_read, PDE_DATA(inode));
+	return single_open(file, _cl_battery_status_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_battery_status_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_battery_status_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops _cl_battery_status_fops = {
+	.proc_open = _cl_battery_status_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 int mtk_cooler_is_abcct_unlimit(void)
@@ -1180,8 +1191,7 @@ int mtk_cooler_is_abcct_unlimit(void)
 EXPORT_SYMBOL(mtk_cooler_is_abcct_unlimit);
 
 
-
-static int __init mtk_cooler_bcct_init(void)
+int mtk_cooler_bcct_init(void)
 {
 	int err = 0;
 	int i;
@@ -1207,7 +1217,7 @@ static int __init mtk_cooler_bcct_init(void)
 	if (err)
 		goto err_unreg;
 
-	if (fb_register_client(&bcct_lcmoff_fb_notifier)) {
+	if (mtk_disp_notifier_register("thermal_bcct_v1", &bcct_lcmoff_fb_notifier)) {
 		mtk_cooler_bcct_dprintk_always(
 					"%s: register FB client failed!\n",
 					__func__);
@@ -1271,7 +1281,7 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtk_cooler_bcct_exit(void)
+void  mtk_cooler_bcct_exit(void)
 {
 	mtk_cooler_bcct_dprintk("%s\n", __func__);
 
@@ -1291,10 +1301,10 @@ static void __exit mtk_cooler_bcct_exit(void)
 	mtk_cooler_abcct_unregister_ltf();
 	mtk_cooler_abcct_lcmoff_unregister_ltf();
 
-	fb_unregister_client(&bcct_lcmoff_fb_notifier);
+	mtk_disp_notifier_unregister(&bcct_lcmoff_fb_notifier);
 
 }
 
-module_init(mtk_cooler_bcct_init);
-module_exit(mtk_cooler_bcct_exit);
+//module_init(mtk_cooler_bcct_init);
+//module_exit(mtk_cooler_bcct_exit);
 

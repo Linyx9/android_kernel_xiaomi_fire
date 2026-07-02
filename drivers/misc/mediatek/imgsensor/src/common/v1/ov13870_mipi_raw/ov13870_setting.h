@@ -21,29 +21,31 @@
  *******************************************************************************/
 #define PROFILE 1
 #if PROFILE
-static struct timeval tv1, tv2;
+static struct timespec64 tv1, tv2;
 static DEFINE_SPINLOCK(kdsensor_drv_lock);
 /*******************************************************************************
  *
  *******************************************************************************/
-static void KD_SENSOR_PROFILE_INIT(void) { do_gettimeofday(&tv1); }
+static void KD_SENSOR_PROFILE_INIT(void)
+{
+	ktime_get_real_ts64(&tv1);
+}
 
 /*******************************************************************************
  *
  *******************************************************************************/
 static void KD_SENSOR_PROFILE(char *tag)
 {
-	unsigned long TimeIntervalUS;
+	struct timespec64 diff;
 
 	spin_lock(&kdsensor_drv_lock);
 
-	do_gettimeofday(&tv2);
-	TimeIntervalUS =
-	    (tv2.tv_sec - tv1.tv_sec) * 1000000 + (tv2.tv_usec - tv1.tv_usec);
+	ktime_get_real_ts64(&tv2);
+	diff = timespec64_sub(tv2, tv1);
 	tv1 = tv2;
 
 	spin_unlock(&kdsensor_drv_lock);
-	LOG_INF("[%s]Profile = %lu us\n", tag, TimeIntervalUS);
+	pr_debug("[%s]Profile = %lu us\n", tag, timespec64_to_ns(&diff));
 }
 #else
 static void KD_SENSOR_PROFILE_INIT(void) {}

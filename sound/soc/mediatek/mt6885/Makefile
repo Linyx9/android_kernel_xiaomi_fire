@@ -1,7 +1,22 @@
 # SPDX-License-Identifier: GPL-2.0
 
+# MENU Governor Predict(low power) include path
+ifeq ($(CONFIG_MTK_ACAO_SUPPORT),y)
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/base/power/mcdi/include/
+endif
+
+# adsp include path
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/audio_ipi/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/adsp/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/sound/soc/mediatek/audio_dsp
+
+# spm include path
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/base/power/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
+
 # platform driver
-snd-soc-mt6885-afe-objs := \
+obj-$(CONFIG_SND_SOC_MT6885) += snd-soc-mt6885-afe.o
+snd-soc-mt6885-afe-objs += \
 	mt6885-afe-pcm.o \
 	mt6885-afe-clk.o \
 	mt6885-afe-gpio.o \
@@ -15,25 +30,5 @@ snd-soc-mt6885-afe-objs := \
 	mt6885-dai-hostless.o \
 	mt6885-misc-control.o
 
-obj-$(CONFIG_SND_SOC_MT6885) += snd-soc-mt6885-afe.o
-
 # machine driver
-obj-$(CONFIG_SND_SOC_MT6885_MT6359) += mt6885-mt6359.o
-
-# MENU Governor Predict(low power)
-ifeq ($(CONFIG_MTK_ACAO_SUPPORT),y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/mcdi/include/
-endif
-
-ifeq ($(CONFIG_MTK_AUDIODSP_SUPPORT),y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/adsp/$(MTK_PLATFORM)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/adsp/common_v2
-endif
-
-
-# spm
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
-ifeq ($(CONFIG_SND_SOC_CS35L43),y)
-subdir-ccflags-y += -DCONFIG_SND_TDM_1PIN4CH
-endif
+obj-$(CONFIG_SND_SOC_MT6885_MT6359P) += mt6885-mt6359p.o

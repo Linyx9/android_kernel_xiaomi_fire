@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #include "inc/pd_core.h"
@@ -8,11 +8,12 @@
 #include "inc/tcpci.h"
 #include "inc/pd_policy_engine.h"
 
-#ifdef CONFIG_USB_PD_CUSTOM_DBGACC
+#if CONFIG_USB_PD_CUSTOM_DBGACC
 
 void pe_dbg_ready_entry(struct pd_port *pd_port)
 {
 	uint8_t state;
+	struct tcpc_device __maybe_unused *tcpc = pd_port->tcpc;
 
 	if (pd_port->pe_data.pe_ready)
 		return;

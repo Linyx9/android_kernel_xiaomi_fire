@@ -271,7 +271,7 @@ enum soc_aud_interconnection_output {
 	Soc_Aud_InterConnectionOutput_Num_Output
 };
 
-#ifdef CONFIG_MTK_HDMI_TDM
+#if IS_ENABLED(CONFIG_MTK_HDMI_TDM)
 enum soc_aud_hdmi_interconnection_input {
 	Soc_Aud_Hdmi_InterConnectionInput_I30,
 	Soc_Aud_Hdmi_InterConnectionInput_I31,

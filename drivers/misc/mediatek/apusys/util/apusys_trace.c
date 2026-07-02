@@ -7,11 +7,23 @@
 #include <linux/string.h>
 #include <linux/kernel.h>
 #include "apusys_trace.h"
+#define CREATE_TRACE_POINTS
+#include "mtk_apu_events.h"
+#include "sw_logger.h"
 
-static noinline int tracing_mark_write(const char *buf)
+void trace_tag_customer(const char *fmt, ...)
 {
-	TRACE_PUTS(buf);
-	return 0;
+	char buf[TRACE_LEN];
+	int32_t ret;
+	va_list args;
+
+	va_start(args, fmt);
+	ret = vsnprintf(buf, TRACE_LEN, fmt, args);
+	if (ret)
+		pr_info("%s: vsnprintf error\n", __func__);
+	va_end(args);
+
+	trace_tracing_mark_write(buf);
 }
 
 void trace_tag_begin(const char *format, ...)
@@ -19,27 +31,26 @@ void trace_tag_begin(const char *format, ...)
 	char buf[TRACE_LEN];
 
 	int len = snprintf(buf, sizeof(buf),
-		"B|%d|%s", task_pid_nr(current), format);
+		"B|%d|%s", task_tgid_nr(current), format);
 
 	if (len >= TRACE_LEN)
 		len = TRACE_LEN - 1;
 
-	tracing_mark_write(buf);
+	trace_tracing_mark_write(buf);
 }
-EXPORT_SYMBOL(trace_tag_begin);
 
 void trace_tag_end(void)
 {
 	char buf[TRACE_LEN];
 
-	int len = snprintf(buf, sizeof(buf), "E\n");
+	int len = snprintf(buf, sizeof(buf),
+		"E|%d", task_tgid_nr(current));
 
 	if (len >= TRACE_LEN)
 		len = TRACE_LEN - 1;
 
-	tracing_mark_write(buf);
+	trace_tracing_mark_write(buf);
 }
-EXPORT_SYMBOL(trace_tag_end);
 
 void trace_async_tag(bool isBegin, const char *format, ...)
 {
@@ -48,14 +59,13 @@ void trace_async_tag(bool isBegin, const char *format, ...)
 
 	if (isBegin)
 		len = snprintf(buf, sizeof(buf),
-			       "S|%d|%s", task_pid_nr(current), format);
+			       "S|%d|%s", task_tgid_nr(current), format);
 	else
 		len = snprintf(buf, sizeof(buf),
-			       "F|%d|%s", task_pid_nr(current), format);
+			       "F|%d|%s", task_tgid_nr(current), format);
 
 	if (len >= TRACE_LEN)
 		len = TRACE_LEN - 1;
 
-	tracing_mark_write(buf);
+	trace_tracing_mark_write(buf);
 }
-EXPORT_SYMBOL(trace_async_tag);

@@ -53,7 +53,10 @@
 #include <sound/jack.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
-#if defined(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_SPM_V0)
+#include <mtk_spm_sleep.h>
+#endif
+#if IS_ENABLED(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
 #include "mtk-auddrv-scp-spkprotect-common.h"
 #endif
 /*
@@ -62,7 +65,7 @@
  * #include <mt-plat/mt_lpae.h>
  */
 
-#ifdef CONFIG_MTK_AUXADC_INTF
+#if IS_ENABLED(CONFIG_MTK_AUXADC_INTF)
 #include <mach/mtk_pmic.h>
 #include <mt-plat/mtk_auxadc_intf.h>
 #endif
@@ -72,6 +75,8 @@
 #ifdef AUDIO_VCOREFS_SUPPORT
 #include <mtk_vcorefs_manager.h>
 #endif
+
+#define CODE_COMMENT
 
 static DEFINE_SPINLOCK(afe_control_lock);
 static DEFINE_SPINLOCK(afe_sram_control_lock);
@@ -209,28 +214,33 @@ void AfeControlSramLock(void)
 {
 	spin_lock(&afe_sram_control_lock);
 }
+EXPORT_SYMBOL(AfeControlSramLock);
 
 void AfeControlSramUnLock(void)
 {
 	spin_unlock(&afe_sram_control_lock);
 }
+EXPORT_SYMBOL(AfeControlSramUnLock);
 
 unsigned int GetSramState(void)
 {
 	return mAudioSramManager.mMemoryState;
 }
+EXPORT_SYMBOL(GetSramState);
 
 void SetSramState(unsigned int State)
 {
 	pr_debug("%s state= %d\n", __func__, State);
 	mAudioSramManager.mMemoryState |= State;
 }
+EXPORT_SYMBOL(SetSramState);
 
 void ClearSramState(unsigned int State)
 {
 	pr_debug("%s state= %d\n", __func__, State);
 	mAudioSramManager.mMemoryState &= (~State);
 }
+EXPORT_SYMBOL(ClearSramState);
 
 unsigned int GetPLaybackSramFullSize(void)
 {
@@ -241,6 +251,7 @@ unsigned int GetPLaybackSramFullSize(void)
 
 	return Sramsize;
 }
+EXPORT_SYMBOL(GetPLaybackSramFullSize);
 
 unsigned int GetPLaybackSramPartial(void)
 {
@@ -248,11 +259,13 @@ unsigned int GetPLaybackSramPartial(void)
 
 	return Sramsize;
 }
+EXPORT_SYMBOL(GetPLaybackSramPartial);
 
 unsigned int GetPLaybackDramSize(void)
 {
 	return AUDIO_DRAM_PLAYBACK_SIZE;
 }
+EXPORT_SYMBOL(GetPLaybackDramSize);
 
 size_t GetCaptureSramSize(void)
 {
@@ -270,6 +283,7 @@ void SetFMEnableFlag(bool bEnable)
 {
 	mFMEnable = bEnable;
 }
+EXPORT_SYMBOL(SetFMEnableFlag);
 
 void SetOffloadEnableFlag(bool bEnable)
 {
@@ -280,6 +294,7 @@ bool GetOffloadEnableFlag(void)
 {
 	return mOffloadEnable;
 }
+EXPORT_SYMBOL(GetOffloadEnableFlag);
 
 bool ConditionEnterSuspend(void)
 {
@@ -289,6 +304,7 @@ bool ConditionEnterSuspend(void)
 
 	return true;
 }
+EXPORT_SYMBOL(ConditionEnterSuspend);
 
 /* function get internal mode status. */
 bool get_internalmd_status(void)
@@ -323,12 +339,10 @@ int InitAfeControl(struct device *pDev)
 	int i = 0;
 	int ret = 0;
 
-	pr_debug("%s()\n", __func__);
-
 	/* first time to init , reg init. */
 	AfeGlobalVarInit();
 	Auddrv_Reg_map(pDev);
-	AudDrv_Clk_Global_Variable_Init();
+	//AudDrv_Clk_Global_Variable_Init();
 	AudDrv_Bus_Init();
 	Auddrv_Read_Efuse_HPOffset();
 	AfeControlMutexLock();
@@ -435,6 +449,7 @@ int InitAfeControl(struct device *pDev)
 
 	return ret;
 }
+EXPORT_SYMBOL(InitAfeControl);
 
 bool ResetAfeControl(void)
 {
@@ -471,15 +486,16 @@ bool Register_Aud_Irq(void *dev, unsigned int afe_irq_number)
 {
 	int ret;
 
-#ifdef CONFIG_OF
-	ret = request_irq(afe_irq_number, AudDrv_IRQ_handler, IRQF_TRIGGER_LOW,
+#if IS_ENABLED(CONFIG_OF)
+	ret = request_irq(afe_irq_number, AudDrv_IRQ_handler, IRQF_TRIGGER_NONE,
 			  "Afe_ISR_Handle", dev);
 #else
 	ret = request_irq(MT6735_AFE_MCU_IRQ_LINE, AudDrv_IRQ_handler,
-			  IRQF_TRIGGER_LOW, "Afe_ISR_Handle", dev);
+			  IRQF_TRIGGER_NONE, "Afe_ISR_Handle", dev);
 #endif
 	return ret;
 }
+EXPORT_SYMBOL(Register_Aud_Irq);
 
 static unsigned int get_mcu_irq_mask(void)
 {
@@ -618,6 +634,7 @@ void EnableAPLLTunerbySampleRate(unsigned int SampleRate)
 		}
 	}
 }
+EXPORT_SYMBOL(EnableAPLLTunerbySampleRate);
 
 void DisableAPLLTunerbySampleRate(unsigned int SampleRate)
 {
@@ -644,6 +661,7 @@ void DisableAPLLTunerbySampleRate(unsigned int SampleRate)
 		}
 	}
 }
+EXPORT_SYMBOL(DisableAPLLTunerbySampleRate);
 
 static bool CheckMemIfEnable(void)
 {
@@ -723,6 +741,7 @@ void EnableAfe(bool bEnable)
 
 	spin_unlock_irqrestore(&afe_control_lock, flags);
 }
+EXPORT_SYMBOL(EnableAfe);
 
 unsigned int SampleRateTransform(unsigned int sampleRate,
 				 enum soc_aud_digital_block audBlock)
@@ -742,6 +761,7 @@ unsigned int SampleRateTransform(unsigned int sampleRate,
 		return GeneralSampleRateTransform(sampleRate);
 	}
 }
+EXPORT_SYMBOL(SampleRateTransform);
 
 unsigned int GeneralSampleRateTransform(unsigned int sampleRate)
 {
@@ -884,6 +904,7 @@ bool Set2ndI2SOutAttribute(uint32_t sampleRate)
 	Set2ndI2SOut(m2ndI2Sout);
 	return true;
 }
+EXPORT_SYMBOL(Set2ndI2SOutAttribute);
 
 bool Set2ndI2SOut(struct audio_digital_i2s *DigtalI2S)
 {
@@ -913,6 +934,7 @@ bool Set2ndI2SOutEnable(bool benable)
 
 	return true;
 }
+EXPORT_SYMBOL(Set2ndI2SOutEnable);
 
 bool SetDaiBt(struct audio_digital_dai_bt *mAudioDaiBt)
 {
@@ -926,12 +948,14 @@ bool SetDaiBt(struct audio_digital_dai_bt *mAudioDaiBt)
 
 	return true;
 }
+EXPORT_SYMBOL(SetDaiBt);
 
 bool SetDaiBtEnable(bool bEanble)
 {
 	pr_debug("%s bEanble = %d\n", __func__, bEanble);
 	return set_chip_dai_bt_enable(bEanble, AudioDaiBt, mAudioMrg);
 }
+EXPORT_SYMBOL(SetDaiBtEnable);
 
 bool GetMrgI2SEnable(void)
 {
@@ -1041,6 +1065,7 @@ bool SetMrgI2SEnable(bool bEnable, unsigned int sampleRate)
 
 	return true;
 }
+EXPORT_SYMBOL(SetMrgI2SEnable);
 
 bool Set2ndI2SAdcIn(struct audio_digital_i2s *DigtalI2S)
 {
@@ -1071,12 +1096,14 @@ bool SetExtI2SAdcIn(struct audio_digital_i2s *DigtalI2S)
 
 	return true;
 }
+EXPORT_SYMBOL(SetExtI2SAdcIn);
 
 bool SetExtI2SAdcInEnable(bool bEnable)
 {
 	Afe_Set_Reg(AFE_I2S_CON2, bEnable, 0x1);
 	return true;
 }
+EXPORT_SYMBOL(SetExtI2SAdcInEnable);
 
 bool set_adc_in(unsigned int rate)
 {
@@ -1084,6 +1111,7 @@ bool set_adc_in(unsigned int rate)
 
 	return set_chip_adc_in(rate);
 }
+EXPORT_SYMBOL(set_adc_in);
 
 bool set_adc2_in(unsigned int rate)
 {
@@ -1091,11 +1119,13 @@ bool set_adc2_in(unsigned int rate)
 
 	return set_chip_adc2_in(rate);
 }
+EXPORT_SYMBOL(set_adc2_in);
 
 int get_dai_rate(enum soc_aud_digital_block digitalBlock)
 {
 	return mtk_dais[digitalBlock].sample_rate;
 }
+EXPORT_SYMBOL(get_dai_rate);
 
 #ifdef AFE_CONNSYS_I2S_CON
 int setConnsysI2SIn(struct audio_digital_i2s *mDigitalI2S)
@@ -1229,16 +1259,19 @@ bool EnableSineGen(unsigned int connection, bool direction, bool Enable)
 
 	return ret;
 }
+EXPORT_SYMBOL(EnableSineGen);
 
 bool SetSineGenSampleRate(unsigned int SampleRate)
 {
 	return set_chip_sine_gen_sample_rate(SampleRate);
 }
+EXPORT_SYMBOL(SetSineGenSampleRate);
 
 bool SetSineGenAmplitude(unsigned int ampDivide)
 {
 	return set_chip_sine_gen_amplitude(ampDivide);
 }
+EXPORT_SYMBOL(SetSineGenAmplitude);
 
 bool Set2ndI2SAdcEnable(bool bEnable)
 {
@@ -1254,7 +1287,7 @@ bool set_adc_enable(bool enable)
 		 * ADDA UL DL (AFE_ADDA_UL_DL_CON0) ->
 		 * ADDA UL SRC (AFE_ADDA_UL_SRC_CON0)
 		 */
-#ifdef CONFIG_FPGA_EARLY_PORTING
+#if IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 		pr_debug("%s(), enable fpga clock divide by 4", __func__);
 		Afe_Set_Reg(FPGA_CFG0, 0x1 << 1, 0x1 << 1);
 #endif
@@ -1274,7 +1307,7 @@ bool set_adc_enable(bool enable)
 		set_ul_src_enable(false);
 		SetADDAEnable(false);
 
-#ifdef CONFIG_FPGA_EARLY_PORTING
+#if IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 		pr_debug("%s(), disable fpga clock divide by 4", __func__);
 		Afe_Set_Reg(FPGA_CFG0, 0x0 << 1, 0x1 << 1);
 #endif
@@ -1290,6 +1323,7 @@ bool set_adc_enable(bool enable)
 
 	return true;
 }
+EXPORT_SYMBOL(set_adc_enable);
 
 bool set_adc2_enable(bool enable)
 {
@@ -1299,7 +1333,7 @@ bool set_adc2_enable(bool enable)
 		 * ADDA UL DL (AFE_ADDA_UL_DL_CON0) ->
 		 * ADDA UL SRC (AFE_ADDA_UL_SRC_CON0)
 		 */
-#ifdef CONFIG_FPGA_EARLY_PORTING
+#if IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 		pr_debug("%s(), enable fpga clock divide by 4", __func__);
 		Afe_Set_Reg(FPGA_CFG0, 0x1 << 1, 0x1 << 1);
 #endif
@@ -1319,7 +1353,7 @@ bool set_adc2_enable(bool enable)
 		 */
 		set_ul2_src_enable(false);
 		SetADDAEnable(false);
-#ifdef CONFIG_FPGA_EARLY_PORTING
+#if IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 		pr_debug("%s(), disable fpga clock divide by 4", __func__);
 		Afe_Set_Reg(FPGA_CFG0, 0x0 << 1, 0x1 << 1);
 #endif
@@ -1336,6 +1370,7 @@ bool set_adc2_enable(bool enable)
 
 	return true;
 }
+EXPORT_SYMBOL(set_adc2_enable);
 
 bool Set2ndI2SEnable(bool bEnable)
 {
@@ -1343,6 +1378,7 @@ bool Set2ndI2SEnable(bool bEnable)
 
 	return true;
 }
+EXPORT_SYMBOL(Set2ndI2SEnable);
 
 bool SetI2SDacOut(unsigned int SampleRate, bool lowjitter, bool I2SWLen)
 {
@@ -1367,6 +1403,7 @@ bool SetI2SDacOut(unsigned int SampleRate, bool lowjitter, bool I2SWLen)
 
 	return true;
 }
+EXPORT_SYMBOL(SetI2SDacOut);
 
 bool SetHwDigitalGainMode(enum soc_aud_digital_block AudBlock,
 			  unsigned int SampleRate,
@@ -1378,6 +1415,7 @@ bool SetHwDigitalGainMode(enum soc_aud_digital_block AudBlock,
 	return set_chip_hw_digital_gain_mode(AudBlock, SampleRate,
 					     SamplePerStep);
 }
+EXPORT_SYMBOL(SetHwDigitalGainMode);
 
 bool SetHwDigitalGainEnable(enum soc_aud_digital_block AudBlock, bool Enable)
 {
@@ -1386,6 +1424,7 @@ bool SetHwDigitalGainEnable(enum soc_aud_digital_block AudBlock, bool Enable)
 
 	return set_chip_hw_digital_gain_enable(AudBlock, Enable);
 }
+EXPORT_SYMBOL(SetHwDigitalGainEnable);
 
 bool SetHwDigitalGain(enum soc_aud_digital_block AudBlock, unsigned int Gain)
 {
@@ -1394,6 +1433,7 @@ bool SetHwDigitalGain(enum soc_aud_digital_block AudBlock, unsigned int Gain)
 
 	return set_chip_hw_digital_gain(AudBlock, Gain);
 }
+EXPORT_SYMBOL(SetHwDigitalGain);
 
 bool SetModemPcmConfig(int modem_index,
 		       struct audio_digital_pcm p_modem_pcm_attribute)
@@ -1401,6 +1441,7 @@ bool SetModemPcmConfig(int modem_index,
 	SetChipModemPcmConfig(modem_index, p_modem_pcm_attribute);
 	return true;
 }
+EXPORT_SYMBOL(SetModemPcmConfig);
 
 bool SetModemPcmEnable(int modem_index, bool modem_pcm_on)
 {
@@ -1423,6 +1464,7 @@ bool SetModemPcmEnable(int modem_index, bool modem_pcm_on)
 
 	return ret;
 }
+EXPORT_SYMBOL(SetModemPcmEnable);
 
 bool SetMemoryPathEnableReg(unsigned int Aud_block, bool bEnable)
 {
@@ -1476,6 +1518,7 @@ bool SetMemoryPathEnable(unsigned int Aud_block, bool bEnable)
 
 	return true;
 }
+EXPORT_SYMBOL(SetMemoryPathEnable);
 
 bool GetMemoryPathEnable(unsigned int Aud_block)
 {
@@ -1484,6 +1527,7 @@ bool GetMemoryPathEnable(unsigned int Aud_block)
 
 	return false;
 }
+EXPORT_SYMBOL(GetMemoryPathEnable);
 
 void set_ul_src_enable(bool enable)
 {
@@ -1594,7 +1638,7 @@ bool SetI2SDacEnable(bool bEnable)
 
 		/* should delayed 1/fs(smallest is 8k) = 125us before afe off */
 		usleep_range(125, 150);
-#ifdef CONFIG_FPGA_EARLY_PORTING
+#if IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 		pr_info("%s(), disable fpga clock divide by 4", __func__);
 		Afe_Set_Reg(FPGA_CFG0, 0x0 << 1, 0x1 << 1);
 #endif
@@ -1604,11 +1648,13 @@ bool SetI2SDacEnable(bool bEnable)
 
 	return true;
 }
+EXPORT_SYMBOL(SetI2SDacEnable);
 
 bool GetI2SDacEnable(void)
 {
 	return mAudioMEMIF[Soc_Aud_Digital_Block_I2S_OUT_DAC]->mState;
 }
+EXPORT_SYMBOL(GetI2SDacEnable);
 
 bool checkDllinkMEMIfStatus(void)
 {
@@ -1636,11 +1682,13 @@ bool SetConnection(unsigned int ConnectionState, unsigned int Input,
 {
 	return SetConnectionState(ConnectionState, Input, Output);
 }
+EXPORT_SYMBOL(SetConnection);
 
 bool SetConnectionFormat(unsigned int ConnectionFormat, unsigned int Aud_block)
 {
 	return SetIntfConnectionFormat(ConnectionFormat, Aud_block);
 }
+EXPORT_SYMBOL(SetConnectionFormat);
 
 bool SetIntfConnection(unsigned int ConnectionState, unsigned int Aud_block_In,
 		       unsigned int Aud_block_Out)
@@ -1648,6 +1696,7 @@ bool SetIntfConnection(unsigned int ConnectionState, unsigned int Aud_block_In,
 	return SetIntfConnectionState(ConnectionState, Aud_block_In,
 				      Aud_block_Out);
 }
+EXPORT_SYMBOL(SetIntfConnection);
 
 static bool SetIrqEnable(unsigned int irqmode, bool bEnable)
 {
@@ -1767,6 +1816,7 @@ bool Set2ndI2SIn(struct audio_digital_i2s *mDigitalI2S)
 
 	return true;
 }
+EXPORT_SYMBOL(Set2ndI2SIn);
 
 bool Set2ndI2SInEnable(bool bEnable)
 {
@@ -1776,6 +1826,7 @@ bool Set2ndI2SInEnable(bool bEnable)
 
 	return true;
 }
+EXPORT_SYMBOL(Set2ndI2SInEnable);
 
 bool SetMemIfFetchFormatPerSample(unsigned int InterfaceType,
 				  unsigned int eFetchFormat)
@@ -1783,6 +1834,7 @@ bool SetMemIfFetchFormatPerSample(unsigned int InterfaceType,
 	mAudioMEMIF[InterfaceType]->mFetchFormatPerSample = eFetchFormat;
 	return SetMemIfFormatReg(InterfaceType, eFetchFormat);
 }
+EXPORT_SYMBOL(SetMemIfFetchFormatPerSample);
 
 bool SetoutputConnectionFormat(unsigned int ConnectionFormat,
 			       unsigned int Output)
@@ -1804,6 +1856,7 @@ bool SetoutputConnectionFormat(unsigned int ConnectionFormat,
 
 	return true;
 }
+EXPORT_SYMBOL(SetoutputConnectionFormat);
 
 int set_memif_pbuf_size(int aud_blk, enum memif_pbuf_size pbuf_size)
 {
@@ -1828,6 +1881,7 @@ int set_memif_pbuf_size(int aud_blk, enum memif_pbuf_size pbuf_size)
 
 	return 0;
 }
+EXPORT_SYMBOL(set_memif_pbuf_size);
 
 bool set_general_asrc_enable(enum audio_general_asrc_id id, bool enable)
 {
@@ -1945,6 +1999,7 @@ int AudDrv_Allocate_mem_Buffer(struct device *pDev,
 
 	return true;
 }
+EXPORT_SYMBOL(AudDrv_Allocate_mem_Buffer);
 
 struct afe_mem_control_t *Get_Mem_ControlT(enum soc_aud_digital_block MemBlock)
 {
@@ -1955,6 +2010,7 @@ struct afe_mem_control_t *Get_Mem_ControlT(enum soc_aud_digital_block MemBlock)
 	pr_debug("%s error\n", __func__);
 	return NULL;
 }
+EXPORT_SYMBOL(Get_Mem_ControlT);
 
 bool SetMemifSubStream(enum soc_aud_digital_block MemBlock,
 		       struct snd_pcm_substream *substream)
@@ -1994,6 +2050,7 @@ bool SetMemifSubStream(enum soc_aud_digital_block MemBlock,
 	/* DumpMemifSubStream(); */
 	return true;
 }
+EXPORT_SYMBOL(SetMemifSubStream);
 
 bool ClearMemBlock(enum soc_aud_digital_block MemBlock)
 {
@@ -2014,6 +2071,7 @@ bool ClearMemBlock(enum soc_aud_digital_block MemBlock)
 
 	return true;
 }
+EXPORT_SYMBOL(ClearMemBlock);
 
 #define MEM_TIMEOUT_CNT 4
 bool RemoveMemifSubStream(enum soc_aud_digital_block MemBlock,
@@ -2091,17 +2149,20 @@ bool RemoveMemifSubStream(enum soc_aud_digital_block MemBlock,
 
 	return true;
 }
+EXPORT_SYMBOL(RemoveMemifSubStream);
 
 static unsigned long dl2_flags;
 void Auddrv_Dl2_Spinlock_lock(void)
 {
 	spin_lock_irqsave(&auddrv_dl2_lock, dl2_flags);
 }
+EXPORT_SYMBOL(Auddrv_Dl2_Spinlock_lock);
 
 void Auddrv_Dl2_Spinlock_unlock(void)
 {
 	spin_unlock_irqrestore(&auddrv_dl2_lock, dl2_flags);
 }
+EXPORT_SYMBOL(Auddrv_Dl2_Spinlock_unlock);
 
 static unsigned long dl3_flags;
 void Auddrv_Dl3_Spinlock_lock(void)
@@ -2116,7 +2177,7 @@ void Auddrv_Dl3_Spinlock_unlock(void)
 
 void Auddrv_HDMI_Interrupt_Handler(void)
 {
-#ifdef CONFIG_MTK_HDMI_TDM
+#if IS_ENABLED(CONFIG_MTK_HDMI_TDM)
 
 	struct afe_mem_control_t *Mem_Block =
 		AFE_Mem_Control_context[Soc_Aud_Digital_Block_MEM_HDMI];
@@ -2309,6 +2370,7 @@ void Auddrv_AWB_Interrupt_Handler(void)
 	 * mBlock->u4DMAReadIdx, mBlock->u4WriteIdx, mBlock->u4DataRemained);
 	 */
 }
+EXPORT_SYMBOL(Auddrv_AWB_Interrupt_Handler);
 
 void Auddrv_DAI_Interrupt_Handler(void)
 {
@@ -2384,6 +2446,7 @@ void Auddrv_DAI_Interrupt_Handler(void)
 
 	spin_unlock_irqrestore(&Mem_Block->substream_lock, flags);
 }
+EXPORT_SYMBOL(Auddrv_DAI_Interrupt_Handler);
 
 void Auddrv_VUL2_Interrupt_Handler(void)
 {
@@ -2507,6 +2570,7 @@ void Auddrv_VUL2_Interrupt_Handler(void)
 	 * mBlock->u4DMAReadIdx, mBlock->u4WriteIdx, mBlock->u4DataRemained);
 	 */
 }
+EXPORT_SYMBOL(Auddrv_VUL2_Interrupt_Handler);
 
 void Auddrv_DSP_DL1_Interrupt_Handler(void *PrivateData)
 {
@@ -2757,6 +2821,7 @@ void Auddrv_DL1_Interrupt_Handler(void)
 	}
 	spin_unlock_irqrestore(&Mem_Block->substream_lock, flags);
 }
+EXPORT_SYMBOL(Auddrv_DL1_Interrupt_Handler);
 
 void Auddrv_DL1_Data2_Interrupt_Handler(enum soc_aud_digital_block mem_block)
 {
@@ -2831,6 +2896,7 @@ void Auddrv_DL2_Interrupt_Handler(void)
 
 	Auddrv_Dl2_Spinlock_unlock();
 }
+EXPORT_SYMBOL(Auddrv_DL2_Interrupt_Handler);
 
 struct snd_dma_buffer *Get_Mem_Buffer(enum soc_aud_digital_block MemBlock)
 {
@@ -2865,6 +2931,7 @@ struct snd_dma_buffer *Get_Mem_Buffer(enum soc_aud_digital_block MemBlock)
 
 	return NULL;
 }
+EXPORT_SYMBOL(Get_Mem_Buffer);
 
 void Auddrv_UL1_Interrupt_Handler(void)
 {
@@ -2945,6 +3012,7 @@ void Auddrv_UL1_Interrupt_Handler(void)
 	}
 	spin_unlock_irqrestore(&Mem_Block->substream_lock, flags);
 }
+EXPORT_SYMBOL(Auddrv_UL1_Interrupt_Handler);
 
 static void Clear_Mem_CopySize(enum soc_aud_digital_block MemBlock)
 {
@@ -3117,6 +3185,7 @@ void Auddrv_UL2_Interrupt_Handler(void)
 	}
 	spin_unlock_irqrestore(&Mem_Block->substream_lock, flags);
 }
+EXPORT_SYMBOL(Auddrv_UL2_Interrupt_Handler);
 
 void Auddrv_MOD_DAI_Interrupt_Handler(void)
 {
@@ -3175,6 +3244,7 @@ void Auddrv_MOD_DAI_Interrupt_Handler(void)
 	}
 	spin_unlock_irqrestore(&Mem_Block->substream_lock, flags);
 }
+EXPORT_SYMBOL(Auddrv_MOD_DAI_Interrupt_Handler);
 
 bool Restore_Audio_Register(void)
 {
@@ -3186,7 +3256,7 @@ unsigned int word_size_align(unsigned int in_size)
 {
 	unsigned int align_size;
 
-#if defined(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
 	if (scp_smartpa_used_flag) {
 		/* SCP use cache. Cache use 32 bytes data alignment */
 		align_size = in_size & 0xFFFFFFE0;
@@ -3203,6 +3273,7 @@ unsigned int word_size_align(unsigned int in_size)
 
 	return align_size;
 }
+EXPORT_SYMBOL(word_size_align);
 
 void AudDrv_checkDLISRStatus(void)
 {
@@ -3263,6 +3334,7 @@ void AudDrv_checkDLISRStatus(void)
 		}
 	}
 }
+EXPORT_SYMBOL(AudDrv_checkDLISRStatus);
 
 static void update_sram_block_valid(enum audio_sram_mode mode)
 {
@@ -3446,6 +3518,7 @@ int AllocateAudioSram(dma_addr_t *sram_phys_addr,
 
 	return ret;
 }
+EXPORT_SYMBOL(AllocateAudioSram);
 
 int freeAudioSram(void *user)
 {
@@ -3463,6 +3536,7 @@ int freeAudioSram(void *user)
 	AfeControlSramUnLock();
 	return 0;
 }
+EXPORT_SYMBOL(freeAudioSram);
 
 /* IRQ Manager */
 static int enable_aud_irq(const struct irq_user *_irq_user,
@@ -3640,6 +3714,7 @@ int irq_add_substream_user(struct snd_pcm_substream *substream,
 	else
 		return irq_add_user(substream, _irq, _rate, _count);
 }
+EXPORT_SYMBOL(irq_add_substream_user);
 
 int irq_add_user(const void *_user, enum Soc_Aud_IRQ_MCU_MODE _irq,
 		 unsigned int _rate, unsigned int _count)
@@ -3683,6 +3758,7 @@ int irq_add_user(const void *_user, enum Soc_Aud_IRQ_MCU_MODE _irq,
 	spin_unlock_irqrestore(&afe_control_lock, flags);
 	return 0;
 }
+EXPORT_SYMBOL(irq_add_user);
 
 int irq_remove_user(const void *_user, enum Soc_Aud_IRQ_MCU_MODE _irq)
 {
@@ -3720,6 +3796,7 @@ int irq_remove_user(const void *_user, enum Soc_Aud_IRQ_MCU_MODE _irq)
 	spin_unlock_irqrestore(&afe_control_lock, flags);
 	return 0;
 }
+EXPORT_SYMBOL(irq_remove_user);
 
 int irq_remove_substream_user(struct snd_pcm_substream *substream,
 			      enum Soc_Aud_IRQ_MCU_MODE _irq)
@@ -3730,6 +3807,7 @@ int irq_remove_substream_user(struct snd_pcm_substream *substream,
 	else
 		return irq_remove_user(substream, _irq);
 }
+EXPORT_SYMBOL(irq_remove_substream_user);
 
 int irq_update_user(const void *_user, enum Soc_Aud_IRQ_MCU_MODE _irq,
 		    unsigned int _rate, unsigned int _count)
@@ -3772,6 +3850,7 @@ int irq_update_user(const void *_user, enum Soc_Aud_IRQ_MCU_MODE _irq,
 	spin_unlock_irqrestore(&afe_control_lock, flags);
 	return 0;
 }
+EXPORT_SYMBOL(irq_update_user);
 
 int irq_get_total_user(enum Soc_Aud_IRQ_MCU_MODE _irq)
 {
@@ -3930,11 +4009,10 @@ int memif_lpbk_enable(struct memif_lpbk *memif_lpbk)
 	cur_memif_lpbk = memif_lpbk;
 	return 0;
 }
+EXPORT_SYMBOL(memif_lpbk_enable);
 
 int memif_lpbk_disable(struct memif_lpbk *memif_lpbk)
 {
-	pr_debug("%s()\n", __func__);
-
 	if (!cur_memif_lpbk) {
 		pr_err("%s(), cur_memif_lpbk %p == NULL\n", __func__,
 		       cur_memif_lpbk);
@@ -3968,11 +4046,11 @@ int memif_lpbk_disable(struct memif_lpbk *memif_lpbk)
 	cur_memif_lpbk = NULL;
 	return 0;
 }
+EXPORT_SYMBOL(memif_lpbk_disable);
 
 #ifdef MEMIF_LPBK_IRQ
 int memif_lpbk_irq_handler(void)
 {
-	pr_debug("%s()\n", __func__);
 	if (!cur_memif_lpbk) {
 		pr_err("%s(), cur_memif_lpbk %p == NULL\n", __func__,
 		       cur_memif_lpbk);
@@ -4011,6 +4089,7 @@ bool is_irq_from_ext_module(void)
 {
 	return irq_from_ext_module > 0 ? true : false;
 }
+EXPORT_SYMBOL(is_irq_from_ext_module);
 
 /* VCORE DVFS START*/
 static void vcore_dvfs_enable(bool enable, bool reset)
@@ -4066,6 +4145,7 @@ void set_screen_state(bool state)
 EXPORT_SYMBOL(set_screen_state);
 /* VCORE DVFS END*/
 
+#ifndef CODE_COMMENT
 struct timeval ext_time;
 struct timeval ext_time_prev;
 struct timeval ext_time_diff;
@@ -4094,7 +4174,7 @@ int start_ext_sync_signal(void)
 
 	do_gettimeofday(&ext_time);
 	ext_time_prev = ext_time;
-#if 0
+#ifndef CODE_COMMENT
 	pr_debug("%s(), irq_from_ext_module = %d, dl1_state = %d, time = %ld, %ld\n",
 		 __func__,
 		 irq_from_ext_module,
@@ -4167,6 +4247,7 @@ int ext_sync_signal(void)
 	return 0;
 }
 EXPORT_SYMBOL(ext_sync_signal);
+#endif
 
 static DEFINE_SPINLOCK(ext_sync_lock);
 static unsigned long ext_sync_lock_flags;
@@ -4174,11 +4255,13 @@ void ext_sync_signal_lock(void)
 {
 	spin_lock_irqsave(&ext_sync_lock, ext_sync_lock_flags);
 }
+EXPORT_SYMBOL(ext_sync_signal_lock);
 
 void ext_sync_signal_unlock(void)
 {
 	spin_unlock_irqrestore(&ext_sync_lock, ext_sync_lock_flags);
 }
+EXPORT_SYMBOL(ext_sync_signal_unlock);
 
 /* api for other modules */
 static int request_sram_count;
@@ -4390,7 +4473,7 @@ get_ulmem_frame_index(struct snd_pcm_substream *substream,
 					UL1_Block->u4WriteIdx,
 					UL1_Block->u4DataRemained,
 					UL1_Block->u4BufferSize);
-#if defined(CONFIG_MT_USERDEBUG_BUILD)
+#if IS_ENABLED(CONFIG_MT_USERDEBUG_BUILD)
 				AUDIO_AEE("ulmem_frame_index - UL overflow");
 #endif
 			}
@@ -4439,6 +4522,7 @@ snd_pcm_uframes_t get_mem_frame_index(struct snd_pcm_substream *substream,
 	}
 	return 0;
 }
+EXPORT_SYMBOL(get_mem_frame_index);
 
 void mem_blk_spinlock(enum soc_aud_digital_block mem_blk)
 {
@@ -4556,169 +4640,7 @@ void mem_blk_spinunlock(enum soc_aud_digital_block mem_blk)
 	}
 }
 
-static int mtk_mem_dlblk_copy(struct snd_pcm_substream *substream, int channel,
-			      unsigned long pos, void __user *dst,
-			      unsigned long count,
-			      struct afe_mem_control_t *pMemControl,
-			      enum soc_aud_digital_block mem_blk)
-{
-	struct afe_block_t *Afe_Block = NULL;
-	int copy_size = 0, Afe_WriteIdx_tmp;
-	char *data_w_ptr = (char *)dst;
 
-	/* check which memif nned to be write */
-	Afe_Block = &pMemControl->rBlock;
-
-	/* handle for buffer management */
-
-	/* pr_debug(" WriteIdx=0x%x, ReadIdx=0x%x, DataRemained=0x%x\n",
-	 * Afe_Block->u4WriteIdx, Afe_Block->u4DMAReadIdx,
-	 * Afe_Block->u4DataRemained);
-	 */
-	if (Afe_Block->u4BufferSize == 0) {
-		pr_err(" u4BufferSize=0 Error");
-		return 0;
-	}
-
-	if (mem_blk == Soc_Aud_Digital_Block_MEM_DL1)
-		AudDrv_checkDLISRStatus();
-
-	mem_blk_spinlock(mem_blk);
-	/* free space of the buffer */
-	copy_size = Afe_Block->u4BufferSize - Afe_Block->u4DataRemained;
-	mem_blk_spinunlock(mem_blk);
-	if (count <= copy_size) {
-		if (copy_size < 0)
-			copy_size = 0;
-		else
-			copy_size = count;
-	}
-
-	copy_size = word_size_align(copy_size);
-
-	if (copy_size != 0) {
-		mem_blk_spinlock(mem_blk);
-		Afe_WriteIdx_tmp = Afe_Block->u4WriteIdx;
-		mem_blk_spinunlock(mem_blk);
-
-		if (Afe_WriteIdx_tmp + copy_size <
-		    Afe_Block->u4BufferSize) { /* copy once */
-			if (!access_ok(VERIFY_READ, data_w_ptr, copy_size)) {
-				pr_warn("0 w_ptr=%p, size=%d Size=%d,left=%d",
-					data_w_ptr, copy_size,
-					Afe_Block->u4BufferSize,
-					Afe_Block->u4DataRemained);
-			} else {
-#ifdef AFE_CONTROL_DEBUG_LOG
-				pr_debug(
-					"memcpy Idx= %p data_w_ptr = %p copy_size = 0x%x\n",
-					Afe_Block->pucVirtBufAddr +
-					Afe_WriteIdx_tmp,
-					data_w_ptr, copy_size);
-#endif
-				if (copy_from_user((Afe_Block->pucVirtBufAddr +
-						    Afe_WriteIdx_tmp),
-						   data_w_ptr, copy_size)) {
-					pr_warn("[AudioWarn] Fail copy from user\n");
-					return -1;
-				}
-			}
-
-			mem_blk_spinlock(mem_blk);
-			Afe_Block->u4DataRemained += copy_size;
-			Afe_Block->u4WriteIdx = Afe_WriteIdx_tmp + copy_size;
-			Afe_Block->u4WriteIdx %= Afe_Block->u4BufferSize;
-			mem_blk_spinunlock(mem_blk);
-			data_w_ptr += copy_size;
-			count -= copy_size;
-#ifdef AFE_CONTROL_DEBUG_LOG
-			pr_debug("finish1, copy_size:%x, WriteIdx:%x, ReadIdx=%x, Remained:%x, count=%x \r\n",
-				 copy_size, Afe_Block->u4WriteIdx,
-				 Afe_Block->u4DMAReadIdx,
-				 Afe_Block->u4DataRemained,
-				 (unsigned int)count);
-#endif
-		} else { /* copy twice */
-			kal_uint32 size_1 = 0, size_2 = 0;
-
-			size_1 = word_size_align(
-				(Afe_Block->u4BufferSize - Afe_WriteIdx_tmp));
-			size_2 = word_size_align((copy_size - size_1));
-#ifdef AFE_CONTROL_DEBUG_LOG
-			pr_debug("size_1=0x%x, size_2=0x%x\n", size_1,
-				 size_2);
-#endif
-			if (!access_ok(VERIFY_READ, data_w_ptr, size_1)) {
-				pr_warn("1 w_ptr=%p, size_1=%d bSize=%d,left=%d",
-					data_w_ptr, size_1,
-					Afe_Block->u4BufferSize,
-					Afe_Block->u4DataRemained);
-			} else {
-#ifdef AFE_CONTROL_DEBUG_LOG
-				pr_debug(
-					"mcmcpy Idx= %p data_w_ptr = %p size_1 = %x\n",
-					Afe_Block->pucVirtBufAddr +
-					Afe_WriteIdx_tmp,
-					data_w_ptr, size_1);
-#endif
-				if ((copy_from_user((Afe_Block->pucVirtBufAddr +
-						     Afe_WriteIdx_tmp),
-						    data_w_ptr, size_1))) {
-					pr_warn(" Fail 1 copy from user");
-					return -1;
-				}
-			}
-			mem_blk_spinlock(mem_blk);
-			Afe_Block->u4DataRemained += size_1;
-			Afe_Block->u4WriteIdx = Afe_WriteIdx_tmp + size_1;
-			Afe_Block->u4WriteIdx %= Afe_Block->u4BufferSize;
-			Afe_WriteIdx_tmp = Afe_Block->u4WriteIdx;
-			mem_blk_spinunlock(mem_blk);
-
-			if (!access_ok(VERIFY_READ, data_w_ptr + size_1,
-				       size_2)) {
-				pr_warn("2ptr invalid data_w_ptr=%p, size_1=%d, size_2=%d u4BufferSize=%d, u4DataRemained=%d",
-					data_w_ptr, size_1, size_2,
-					Afe_Block->u4BufferSize,
-					Afe_Block->u4DataRemained
-				       );
-			} else {
-#ifdef AFE_CONTROL_DEBUG_LOG
-				pr_debug(
-					"mcmcpy Idx= %p data_w_ptr+size_1 = %p size_2 = %x\n",
-					Afe_Block->pucVirtBufAddr +
-					Afe_WriteIdx_tmp,
-					data_w_ptr + size_1, size_2);
-#endif
-				if ((copy_from_user((Afe_Block->pucVirtBufAddr +
-						     Afe_WriteIdx_tmp),
-						    (data_w_ptr + size_1),
-						    size_2))) {
-					pr_warn("AudDrv_write Fail 2  copy from user");
-					return -1;
-				}
-			}
-			mem_blk_spinlock(mem_blk);
-			Afe_Block->u4DataRemained += size_2;
-			Afe_Block->u4WriteIdx = Afe_WriteIdx_tmp + size_2;
-			Afe_Block->u4WriteIdx %= Afe_Block->u4BufferSize;
-			mem_blk_spinunlock(mem_blk);
-
-			count -= copy_size;
-			data_w_ptr += copy_size;
-#ifdef AFE_CONTROL_DEBUG_LOG
-			pr_debug("finish2, copy size:%x, WriteIdx:%x,ReadIdx=%x DataRemained:%x \r\n",
-				 copy_size, Afe_Block->u4WriteIdx,
-				 Afe_Block->u4DMAReadIdx,
-				 Afe_Block->u4DataRemained);
-#endif
-		}
-	}
-#ifdef AFE_CONTROL_DEBUG_LOG
-	pr_debug("pcm_copy return\n");
-#endif
-	return 0;
-}
 
 static bool CheckNullPointer(void *pointer)
 {
@@ -4730,40 +4652,42 @@ static bool CheckNullPointer(void *pointer)
 }
 
 static int mtk_mem_ulblk_copy(struct snd_pcm_substream *substream, int channel,
-			      unsigned long pos, void __user *dst,
-			      unsigned long count,
-			      struct afe_mem_control_t *pMemControl,
-			      enum soc_aud_digital_block mem_blk)
+				  unsigned long pos, struct iov_iter *dst,
+				  unsigned long count,
+				  struct afe_mem_control_t *pMemControl,
+				  enum soc_aud_digital_block mem_blk)
 {
 	struct afe_mem_control_t *pVUL_MEM_ConTrol = NULL;
 	struct afe_block_t *Vul_Block = NULL;
-	char *Read_Data_Ptr = (char *)dst;
 	ssize_t DMA_Read_Ptr = 0, read_size = 0, read_count = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct iov_iter Read_Data_Ptr = *dst;
+
 #ifdef AFE_CONTROL_DEBUG_LOG
-	pr_debug("%s(), pos = %lucount = %lu\n ", __func__, pos,
+	pr_debug("%s(), pos = %lu, count = %lu\n ", __func__, pos,
 		 count);
 #endif
-	/* check which memif nned to be write */
+
+	/* Check which memif needs to be written*/
 	pVUL_MEM_ConTrol = pMemControl;
 	Vul_Block = &(pVUL_MEM_ConTrol->rBlock);
 
 	if (pVUL_MEM_ConTrol == NULL) {
-		pr_warn("cannot find MEM control !!!!!!!\n");
+		pr_info("cannot find MEM control !!!!!!!\n");
 		msleep(50);
 		return 0;
 	}
 
 	if (Vul_Block->u4BufferSize <= 0) {
 		msleep(50);
-		pr_err("Vul_Block->u4BufferSize <= 0  =%d\n",
-		       Vul_Block->u4BufferSize);
+		pr_info("Vul_Block->u4BufferSize <= 0  =%d\n",
+			   Vul_Block->u4BufferSize);
 		return 0;
 	}
 
 	if (CheckNullPointer((void *)Vul_Block->pucVirtBufAddr)) {
-		pr_err("CheckNullPointer  pucVirtBufAddr = %p\n",
-		       Vul_Block->pucVirtBufAddr);
+		pr_info("CheckNullPointer  pucVirtBufAddr = %p\n",
+			   Vul_Block->pucVirtBufAddr);
 		return 0;
 	}
 
@@ -4786,29 +4710,27 @@ static int mtk_mem_ulblk_copy(struct snd_pcm_substream *substream, int channel,
 	mem_blk_spinunlock(mem_blk);
 #ifdef AFE_CONTROL_DEBUG_LOG
 	pr_debug(
-		"%s finish0, read_count:%x, read_size:%x, Remained:%x, ReadIdx:0x%x, WriteIdx:%x \r\n",
+		"%s finish0, read_count:%x, read_size:%x, Remained:%x, ReadIdx:0x%x, WriteIdx:%x\n",
 		__func__, (unsigned int)read_count, (unsigned int)read_size,
 		Vul_Block->u4DataRemained, Vul_Block->u4DMAReadIdx,
 		Vul_Block->u4WriteIdx);
 #endif
+
 	if (DMA_Read_Ptr + read_size < Vul_Block->u4BufferSize) {
 		if (DMA_Read_Ptr != Vul_Block->u4DMAReadIdx) {
-			pr_warn("%s 1, read_size:%zu, Remained:%x, Ptr:%zu, DMAReadIdx:%x \r\n",
+			pr_info("%s 1, read_size:%zu, Remained:%x, Ptr:%zu, DMAReadIdx:%x\n",
 				__func__, read_size, Vul_Block->u4DataRemained,
 				DMA_Read_Ptr, Vul_Block->u4DMAReadIdx);
 		}
 
-		if (copy_to_user((void __user *)Read_Data_Ptr,
-				 (Vul_Block->pucVirtBufAddr + DMA_Read_Ptr),
-				 read_size)) {
+		if (copy_to_iter(Vul_Block->pucVirtBufAddr + DMA_Read_Ptr,
+				 read_size, &Read_Data_Ptr) != read_size) {
 
-			pr_err("%s Fail 1 copy to user Ptr:%p, Addr:%p, ReadIdx:0x%x, Read_Ptr:%zu,size:%zu",
-			       __func__, Read_Data_Ptr,
-			       Vul_Block->pucVirtBufAddr,
-			       Vul_Block->u4DMAReadIdx, DMA_Read_Ptr,
-			       read_size);
+			pr_info("%s Fail 1 copy to iter Addr:%p, ReadIdx:0x%x, Read_Ptr:%zu, size:%zu\n",
+				   __func__, Vul_Block->pucVirtBufAddr,
+				   Vul_Block->u4DMAReadIdx, DMA_Read_Ptr, read_size);
 			return 0;
-		}
+			}
 
 		read_count += read_size;
 		mem_blk_spinlock(mem_blk);
@@ -4818,11 +4740,11 @@ static int mtk_mem_ulblk_copy(struct snd_pcm_substream *substream, int channel,
 		DMA_Read_Ptr = Vul_Block->u4DMAReadIdx;
 		mem_blk_spinunlock(mem_blk);
 
-		Read_Data_Ptr += read_size;
+		iov_iter_advance(&Read_Data_Ptr, read_size);
 		count -= read_size;
 #ifdef AFE_CONTROL_DEBUG_LOG
 		pr_debug(
-			"%s finish1, copy size:%x, ReadIdx:0x%x, WriteIdx:%x, Remained:%x \r\n",
+			"%s finish1, copy size:%x, ReadIdx:0x%x, WriteIdx:%x, Remained:%x\n",
 			__func__, (unsigned int)read_size,
 			Vul_Block->u4DMAReadIdx, Vul_Block->u4WriteIdx,
 			Vul_Block->u4DataRemained);
@@ -4835,19 +4757,16 @@ static int mtk_mem_ulblk_copy(struct snd_pcm_substream *substream, int channel,
 
 		if (DMA_Read_Ptr != Vul_Block->u4DMAReadIdx) {
 
-			pr_warn("%s 2, read_size1:%x, Remained:%x, Read_Ptr:%zu, ReadIdx:%x \r\n",
+			pr_info("%s 2, read_size1:%x, Remained:%x, Read_Ptr:%zu, ReadIdx:%x\n",
 				__func__, size_1, Vul_Block->u4DataRemained,
 				DMA_Read_Ptr, Vul_Block->u4DMAReadIdx);
 		}
-		if (copy_to_user((void __user *)Read_Data_Ptr,
-				 (Vul_Block->pucVirtBufAddr + DMA_Read_Ptr),
-				 (unsigned int)size_1)) {
+		if (copy_to_iter(Vul_Block->pucVirtBufAddr + DMA_Read_Ptr,
+			 size_1, &Read_Data_Ptr) != size_1) {
 
-			pr_err("%s Fail 2 copy to user Ptr:%p, Addr:%p, ReadIdx:0x%x, Read_Ptr:%zu,read_size:%zu",
-			       __func__, Read_Data_Ptr,
-			       Vul_Block->pucVirtBufAddr,
-			       Vul_Block->u4DMAReadIdx, DMA_Read_Ptr,
-			       read_size);
+			pr_info("%s Fail 2 copy to iter Addr:%p, ReadIdx:0x%x, Read_Ptr:%zu, read_size:%zu\n",
+				__func__, Vul_Block->pucVirtBufAddr,
+				Vul_Block->u4DMAReadIdx, DMA_Read_Ptr, read_size);
 			return 0;
 		}
 
@@ -4858,27 +4777,25 @@ static int mtk_mem_ulblk_copy(struct snd_pcm_substream *substream, int channel,
 		Vul_Block->u4DMAReadIdx %= Vul_Block->u4BufferSize;
 		DMA_Read_Ptr = Vul_Block->u4DMAReadIdx;
 		mem_blk_spinunlock(mem_blk);
+
 #ifdef AFE_CONTROL_DEBUG_LOG
 		pr_debug(
-			"%s finish2, copy size_1:%x, ReadIdx:0x%x, WriteIdx:0x%x, Remained:%x \r\n",
+			"%s finish2, copy size_1:%x, ReadIdx:0x%x, WriteIdx:0x%x, Remained:%x\n",
 			__func__, size_1, Vul_Block->u4DMAReadIdx,
 			Vul_Block->u4WriteIdx, Vul_Block->u4DataRemained);
 #endif
-		if (DMA_Read_Ptr != Vul_Block->u4DMAReadIdx) {
 
-			pr_warn("%s 3, read_size2:%x, Remained:%x, DMA_Read_Ptr:%zu, DMAReadIdx:%x \r\n",
+		if (DMA_Read_Ptr != Vul_Block->u4DMAReadIdx) {
+			pr_info("%s 3, read_size2:%x, Remained:%x, DMA_Read_Ptr:%zu, DMAReadIdx:%x\n",
 				__func__, size_2, Vul_Block->u4DataRemained,
 				DMA_Read_Ptr, Vul_Block->u4DMAReadIdx);
 		}
-		if (copy_to_user((void __user *)(Read_Data_Ptr + size_1),
-				 (Vul_Block->pucVirtBufAddr + DMA_Read_Ptr),
-				 size_2)) {
 
-			pr_err("%s Fail 3 copy to user Ptr:%p, Addr:%p, ReadIdx:0x%x , Read_Ptr:%zu, read_size:%zu",
-			       __func__, Read_Data_Ptr,
-			       Vul_Block->pucVirtBufAddr,
-			       Vul_Block->u4DMAReadIdx, DMA_Read_Ptr,
-			       read_size);
+		if (copy_to_iter(Vul_Block->pucVirtBufAddr + DMA_Read_Ptr,
+				 size_2, &Read_Data_Ptr) != size_2) {
+			pr_info("%s Fail 3 copy to iter Addr:%p, ReadIdx:0x%x, Read_Ptr:%zu, read_size:%zu\n",
+				   __func__, Vul_Block->pucVirtBufAddr,
+				   Vul_Block->u4DMAReadIdx, DMA_Read_Ptr, read_size);
 			return bytes_to_frames(runtime, read_count);
 		}
 
@@ -4888,11 +4805,12 @@ static int mtk_mem_ulblk_copy(struct snd_pcm_substream *substream, int channel,
 		Vul_Block->u4DMAReadIdx += size_2;
 		DMA_Read_Ptr = Vul_Block->u4DMAReadIdx;
 		mem_blk_spinunlock(mem_blk);
+
 		count -= read_size;
-		Read_Data_Ptr += read_size;
+		iov_iter_advance(&Read_Data_Ptr, read_size);
 #ifdef AFE_CONTROL_DEBUG_LOG
 		pr_debug(
-			"%s finish3, copy size_2:%x, u4DMAReadIdx:0x%x, u4WriteIdx:0x%x u4DataRemained:%x \r\n",
+			"%s finish3, copy size_2:%x, u4DMAReadIdx:0x%x, u4WriteIdx:0x%x, u4DataRemained:%x\n",
 			__func__, size_2, Vul_Block->u4DMAReadIdx,
 			Vul_Block->u4WriteIdx, Vul_Block->u4DataRemained);
 #endif
@@ -4902,10 +4820,10 @@ static int mtk_mem_ulblk_copy(struct snd_pcm_substream *substream, int channel,
 }
 
 int mtk_memblk_copy(struct snd_pcm_substream *substream, int channel,
-		    unsigned long pos, void __user *dst,
-		    unsigned long count,
-		    struct afe_mem_control_t *pMemControl,
-		    enum soc_aud_digital_block mem_blk)
+			unsigned long pos, struct iov_iter *dst,
+			unsigned long count,
+			struct afe_mem_control_t *pMemControl,
+			enum soc_aud_digital_block mem_blk)
 {
 	if (pMemControl == NULL)
 		return 0;
@@ -4914,8 +4832,7 @@ int mtk_memblk_copy(struct snd_pcm_substream *substream, int channel,
 	case Soc_Aud_Digital_Block_MEM_DL1:
 	case Soc_Aud_Digital_Block_MEM_DL2:
 	case Soc_Aud_Digital_Block_MEM_DL3:
-		mtk_mem_dlblk_copy(substream, channel, pos, dst, count,
-				   pMemControl, mem_blk);
+		mtk_afe_pcm_copy(substream, channel, pos, dst, count);
 		break;
 	case Soc_Aud_Digital_Block_MEM_VUL:
 	case Soc_Aud_Digital_Block_MEM_DAI:
@@ -4924,13 +4841,14 @@ int mtk_memblk_copy(struct snd_pcm_substream *substream, int channel,
 	case Soc_Aud_Digital_Block_MEM_VUL_DATA2:
 	case Soc_Aud_Digital_Block_MEM_VUL2:
 		mtk_mem_ulblk_copy(substream, channel, pos, dst, count,
-				   pMemControl, mem_blk);
+			   pMemControl, mem_blk);
 		break;
 	default:
 		pr_info("%s not support", __func__);
 	}
 	return 0;
 }
+EXPORT_SYMBOL(mtk_memblk_copy);
 
 int set_memif_addr(int mem_blk, dma_addr_t addr, size_t size)
 {
@@ -5012,6 +4930,7 @@ int set_mem_block(struct snd_pcm_substream *substream,
 	memset_io((void *)pblock->pucVirtBufAddr, 0, pblock->u4BufferSize);
 	return 0;
 }
+EXPORT_SYMBOL(set_mem_block);
 
 bool handle_suspend(bool suspend)
 {
@@ -5023,33 +4942,39 @@ bool handle_suspend(bool suspend)
 	}
 	return ret;
 }
+EXPORT_SYMBOL(handle_suspend);
 
 void set_mem_blk_ops(struct mtk_mem_blk_ops *ops)
 {
 	s_mem_blk_ops = ops;
 }
+EXPORT_SYMBOL(set_mem_blk_ops);
 
 void set_afe_platform_ops(struct mtk_afe_platform_ops *ops)
 {
 	s_afe_platform_ops = ops;
 }
+EXPORT_SYMBOL(set_afe_platform_ops);
 
 struct mtk_afe_platform_ops *get_afe_platform_ops(void)
 {
 	return s_afe_platform_ops;
 }
+EXPORT_SYMBOL(get_afe_platform_ops);
 
 /* low latency debug */
 int get_LowLatencyDebug(void)
 {
 	return LowLatencyDebug;
 }
+EXPORT_SYMBOL(get_LowLatencyDebug);
 
 void set_LowLatencyDebug(unsigned int bFlag)
 {
 	LowLatencyDebug = bFlag;
 	pr_debug("%s LowLatencyDebug = %d\n", __func__, LowLatencyDebug);
 }
+EXPORT_SYMBOL(set_LowLatencyDebug);
 
 int mtk_pcm_mmap(struct snd_pcm_substream *substream,
 		 struct vm_area_struct *vma)
@@ -5063,6 +4988,7 @@ int mtk_pcm_mmap(struct snd_pcm_substream *substream,
 				 runtime->dma_area, runtime->dma_addr,
 				 runtime->dma_bytes);
 }
+EXPORT_SYMBOL(mtk_pcm_mmap);
 
 /* calculate the target DMA-buffer position to be written/read */
 static void *get_dma_ptr(struct snd_pcm_runtime *runtime,
@@ -5075,10 +5001,10 @@ static void *get_dma_ptr(struct snd_pcm_runtime *runtime,
 /* default copy_user ops for write; used for both interleaved and non- modes */
 static int default_write_copy(struct snd_pcm_substream *substream,
 			      int channel, unsigned long hwoff,
-			      void *buf, unsigned long bytes)
+			      struct iov_iter *buf, unsigned long bytes)
 {
-	if (copy_from_user(get_dma_ptr(substream->runtime, channel, hwoff),
-			   (void __user *)buf, bytes))
+	if (copy_from_iter(get_dma_ptr(substream->runtime, channel, hwoff),
+			   bytes, buf))
 		return -EFAULT;
 	return 0;
 }
@@ -5086,28 +5012,59 @@ static int default_write_copy(struct snd_pcm_substream *substream,
 /* default copy_user ops for read; used for both interleaved and non- modes */
 static int default_read_copy(struct snd_pcm_substream *substream,
 			     int channel, unsigned long hwoff,
-			     void *buf, unsigned long bytes)
+			     struct iov_iter *buf, unsigned long bytes)
 {
-	if (copy_to_user((void __user *)buf,
-			 get_dma_ptr(substream->runtime, channel, hwoff),
-			 bytes))
+	if (copy_to_iter(get_dma_ptr(substream->runtime, channel, hwoff),
+			 bytes, buf))
 		return -EFAULT;
 	return 0;
 }
 
 int mtk_afe_pcm_copy(struct snd_pcm_substream *substream,
 		     int channel, unsigned long hwoff,
-		     void *buf, unsigned long bytes)
+		     struct iov_iter *buf, unsigned long bytes)
 {
 	int (*sp_copy)(struct snd_pcm_substream *substream,
 		       int channel, unsigned long hwoff,
-		       void *buf, unsigned long bytes) = NULL;
+		       struct iov_iter *buf, unsigned long bytes) = NULL;
 	int is_playback = substream->stream == SNDRV_PCM_STREAM_PLAYBACK;
 
 	sp_copy = is_playback ? default_write_copy : default_read_copy;
-	sp_copy(substream, channel, hwoff,
-		(void __user *)buf, bytes);
+	sp_copy(substream, channel, hwoff, buf, bytes);
 
 	return 0;
 }
+EXPORT_SYMBOL(mtk_afe_pcm_copy);
 
+static int __init mtk_platform_sound_init(void)
+{
+	int ret = 0;
+
+	ret = mtk_i2s0_soc_platform_init();
+	ret = mtk_dl2_soc_platform_init();
+	ret = mtk_soc_voice_md2_bt_platform_init();
+	ret = mtk_soc_voice_md2_platform_init();
+	ret = mtk_soc_voice_platform_init();
+	ret = mtk_soc_voice_bt_platform_init();
+	ret = mtk_voice_usb_driver_init();
+#if IS_ENABLED(CONFIG_MTK_SPM_V0)
+	ret = RegisterConditionEnterSuspend(ConditionEnterSuspend);
+#endif
+	return ret;
+
+}
+module_init(mtk_platform_sound_init);
+
+static void __exit mtk_platform_sound_exit(void)
+{
+	 mtk_i2s0_soc_platform_exit();
+	 mtk_dl2_soc_platform_exit();
+	 mtk_soc_voice_md2_bt_platform_exit();
+	 mtk_soc_voice_md2_platform_exit();
+	 mtk_soc_voice_platform_exit();
+	 mtk_soc_voice_bt_platform_exit();
+	 mtk_voice_usb_driver_exit();
+
+}
+module_exit(mtk_platform_sound_exit);
+MODULE_LICENSE("GPL");

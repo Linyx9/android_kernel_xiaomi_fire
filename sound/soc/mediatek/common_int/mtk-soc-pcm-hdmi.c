@@ -422,8 +422,6 @@ static int mtk_pcm_hdmi_stop(struct snd_pcm_substream *substream)
 {
 	struct afe_block_t *Afe_Block = &(pMemControl->rBlock);
 
-	pr_debug("%s()\n", __func__);
-
 	irq_remove_user(substream,
 			irq_request_number(Soc_Aud_Digital_Block_MEM_HDMI));
 
@@ -533,7 +531,6 @@ static int mtk_pcm_hdmi_hw_params(struct snd_pcm_substream *substream,
 	int ret = 0;
 
 #if defined(HDMI_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	dma_buf->dev.type = SNDRV_DMA_TYPE_DEV;
 	dma_buf->dev.dev = substream->pcm->card->dev;
@@ -586,8 +583,6 @@ static int mtk_pcm_hdmi_open(struct snd_pcm_substream *substream)
 
 	ptrAudioHDMIFormat = &mAudioHDMIFormat;
 
-	pr_debug("%s()\n", __func__);
-
 	pMemControl = Get_Mem_ControlT(Soc_Aud_Digital_Block_MEM_HDMI);
 
 	runtime->hw = mtk_hdmi_hardware;
@@ -634,7 +629,6 @@ static int mtk_pcm_hdmi_close(struct snd_pcm_substream *substream)
 
 	ptrAudioHDMIFormat = &mAudioHDMIFormat;
 
-	pr_debug("%s\n", __func__);
 
 	AudDrv_APLL1Tuner_Clk_Off();
 	AudDrv_APLL2Tuner_Clk_Off();
@@ -978,16 +972,15 @@ static struct page *mtk_pcm_page(struct snd_pcm_substream *substream,
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_hdmi_ops = {
+static const struct snd_pcm_ops mtk_hdmi_ops = {
 	.open = mtk_pcm_hdmi_open,
 	.close = mtk_pcm_hdmi_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_pcm_hdmi_hw_params,
 	.hw_free = mtk_pcm_hdmi_hw_free,
 	.prepare = mtk_pcm_hdmi_prepare,
 	.trigger = mtk_pcm_hdmi_trigger,
 	.pointer = mtk_pcm_hdmi_pointer,
-	.copy_user = mtk_pcm_hdmi_copy,
+	.copy = mtk_pcm_hdmi_copy,
 	.fill_silence = mtk_pcm_hdmi_silence,
 	.page = mtk_pcm_page,
 };
@@ -1001,7 +994,6 @@ static const struct snd_soc_component_driver mtk_hdmi_soc_component = {
 static int mtk_hdmi_probe(struct platform_device *pdev)
 {
 #if defined(HDMI_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -1021,7 +1013,6 @@ static int mtk_hdmi_probe(struct platform_device *pdev)
 
 static int mtk_afe_hdmi_component_probe(struct snd_soc_component *component)
 {
-	pr_debug("%s\n", __func__);
 	/* allocate dram */
 	AudDrv_Allocate_mem_Buffer(component->dev,
 				   Soc_Aud_Digital_Block_MEM_HDMI,
@@ -1036,13 +1027,12 @@ static int mtk_afe_hdmi_component_probe(struct snd_soc_component *component)
 static int mtk_afe_remove(struct platform_device *pdev)
 {
 #if defined(HDMI_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_hdmi_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_hdmi",
@@ -1055,7 +1045,7 @@ static struct platform_driver mtk_hdmi_driver = {
 
 			.name = MT_SOC_HDMI_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_hdmi_of_ids,
 #endif
 		},
@@ -1071,7 +1061,6 @@ static int __init mtk_hdmi_soc_platform_init(void)
 {
 	int ret;
 #if defined(HDMI_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 #ifndef CONFIG_OF
 	soc_mtkhdmi_dev = platform_device_alloc(MT_SOC_HDMI_PCM, -1);

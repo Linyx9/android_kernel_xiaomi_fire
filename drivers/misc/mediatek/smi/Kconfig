@@ -1,17 +1,35 @@
-config MTK_SMI_EXT
-	bool "MediaTek SMI Platform Special Support"
-	select MEMORY
-	select MTK_SMI
+config MTK_SMI_BWC
+	tristate "MediaTek BWC driver"
 	help
-	  This driver is for the memory controller module in MediaTek SoCs,
-	  mainly help arbitrate memory bandwidth of multimedia,
-	  and optimize multimedia memory usage in different scenarios.
-	  If you are not sure about this, set y.
+	  BWC is mainy to optimize the bus access latency based on
+	  multimedia scenarios.
+	  It is required for many MTK multimedia middlewares including
+	  camera and video middlewares on some legacy chips.
+	  This config enables BWC functions.
 
-config MTK_SMI_VARIANT
-	bool "MTK SMI Tablet Code"
+config MTK_SMI_BWC_MT6761
+	tristate "MediaTek BWC driver for MT6761"
 	help
-	  It's for smi common tablet framework,
-	  it is used to arbitrate memory bandwidth of multimedia,
-	  it can optimize multimedia memory usage in different scenarios,
-	  and it will enable power-domain.
+	  BWC is mainly to optimize the bus access latency based on
+	  multimedia scenarios.
+	  It is required for many MTK multimedia middlewares including
+	  camera and video middlewares on some legacy chips.
+	  This config enables BWC functions.
+
+config MTK_SMI_BWC_MT6739
+	tristate "MediaTek BWC driver for MT6739"
+	help
+	  BWC is mainly to optimize the bus access latency based on
+	  multimedia scenarios.
+	  It is required for many MTK multimedia middlewares including
+	  camera and video middlewares on some legacy chips.
+	  This config enables BWC functions.
+
+config MTK_SMI_BWC_V6765
+	tristate "MediaTek BWC driver for MT6765"
+	help
+	  BWC is mainly to optimize the bus access latency based on
+	  multimedia scenarios.
+	  It is required for many MTK multimedia middlewares including
+	  camera and video middlewares on some legacy chips.
+	  This config enables BWC functions.

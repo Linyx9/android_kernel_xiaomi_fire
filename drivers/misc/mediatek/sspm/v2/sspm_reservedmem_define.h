@@ -5,8 +5,7 @@
 #ifndef _SSPM_RESERVEDMEM_DEFINE_H_
 #define _SSPM_RESERVEDMEM_DEFINE_H_
 #include <sspm_reservedmem.h>
-#ifndef _SSPM_MEM_ID_
-#define _SSPM_MEM_ID_
+
 enum {
 	SSPM_MEM_ID = 0,
 	PWRAP_MEM_ID,
@@ -22,7 +21,6 @@ enum {
 	GPU_MEM_ID,
 	NUMS_MEM_ID,
 };
-#endif
 
 #define SSPM_PLT_LOGGER_BUF_LEN 0x100000
 

@@ -1,0 +1,18 @@
+/*
+ * this is the dtsi sample for NU2115.
+ * update date:2024.04.15
+ */
+
+nu2115: nu2115-standalone@6F {
+	compatible = "cp,nu2115";
+	status = "okay";
+	charger_name = "primary_dvchg";
+	reg = <0x6F>;
+	nu2115,intr-gpios = <&pio 7 0x0>;
+
+	ac_ovp = <10500000>;
+	vbus_ovp = <10000000>;
+	bat_ucp_alm = <9200000>;
+	ibat_sns_res = <2>;
+	watchdog_dis;
+};

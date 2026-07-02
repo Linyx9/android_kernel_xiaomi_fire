@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
+
 #ifndef __MT_PPM_INTERNAL_H__
 #define __MT_PPM_INTERNAL_H__
 
@@ -20,18 +21,30 @@ extern "C" {
 #include <linux/printk.h>
 #include <linux/sched.h>
 #include <linux/cpumask.h>
+#include <linux/topology.h>
 
 #include "mtk_ppm_api.h"
-#include "mtk_ppm_platform.h"
-#include "mtk_ppm_ipi.h"
 
-#ifdef CONFIG_MTK_UNIFY_POWER
-#include "mtk_common_upower.h"
-#endif
+#include "mtk_ppm_platform.h"
+
+
+#include "mtk_ppm_ipi.h"
 
 /*==============================================================*/
 /* Definitions                                                  */
 /*==============================================================*/
+
+/* PORTING */
+/* For modules porting */
+#define CPU_DVFS_IS_READY 	(1)
+#define STATIC_POWER_IS_READY 	(1)
+#define POWER_THROTTLING_IS_READY	(1)
+#define UNIFIED_POWER_IS_READY 	(1)
+#define CPUHOTPLUG_IS_READY 	(0)
+
+/* Power Throttling flags */
+#define DISABLE_BATTERY_PERCENT_PROTECT
+
 /* POLICY */
 /* If priority value is the same, it will decide by ppm_policy enum value */
 #define PPM_POLICY_PRIO_HIGHEST			(0x0)
@@ -79,28 +92,26 @@ extern "C" {
 #define PROC_FOPS_RW(name)                                                    \
 static int ppm_ ## name ## _proc_open(struct inode *inode, struct file *file) \
 {                                                                             \
-	return single_open(file, ppm_ ## name ## _proc_show, PDE_DATA(inode));\
+	return single_open(file, ppm_ ## name ## _proc_show, pde_data(inode));\
 }                                                                             \
-static const struct file_operations ppm_ ## name ## _proc_fops = {            \
-	.owner	= THIS_MODULE,                                                \
-	.open	= ppm_ ## name ## _proc_open,                                 \
-	.read	= seq_read,                                                   \
-	.llseek	= seq_lseek,                                                  \
-	.release	= single_release,                                     \
-	.write	= ppm_ ## name ## _proc_write,                                \
+static const struct proc_ops ppm_ ## name ## _proc_fops = {            \
+	.proc_open	= ppm_ ## name ## _proc_open,                                 \
+	.proc_read	= seq_read,                                                   \
+	.proc_lseek	= seq_lseek,                                                  \
+	.proc_release	= single_release,                                     \
+	.proc_write	= ppm_ ## name ## _proc_write,                                \
 }
 
 #define PROC_FOPS_RO(name)                                                    \
 static int ppm_ ## name ## _proc_open(struct inode *inode, struct file *file) \
 {                                                                             \
-	return single_open(file, ppm_ ## name ## _proc_show, PDE_DATA(inode));\
+	return single_open(file, ppm_ ## name ## _proc_show, pde_data(inode));\
 }                                                                             \
-static const struct file_operations ppm_ ## name ## _proc_fops = {            \
-	.owner	= THIS_MODULE,                                                \
-	.open	= ppm_ ## name ## _proc_open,                                 \
-	.read	= seq_read,                                                   \
-	.llseek	= seq_lseek,                                                  \
-	.release	= single_release,                                     \
+static const struct proc_ops ppm_ ## name ## _proc_fops = {            \
+	.proc_open	= ppm_ ## name ## _proc_open,                                 \
+	.proc_read	= seq_read,                                                   \
+	.proc_lseek	= seq_lseek,                                                  \
+	.proc_release	= single_release,                                     \
 }
 
 #define PROC_ENTRY(name) {__stringify(name), &ppm_ ## name ## _proc_fops}
@@ -138,17 +149,6 @@ static const struct file_operations ppm_ ## name ## _proc_fops = {            \
 	do { if ((lv) & ppm_func_lv_mask)	\
 		ppm_info("<< %s():%d\n", __func__, __LINE__); } while (0)
 
-/* cpufreq */
-
-static inline void mtk_cpu_update_policy(void)
-{
-#ifdef CONFIG_CPU_FREQ
-	if (strcmp(CONFIG_MTK_PLATFORM, "mt6779"))
-		ppm_info("trigger cpufreq_update_policy(*)\n");
-	cpufreq_update_policy(0); /* little core */
-	cpufreq_update_policy(CORE_NUM_L); /* big core */
-#endif
-}
 
 /*==============================================================*/
 /* Enum                                                         */
@@ -229,11 +229,11 @@ struct ppm_cluster_info {
 	unsigned int cpu_id;	/* cpu id of the dvfs policy owner */
 	unsigned int dvfs_opp_num;
 	unsigned int max_freq_except_userlimit;
-	unsigned int freq_khz;
-	/* unsigned int volt_uv; */
 	struct cpufreq_frequency_table *dvfs_tbl;	/* from DVFS driver */
 	int	doe_max;
 	int	doe_min;
+	struct freq_qos_request *max_freq_req;
+	struct freq_qos_request *min_freq_req;
 };
 
 struct ppm_data {
@@ -266,7 +266,6 @@ struct ppm_user_limit {
 	int max_freq_idx;
 	int min_core_num;
 	int max_core_num;
-	int cluster_id;
 };
 
 struct ppm_userlimit_data {
@@ -287,6 +286,36 @@ extern struct proc_dir_entry *cpi_dir;
 extern unsigned int ppm_func_lv_mask;
 extern unsigned int ppm_debug;
 
+/*==============================================================*/
+/* init/exit                                                    */
+/*==============================================================*/
+extern int ppm_cpi_init(void);
+extern void ppm_cpi_exit(void);
+extern int ppm_dlpt_policy_init(void);
+extern void ppm_dlpt_policy_exit(void);
+extern int ppm_forcelimit_policy_init(void);
+extern void ppm_forcelimit_policy_exit(void);
+extern int ppm_hard_userlimit_policy_init(void);
+extern void ppm_hard_userlimit_policy_exit(void);
+extern int ppm_ptpod_policy_init(void);
+extern void ppm_ptpod_policy_exit(void);
+extern int ppm_pwrthro_policy_init(void);
+extern void ppm_pwrthro_policy_exit(void);
+extern int ppm_sysboost_policy_init(void);
+extern void ppm_sysboost_policy_exit(void);
+extern int ppm_thermal_policy_init(void);
+extern void ppm_thermal_policy_exit(void);
+extern int ppm_userlimit_policy_init(void);
+extern void ppm_userlimit_policy_exit(void);
+extern int ppm_ut_policy_init(void);
+extern void ppm_ut_policy_exit(void);
+
+/* Cannot init before FB driver */
+extern int ppm_lcmoff_policy_init(void);
+extern void ppm_lcmoff_policy_exit(void);
+
+/* should be run after cpufreq and upower init */
+extern int ppm_power_data_init(void);
 
 /*==============================================================*/
 /* APIs                                                         */
@@ -320,17 +349,60 @@ extern void ppm_profile_update_ipi_exec_time(int id, unsigned long long time);
 #endif
 
 /* SRAM debugging */
-#ifdef CONFIG_MTK_RAM_CONSOLE
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 extern void aee_rr_rec_ppm_cluster_limit(int id, u32 val);
 extern void aee_rr_rec_ppm_step(u8 val);
 extern void aee_rr_rec_ppm_min_pwr_bgt(u32 val);
 extern void aee_rr_rec_ppm_policy_mask(u32 val);
 extern void aee_rr_rec_ppm_waiting_for_pbm(u8 val);
+extern void ppm_init_qos_request(void);
 #endif
+
+extern unsigned int ppm_cpufreq_get_cur_phy_freq_no_lock_get(int i);
+
+#define trace_ppm_update(a, b, c, d) do { } while (0)
+static inline int arch_get_cluster_cpus(struct cpumask *cpus, int cluster_id)
+{
+	int cpu = 0;
+
+	cpumask_clear(cpus);
+#if IS_ENABLED(CONFIG_MTK_PLAT_POWER_MT6761)
+	while (cpu < 4) {
+		cpumask_set_cpu(cpu, cpus);
+		cpu++;
+	}
+#else
+	if (cluster_id == 0) {
+		cpu = 0;
+
+		while (cpu < CORE_NUM_L) {
+			cpumask_set_cpu(cpu, cpus);
+			cpu++;
+		}
+	} else {
+		cpu = CORE_NUM_L;
+
+		while (cpu < TOTAL_CORE_NUM) {
+			cpumask_set_cpu(cpu, cpus);
+			cpu++;
+		}
+	}
+#endif
+
+	return 0;
+}
+
+static inline int arch_get_nr_clusters(void)
+{
+#if IS_ENABLED(CONFIG_MTK_PLAT_POWER_MT6761)
+	return 1;
+#else
+	return NR_PPM_CLUSTERS;
+#endif
+}
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif
-

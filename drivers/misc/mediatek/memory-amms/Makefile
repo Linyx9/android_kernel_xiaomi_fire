@@ -11,9 +11,6 @@
 # GNU General Public License for more details.
 #
 
-obj-y += memory-amms.o
-MTK_TOP = $(srctree)/drivers/misc/mediatek/
-ccflags-y += -I$(srctree)/drivers/devfreq/
-ccflags-y += -I$(MTK_TOP)/base/power/include/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat
+obj-$(CONFIG_MTK_AMMS) := memory-amms.o
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/mt-plat
 

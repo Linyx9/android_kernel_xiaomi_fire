@@ -71,8 +71,34 @@ static int multimedia_startup(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static struct snd_soc_dai_ops mtk_dai_stub_ops = {
+static const struct snd_soc_dai_ops mtk_dai_stub_ops = {
 	.startup = multimedia_startup,
+};
+
+static const struct snd_pcm_hardware i2s_spk_hardware = {
+	/* Random values to keep userspace happy when checking constraints */
+	.info			= SNDRV_PCM_INFO_INTERLEAVED |
+				  SNDRV_PCM_INFO_BLOCK_TRANSFER,
+	.buffer_bytes_max	= 128*1024,
+	.period_bytes_min	= PAGE_SIZE,
+	.period_bytes_max	= PAGE_SIZE*2,
+	.periods_min		= 2,
+	.periods_max		= 128,
+};
+
+static int i2s_spk_startup(struct snd_pcm_substream *substream,
+			      struct snd_soc_dai *dai)
+{
+	snd_soc_set_runtime_hwparams(substream, &i2s_spk_hardware);
+
+	snd_pcm_hw_constraint_list(substream->runtime, 0,
+				   SNDRV_PCM_HW_PARAM_RATE,
+				   &constraints_sample_rates);
+	return 0;
+}
+
+static const struct snd_soc_dai_ops mtk_dai_i2s_spk_ops = {
+	.startup = i2s_spk_startup,
 };
 
 static bool i2s2_adc2_is_started;
@@ -118,7 +144,6 @@ static int mtk_dai_i2s2_adc2_start(struct snd_pcm_substream *substream)
 static int mtk_dai_i2s2_adc2_stop(struct snd_pcm_substream *substream)
 {
 	if (i2s2_adc2_is_started) {
-		pr_debug("%s()\n", __func__);
 		i2s2_adc2_is_started = false;
 		SetIntfConnection(Soc_Aud_InterCon_DisConnect,
 				  Soc_Aud_AFE_IO_Block_ADDA_UL2,
@@ -144,7 +169,7 @@ static int mtk_dai_i2s2_adc2_trigger(struct snd_pcm_substream *substream,
 	return -EINVAL;
 }
 
-static struct snd_soc_dai_ops mtk_dai_i2s2_adc2_ops = {
+static const struct snd_soc_dai_ops mtk_dai_i2s2_adc2_ops = {
 	.trigger = mtk_dai_i2s2_adc2_trigger,
 };
 /* i2s2 adc2 data */
@@ -174,17 +199,21 @@ static int mtk_dai_anc_record_trigger(struct snd_pcm_substream *substream,
 	return -EINVAL;
 }
 
-static struct snd_soc_dai_ops mtk_dai_anc_record_ops = {
+static const struct snd_soc_dai_ops mtk_dai_anc_record_ops = {
 	.trigger = mtk_dai_anc_record_trigger,
 };
 /* anc record */
 static int mtk_dai_stub_compress_new(struct snd_soc_pcm_runtime *rtd, int num)
 {
-#ifdef CONFIG_SND_SOC_COMPRESS
+#if IS_ENABLED(CONFIG_SND_SOC_COMPRESS)
 	snd_soc_new_compress(rtd, num);
 #endif
 	return 0;
 }
+
+static const struct snd_soc_dai_ops mtk_dai_dsp_driver_ops = {
+	.compress_new = mtk_dai_stub_compress_new,
+};
 
 static struct snd_soc_dai_driver mtk_dai_stub_dai[] = {
 	{
@@ -228,7 +257,7 @@ static struct snd_soc_dai_driver mtk_dai_stub_dai[] = {
 		.name = MT_SOC_TDMRX_NAME,
 		.ops = &mtk_dai_stub_ops,
 	},
-#ifdef CONFIG_MTK_HDMI_TDM
+#if IS_ENABLED(CONFIG_MTK_HDMI_TDM)
 	{
 		.playback = {
 
@@ -574,7 +603,9 @@ static struct snd_soc_dai_driver mtk_dai_stub_dai[] = {
 				.rate_min = 8000,
 				.rate_max = 48000,
 			},
-		.compress_new = mtk_dai_stub_compress_new,
+
+		.ops = &mtk_dai_dsp_driver_ops,
+
 		.name = MT_SOC_OFFLOAD_PLAYBACK_DAI_NAME,
 		.ops = &mtk_dai_stub_ops,
 	},
@@ -717,6 +748,30 @@ static struct snd_soc_dai_driver mtk_dai_stub_dai[] = {
 	{
 		.playback = {
 
+				.stream_name = MT_SOC_SPEAKER_STREAM_NAME,
+				.rates = SNDRV_PCM_RATE_8000_192000,
+				.formats = SND_SOC_ADV_MT_FMTS,
+				.channels_min = 1,
+				.channels_max = 2,
+				.rate_min = 8000,
+				.rate_max = 192000,
+			},
+		.capture = {
+
+				.stream_name = MT_SOC_SPEAKER_STREAM_NAME,
+				.rates = SNDRV_PCM_RATE_8000_192000,
+				.formats = SND_SOC_ADV_MT_FMTS,
+				.channels_min = 1,
+				.channels_max = 2,
+				.rate_min = 8000,
+				.rate_max = 192000,
+			},
+		.name = MT_SOC_I2SSPKDAI_NAME,
+		.ops = &mtk_dai_i2s_spk_ops,
+	},
+	{
+		.playback = {
+
 				.stream_name = MT_SOC_DL2_STREAM_NAME,
 				.rates = SNDRV_PCM_RATE_8000_192000,
 				.formats = SND_SOC_ADV_MT_FMTS,
@@ -850,14 +905,12 @@ static int mtk_dai_stub_dev_probe(struct platform_device *pdev)
 
 static int mtk_dai_stub_dev_remove(struct platform_device *pdev)
 {
-	pr_debug("%s:\n", __func__);
-
 	snd_soc_unregister_component(&pdev->dev);
 
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_dai_stub_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_dai_stub",
@@ -872,7 +925,7 @@ static struct platform_driver mtk_dai_stub_driver = {
 
 			.name = MT_SOC_DAI_NAME,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_dai_stub_of_ids,
 #endif
 		},
@@ -884,7 +937,6 @@ static struct platform_device *soc_mtk_dai_dev;
 
 static int __init mtk_dai_stub_init(void)
 {
-	pr_debug("%s:\n", __func__);
 #ifndef CONFIG_OF
 	int ret;
 
@@ -905,8 +957,6 @@ static int __init mtk_dai_stub_init(void)
 
 static void __exit mtk_dai_stub_exit(void)
 {
-	pr_debug("%s:\n", __func__);
-
 	platform_driver_unregister(&mtk_dai_stub_driver);
 }
 module_init(mtk_dai_stub_init);
@@ -914,4 +964,4 @@ module_exit(mtk_dai_stub_exit);
 
 /* Module information */
 MODULE_DESCRIPTION("MTK SOC DAI driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

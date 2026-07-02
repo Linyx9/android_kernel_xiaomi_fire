@@ -1,6 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2019 MediaTek Inc.
+ * Copyright (C) 2021 MediaTek Inc.
  */
 
 #ifndef __DEVAPC_MTK_COMMON_H__
@@ -216,12 +216,12 @@ struct mtk_devapc_soc {
 };
 
 void handle_sramrom_vio(void);
-int mtk_devapc_probe(struct platform_device *pdev,
+int mtk_devapc_probe_v1(struct platform_device *pdev,
 		struct mtk_devapc_soc *soc);
-int mtk_devapc_remove(struct platform_device *dev);
-ssize_t mtk_devapc_dbg_read(struct file *file, char __user *buffer,
+int mtk_devapc_remove_v1(struct platform_device *dev);
+ssize_t mtk_devapc_dbg_read_v1(struct file *file, char __user *buffer,
 	size_t count, loff_t *ppos);
-ssize_t mtk_devapc_dbg_write(struct file *file, const char __user *buffer,
+ssize_t mtk_devapc_dbg_write_v1(struct file *file, const char __user *buffer,
 	size_t count, loff_t *data);
 
 #endif /* __DEVAPC_MTK_COMMON_H__ */

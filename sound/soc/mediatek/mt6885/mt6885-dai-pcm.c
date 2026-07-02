@@ -276,16 +276,15 @@ static int mtk_dai_pcm_hw_params(struct snd_pcm_substream *substream,
 	unsigned int rate_reg = mt6885_rate_transform(afe->dev, rate, dai->id);
 	unsigned int pcm_con = 0;
 
-	dev_info(afe->dev, "%s(), id %d, stream %d, rate %d, rate_reg %d, widget active p %d, c %d\n",
+	dev_info(afe->dev, "%s(), id %d, stream %d, rate %d, rate_reg %d, widget active %d\n",
 		 __func__,
 		 dai->id,
 		 substream->stream,
 		 rate,
 		 rate_reg,
-		 dai->playback_widget->active,
-		 dai->capture_widget->active);
+		 dai->stream[substream->stream].widget->active);
 
-	if (dai->playback_widget->active || dai->capture_widget->active)
+	if (dai->stream[substream->stream].widget->active)
 		return 0;
 
 	switch (dai->id) {
@@ -340,7 +339,6 @@ static const struct snd_soc_dai_ops mtk_dai_pcm_ops = {
 			 SNDRV_PCM_FMTBIT_S24_LE |\
 			 SNDRV_PCM_FMTBIT_S32_LE)
 
-
 static struct snd_soc_dai_driver mtk_dai_pcm_driver[] = {
 	{
 		.name = "PCM 1",
@@ -360,8 +358,8 @@ static struct snd_soc_dai_driver mtk_dai_pcm_driver[] = {
 			.formats = MTK_PCM_FORMATS,
 		},
 		.ops = &mtk_dai_pcm_ops,
-		.symmetric_rates = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_rate = 1,
+		.symmetric_sample_bits = 1,
 	},
 	{
 		.name = "PCM 2",
@@ -381,8 +379,8 @@ static struct snd_soc_dai_driver mtk_dai_pcm_driver[] = {
 			.formats = MTK_PCM_FORMATS,
 		},
 		.ops = &mtk_dai_pcm_ops,
-		.symmetric_rates = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_rate = 1,
+		.symmetric_sample_bits = 1,
 	},
 };
 

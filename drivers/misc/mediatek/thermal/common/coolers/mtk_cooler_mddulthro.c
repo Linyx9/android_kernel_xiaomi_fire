@@ -76,7 +76,6 @@ static void mtk_cl_mddulthro_set_mddulthro_limit(void)
 
 	if (min_limit != cl_mddulthro_cur_limit) {
 		cl_mddulthro_cur_limit = min_limit;
-#if 1
 		if (cl_mddulthro_cur_limit <= 0) {
 			int ret = amddulthro_backoff(0);
 
@@ -90,7 +89,6 @@ static void mtk_cl_mddulthro_set_mddulthro_limit(void)
 					"%s() ret %d limit=%d\n", __func__,
 					cl_mddulthro_cur_limit);
 		}
-#endif
 	}
 }
 

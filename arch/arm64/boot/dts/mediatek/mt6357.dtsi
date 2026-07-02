@@ -5,29 +5,6 @@
 #include <dt-bindings/iio/mt635x-auxadc.h>
 
 &main_pmic {
-	pmic_accdet: pmic_accdet {
-		compatible = "mediatek,mt6357-accdet";
-		accdet-name = "mt63xx-accdet";
-		accdet-mic-vol = <6>;
-		accdet-plugout-debounce = <1>;
-		accdet-mic-mode = <1>;
-		headset-mode-setting = <0x500 0x500 1 0x1f0
-					0x800 0x800 0x20 0x44>;
-		headset-eint-level-pol = <8>;
-		headset-use-ap-eint = <0>;
-		headset-eint-num = <0>;
-		headset-eint-trig-mode = <0>;
-		headset-key-mode = <0>;
-		headset-three-key-threshold = <0 80 220 400>;
-		headset-three-key-threshold-CDD = <0 121 192 600>;
-		headset-four-key-threshold = <0 58 121 192 400>;
-		io-channels = <&pmic_auxadc AUXADC_ACCDET>;
-		io-channel-names = "pmic_accdet";
-		nvmem = <&pmic_efuse>;
-		nvmem-names = "mt63xx-accdet-efuse";
-		status = "okay";
-	};
-
 	mt6357keys: mt6357keys {
 		compatible = "mediatek,mt6357-keys";
 		mediatek,long-press-mode = <1>;
@@ -43,9 +20,32 @@
 		};
 	};
 
+	accdet: accdet {
+		compatible = "mediatek,mt6357-accdet";
+		accdet-name = "mt6357-accdet";
+		/* accdet micbias voltage: 0x07,2.7v;0x05,2.5v;0x02,1.9v */
+		accdet-mic-vol = <6>;
+		headset-mode-setting = <0x500 0x500 1 0x1f0 0x800 0x800 0x20 0x44>;
+		accdet-plugout-debounce = <1>;
+		/*1:ACC mode, 2:low cost without in bias, 6:low cost with in bias*/
+		accdet-mic-mode = <1>;
+		/* eint_level_trigger: 8,LEVEL_LOW(DEF) ;4,LV_HIGH;others,LV_LOW */
+		headset-eint-level-pol = <8>;
+		/*0--MD_MAX--UP_MAX--DW_MAX*/
+		headset-three-key-threshold = <0 80 220 400>;
+		headset-three-key-threshold-CDD = <0 121 192 600>;
+		/*0--MD_MAX--VOICE_MAX--UP_MAX--DW_MAX*/
+		headset-four-key-threshold = <0 58 121 192 400>;
+		io-channels = <&pmic_auxadc AUXADC_ACCDET>;
+		io-channel-names = "pmic_accdet";
+		nvmem = <&pmic_efuse>;
+		nvmem-names = "mt63xx-accdet-efuse";
+		status = "okay";
+	};
+
 	pmic_auxadc: pmic_auxadc {
 		compatible = "mediatek,pmic-auxadc",
-			     "mediatek,mt6357-auxadc";
+			"mediatek,mt6357-auxadc";
 		#io-channel-cells = <1>;
 		#interconnect-cells = <1>;
 		batadc {
@@ -103,24 +103,6 @@
 		};
 	};
 
-	mtk_gauge: mtk_gauge {
-		compatible = "mediatek,mt6357-gauge";
-		charger = <&mt6370_chg>;
-		bootmode = <&chosen>;
-		io-channels = <&pmic_auxadc AUXADC_BAT_TEMP>,
-				<&pmic_auxadc AUXADC_ISENSE>,
-				<&pmic_auxadc AUXADC_VBIF>,
-				<&pmic_auxadc AUXADC_IMP>,
-				<&pmic_auxadc AUXADC_IMIX_R>;
-		io-channel-names = "pmic_battery_temp",
-				"pmic_battery_voltage",
-				"pmic_bif_voltage",
-				"pmic_ptim_voltage",
-				"pmic_ptim_r";
-		nvmem-cells = <&fg_init>, <&fg_soc>;
-		nvmem-cell-names = "initialization", "state-of-charge";
-	};
-
 	mtk_charger_type: mtk_charger_type {
 		compatible = "mediatek,mt6357-charger-type";
 		io-channels = <&pmic_auxadc AUXADC_VCDT>;
@@ -169,11 +151,33 @@
 		interconnects = <&mtk_ts_pmic 1>;
 
 	};
-	pmic_efuse: pmic_efuse {
+	pmic_efuse: mt6357-efuse {
 		compatible = "mediatek,mt6357-efuse";
 		#address-cells = <1>;
 		#size-cells = <1>;
+		thermal_efuse_data1: e_data1 {
+			reg = <0x3e 12>;
+		};
 	};
+
+	mt6357_ts_buck1: mt6357_ts_buck1 {
+				compatible = "mediatek,mt6357_ts_buck1";
+				io-channels =
+					<&pmic_auxadc AUXADC_VCORE_TEMP>;
+				io-channel-names =
+					"pmic_buck1_temp";
+				interconnects = <&mtk_ts_pmic 1>;
+	};
+
+	mt6357ts_buck2: mt6357_ts_buck2 {
+				compatible = "mediatek,mt6357_ts_buck2";
+				io-channels =
+					<&pmic_auxadc AUXADC_VPROC_TEMP>;
+				io-channel-names =
+					"pmic_buck2_temp";
+				interconnects = <&mtk_ts_pmic 1>;
+	};
+
 
 	mt6357regulator: mt6357regulator {
 		compatible = "mediatek,mt6357-regulator";
@@ -378,6 +382,28 @@
 		};
 	};
 
+	mt6357_clkbuf: mt6357-clkbuf {
+		compatible = "mediatek,mt6357-clkbuf";
+		XO-SOC {
+			xo-id = <0>;
+		};
+		XO-WCN {
+			xo-id = <1>;
+		};
+		XO-NFC {
+			xo-id = <2>;
+		};
+		XO-CEL {
+			xo-id = <3>;
+		};
+		XO-RSV2 {
+			xo-id = <5>;
+		};
+		XO-EXT {
+			xo-id = <6>;
+		};
+	};
+
 	mtk_dynamic_loading_throttling {
 		compatible = "mediatek,mt6357-dynamic_loading_throttling";
 		mediatek,charger = <&charger>;
@@ -450,55 +476,8 @@
 		use_ul_260k = <0>; /* select 1: use, 0: not use */
 	};
 
-
-	clock_buffer_ctrl: clock_buffer_ctrl {
-		compatible = "mediatek,clock_buffer";
-		n-clkbuf-pmic-dependent = <10>;
-		clkbuf-pmic-dependent = "pmic-drvcurr",
-					"pmic-auxout-sel",
-					"pmic-auxout-xo",
-					"pmic-auxout-drvcurr",
-					"pmic-auxout-bblpm-en",
-					"pmic-cofst-fpm",
-					"pmic-cdac-fpm",
-					"pmic-core-idac-fpm",
-					"pmic-aac-fpm-swen",
-					"pmic-heater-sel";
-
-		pmic-dcxo-cw = <0x788>;
-		pmic-xo-mode = <0x788 0 0x788 3 0x788 6 0x788 9
-			0xffff 0xffff 0x7a2 8 0x7a2 11>;
-		pmic-xo-en = <0x788 2 0x788 5 0x788 8 0x788 11
-			0xffff 0xffff 0x7a2 10 0x7a2 13>;
-		pmic-bblpm-sw = <0x788 12>;
-		pmic-srclkeni3 = <0x44a 0>;
-
-		n-pmic-drvcurr = <7>;
-		pmic-drvcurr = <0x7b0 0 0x7b0 2 0x7b0 4 0x7b0 6
-			0xffff 0xffff 0x7b0 10 0x7b0 12>;
-		n-pmic-auxout-sel = <6>;
-		pmic-auxout-sel = <0x7b4 0 0x7b4 5 0x7b4 6 0x7b4 7
-			0x7b4 6 0x7b4 24>;
-		n-pmic-auxout-xo = <7>;
-		pmic-auxout-xo = <0x7b6 0 0x7b6 6 0x7b6 0 0x7b6 6
-			0xffff 0xffff 0x7b6 6 0x7b6 12>;
-		n-pmic-auxout-drvcurr = <7>;
-		pmic-auxout-drvcurr = <0x7b6 1 0x7b6 7 0x7b6 1
-			0x7b6 7 0xffff 0xffff 0x7b6 1 0x7b6 12>;
-		n-pmic-auxout-bblpm-en = <1>;
-		pmic-auxout-bblpm-en = <0x7b6 0>;
-
-		n-pmic-cofst-fpm = <1>;
-		pmic-cofst-fpm = <0x796 14>;
-		n-pmic-cdac-fpm = <1>;
-		pmic-cdac-fpm = <0x794 0>;
-		n-pmic-core-idac-fpm = <1>;
-		pmic-core-idac-fpm = <0x79a 14>;
-		n-pmic-aac-fpm-swen = <1>;
-		pmic-aac-fpm-swen = <0x79e 14>;
-		n-pmic-heater-sel = <1>;
-		pmic-heater-sel = <0x7b8 1>;
+	mt6357_consys: mt6357_consys {
+		compatible = "mediatek,mt6357-consys";
 	};
-
 };
 

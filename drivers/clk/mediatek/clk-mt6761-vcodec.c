@@ -13,13 +13,6 @@
 
 #include <dt-bindings/clock/mt6761-clk.h>
 
-/* Regular Number Definition */
-#define INV_OFS			-1
-#define INV_BIT			-1
-
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status pwr_stat = GATE_PWR_STAT(0x180, 0x184, INV_OFS, BIT(26), BIT(26));
-
 static const struct mtk_gate_regs venc_cg_regs = {
 	.set_ofs = 0x4,
 	.clr_ofs = 0x8,
@@ -33,8 +26,7 @@ static const struct mtk_gate_regs venc_cg_regs = {
 		.regs = &venc_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr_inv,	\
-		.pwr_stat = &pwr_stat,			\
-	}
+}
 
 static const struct mtk_gate venc_clks[] = {
 	GATE_VENC(CLK_VENC_SET0_LARB, "venc_set0_larb", "mm_ck", 0),
@@ -90,3 +82,4 @@ static void __exit clk_mt6761_vcodec_exit(void)
 postcore_initcall(clk_mt6761_vcodec_init);
 module_exit(clk_mt6761_vcodec_exit);
 MODULE_LICENSE("GPL");
+

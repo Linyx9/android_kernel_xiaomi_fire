@@ -1,0 +1,8 @@
+
+config MTK_FLIP_HUB
+	bool "FLIP for MediaTek package"
+	help
+	  FLIP is a device,
+	  usually portable and electronic
+	  or electromechanical,
+	  that detect device is flipped.

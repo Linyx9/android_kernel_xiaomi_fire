@@ -53,7 +53,7 @@
 #include <linux/vmalloc.h>
 #include <linux/wait.h>
 
-#if defined(CONFIG_MTK_PASR)
+#if IS_ENABLED(CONFIG_MTK_PASR)
 #include <mt-plat/mtk_lpae.h>
 #else
 #define enable_4G() (false)
@@ -853,10 +853,11 @@ void SetChipModemPcmConfig(int modem_index,
 		Afe_Set_Reg(PCM_INTF_CON1, reg_pcm_intf_con1, MASK_ALL);
 	}
 }
+EXPORT_SYMBOL(SetChipModemPcmConfig);
 
 bool SetChipModemPcmEnable(int modem_index, bool modem_pcm_on)
 {
-	unsigned int mPcm1AsyncFifo;
+	unsigned int mPcm1AsyncFifo __maybe_unused;
 
 	pr_debug("+%s(), modem_index = %d, modem_pcm_on = %d\n", __func__,
 		 modem_index, modem_pcm_on);
@@ -887,6 +888,7 @@ bool SetChipModemPcmEnable(int modem_index, bool modem_pcm_on)
 
 	return true;
 }
+EXPORT_SYMBOL(SetChipModemPcmEnable);
 
 bool set_chip_sine_gen_sample_rate(unsigned int sample_rate)
 {
@@ -901,6 +903,7 @@ bool set_chip_sine_gen_sample_rate(unsigned int sample_rate)
 
 	return true;
 }
+EXPORT_SYMBOL(set_chip_sine_gen_sample_rate);
 
 bool set_chip_sine_gen_amplitude(unsigned int amp_divide)
 {
@@ -915,6 +918,7 @@ bool set_chip_sine_gen_amplitude(unsigned int amp_divide)
 	Afe_Set_Reg(AFE_SGEN_CON0, amp_divide << 5, 0x7 << 5);
 	return true;
 }
+EXPORT_SYMBOL(set_chip_sine_gen_amplitude);
 
 bool set_chip_afe_enable(bool enable)
 {
@@ -933,6 +937,7 @@ bool set_chip_afe_enable(bool enable)
 	}
 	return true;
 }
+EXPORT_SYMBOL(set_chip_afe_enable);
 
 bool set_chip_dai_bt_enable(bool enable, struct audio_digital_dai_bt *dai_bt,
 			    struct audio_mrg_if *mrg)
@@ -982,12 +987,14 @@ bool set_chip_dai_bt_enable(bool enable, struct audio_digital_dai_bt *dai_bt,
 	}
 	return true;
 }
+EXPORT_SYMBOL(set_chip_dai_bt_enable);
 
 bool set_chip_hw_digital_gain_mode(enum soc_aud_digital_block aud_block,
 				   unsigned int sample_rate,
 				   unsigned int sample_per_step)
 {
 	unsigned int value = 0;
+
 	value = (sample_per_step << 8) |
 		(SampleRateTransform(sample_rate, aud_block) << 4);
 
@@ -1003,6 +1010,7 @@ bool set_chip_hw_digital_gain_mode(enum soc_aud_digital_block aud_block,
 	}
 	return true;
 }
+EXPORT_SYMBOL(set_chip_hw_digital_gain_mode);
 
 bool set_chip_hw_digital_gain_enable(enum soc_aud_digital_block aud_block,
 				     bool enable)
@@ -1026,6 +1034,7 @@ bool set_chip_hw_digital_gain_enable(enum soc_aud_digital_block aud_block,
 	}
 	return true;
 }
+EXPORT_SYMBOL(set_chip_hw_digital_gain_enable);
 
 bool set_chip_hw_digital_gain(enum soc_aud_digital_block aud_block,
 			      unsigned int gain)
@@ -1043,6 +1052,7 @@ bool set_chip_hw_digital_gain(enum soc_aud_digital_block aud_block,
 	}
 	return true;
 }
+EXPORT_SYMBOL(set_chip_hw_digital_gain);
 
 bool set_chip_adda_enable(bool enable)
 {
@@ -1052,6 +1062,7 @@ bool set_chip_adda_enable(bool enable)
 		Afe_Set_Reg(AFE_ADDA_UL_DL_CON0, 0x0, 0x1);
 	return true;
 }
+EXPORT_SYMBOL(set_chip_adda_enable);
 
 bool set_chip_ul_src_enable(bool enable)
 {
@@ -1061,11 +1072,13 @@ bool set_chip_ul_src_enable(bool enable)
 		Afe_Set_Reg(AFE_ADDA_UL_SRC_CON0, 0x0, 0x1);
 	return true;
 }
+EXPORT_SYMBOL(set_chip_ul_src_enable);
 
 bool set_chip_ul2_src_enable(bool enable)
 {
 	return true;
 }
+EXPORT_SYMBOL(set_chip_ul2_src_enable);
 
 bool set_chip_dl_src_enable(bool enable)
 {
@@ -1075,6 +1088,7 @@ bool set_chip_dl_src_enable(bool enable)
 		Afe_Set_Reg(AFE_ADDA_DL_SRC2_CON0, 0x0, 0x1);
 	return true;
 }
+EXPORT_SYMBOL(set_chip_dl_src_enable);
 
 bool set_i2s_dac_out_source(unsigned int aud_block)
 {
@@ -1178,8 +1192,7 @@ bool EnableSideToneFilter(bool stf_on)
 				    old_write_ready) { /* flip => ok */
 					udelay(3);
 					if (try_cnt == 9) {
-						AUDIO_AEE(
-							"EnableSideToneFilter new_write_ready == old_write_ready");
+						AUDIO_AEE("new_write_ready == old_write_ready");
 						AudDrv_Clk_Off();
 						return false;
 					}
@@ -1195,6 +1208,7 @@ bool EnableSideToneFilter(bool stf_on)
 
 	return true;
 }
+EXPORT_SYMBOL(EnableSideToneFilter);
 
 void set_stf_gain(int gain)
 {
@@ -1202,6 +1216,7 @@ void set_stf_gain(int gain)
 	Afe_Set_Reg(AFE_SIDETONE_GAIN, gain, 0xffff);
 	AudDrv_Clk_Off();
 }
+EXPORT_SYMBOL(set_stf_gain);
 
 void set_stf_positive_gain_db(int gain_db)
 {
@@ -1213,6 +1228,7 @@ void set_stf_positive_gain_db(int gain_db)
 		pr_debug("%s(), gain_db %d invalid\n", __func__, gain_db);
 	}
 }
+EXPORT_SYMBOL(set_stf_positive_gain_db);
 
 bool CleanPreDistortion(void)
 {
@@ -1220,6 +1236,7 @@ bool CleanPreDistortion(void)
 	Afe_Set_Reg(AFE_ADDA_PREDIS_CON1, 0, MASK_ALL);
 	return false;
 }
+EXPORT_SYMBOL(CleanPreDistortion);
 
 static void set_adda_dl_src_gain(bool mute)
 {
@@ -1257,6 +1274,7 @@ bool SetDLSrc2(unsigned int rate)
 	SetSdmLevel(AUDIO_SDM_LEVEL_NORMAL);
 	return true;
 }
+EXPORT_SYMBOL(SetDLSrc2);
 
 unsigned int SampleRateTransformI2s(unsigned int SampleRate)
 {
@@ -1348,16 +1366,19 @@ bool set_chip_adc_in(unsigned int rate)
 
 	return true;
 }
+EXPORT_SYMBOL(set_chip_adc_in);
 
 bool set_chip_adc2_in(unsigned int rate)
 {
 	return true;
 }
+EXPORT_SYMBOL(set_chip_adc2_in);
 
 bool setChipDmicPath(bool _enable, unsigned int sample_rate)
 {
 	return true;
 }
+EXPORT_SYMBOL(setChipDmicPath);
 
 bool SetSampleRate(unsigned int Aud_block, unsigned int SampleRate)
 {
@@ -1389,6 +1410,7 @@ bool SetSampleRate(unsigned int Aud_block, unsigned int SampleRate)
 	}
 	return true;
 }
+EXPORT_SYMBOL(SetSampleRate);
 
 bool SetChannels(unsigned int Memory_Interface, unsigned int channel)
 {
@@ -1412,12 +1434,13 @@ bool SetChannels(unsigned int Memory_Interface, unsigned int channel)
 		SetMemDuplicateWrite(Memory_Interface, channel == 2 ? 1 : 0);
 		break;
 	default:
-		pr_debug("[AudioWarn] SetChannels  Memory_Interface = %d, channel = %d, bMono = %d\n",
-			 Memory_Interface, channel, bMono);
+		pr_debug("[AudioWarn] %s  Memory_Interface = %d, channel = %d, bMono = %d\n",
+			 __func__, Memory_Interface, channel, bMono);
 		return false;
 	}
 	return true;
 }
+EXPORT_SYMBOL(SetChannels);
 
 int SetMemifMonoSel(unsigned int Memory_Interface, bool mono_use_r_ch)
 {
@@ -1439,6 +1462,7 @@ int SetMemifMonoSel(unsigned int Memory_Interface, bool mono_use_r_ch)
 	}
 	return 0;
 }
+EXPORT_SYMBOL(SetMemifMonoSel);
 
 bool SetMemDuplicateWrite(unsigned int InterfaceType, int dupwrite)
 {
@@ -1475,12 +1499,14 @@ unsigned int GetEnableAudioBlockRegAddr(unsigned int Aud_block)
 	return GetEnableAudioBlockRegInfo(Aud_block,
 					  MEM_BLOCK_ENABLE_REG_INDEX_REG);
 }
+EXPORT_SYMBOL(GetEnableAudioBlockRegAddr);
 
 unsigned int GetEnableAudioBlockRegOffset(unsigned int Aud_block)
 {
 	return GetEnableAudioBlockRegInfo(Aud_block,
 					  MEM_BLOCK_ENABLE_REG_INDEX_OFFSET);
 }
+EXPORT_SYMBOL(GetEnableAudioBlockRegOffset);
 
 bool SetMemIfFormatReg(unsigned int InterfaceType, unsigned int eFetchFormat)
 {
@@ -1549,6 +1575,7 @@ bool SetMemIfFormatReg(unsigned int InterfaceType, unsigned int eFetchFormat)
 
 	return true;
 }
+EXPORT_SYMBOL(SetMemIfFormatReg);
 
 ssize_t AudDrv_Reg_Dump(char *buffer, int size)
 {
@@ -1890,7 +1917,7 @@ ssize_t AudDrv_Reg_Dump(char *buffer, int size)
 		       Afe_Get_Reg(PCM2_INTF_CON));
 	n += scnprintf(buffer + n, size - n, "AFE_CONN34 = 0x%x\n",
 		       Afe_Get_Reg(AFE_CONN34));
-#ifdef CONFIG_FPGA_EARLY_PORTING
+#if IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 	n += scnprintf(buffer + n, size - n, "FPGA_CFG0 = 0x%x\n",
 		       Afe_Get_Reg(FPGA_CFG0));
 	n += scnprintf(buffer + n, size - n, "FPGA_CFG1 = 0x%x\n",
@@ -2171,6 +2198,7 @@ ssize_t AudDrv_Reg_Dump(char *buffer, int size)
 		       GetApmixedCfg(AP_PLL_CON3));
 	return n;
 }
+EXPORT_SYMBOL(AudDrv_Reg_Dump);
 
 bool SetFmI2sConnection(unsigned int ConnectionState)
 {
@@ -2184,6 +2212,7 @@ bool SetFmI2sConnection(unsigned int ConnectionState)
 			  Soc_Aud_AFE_IO_Block_I2S3);
 	return true;
 }
+EXPORT_SYMBOL(SetFmI2sConnection);
 
 bool SetFmAwbConnection(unsigned int ConnectionState)
 {
@@ -2191,54 +2220,64 @@ bool SetFmAwbConnection(unsigned int ConnectionState)
 			  Soc_Aud_AFE_IO_Block_MEM_VUL2);
 	return true;
 }
+EXPORT_SYMBOL(SetFmAwbConnection);
 
 int SetFmI2sInEnable(bool enable)
 {
 	return setConnsysI2SInEnable(enable);
 }
+EXPORT_SYMBOL(SetFmI2sInEnable);
 
 int SetFmI2sIn(struct audio_digital_i2s *mDigitalI2S)
 {
 	return setConnsysI2SIn(mDigitalI2S);
 }
+EXPORT_SYMBOL(SetFmI2sIn);
 
 bool GetFmI2sInPathEnable(void)
 {
 	return GetMemoryPathEnable(Soc_Aud_Digital_Block_I2S_IN_CONNSYS);
 }
+EXPORT_SYMBOL(GetFmI2sInPathEnable);
 
 bool SetFmI2sInPathEnable(bool bEnable)
 {
 	return SetMemoryPathEnable(Soc_Aud_Digital_Block_I2S_IN_CONNSYS,
 				   bEnable);
 }
+EXPORT_SYMBOL(SetFmI2sInPathEnable);
 
 int SetFmI2sAsrcEnable(bool enable)
 {
 	return setConnsysI2SEnable(enable);
 }
+EXPORT_SYMBOL(SetFmI2sAsrcEnable);
 
 int SetFmI2sAsrcConfig(bool bIsUseASRC, unsigned int dToSampleRate)
 {
 	return setConnsysI2SAsrc(bIsUseASRC, dToSampleRate);
 }
+EXPORT_SYMBOL(SetFmI2sAsrcConfig);
 
 bool SetAncRecordReg(unsigned int value, unsigned int mask)
 {
 	return false;
 }
+EXPORT_SYMBOL(SetAncRecordReg);
 
 const struct Aud_IRQ_CTRL_REG *
 	GetIRQCtrlReg(enum Soc_Aud_IRQ_MCU_MODE irqIndex)
 {
 	return &mIRQCtrlRegs[irqIndex];
 }
+EXPORT_SYMBOL(GetIRQCtrlReg);
 
 const struct Aud_RegBitsInfo *
 	GetIRQPurposeReg(enum Soc_Aud_IRQ_PURPOSE irqPurpose)
 {
 	return &mIRQPurposeRegs[irqPurpose];
 }
+EXPORT_SYMBOL(GetIRQPurposeReg);
 
 const unsigned int GetBufferCtrlReg(enum soc_aud_afe_io_block memif_type,
 				    enum aud_buffer_ctrl_info buffer_ctrl)
@@ -2249,6 +2288,7 @@ const unsigned int GetBufferCtrlReg(enum soc_aud_afe_io_block memif_type,
 
 	return afe_buffer_regs[memif_type][buffer_ctrl];
 }
+EXPORT_SYMBOL(GetBufferCtrlReg);
 
 /*Irq handler function array*/
 static void Aud_IRQ1_Handler(void)
@@ -2300,6 +2340,7 @@ void RunIRQHandler(enum Soc_Aud_IRQ_MCU_MODE irqIndex)
 	else
 		pr_debug("%s(), Aud_IRQ%d_Handler is Null", __func__, irqIndex);
 }
+EXPORT_SYMBOL(RunIRQHandler);
 
 enum Soc_Aud_IRQ_MCU_MODE
 irq_request_number(enum soc_aud_digital_block mem_block)
@@ -2323,6 +2364,7 @@ irq_request_number(enum soc_aud_digital_block mem_block)
 		return Soc_Aud_IRQ_MCU_MODE_IRQ1_MCU_MODE;
 	}
 }
+EXPORT_SYMBOL(irq_request_number);
 
 bool IsNeedToSetHighAddr(bool usingdram, dma_addr_t addr)
 {
@@ -2335,6 +2377,7 @@ bool SetHighAddr(enum soc_aud_digital_block MemBlock, bool usingdram,
 	/* TODO: need check how Vinson support 34 bit */
 	return true;
 }
+EXPORT_SYMBOL(SetHighAddr);
 
 int get_usage_digital_block(enum audio_usage_id id)
 {
@@ -2352,6 +2395,7 @@ int get_usage_digital_block(enum audio_usage_id id)
 		return -EINVAL;
 	};
 }
+EXPORT_SYMBOL(get_usage_digital_block);
 
 int get_usage_digital_block_io(enum audio_usage_id id)
 {
@@ -2367,6 +2411,7 @@ int get_usage_digital_block_io(enum audio_usage_id id)
 		return -EINVAL;
 	};
 }
+EXPORT_SYMBOL(get_usage_digital_block_io);
 
 void SetSdmLevel(unsigned int level)
 {
@@ -2377,6 +2422,7 @@ enum audio_sram_mode get_prefer_sram_mode(void)
 {
 	return audio_sram_compact_mode;
 }
+EXPORT_SYMBOL(get_prefer_sram_mode);
 
 int set_sram_mode(enum audio_sram_mode sram_mode)
 {
@@ -2393,6 +2439,7 @@ int set_sram_mode(enum audio_sram_mode sram_mode)
 	}
 	return 0;
 }
+EXPORT_SYMBOL(set_sram_mode);
 /* mtk_codec_ops */
 static int enable_dc_compensation(bool enable)
 {
@@ -2507,6 +2554,7 @@ bool set_chip_sine_gen_enable(unsigned int connection, bool direction,
 			break;
 		case Soc_Aud_InterConnectionInput_I09:
 			Afe_Set_Reg(AFE_SGEN_CON2, 0x5, 0x3f);
+			break;
 		case Soc_Aud_InterConnectionInput_I10:
 		case Soc_Aud_InterConnectionInput_I11:
 			Afe_Set_Reg(AFE_SGEN_CON2, 0x6, 0x3f);
@@ -2649,7 +2697,7 @@ static struct mtk_afe_platform_ops afe_platform_ops = {
 	.set_sinegen = set_chip_sine_gen_enable,
 };
 
-/* plaform dependent ops should implement here*/
+/* platform dependent ops should implement here*/
 void init_afe_ops(void)
 {
 	/* init all afe ops here */
@@ -2657,3 +2705,6 @@ void init_afe_ops(void)
 	set_afe_platform_ops(&afe_platform_ops);
 	set_codec_ops(&mtk_codec_platform_ops);
 }
+EXPORT_SYMBOL(init_afe_ops);
+
+MODULE_LICENSE("GPL");

@@ -1,0 +1,23 @@
+ifdef CONFIG_OEM_TCPC_SGM7220
+	obj-y += sgm7220/
+endif
+
+ifdef CONFIG_OEM_TCPC_HUSB320
+	obj-y += husb320/
+endif
+
+ifdef CONFIG_OEM_TCPC_PD_AW35615
+	obj-y += aw35615/
+endif
+
+ifdef CONFIG_OEM_TCPC_AW35616
+	obj-y += aw35616/
+endif
+
+ifdef CONFIG_OEM_TCPC_PD_SC2150
+	obj-y += sc2150/
+endif
+
+ifdef CONFIG_OEM_TCPC_PD_CPS8851
+	obj-y += cps8851/
+endif

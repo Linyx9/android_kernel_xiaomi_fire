@@ -17,6 +17,9 @@
 #define MDDP_ABNORMAL_CCCI_SEND_FAILED                      (1U << 0)
 #define MDDP_ABNORMAL_CHECK_FEATURE_ABSENT                  (1U << 1)
 #define MDDP_ABNORMAL_WIFI_DRV_GET_FEATURE_BEFORE_MD_READY  (1U << 2)
+#define MDFPM_TTY_BUF_SZ 256
+#define MDFPM_SEND_LOG_HEADER 3
+#define MDFPM_SEND_LOG_BUF_SZ (MDFPM_TTY_BUF_SZ - MDFPM_SEND_LOG_HEADER)
 //------------------------------------------------------------------------------
 // Struct definition.
 // -----------------------------------------------------------------------------
@@ -30,7 +33,6 @@ enum mddp_event_e {
 	MDDP_EVT_FUNC_DEACT,  /**< Deactivate MDDP. */
 
 	MDDP_EVT_MD_RSP_OK,  /**< MD Response OK. */
-	MDDP_EVT_MD_RSP_FAIL,  /**< MD Response FAIL. */
 	MDDP_EVT_MD_RSP_TIMEOUT,  /**<MD Response timeout. */
 
 	MDDP_EVT_MD_RESET,  /**<MD send RESET. */
@@ -40,8 +42,6 @@ enum mddp_event_e {
 };
 
 enum mddp_sysfs_cmd_e {
-	MDDP_SYSFS_CMD_ENABLE_READ,  /* User read ENABLE sysfs */
-	MDDP_SYSFS_CMD_ENABLE_WRITE,  /* User write ENABLE sysfs */
 	MDDP_SYSFS_CMD_STATISTIC_READ,  /* User read STATISTIC sysfs */
 
 #ifdef MDDP_EM_SUPPORT
@@ -100,7 +100,8 @@ struct mddp_app_t {
 
 	struct mddp_sm_entry_t     *state_machines[MDDP_STATE_CNT];
 	uint32_t                    drv_reg;
-	atomic_t                    feature;
+	uint32_t                    feature;
+	struct mddp_feature         mddp_feat;
 	uint32_t                    abnormal_flags;
 	uint32_t                    reset_cnt;
 	struct completion           md_resp_comp;
@@ -130,6 +131,7 @@ static const MDDP_MOD_TYPE mddp_sm_module_list_s[] = {
 // -----------------------------------------------------------------------------
 int32_t mddpu_sm_init(struct mddp_app_t *app);
 int32_t mddpwh_sm_init(struct mddp_app_t *app);
+void mddpw_notify_wlan_mdinfo(void);
 
 //------------------------------------------------------------------------------
 // Public functions.
@@ -149,6 +151,7 @@ void mddp_sm_wait_pre(struct mddp_app_t *app);
 void mddp_sm_wait(struct mddp_app_t *app, enum mddp_event_e event);
 
 void mddp_check_feature(void);
+bool mddp_check_subfeature(int type, int feat);
 
 int32_t mddp_sm_msg_hdlr(uint32_t user_id,
 		uint32_t msg_id, void *buf, uint32_t buf_len);
@@ -159,4 +162,30 @@ void mddp_sm_dereg_callback(
 	struct mddp_drv_conf_t *conf,
 	struct mddp_drv_handle_t *handle);
 void mddp_netdev_notifier_exit(void);
+
+struct mdfpm_log {
+	uint16_t action_id;
+	uint8_t buffer_len;
+	uint8_t buf[MDFPM_SEND_LOG_BUF_SZ];
+};
+
+enum mdfpm_log_action_id {
+	MDFPM_LOG_NONE,
+	MDFPM_LOG_MDDP_WH_RUN,
+	MDFPM_LOG_MDDP_WH_STOP,
+	MDFPM_LOG_MDDP_EM_TEST,
+	MDFPM_LOG_MDDP_WH_LOCK_MD,
+	MDFPM_LOG_MDDP_WH_RM_BY_REQ,
+	MDFPM_LOG_MDDP_WH_RM_BY_ASSIGN,
+	MDFPM_LOG_MDDP_WH_RM_BY_SCORE,
+	MDFPM_LOG_MD_ADD_FILTER_V4,
+	MDFPM_LOG_MD_DEL_FILTER_V4,
+	MDFPM_LOG_CS_ADD_FILTER_V4,
+	MDFPM_LOG_CS_DEL_FILTER_V4,
+	MDFPM_LOG_MD_ADD_FILTER_V6,
+	MDFPM_LOG_MD_DEL_FILTER_V6,
+	MDFPM_LOG_CS_ADD_FILTER_V6,
+	MDFPM_LOG_CS_DEL_FILTER_V6,
+	MDFPM_LOG_NUM,
+};
 #endif /* __MDDP_SM_H */

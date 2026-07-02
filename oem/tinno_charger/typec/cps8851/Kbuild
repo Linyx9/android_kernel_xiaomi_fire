@@ -1,0 +1,6 @@
+ifdef CONFIG_OEM_TCPC_PD_CPS8851
+	TCPC_CPS8851_OBJS += tcpc_cps8851.o
+endif
+
+obj-$(CONFIG_OEM_TCPC_PD_CPS8851) += cps8851.o
+cps8851-y := $(TCPC_CPS8851_OBJS)

@@ -3,23 +3,9 @@
  * Copyright (c) 2019 MediaTek Inc.
  */
 
-/*****************************************************************************
- *
- * Filename:
- * ---------
- *     IMX586mipi_Sensor.h
- *
- * Project:
- * --------
- *     ALPS
- *
- * Description:
- * ------------
- *     CMOS sensor header file
- *
- ****************************************************************************/
 #ifndef _IMX586MIPI_SENSOR_H
 #define _IMX586MIPI_SENSOR_H
+#include "imgsensor_sensor.h"
 
 
 enum IMGSENSOR_MODE {
@@ -91,12 +77,13 @@ struct imgsensor_struct {
 
 	kal_uint16 current_fps; /* current max fps */
 	kal_bool autoflicker_en; /* record autoflicker enable or disable */
-	kal_uint32 test_pattern; /* record test pattern mode or not */
+	kal_bool test_pattern; /* record test pattern mode or not */
 	enum MSDK_SCENARIO_ID_ENUM current_scenario_id;
 	kal_bool ihdr_en; /* ihdr enable or disable */
 	kal_uint8 ihdr_mode; /* ihdr enable or disable */
 	kal_uint8 pdaf_mode; /* ihdr enable or disable */
 	kal_uint8 i2c_write_id; /* record current sensor's i2c write id */
+	struct SENSOR_FUNCTION_STRUCT *psensor_func;
 };
 
 /* SENSOR PRIVATE STRUCT FOR CONSTANT*/

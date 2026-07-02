@@ -9,8 +9,11 @@
 #include <linux/types.h>
 
 enum SCPCTL_TYPE_E {
-	SCPCTL_TYPE_TMON,
-	SCPCTL_STRESS_TEST,
+	SCPCTL_TYPE_TMON		= 0x0,
+	SCPCTL_STRESS_TEST		= 0x1,
+	SCPCTL_DEBUG_LOGIN		= 0x2,
+	SCPCTL_THERMAL_EVENT	= 0x3,
+	NUM_SCPCTL_CMD,
 };
 
 enum SCPCTL_OP_E {
@@ -24,7 +27,8 @@ struct scpctl_cmd_s {
 };
 
 extern struct device_attribute dev_attr_scpctl;
-
+extern bool scp_need_aed_dump;
+extern bool scp_reset_stress;
 #endif /* __SCP_SCPCTL_H__ */
 
 

@@ -38,16 +38,12 @@ static int trip_temp[10] = {
 		125000, 110000, 100000, 90000, 80000,
 		70000, 65000, 60000, 55000, 50000 };
 
-#if 1
 static unsigned int cl_dev_sysrst_state;
-#endif
 static struct thermal_zone_device *thz_dev;
 
-#if 1
 static struct thermal_cooling_device *cl_dev_sysrst;
 /* static struct thermal_cooling_device *cl_dev_6311= NULL;; */
 
-#endif
 static int mtkts6311_debug_log;
 static int kernelmode;
 
@@ -289,7 +285,6 @@ static struct thermal_zone_device_ops mtkts6311_dev_ops = {
 	.get_crit_temp = mtkts6311_get_crit_temp,
 };
 
-#if 1
 
 
 static int ts6311_sysrst_get_max_state(
@@ -325,7 +320,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 	}
 	return 0;
 }
@@ -349,7 +344,6 @@ int mtkts6311_register_cooler(void)
 	return 0;
 }
 
-#endif
 
 static int mtkts6311_read(struct seq_file *m, void *v)
 {
@@ -453,7 +447,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		mtkts6311_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtkts6311_write",
 					"Bad argument");
@@ -556,7 +550,6 @@ static int mtkts6311_register_thermal(void)
 	return 0;
 }
 
-#if 1
 void mtkts6311_unregister_cooler(void)
 {
 	if (cl_dev_sysrst) {
@@ -564,7 +557,6 @@ void mtkts6311_unregister_cooler(void)
 		cl_dev_sysrst = NULL;
 	}
 }
-#endif
 
 static void mtkts6311_unregister_thermal(void)
 {
@@ -575,69 +567,6 @@ static void mtkts6311_unregister_thermal(void)
 		thz_dev = NULL;
 	}
 }
-
-#if 0
-static int mtkts63116333_thermal_zone_handler(void)
-{
-	int temp = 0;
-
-	mtkts6311_dprintk(
-		"[%s] ,tempsetting_count=0x%x\n", __func__,
-		tempsetting_count);
-
-	mt6333_6311_int = get_thermal_mt6333_6311_int_status();
-
-	if (mt6333_6311_int == 1) {	/* receive thermal 6311 INT */
-		tempsetting_count--;
-		if (tempsetting_count <= 0) {
-			tempsetting_count = 0;
-			pr_debug("6333 temp is over 140 degree\n");
-		}
-
-		set_thermal_mt6333_6311_int_status(0);
-		/* increase temperature */
-		mt6333_set_rg_strup_ther_rg_th((
-			pmic6333_temp_map[tempsetting_count].regsetting));
-
-		mtkts6311_dprintk(
-		"increase change INT threshold to tempsetting_count=%d\n",
-				  tempsetting_count);
-	} else {
-		tempsetting_count++;
-		if (tempsetting_count >= PMIC6333_INT_TEMP_CUNT) {
-			/* 65 degree */
-			tempsetting_count = PMIC6333_INT_TEMP_CUNT;
-			mtkts6311_dprintk("6333 temp is below 65 degree\n");
-		}
-		/* decrease temperature */
-		mt6333_set_rg_strup_ther_rg_th((
-			pmic6333_temp_map[tempsetting_count].regsetting));
-
-		mtkts6311_dprintk(
-			"decrease change INT threshold to tempsetting_count=%d\n",
-			tempsetting_count);
-	}
-
-	mtkts6311_dprintk("decrease pmic6333_temp_map[%d].regsetting=0x%x\n",
-			tempsetting_count,
-			pmic6333_temp_map[tempsetting_count].regsetting);
-
-	mtkts6311_dprintk("decrease pmic6333_temp_map[%d].Temperature=%d\n",
-			tempsetting_count,
-			pmic6333_temp_map[tempsetting_count].Temperature);
-
-	temp = pmic6333_temp_map[tempsetting_count].Temperature;
-
-	if (temp >= 70)		/* printing high temperature */
-		pr_debug("[Power/6311_Thermal] Buck 6333 T=%d\n", temp);
-
-
-	mtkts6311_dprintk("mt6333_6311_int=%d\n", mt6333_6311_int);
-
-	return temp * 1000;
-
-}
-#endif
 
 static void mtktspmic6311_thermal_zone_init(void)
 {
@@ -728,3 +657,7 @@ static void __exit mtkts6311_exit(void)
 }
 late_initcall(mtkts6311_init);
 module_exit(mtkts6311_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");
+
+

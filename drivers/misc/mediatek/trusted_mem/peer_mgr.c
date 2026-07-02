@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -46,7 +45,7 @@ static bool is_session_ready(struct trusted_peer_session *sess_data)
 }
 
 static int peer_mgr_chunk_alloc_locked(
-	u32 alignment, u32 size, u32 *refcount, u32 *sec_handle, u8 *owner,
+	u32 alignment, u32 size, u32 *refcount, u64 *sec_handle, u8 *owner,
 	u32 id, u32 clean, struct trusted_driver_operations *drv_ops,
 	struct trusted_peer_session *sess_data, void *dev_desc)
 {
@@ -63,7 +62,7 @@ static int peer_mgr_chunk_alloc_locked(
 	ret = drv_ops->memory_alloc(alignment, size, refcount, sec_handle,
 				    owner, id, clean, sess_data->peer_data,
 				    dev_desc);
-	if (ret != 0) {
+	if (ret) {
 		pr_err("peer alloc size: 0x%x failed:%d\n", size, ret);
 		MGR_SESSION_UNLOCK();
 		if (ret == -ENOMEM)
@@ -78,7 +77,7 @@ static int peer_mgr_chunk_alloc_locked(
 	return TMEM_OK;
 }
 
-static int peer_mgr_chunk_free_locked(u32 sec_handle, uint8_t *owner, u32 id,
+static int peer_mgr_chunk_free_locked(u64 sec_handle, uint8_t *owner, u32 id,
 				      struct trusted_driver_operations *drv_ops,
 				      struct trusted_peer_session *sess_data,
 				      void *dev_desc)
@@ -95,7 +94,7 @@ static int peer_mgr_chunk_free_locked(u32 sec_handle, uint8_t *owner, u32 id,
 
 	ret = drv_ops->memory_free(sec_handle, owner, id, sess_data->peer_data,
 				   dev_desc);
-	if (ret != 0) {
+	if (ret) {
 		pr_err("peer free chunk memory failed:%d\n", ret);
 		MGR_SESSION_UNLOCK();
 		return TMEM_MGR_FREE_MEM_FAILED;

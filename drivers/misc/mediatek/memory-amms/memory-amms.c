@@ -52,83 +52,18 @@
 
 #include <linux/kernel.h>
 #include <linux/delay.h>
-#define CREATE_TRACE_POINTS
-#include <trace/events/mtk_amms.h>
 #include "memory-amms.h"
 
 #define AMMS_PENDING_DRDI_FREE_BIT (1<<0)
 
-static struct task_struct *amms_task;
-bool amms_static_free;
+#ifdef CONFIG_OF
 static const struct of_device_id amms_of_ids[] = {
 	{ .compatible = "mediatek,amms", },
 	{}
 };
-static unsigned int amms_irq_count;
-
-//static int amms_bind_cpu = -1;
-static struct device *amms_dev;
-static int amms_irq_num;
-
-unsigned long long amms_seq_id;
-
-#if CONFIG_SYSFS
-
-module_param(amms_irq_count, uint, 0644);
-
-static ssize_t amms_version_show(struct module_attribute *attr,
-		struct module_kobject *kobj, char *buf)
-{
-	return snprintf(buf, 5, "%s\n", "1.0");
-}
-
-
-static struct module_attribute amms_version_attribute =
-	__ATTR(amms_version, 0600, amms_version_show, NULL);
-
-static struct attribute *attrs[] = {
-	&amms_version_attribute.attr,
-	NULL,
-};
-
-static struct attribute_group attr_group = {
-	.attrs = attrs,
-};
-
-static int __init amms_sysfs_init(void)
-{
-	struct kobject *kobj;
-
-	kobj = kset_find_obj(module_kset, KBUILD_MODNAME);
-	if (kobj) {
-		if (sysfs_create_group(kobj, &attr_group)) {
-			pr_notice("AMMS: sysfs create sysfs failed\n");
-			return -ENOMEM;
-		}
-	} else {
-		pr_notice("AMMS: Cannot find module %s object\n",
-				KBUILD_MODNAME);
-		return -EINVAL;
-	}
-
-	pr_debug("%s: done.\n", __func__);
-	return 0;
-}
-
 #endif
 
-
-static irqreturn_t amms_irq_handler(int irq, void *dev_id)
-{
-	trace_amms_event_receive_irq(amms_seq_id);
-	if (amms_task) {
-		disable_irq_nosync(irq);
-		wake_up_process(amms_task);
-	} else
-		pr_info("%s:amms_task is null\n", __func__);
-	amms_irq_count++;
-	return IRQ_HANDLED;
-}
+static bool amms_static_free;
 
 int free_reserved_memory(phys_addr_t start_phys,
 				phys_addr_t end_phys)
@@ -139,18 +74,10 @@ int free_reserved_memory(phys_addr_t start_phys,
 
 	if (end_phys <= start_phys) {
 
-		pr_notice("%s end_phys is smaller than start_phys start_phys:%pa end_phys:%pa\n"
+		pr_notice("%s end_phys is smaller than start_phys start_phys:0x%pa end_phys:0x%pa\n"
 			, __func__, &start_phys, &end_phys);
 		return -1;
 	}
-
-	if (!memblock_is_region_reserved(start_phys, end_phys - start_phys)) {
-		pr_notice("%s:not reserved memory phys_start:%pa phys_end:%pa\n"
-			, __func__, &start_phys, &end_phys);
-		return -1;
-	}
-
-	memblock_free(start_phys, (end_phys - start_phys));
 
 	for (pos = start_phys; pos < end_phys; pos += PAGE_SIZE, pages++)
 		free_reserved_page(phys_to_page(pos));
@@ -163,47 +90,57 @@ int free_reserved_memory(phys_addr_t start_phys,
 	return 0;
 }
 
-void amms_handle_event(void)
+static irqreturn_t amms_legacy_handler(int irq, void *data)
+{
+	phys_addr_t addr = 0, length = 0;
+	struct arm_smccc_res res;
+
+	if (!amms_static_free) {
+		arm_smccc_smc(MTK_SIP_KERNEL_AMMS_GET_FREE_ADDR,
+		0, 0, 0, 0, 0, 0, 0, &res);
+		addr = res.a0;
+		arm_smccc_smc(
+		MTK_SIP_KERNEL_AMMS_GET_FREE_LENGTH,
+		0, 0, 0, 0, 0, 0, 0, &res);
+		length = res.a0;
+		if (pfn_valid(__phys_to_pfn(addr))
+			&& pfn_valid(__phys_to_pfn(
+			addr + length - 1))) {
+			pr_info("%s:addr=%pa length=%pa\n", __func__,
+			&addr, &length);
+			free_reserved_memory(addr, addr+length);
+			amms_static_free = true;
+		} else {
+			pr_info("AMMS: error addr and length is not set properly\n");
+			pr_info("can not free_reserved_memory\n");
+		}
+	} else {
+		pr_info("amms: static memory already free\n");
+	}
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t amms_handler(int irq, void *data)
 {
 
 	phys_addr_t addr = 0, length = 0;
 	unsigned long long pending;
 	struct arm_smccc_res res;
 
-	arm_smccc_smc(MTK_SIP_KERNEL_AMMS_GET_SEQ_ID,
-			0, 0, 0, 0, 0, 0, 0, &res);
-	amms_seq_id = res.a0;
 	arm_smccc_smc(MTK_SIP_KERNEL_AMMS_GET_PENDING,
 			0, 0, 0, 0, 0, 0, 0, &res);
 	pending = res.a0;
 	pr_info("%s:pending = 0x%llx\n", __func__, pending);
 	pr_info("%s:pending = %lld\n", __func__, (long long)pending);
 
-	// Not support clear pending for legacy chip
 	if (((long long)pending) != AMMS_PENDING_DRDI_FREE_BIT) {
-		if (!amms_static_free) {
-			arm_smccc_smc(MTK_SIP_KERNEL_AMMS_GET_FREE_ADDR,
-			0, 0, 0, 0, 0, 0, 0, &res);
-			addr = res.a0;
-			arm_smccc_smc(
-			MTK_SIP_KERNEL_AMMS_GET_FREE_LENGTH,
-			0, 0, 0, 0, 0, 0, 0, &res);
-			length = res.a0;
-			if (pfn_valid(__phys_to_pfn(addr))
-				&& pfn_valid(__phys_to_pfn(
-				addr + length - 1))) {
-				pr_info("%s:addr=%pa length=%pa\n", __func__,
-				&addr, &length);
-				free_reserved_memory(addr, addr+length);
-				amms_static_free = true;
-			} else {
-				pr_info("AMMS: error addr and length is not set properly\n");
-				pr_info("can not free_reserved_memory\n");
-			}
-		}
-		return;
+		pr_info("%s:Not support pending\n", __func__);
+		return amms_legacy_handler(irq, data);
 	}
+
 	if (pending & AMMS_PENDING_DRDI_FREE_BIT) {
+		pr_info("%s:Support pending\n", __func__);
 		/*below part is for staic memory free */
 		if (!amms_static_free) {
 			arm_smccc_smc(MTK_SIP_KERNEL_AMMS_GET_FREE_ADDR,
@@ -216,8 +153,8 @@ void amms_handle_event(void)
 			if (pfn_valid(__phys_to_pfn(addr))
 				&& pfn_valid(__phys_to_pfn(
 				addr + length - 1))) {
-				pr_info("%s:addr=%pa length=%pa\n", __func__,
-				&addr, &length);
+				pr_info("%s:addr=%pa length=%pa\n",
+				__func__, &addr, &length);
 				free_reserved_memory(addr, addr+length);
 				amms_static_free = true;
 				arm_smccc_smc(MTK_SIP_KERNEL_AMMS_ACK_PENDING,
@@ -238,80 +175,42 @@ void amms_handle_event(void)
 	if (pending & (~(AMMS_PENDING_DRDI_FREE_BIT)))
 		pr_info("amms:unknown pending interrupt\n");
 
+	return IRQ_HANDLED;
 }
 
 
-static int amms_task_process(void *p)
+static int amms_probe(struct platform_device *pdev)
 {
-	while (1) {
-		amms_handle_event();
-		set_current_state(TASK_INTERRUPTIBLE);
-		enable_irq(amms_irq_num);
-		schedule();
-		if (kthread_should_stop())
-			do_exit(0);
-	}
-	return 0;
-}
-static int __init amms_probe(struct platform_device *pdev)
-{
-	int ret;
-	struct sched_param param = {.sched_priority = 98 };
+
+	struct device_node *node;
+	int amms_irq_num;
 
 	amms_irq_num = platform_get_irq(pdev, 0);
+
 	if (amms_irq_num < 0) {
 		pr_info("Fail to get amms irq number from device tree\n");
 		WARN_ON(amms_irq_num == -ENXIO);
 		return -EINVAL;
 	}
 
-	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(36));
-
-	if (ret) {
-		pr_info("fatal error dma_set_mask failed %d\n", ret);
+	node = of_find_compatible_node(NULL, NULL, "mediatek,amms");
+	if (!node) {
+		pr_info("%s, amms not exist\n", __func__);
 		return -EINVAL;
 	}
 
-	amms_dev = &pdev->dev;
-	pr_info("amms_dev->dma_ops=%pS\n", amms_dev->dma_ops);
-	pr_info("amms irq num %d\n", amms_irq_num);
-
-	amms_task = kthread_create(amms_task_process,
-			NULL, "amms_task");
-	if (!amms_task) {
-		pr_info("amms_task thread create failed\n");
-		return -EBUSY;
-	}
-
-	sched_setscheduler(amms_task, SCHED_FIFO, &param);
-
-	if (request_irq(amms_irq_num, (irq_handler_t)amms_irq_handler,
-		IRQF_TRIGGER_NONE, "amms_irq", NULL) != 0) {
+	if (devm_request_threaded_irq(
+	&pdev->dev, amms_irq_num, NULL, amms_handler,
+	IRQF_ONESHOT|IRQF_TRIGGER_NONE, "amms_irq", NULL) != 0) {
 		pr_info("Fail to request amms_irq interrupt!\n");
 		return -EBUSY;
 	}
-#if CONFIG_SYSFS
-	amms_sysfs_init();
-#endif
-	/* set amms_task interruptible */
-	smp_store_mb(amms_task->state, (TASK_INTERRUPTIBLE));
 
 	return 0;
 }
 
-static int amms_remove(struct platform_device *dev)
-{
-	if (amms_task)
-		kthread_stop(amms_task);
-	return 0;
-}
-
-/* variable with __init* or __refdata (see linux/init.h) or */
-/* name the variable *_template, *_timer, *_sht, *_ops, *_probe, */
-/* *_probe_one, *_console */
-static struct platform_driver amms_driver_probe = {
+static struct platform_driver amms_driver = {
 	.probe = amms_probe,
-	.remove = amms_remove,
 	.driver = {
 		.name = "amms",
 		.owner = THIS_MODULE,
@@ -321,52 +220,8 @@ static struct platform_driver amms_driver_probe = {
 	},
 };
 
-static int __init amms_init(void)
-{
-	int ret = 0;
-	ret = platform_driver_register(&amms_driver_probe);
-	if (ret)
-		pr_info("amms init FAIL, ret 0x%x!!!\n", ret);
-
-	return ret;
-}
-
-/**
- *	vmap_reserved_mem - map reserved memory into virtually contiguous space
- *	@start:		start of reserved memory
- *	@size:		size of reserved memory
- *	@prot:		page protection for the mapping
- */
-void *vmap_reserved_mem(phys_addr_t start, phys_addr_t size, pgprot_t prot)
-{
-	long i;
-	long page_count;
-	unsigned long pfn;
-	void *vaddr = NULL;
-	phys_addr_t addr = start;
-	struct page *page;
-	struct page **pages;
-
-	page_count = DIV_ROUND_UP(size, PAGE_SIZE);
-	pages = vmalloc(page_count * sizeof(struct page *));
-
-	if (!pages)
-		return NULL;
-
-	for (i = 0; i < page_count; i++) {
-		pfn = __phys_to_pfn(addr);
-		page = pfn_to_page(pfn);
-		pages[i] = page;
-		addr += PAGE_SIZE;
-	}
-
-	vaddr = vmap(pages, page_count, VM_MAP, prot);
-	vfree(pages);
-	return vaddr;
-}
-EXPORT_SYMBOL(vmap_reserved_mem);
-
-device_initcall(amms_init);
+module_platform_driver(amms_driver);
 
 MODULE_DESCRIPTION("MEDIATEK Module AMMS Driver");
 MODULE_AUTHOR("<johnson.lin@mediatek.com>");
+MODULE_LICENSE("GPL");

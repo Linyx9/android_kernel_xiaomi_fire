@@ -47,7 +47,7 @@ extern unsigned long boot_soter_flag;
 extern int keymaster_call_flag;
 extern struct completion boot_decryto_lock;
 extern struct task_struct *teei_switch_task;
-extern struct kthread_worker ut_fastcall_worker;
+//extern struct kthread_worker ut_fastcall_worker;
 extern unsigned long spi_ready_flag;
 extern struct list_head g_block_link;
 
@@ -73,6 +73,27 @@ void teei_cpus_read_lock(void);
 void teei_cpus_read_unlock(void);
 void teei_cpus_write_lock(void);
 void teei_cpus_write_unlock(void);
+
+extern struct reserved_mem *reserved_mem;
+
+extern int soter_driver_init(void);
+extern void soter_driver_exit(void);
+
+extern int teei_tee_init(void);
+extern void teei_tee_exit(void);
+
+extern int teei_vfs_init(void);
+extern void teei_vfs_exit(void);
+
+extern int teei_keymaster_init(void);
+extern void teei_keymaster_exit(void);
+
+extern int teei_fp_init(void);
+extern void teei_fp_exit(void);
+
+extern void bootprof_log_boot(char *str);
+extern void cpus_write_lock(void);
+extern void cpus_write_unlock(void);
 
 int teei_set_switch_pri(unsigned long policy);
 #endif /* __TEEI_CLIENT_MAIN_H__ */

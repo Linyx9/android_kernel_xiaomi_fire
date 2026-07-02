@@ -1,13 +1,13 @@
 config MTK_SECURITY_SW_SUPPORT
-	bool "Mediatek Security SW Support"
+	tristate "Mediatek Security SW Support"
 	help
-	  If yes,
-	  All security functions in preloader/LK/kernel/android
-	  will be built into software images.
-	  Otherwise, they will not be built into software images.
+	  This is the driver for MediaTek kernel security.
+	  This module contains the random id and dm-verity handle functions
+	  To compile this driver as a module, choose M here: the
+	  module will be called masp.
 
 config MTK_SEC_MODEM_NVRAM_ANTI_CLONE
-	bool "Modem NVRam Anti-Clone Support"
+	tristate "Modem NVRam Anti-Clone Support"
 	help
 	  This option is used to enable modem NVRAM anti-clone functionality
 	  [dependency_relationship]: yes If this option is turned on, the
@@ -16,12 +16,4 @@ config MTK_SEC_MODEM_NVRAM_ANTI_CLONE
 	  default, only two LID is defaulted has MSP attribute
 	  (1)NVRAM_EF_SML_LID (2)NVRAM_EF_SIM_LOCK_LID 3. if want to turn on
 	  specific LID, please add attribute NVRAM_ATTR_MSP
-
-config MTK_AVB20_SUPPORT
-	bool "Android Verified Boot 2.0 Support"
-	help
-	  This option is used to enable AVB2.0, which stands for Android
-	  Verified Boot 2.0. When enabled, linux kernel sets up dm-verity
-	  for protected partitions(system/vendor, etc.) through vbmeta struct
-	  instead of original dm-verity metadata.
 

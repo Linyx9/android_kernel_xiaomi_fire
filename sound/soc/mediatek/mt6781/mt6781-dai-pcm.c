@@ -270,16 +270,15 @@ static int mtk_dai_pcm_hw_params(struct snd_pcm_substream *substream,
 	unsigned int rate_reg = mt6781_rate_transform(afe->dev, rate, dai->id);
 	unsigned int pcm_con = 0;
 
-	dev_info(afe->dev, "%s(), id %d, stream %d, rate %d, rate_reg %d, widget active p %d, c %d\n",
+	dev_info(afe->dev, "%s(), id %d, stream %d, rate %d, rate_reg %d, widget active %d\n",
 		 __func__,
 		 dai->id,
 		 substream->stream,
 		 rate,
 		 rate_reg,
-		 dai->playback_widget->active,
-		 dai->capture_widget->active);
+		 dai->stream[substream->stream].widget->active);
 
-	if (dai->playback_widget->active || dai->capture_widget->active)
+	if (dai->stream[substream->stream].widget->active)
 		return 0;
 
 	switch (dai->id) {
@@ -312,7 +311,7 @@ static int mtk_dai_pcm_hw_params(struct snd_pcm_substream *substream,
 				   0xfffffffe, pcm_con);
 		break;
 	default:
-		dev_warn(afe->dev, "%s(), id %d not support\n",
+		dev_info(afe->dev, "%s(), id %d not support\n",
 			 __func__, dai->id);
 		return -EINVAL;
 	}
@@ -353,8 +352,8 @@ static struct snd_soc_dai_driver mtk_dai_pcm_driver[] = {
 			.formats = MTK_PCM_FORMATS,
 		},
 		.ops = &mtk_dai_pcm_ops,
-		.symmetric_rates = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_rate = 1,
+		.symmetric_sample_bits = 1,
 	},
 	{
 		.name = "PCM 2",
@@ -374,8 +373,8 @@ static struct snd_soc_dai_driver mtk_dai_pcm_driver[] = {
 			.formats = MTK_PCM_FORMATS,
 		},
 		.ops = &mtk_dai_pcm_ops,
-		.symmetric_rates = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_rate = 1,
+		.symmetric_sample_bits = 1,
 	},
 };
 
@@ -383,7 +382,7 @@ int mt6781_dai_pcm_register(struct mtk_base_afe *afe)
 {
 	struct mtk_base_afe_dai *dai;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

@@ -11,9 +11,19 @@
 #include <sound/soc.h>
 #include <linux/list.h>
 #include <linux/regmap.h>
+#include <mt-plat/aee.h>
 #include "mt6768-reg.h"
 #include "../common/mtk-base-afe.h"
-#include "../common/mtk-sp-common.h"
+
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
+#define AUDIO_AEE(message) \
+	(aee_kernel_exception_api(__FILE__, \
+				  __LINE__, \
+				  DB_OPT_FTRACE, message, \
+				  "audio assert"))
+#else
+#define AUDIO_AEE(message) WARN_ON(true)
+#endif
 
 enum {
 	MT6768_MEMIF_DL1,
@@ -61,7 +71,7 @@ enum {
 #define MT6768_MMAP_UL_MEMIF MT6768_MEMIF_VUL
 #define MT6768_BARGEIN_MEMIF MT6768_MEMIF_AWB
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 #define MT6768_DSP_PRIMARY_MEMIF MT6768_MEMIF_DL1
 #define MT6768_DSP_DEEPBUFFER_MEMIF MT6768_MEMIF_DL3
 #define MT6768_DSP_VOIP_MEMIF MT6768_MEMIF_DL3
@@ -84,18 +94,6 @@ enum {
 	MT6768_IRQ_11,
 	MT6768_IRQ_12,
 	MT6768_IRQ_NUM,
-};
-
-enum {
-	MTKAIF_PROTOCOL_1 = 0,
-	MTKAIF_PROTOCOL_2,
-	MTKAIF_PROTOCOL_2_CLK_P2,
-};
-
-enum {
-	MTK_AFE_ADDA_DL_GAIN_MUTE = 0,
-	/* SA suggest apply -0.3db to audio/speech path */
-	MTK_AFE_ADDA_DL_GAIN_NORMAL = 0xf74f,
 };
 
 /* MCLK */
@@ -194,4 +192,6 @@ int mt6768_set_rch_dc_compensation(int value);
 int mt6768_adda_dl_gain_control(bool mute);
 
 int mt6768_print_register(struct mtk_base_afe *afe);
+
+bool mtk_audio_condition_enter_suspend(void);
 #endif

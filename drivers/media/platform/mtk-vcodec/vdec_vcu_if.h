@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: PC Chen <pc.chen@mediatek.com>
  */
 
 #ifndef _VDEC_VCU_IF_H_
@@ -8,10 +9,12 @@
 
 #include <linux/dma-buf.h>
 #include "mtk_vcu.h"
+#include "vdec_ipi_msg.h"
 
 /**
  * struct vdec_vcu_inst - VCU instance for video codec
- * @ipi_id      : ipi id for each decoder
+ * @wq          : wait queue to wait VCU message ack
+ * @ipi_id      : ipi id for decoder or encoder
  * @vsi         : driver structure allocated by VCU side and shared to AP side
  *                for control and info share
  * @failure     : VCU execution result status, 0: success, others: fail
@@ -19,23 +22,28 @@
  * @signaled    : 1 - Host has received ack message from VCU, 0 - not received
  * @ctx         : context for v4l2 layer integration
  * @dev         : platform device of VCU
- * @wq          : wait queue to wait VCU message ack
  * @handler     : ipi handler for each decoder
  * @abort       : abort when vpud crashed stop this instance ipi_msg
  */
 struct vdec_vcu_inst {
+	wait_queue_head_t wq;
+	wait_queue_head_t wq_res;
 	enum ipi_id id;
 	void *vsi;
 	int32_t failure;
-	uint32_t inst_addr;
+	uint64_t inst_addr;
 	unsigned int signaled;
+	unsigned int signaled_res;
+	bool in_ipi;
+	bool in_res_ipi;
 	struct mtk_vcodec_ctx *ctx;
 	struct platform_device *dev;
-	wait_queue_head_t wq;
 	ipi_handler_t handler;
+	bool init_done;
 	bool abort;
 	int daemon_pid;
-	struct mutex *ctx_ipi_binding;
+	struct mutex *ctx_ipi_lock;
+	struct list_head bufs;
 };
 
 /**
@@ -58,16 +66,6 @@ int vcu_dec_start(struct vdec_vcu_inst *vcu,
 	struct mtk_vcodec_mem *bs, struct vdec_fb *fb);
 
 /**
- * vcu_dec_end - end decoding, basically the function will be invoked once
- *               when HW decoding done interrupt received successfully. The
- *               decoder in VCU will continute to do referene frame management
- *               and check if there is a new decoded frame available to display.
- *
- * @vcu : instance for vdec_vcu_inst
- */
-int vcu_dec_end(struct vdec_vcu_inst *vcu);
-
-/**
  * vcu_dec_deinit - deinit decoder instance and resource freed in VCU.
  *
  * @vcu: instance for vdec_vcu_inst
@@ -79,8 +77,9 @@ int vcu_dec_deinit(struct vdec_vcu_inst *vcu);
  *                 seek. Remainig non displayed frame will be pushed to display.
  *
  * @vcu: instance for vdec_vcu_inst
+ * @drain_type: flush (0), drain (1),  drain with EOS (2)
  */
-int vcu_dec_reset(struct vdec_vcu_inst *vcu);
+int vcu_dec_reset(struct vdec_vcu_inst *vcu, enum vdec_reset_type drain_type);
 
 /**
  * vcu_dec_ipi_handler - Handler for VCU ipi message.
@@ -93,7 +92,6 @@ int vcu_dec_ipi_handler(void *data, unsigned int len, void *priv);
 int vcu_dec_query_cap(struct vdec_vcu_inst *vcu, unsigned int id, void *out);
 int vcu_dec_set_param(struct vdec_vcu_inst *vcu, unsigned int id,
 					  void *param, unsigned int size);
-int get_mapped_fd(struct dma_buf *dmabuf);
-void close_mapped_fd(unsigned int target_fd);
+int vcu_dec_set_frame_buffer(struct vdec_vcu_inst *vcu, void *fb);
 
 #endif

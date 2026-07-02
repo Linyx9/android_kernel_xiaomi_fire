@@ -111,8 +111,8 @@ static ssize_t sspm_alive_show(struct device *kobj,
 
 	return snprintf(buf, PAGE_SIZE, "%s\n", ackdata ? "Alive" : "Dead");
 }
-DEVICE_ATTR(sspm_alive, 0444, sspm_alive_show, NULL);
 
+DEVICE_ATTR_RO(sspm_alive);
 
 int __init sspm_plt_init(void)
 {

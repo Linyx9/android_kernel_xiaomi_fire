@@ -1,0 +1,68 @@
+/*[TN.NJDC] touch overlay file.start*/
+&spi2 {
+    status = "ok";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-names = "default","lamu_spi_mode";
+	pinctrl-0 = <&ctp_lamu_pins_default>;
+	pinctrl-1 = <&ctp_lamu_spi_mode>;
+
+    chipone_tddi@0 {
+        compatible = "chipone-tddi","omnivision,tcm-spi","novatek,NVT-ts-spi","tchip,ilitek";
+        reg = <0>;
+        spi-max-frequency = <9600000>;
+        interrupt-parent = <&pio>;
+        interrupts = <0 IRQ_TYPE_EDGE_FALLING 0 0>;
+        chipone,rst-gpio = <&pio 36 0x00>;
+        chipone,irq-gpio = <&pio 0 0x00>;
+        chipone,x-res = <4320>;
+        chipone,y-res = <9600>;
+
+        touch,irq-gpio = <&pio 0 0x00>;
+        touch,reset-gpio = <&pio 36 0x00>;
+
+        chipone,touch-charger-detect-enable;
+        chipone,touch-charger-detect-type = "notify";
+        chipone,touch-charger-detect-psy-name = "primary_chg";
+        chipone,touch-charger-detect-psp = "POWER_SUPPLY_PROP_ONLINE";
+        chipone,touch-charger-detect-psp-poll-interval = <1000>;
+
+        /*chipone,touch-earjack-detect-enable;
+
+        chipone,touch-earjack-state-filepath = "/sys/bus/platform/drivers/Accdet_Driver/state";
+        chipone,touch-earjack-poll-interval = <1000>;*/
+
+        novatek,reset-gpio = <&pio 36 0x00>;
+        novatek,irq-gpio =<&pio 0 0x00>;
+
+        omnivision,irq-gpio = <&pio 0 0x00>;
+        omnivision,irq-on-state = <0>;
+        omnivision,reset-gpio = <&pio 36 0x00>;
+        omnivision,reset-on-state = <0>;
+        omnivision,reset-active-ms = <20>;
+        omnivision,reset-delay-ms = <200>;
+        omnivision,power-delay-ms = <200>;
+        omnivision,spi-mode = <3>;
+        omnivision,byte-delay-us = <0>;
+        omnivision,block-delay-us = <0>;
+        omnivision,ubl-max-freq = <3000000>;
+        omnivision,ubl-byte-delay-us = <20>;
+        //omnivision,display-reset-gpio = <&pio 45 0x00>;
+    };
+
+};
+&pio {
+	ctp_lamu_pins_default: pins_default {
+	};
+	ctp_lamu_spi_mode: spimode_default {
+		pins_cmd_dat {
+			pinmux = <PINMUX_GPIO25__FUNC_SPI2_CSB>,
+				<PINMUX_GPIO26__FUNC_SPI2_MO>,
+				<PINMUX_GPIO27__FUNC_SPI2_CLK>,
+				<PINMUX_GPIO28__FUNC_SPI2_MI>;
+			drive-strength = <7>;
+		};
+	};
+};
+/*[TN.NJDC] touch overlay file.end*/

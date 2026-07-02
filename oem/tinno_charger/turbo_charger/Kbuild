@@ -1,0 +1,9 @@
+subdir-ccflags-y += -Wno-unused-but-set-variable
+
+
+ifdef CONFIG_OEM_TURBO_CHARGER
+	TURBO_CHARGER_OBJS += turbo_charger.o
+endif
+
+obj-$(CONFIG_OEM_TURBO_CHARGER) += oem_turbo_charger.o
+oem_turbo_charger-y := $(TURBO_CHARGER_OBJS)

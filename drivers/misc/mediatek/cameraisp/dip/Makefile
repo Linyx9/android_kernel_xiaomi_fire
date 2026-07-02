@@ -11,13 +11,12 @@
 # GNU General Public License for more details.
 #
 
-obj-y := cameradip_dummy.o
+#obj-$(CONFIG_ISP_DIP_SUPPORT) := cameradip_dummy.o
 MTK_DIP_COUNT := 1
 MTK_MSF_OFFSET := 0
-
-ifeq ($(CONFIG_MTK_PLATFORM), "mt6779")
-  obj-y += $(subst ",,mt6779)/
-endif
+$(warning "Marvin test")
+$(warning $(CONFIG_MTK_CAMERA_ISPVER))
+$(warning $(CONFIG_ISP_DIP_SUPPORT))
 
 ifeq ($(CONFIG_MACH_MT6775),y)
   obj-y += $(subst ",,isp_50)/
@@ -37,9 +36,13 @@ ifeq ($(CONFIG_MACH_MT6883),y)
   MTK_DIP_COUNT := 2
 endif
 
-ifeq ($(CONFIG_MACH_MT6873),y)
-  obj-y += $(subst ",,isp_6s)/
-  MTK_MSF_OFFSET := 1
+ifeq ($(CONFIG_MTK_CAMERA_ISP_VER),"isp6s")
+obj-$(CONFIG_MTK_CAMERA_ISP_DIP_SUPPORT) += isp_6s/
+MTK_MSF_OFFSET := 1
+endif
+
+ifeq ($(CONFIG_MTK_CAMERA_DIP_ISP6S),m)
+	obj-y += $(subst ",,isp_6s)/
 endif
 
 ifeq ($(CONFIG_MACH_MT6853),y)
@@ -47,32 +50,8 @@ ifeq ($(CONFIG_MACH_MT6853),y)
   MTK_MSF_OFFSET := 1
 endif
 
-ifeq ($(CONFIG_MACH_MT6833),y)
-  obj-y += $(subst ",,isp_6s)/
-  MTK_MSF_OFFSET := 1
-endif
-
-ifeq ($(CONFIG_MACH_MT6877),y)
-  obj-y += $(subst ",,isp_6s)/
-  MTK_MSF_OFFSET := 1
-endif
-
-ifeq ($(CONFIG_MACH_MT6781),y)
-  obj-y += $(subst ",,isp_6s)/
-  MTK_MSF_OFFSET := 1
-endif
-
 ifeq ($(CONFIG_MACH_MT3967),y)
   obj-y += $(subst ",,isp_50)/
-endif
-
-ifeq ($(CONFIG_MACH_MT6785),y)
-  obj-y += $(subst ",,isp_50)/
-endif
-
-ifeq ($(CONFIG_MACH_MT6893),y)
-  obj-y += $(subst ",,isp_6s)/
-  MTK_DIP_COUNT := 2
 endif
 
 subdir-ccflags-y += -DMTK_DIP_COUNT=$(MTK_DIP_COUNT)

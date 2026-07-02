@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/clk-provider.h>
 #include <linux/of_device.h>
@@ -374,4 +374,4 @@ static int __init clk_mt6877_i2c_init(void)
 	return platform_driver_register(&clk_mt6877_i2c_drv);
 }
 arch_initcall(clk_mt6877_i2c_init);
-
+MODULE_LICENSE("GPL");

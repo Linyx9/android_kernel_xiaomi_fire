@@ -12,19 +12,61 @@
 #
 
 ccflags-y += \
-	-I$(srctree)/drivers/misc/mediatek/base/power/cpufreq_v1/inc \
-	-I$(srctree)/drivers/misc/mediatek/base/power/cpufreq_v1/src/mach/$(CONFIG_MTK_PLATFORM) \
-	-I$(srctree)/drivers/misc/mediatek/cm_mgr/ \
-	-I$(srctree)/drivers/misc/mediatek/dramc/$(MTK_PLATFORM) \
-	-I$(srctree)/drivers/misc/mediatek/include/mt-plat \
-	-I$(srctree)/drivers/misc/mediatek/qos \
-	-I$(srctree)/drivers/misc/mediatek/sspm \
+	-I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/cm_mgr/ \
+	-I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/dramc/$(MTK_PLATFORM) \
+	-I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/mt-plat \
+	-I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/sspm \
+	-I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/tinysys_scmi/ \
+	-I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/qos \
+	-I$(DEVICE_MODULES_PATH)/drivers/gpu/drm/mediatek/mediatek_v2/ \
+	-I$(DEVICE_MODULES_PATH)/drivers/thermal/mediatek \
 	-I$(srctree)/include \
+
+ifeq ($(CONFIG_MTK_TINYSYS_SSPM_V2),y)
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/sspm/v2
+endif
 
 obj-${CONFIG_MTK_CM_MGR} += mtk_cm_mgr.o
 mtk_cm_mgr-y = mtk_cm_mgr_common.o
 
-mtk_cm_mgr-${CONFIG_MTK_CM_MGR_MT6779} += mtk_cm_mgr_mt6779.o
-mtk_cm_mgr-${CONFIG_MACH_MT6761} += mtk_cm_mgr_mt6761.o
-mtk_cm_mgr-${CONFIG_MACH_MT6765} += mtk_cm_mgr_mt6765.o
+obj-${CONFIG_MTK_CM_IPI} += mtk_cm_ipi.o
 
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6853.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6853} += mtk_cm_mgr_mt6853.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6855.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6855} += mtk_cm_mgr_mt6855.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6873.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6873} += mtk_cm_mgr_mt6873.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6879.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6879} += mtk_cm_mgr_mt6879.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6886.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6886} += mtk_cm_mgr_mt6886.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6893.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6893} += mtk_cm_mgr_mt6893.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6895.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6895} += mtk_cm_mgr_mt6895.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6897.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6897} += mtk_cm_mgr_mt6897.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6899.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6899} += mtk_cm_mgr_mt6899.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6983.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6983} += mtk_cm_mgr_mt6983.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6985.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6985} += mtk_cm_mgr_mt6985.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6989.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6989} += mtk_cm_mgr_mt6989.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk_cm_mgr_mt6991.c),)
+obj-${CONFIG_MTK_CM_MGR_MT6991} += mtk_cm_mgr_mt6991.o
+endif

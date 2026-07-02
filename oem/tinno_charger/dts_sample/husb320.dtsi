@@ -1,0 +1,18 @@
+/*
+ * this is the dtsi sample for HUSB320.
+ * update date:2024.04.15
+ */
+
+husb320@21 {
+	status = "okay";
+	compatible = "hynetek,husb320";
+	reg = <0x21>;
+	husb320,int-gpio = <&pio 4 0>;
+	husb320,int-gpio_num = <4>;
+	husb320,init-mode = <20>;                       /* try sink, DRP */
+	husb320,host-current = <2>;                     /* 180uA host current */
+	husb320,drp-toggle-time =  <1>;                 /* 70ms */
+	husb320,drp-duty-time = <0>;                    /* 60 duty time */
+	husb320,autosink-threshold = <1>;               /* 3P1V */
+	husb320,cc-debounce-time = <3>;                 /* 150ms */
+};

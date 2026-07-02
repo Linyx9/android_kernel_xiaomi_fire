@@ -912,7 +912,7 @@ const char *index_to_subsys(uint32_t index)
 
 static uint32_t mt6781_shift_group_get(uint32_t vio_idx)
 {
-	if (vio_idx >= 0 && vio_idx <= 31)
+	if (vio_idx <= 31)
 		return 0;
 	else if (vio_idx >= 32 && vio_idx <= 81)
 		return 1;
@@ -969,19 +969,18 @@ static uint32_t mt6781_shift_group_get(uint32_t vio_idx)
 static ssize_t mt6781_devapc_dbg_read(struct file *file, char __user *buffer,
 	size_t count, loff_t *ppos)
 {
-	return mtk_devapc_dbg_read(file, buffer, count, ppos);
+	return mtk_devapc_dbg_read_v1(file, buffer, count, ppos);
 }
 
 static ssize_t mt6781_devapc_dbg_write(struct file *file,
 	const char __user *buffer, size_t count, loff_t *data)
 {
-	return mtk_devapc_dbg_write(file, buffer, count, data);
+	return mtk_devapc_dbg_write_v1(file, buffer, count, data);
 }
 
-static const struct file_operations devapc_dbg_fops = {
-	.owner = THIS_MODULE,
-	.write = mt6781_devapc_dbg_write,
-	.read = mt6781_devapc_dbg_read,
+static const struct proc_ops devapc_dbg_fops = {
+	.proc_write = mt6781_devapc_dbg_write,
+	.proc_read = mt6781_devapc_dbg_read,
 };
 
 static struct mtk_devapc_dbg_status mt6781_devapc_dbg_stat = {
@@ -1054,12 +1053,12 @@ static int mt6781_devapc_probe(struct platform_device *pdev)
 {
 	proc_create("devapc_dbg", 0664, NULL, &devapc_dbg_fops);
 
-	return mtk_devapc_probe(pdev, &mt6781_data);
+	return mtk_devapc_probe_v1(pdev, &mt6781_data);
 }
 
 static int mt6781_devapc_remove(struct platform_device *dev)
 {
-	return mtk_devapc_remove(dev);
+	return mtk_devapc_remove_v1(dev);
 }
 
 static struct platform_driver mt6781_devapc_driver = {

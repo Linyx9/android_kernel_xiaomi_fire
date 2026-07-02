@@ -20,16 +20,17 @@ obj-$(CONFIG_SND_SOC_MT6781) += snd-soc-mt6781-afe.o
 obj-$(CONFIG_SND_SOC_MT6781_MT6366) += mt6781-mt6366.o
 
 # MENU Governor Predict(low power)
-ifeq ($(CONFIG_MTK_ACAO_SUPPORT),y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/mcdi/include/
+ifneq ($(CONFIG_MTK_ACAO_SUPPORT),)
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/base/power/mcdi/include/
 endif
 
-ifeq ($(CONFIG_MTK_AUDIODSP_SUPPORT),y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/adsp/$(MTK_PLATFORM)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/adsp/common_v2
+# adsp include path
+ifneq ($(CONFIG_MTK_AUDIODSP_SUPPORT),)
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/audio_ipi/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/sound/soc/mediatek/audio_dsp
 endif
 
 # spm
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/base/power/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
 

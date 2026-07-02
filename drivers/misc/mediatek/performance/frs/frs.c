@@ -13,14 +13,16 @@
 #include "frs.h"
 #include "fpsgo_common.h"
 #include "fstb.h"
+#include "fbt_cpu.h"
 
 #define EARA_MAX_COUNT 10
 #define EARA_PROC_NAME_LEN 16
 #define TAG "FRS"
 
 static int frs_nl_id = 31;
+static int frs_pid = -1;
 module_param(frs_nl_id, int, 0644);
-struct frs_info frs_data;
+module_param(frs_pid, int, 0644);
 struct _EARA_THRM_PACKAGE {
 	__s32 type;
 	__s32 request;
@@ -32,6 +34,7 @@ struct _EARA_THRM_PACKAGE {
 	__s32 pair_diff[EARA_MAX_COUNT];
 	__s32 pair_hwui[EARA_MAX_COUNT];
 	char proc_name[EARA_MAX_COUNT][EARA_PROC_NAME_LEN];
+	__s32 pair_proc_id[EARA_MAX_COUNT];
 };
 
 struct _EARA_THRM_ENABLE {
@@ -43,11 +46,11 @@ struct _EARA_THRM_ENABLE {
 static int eara_enable;
 static DEFINE_MUTEX(pre_lock);
 static struct sock *frs_nl_sk;
-static int eara_pid = -1;
 
 static void set_tfps_diff(int max_cnt, int *pid, unsigned long long *buf_id, int *tfps, int *diff)
 {
 	int i;
+	unsigned long long t2wnt;
 
 	mutex_lock(&pre_lock);
 
@@ -62,6 +65,11 @@ static void set_tfps_diff(int max_cnt, int *pid, unsigned long long *buf_id, int
 			break;
 		pr_debug(TAG "Set %d %llu: %d\n", pid[i], buf_id[i], diff[i]);
 		eara2fstb_tfps_mdiff(pid[i], buf_id[i], diff[i], tfps[i]);
+		if (diff[i] == 0)
+			t2wnt = 0;
+		else
+			t2wnt = (1000000000 / tfps[i]) * 2;
+		eara2fbt_set_2nd_t2wnt(pid[i], buf_id[i], t2wnt);
 	}
 }
 
@@ -70,7 +78,7 @@ static void switch_eara(int enable, int pid)
 	pr_debug(TAG "%s enable:%d\n", __func__, enable);
 	mutex_lock(&pre_lock);
 	eara_enable = enable;
-	eara_pid = pid;
+	frs_pid = pid;
 	mutex_unlock(&pre_lock);
 
 }
@@ -113,7 +121,7 @@ int pre_change_event(void)
 	memset(&change_msg, 0, sizeof(struct _EARA_THRM_PACKAGE));
 	eara2fstb_get_tfps(EARA_MAX_COUNT, &(change_msg.is_camera), change_msg.pair_pid,
 			change_msg.pair_bufid, change_msg.pair_tfps, change_msg.pair_rfps,
-			change_msg.pair_hwui, change_msg.proc_name);
+			change_msg.pair_hwui, change_msg.proc_name, change_msg.pair_proc_id);
 	ret = eara_nl_send_to_user((void *)&change_msg, sizeof(struct _EARA_THRM_PACKAGE));
 
 	return ret;
@@ -127,6 +135,7 @@ int eara_nl_send_to_user(void *buf, int size)
 	int len = NLMSG_SPACE(size);
 	void *data;
 	int ret;
+	static int c;
 
 	if (frs_nl_sk == NULL)
 		return -1;
@@ -134,7 +143,11 @@ int eara_nl_send_to_user(void *buf, int size)
 	skb = alloc_skb(len, GFP_ATOMIC);
 	if (!skb)
 		return -1;
-	nlh = nlmsg_put(skb, 0, 0, NLMSG_DONE, size+1, 0);
+	nlh = nlmsg_put(skb, 0, 0, NLMSG_DONE, size, 0);
+	if (!nlh) {
+		kfree_skb(skb);
+		return -EMSGSIZE;
+	}
 	data = NLMSG_DATA(nlh);
 	memcpy(data, buf, size);
 	NETLINK_CB(skb).portid = 0; /* from kernel */
@@ -142,10 +155,15 @@ int eara_nl_send_to_user(void *buf, int size)
 
 	pr_debug(TAG "Netlink_unicast size=%d\n", size);
 
-	ret = netlink_unicast(frs_nl_sk, skb, eara_pid, MSG_DONTWAIT);
-	if (ret < 0) {
-		pr_debug(TAG "Send to pid %d failed %d\n", eara_pid, ret);
-		return -1;
+	ret = netlink_unicast(frs_nl_sk, skb, frs_pid, MSG_DONTWAIT);
+	if (ret < 0 && c < 3) {
+		pr_debug(TAG "Send to pid %d failed %d, retry %d\n", frs_pid, ret, c);
+		c++;
+	} else if (ret == 0)
+		c = 0;
+	if (c >= 3) {
+		switch_eara(0, -1);
+		c = 0;
 	}
 	pr_debug(TAG "Netlink_unicast- ret=%d\n", ret);
 	return 0;
@@ -154,25 +172,26 @@ int eara_nl_send_to_user(void *buf, int size)
 
 static void eara_nl_data_handler(struct sk_buff *skb)
 {
-	u32 pid;
-	kuid_t uid;
-	int seq;
-	void *data;
+	/*u32 pid;
+	 * kuid_t uid;
+	 * int seq;
+	 */
+
 	struct nlmsghdr *nlh;
 	struct _EARA_THRM_PACKAGE *change_msg;
 	struct _EARA_THRM_ENABLE *enable_msg;
-	//int size = 0;
 
 	nlh = (struct nlmsghdr *)skb->data;
-	pid = NETLINK_CREDS(skb)->pid;
-	uid = NETLINK_CREDS(skb)->uid;
-	seq = nlh->nlmsg_seq;
+	/*pid = NETLINK_CREDS(skb)->pid;
+	 * uid = NETLINK_CREDS(skb)->uid;
+	 * seq = nlh->nlmsg_seq;
+	 */
 
 	/*tsta_dprintk(
 	 *"[ta_nl_data_handler] recv skb from user space uid:%d pid:%d seq:%d\n"
 	 * ,uid, pid, seq);
 	 */
-	data = NLMSG_DATA(nlh);
+
 	change_msg = (struct _EARA_THRM_PACKAGE *) NLMSG_DATA(nlh);
 	enable_msg = (struct _EARA_THRM_ENABLE *) NLMSG_DATA(nlh);
 	if (change_msg->type == 0)
@@ -203,6 +222,16 @@ int eara_netlink_init(void)
 	return 0;
 }
 
+static ssize_t frs_pid_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	int len = 0;
+
+	len += snprintf(buf + len, PAGE_SIZE - len, "%d\n", frs_pid);
+
+	return len;
+}
+
 static ssize_t frs_nl_id_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
@@ -212,61 +241,11 @@ static ssize_t frs_nl_id_show(struct kobject *kobj,
 
 	return len;
 }
-
-static ssize_t frs_info_show(struct kobject *kobj,
-		struct kobj_attribute *attr, char *buf)
-{
-	int len = 0;
-
-	len += snprintf(buf + len, PAGE_SIZE - len, "%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
-			frs_data.enable,
-			frs_data.activated, frs_data.pid,
-			frs_data.target_fps, frs_data.diff,
-			frs_data.tpcb, frs_data.tpcb_slope,
-			frs_data.ap_headroom, frs_data.n_sec_to_ttpcb);
-
-	return len;
-}
-
-static ssize_t frs_info_store(struct kobject *kobj,
-		struct kobj_attribute *attr, const char *buf, size_t count)
-{
-	int enable, act, target_fps, tpcb, tpcb_slope;
-	int ap_headroom, n_sec_to_ttpcb;
-	int pid, diff;
-	int ret;
-
-	ret = sscanf(buf, "%d,%d,%d,%d,%d,%d,%d,%d,%d", &enable, &act, &pid, &target_fps,
-				&diff, &tpcb, &tpcb_slope, &ap_headroom, &n_sec_to_ttpcb);
-	if (ret == 9) {
-		if ((ap_headroom >= -1000) && (ap_headroom <= 1000)) {
-			frs_data.ap_headroom = ap_headroom;
-		} else {
-			pr_info("[%s] invalid ap head room input\n", __func__);
-			return -EINVAL;
-		}
-
-		frs_data.enable = enable;
-		frs_data.activated = act;
-		frs_data.tpcb = tpcb;
-		frs_data.pid = pid;
-		frs_data.target_fps = target_fps;
-		frs_data.diff = diff;
-		frs_data.tpcb_slope = tpcb_slope;
-		frs_data.n_sec_to_ttpcb = n_sec_to_ttpcb;
-	} else {
-		pr_info("[%s] invalid input\n", __func__);
-		return -EINVAL;
-	}
-
-	return count;
-}
-
 static struct kobj_attribute frs_nl_id_attr = __ATTR_RO(frs_nl_id);
-static struct kobj_attribute frs_info_attr = __ATTR_RW(frs_info);
+static struct kobj_attribute frs_pid_attr = __ATTR_RO(frs_pid);
 static struct attribute *thermal_attrs[] = {
 	&frs_nl_id_attr.attr,
-	&frs_info_attr.attr,
+	&frs_pid_attr.attr,
 	NULL
 };
 static struct attribute_group thermal_attr_group = {
@@ -288,9 +267,9 @@ int __init eara_thrm_pre_init(void)
 	eara_pre_change_single_fp =  pre_change_single_event;
 	eara_netlink_init();
 
-	ret = sysfs_create_group(kernel_kobj, &thermal_attr_group);
+	ret = sysfs_merge_group(kernel_kobj, &thermal_attr_group);
 	if (ret) {
-		pr_info(TAG, "failed to create thermal sysfs, ret=%d!\n", ret);
+		pr_info("%s failed to create thermal sysfs, ret=%d!\n", TAG, ret);
 		return ret;
 	}
 	return 0;

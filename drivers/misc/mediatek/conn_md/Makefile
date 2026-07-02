@@ -16,11 +16,12 @@
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
 
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/eccci/$(MTK_PLATFORM)
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/eccci/
-    ccflags-y += -I$(srctree)/drivers/misc/mediatek/dual_ccci/
+    ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/eccci/
+    ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/eccci/inc/
+    ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/eccci/port/
+    ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/dual_ccci/
 
-    ccflags-y += -I$(src)/include/
+    ccflags-y += -I$(srctree)/$(src)/include/
 
     obj-$(CONFIG_MTK_CONN_MD) += conn_md_drv.o
     conn_md_drv-objs := conn_md.o

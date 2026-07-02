@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
 #ifndef __CMDQ_SEC_H__
 #define __CMDQ_SEC_H__
 
-#include "mdp_cmdq_helper_ext.h"
+#include "cmdq_helper_ext.h"
 
 #if defined(CMDQ_SECURE_PATH_SUPPORT)
 #include "tee_client_api.h"

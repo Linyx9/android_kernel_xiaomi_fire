@@ -18,7 +18,7 @@
 /*kernel4.4 #include <linux/mtk_gpu_utility.h>*/
 #include "mt-plat/mtk_thermal_monitor.h"
 /* fps update from display */
-#ifdef CONFIG_MTK_FB
+#if IS_ENABLED(CONFIG_MTK_FB)
 #include "disp_session.h"
 #endif
 
@@ -31,7 +31,7 @@
 
 #include "mach/mtk_thermal.h"
 #include <linux/uidgid.h>
-#ifdef CONFIG_MTK_GPU_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_GPU_SUPPORT)
 #include "ged_dvfs.h"
 #endif
 #include <mtk_cooler_setting.h>
@@ -39,9 +39,9 @@
 /* 1: turn on adaptive fps cooler; 0: turn off */
 #define ADAPTIVE_FPS_COOLER              (1)
 
-#ifdef CONFIG_MTK_DYNAMIC_FPS_FRAMEWORK_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_DYNAMIC_FPS_FRAMEWORK_SUPPORT)
 
-#if defined(CONFIG_MTK_FPSGO) || defined(CONFIG_MTK_FPSGO_V3)
+#if IS_ENABLED(CONFIG_MTK_FPSGO) || IS_ENABLED(CONFIG_MTK_FPSGO_V3)
 	#define FPS_COOLER_USE_DFPS				(0)
 #else
 	#define FPS_COOLER_USE_DFPS				(1)
@@ -176,15 +176,6 @@ ged_query_info(GED_INFO eType)
 	return 0;
 }
 
-bool  __attribute__ ((weak))
-mtk_get_gpu_loading(unsigned int *pLoading)
-{
-#ifdef CONFIG_MTK_GPU_SUPPORT
-	pr_notice("E_WF: %s doesn't exist\n", __func__);
-#endif
-	return 0;
-}
-
 #if FPS_COOLER_USE_DFPS
 void dfrc_fps_limit_cb(int fps_limit)
 {
@@ -245,7 +236,7 @@ static int game_mode_check(void)
 
 static int fps_update(void)
 {
-#ifdef CONFIG_MTK_FB
+#if IS_ENABLED(CONFIG_MTK_FB)
 	struct disp_session_info info;
 
 
@@ -260,14 +251,7 @@ static int fps_update(void)
 	/* mtk_cooler_fps_dprintk("is display fps stable: %d\n",
 	 * info.is_updateFPS_stable);
 	 */
-#if 0
-	if (info.is_updateFPS_stable)
-		tm_input_fps = info.updateFPS;
-	else
-		tm_input_fps = 0;
-#else
 	tm_input_fps = info.updateFPS/100;
-#endif
 #endif
 	return 0;
 }
@@ -606,7 +590,7 @@ static int adp_fps_set_cur_state(struct thermal_cooling_device *cdev,
 	else
 		cl_adp_fps_limit = max_fps_limit;
 
-	/* 2. set the the limit */
+	/* 2. set the limit */
 	mtk_cl_fps_set_fps_limit();
 
 	return 0;
@@ -952,7 +936,7 @@ static int fps_tm_count_read(struct seq_file *m, void *v)
 
 static int fps_tm_count_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, fps_tm_count_read, PDE_DATA(inode));
+	return single_open(file, fps_tm_count_read, pde_data(inode));
 }
 
 static const struct file_operations tm_fps_fops = {

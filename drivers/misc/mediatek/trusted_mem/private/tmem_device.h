@@ -1,5 +1,4 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -30,7 +29,7 @@ enum PROFILE_ENTRY_TYPE {
 struct profile_data_item {
 	u64 count;
 	u64 sec;
-	u64 usec;
+	u64 nsec;
 	struct mutex lock;
 };
 
@@ -41,16 +40,26 @@ struct profile_data_context {
 
 enum TRUSTED_MEM_TYPE {
 	TRUSTED_MEM_START = 0,
-	TRUSTED_MEM_SVP = TRUSTED_MEM_START,
-	TRUSTED_MEM_PROT = 1,
-	TRUSTED_MEM_WFD = 2,
+	TRUSTED_MEM_SVP_REGION = TRUSTED_MEM_START,
+	TRUSTED_MEM_PROT_REGION = 1,
+	TRUSTED_MEM_WFD_REGION = 2,
 	TRUSTED_MEM_HAPP = 3,
 	TRUSTED_MEM_HAPP_EXTRA = 4,
 	TRUSTED_MEM_SDSP = 5,
 	TRUSTED_MEM_SDSP_SHARED = 6,
 	TRUSTED_MEM_2D_FR = 7,
+	TRUSTED_MEM_TUI_REGION = 8,
+	TRUSTED_MEM_SVP_PAGE = 9,
+	TRUSTED_MEM_PROT_PAGE = 10,
+	TRUSTED_MEM_WFD_PAGE = 11,
+	TRUSTED_MEM_SAPU_DATA_SHM = 12,
+	TRUSTED_MEM_SAPU_ENGINE_SHM = 13,
+	TRUSTED_MEM_SAPU_PAGE = 14,
+	TRUSTED_MEM_TEE_PAGE = 15,
+	TRUSTED_MEM_AP_MD_SHM = 16,
+	TRUSTED_MEM_AP_SCP_SHM = 17,
 
-	TRUSTED_MEM_MAX = 8,
+	TRUSTED_MEM_MAX = 18,
 	TRUSTED_MEM_INVALID = 0xFFFFFFFF
 };
 
@@ -60,7 +69,7 @@ enum REGMGR_REGION_STATE {
 };
 
 struct trusted_peer_session {
-	u64 mem_pa_start;
+	phys_addr_t mem_pa_start;
 	u32 mem_size;
 	u32 mem_size_runtime;
 	u64 ref_chunks; /* chunks that are not freed yet! */
@@ -81,9 +90,9 @@ struct trusted_driver_operations {
 	int (*session_open)(void **peer_data, void *dev_desc);
 	int (*session_close)(void *peer_data, void *dev_desc);
 	int (*memory_alloc)(u32 alignment, u32 size, u32 *refcount,
-			    u32 *sec_handle, u8 *owner, u32 id, u32 clean,
+			    u64 *sec_handle, u8 *owner, u32 id, u32 clean,
 			    void *peer_data, void *dev_desc);
-	int (*memory_free)(u32 sec_handle, u8 *owner, u32 id, void *peer_data,
+	int (*memory_free)(u64 sec_handle, u8 *owner, u32 id, void *peer_data,
 			   void *priv);
 	int (*memory_grant)(u64 pa, u32 size, void *peer_data, void *dev_desc);
 	int (*memory_reclaim)(void *peer_data, void *dev_desc);
@@ -105,11 +114,11 @@ struct peer_mgr_desc {
 			      struct trusted_peer_session *sess_data,
 			      void *dev_desc);
 	int (*mgr_sess_mem_alloc)(u32 alignment, u32 size, u32 *refcount,
-				  u32 *sec_handle, u8 *owner, u32 id, u32 clean,
+				  u64 *sec_handle, u8 *owner, u32 id, u32 clean,
 				  struct trusted_driver_operations *drv_ops,
 				  struct trusted_peer_session *sess_data,
 				  void *dev_desc);
-	int (*mgr_sess_mem_free)(u32 sec_handle, u8 *owner, u32 id,
+	int (*mgr_sess_mem_free)(u64 sec_handle, u8 *owner, u32 id,
 				 struct trusted_driver_operations *drv_ops,
 				 struct trusted_peer_session *sess_data,
 				 void *dev_desc);

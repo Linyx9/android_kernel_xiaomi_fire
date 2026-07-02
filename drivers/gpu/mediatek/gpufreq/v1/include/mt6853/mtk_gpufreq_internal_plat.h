@@ -1,8 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2021 MediaTek Inc.
+ * Copyright (c) 2019 MediaTek Inc.
  */
-
 
 #ifndef ___MT_GPUFREQ_INTERNAL_PLAT_H___
 #define ___MT_GPUFREQ_INTERNAL_PLAT_H___
@@ -20,7 +19,7 @@
  * (0, 1) -> DVFS disable but init to CUST_INIT_OPP (do DVFS only onces)
  * (0, 0) -> DVFS disable
  **************************************************/
-#define MT_GPUFREQ_DVFS_ENABLE          1
+#define MT_GPUFREQ_DVFS_ENABLE          0
 #define MT_GPUFREQ_CUST_CONFIG          0
 #define MT_GPUFREQ_CUST_INIT_OPP        (g_opp_table_segment_1[8].gpufreq_khz)
 
@@ -106,7 +105,7 @@
 /**************************************************
  * DFD Dump
  **************************************************/
-#define MT_GPUFREQ_DFD_ENABLE 1
+#define MT_GPUFREQ_DFD_ENABLE 0
 #define MT_GPUFREQ_DFD_DEBUG 0
 
 /**************************************************
@@ -143,16 +142,15 @@
 		return single_open(	\
 				file,	\
 				mt_ ## name ## _proc_show,	\
-				PDE_DATA(inode));	\
+				pde_data(inode));	\
 	}	\
-	static const struct file_operations mt_ ## name ## _proc_fops =	\
+	static const struct proc_ops mt_ ## name ## _proc_fops =	\
 	{	\
-		.owner = THIS_MODULE,	\
-		.open = mt_ ## name ## _proc_open,	\
-		.read = seq_read,	\
-		.llseek = seq_lseek,	\
-		.release = single_release,	\
-		.write = mt_ ## name ## _proc_write,	\
+		.proc_open = mt_ ## name ## _proc_open,	\
+		.proc_read = seq_read,	\
+		.proc_lseek = seq_lseek,	\
+		.proc_release = single_release,	\
+		.proc_write = mt_ ## name ## _proc_write,	\
 	}
 #define PROC_FOPS_RO(name)	\
 	static int mt_ ## name ## _proc_open(	\
@@ -162,15 +160,14 @@
 		return single_open(	\
 				file,	\
 				mt_ ## name ## _proc_show,	\
-				PDE_DATA(inode));	\
+				pde_data(inode));	\
 	}	\
-	static const struct file_operations mt_ ## name ## _proc_fops =	\
+	static const struct proc_ops mt_ ## name ## _proc_fops =	\
 	{	\
-		.owner = THIS_MODULE,	\
-		.open = mt_ ## name ## _proc_open,	\
-		.read = seq_read,	\
-		.llseek = seq_lseek,	\
-		.release = single_release,	\
+		.proc_open = mt_ ## name ## _proc_open,	\
+		.proc_read = seq_read,	\
+		.proc_lseek = seq_lseek,	\
+		.proc_release = single_release,	\
 	}
 #define PROC_ENTRY(name) \
 	{__stringify(name), &mt_ ## name ## _proc_fops}
@@ -288,13 +285,6 @@ struct g_clk_info {
 	struct clk *clk_main_parent;
 	struct clk *clk_sub_parent;
 	struct clk *subsys_bg3d;
-	struct clk *mtcmos_mfg0;
-	struct clk *mtcmos_mfg1;
-	struct clk *mtcmos_mfg2;
-	struct clk *mtcmos_mfg3;
-	struct clk *mtcmos_mfg4;
-	struct clk *mtcmos_mfg5;
-	struct clk *mtcmos_mfg6;
 };
 struct g_pmic_info {
 	struct regulator *reg_vgpu;

@@ -66,7 +66,7 @@ void Auddrv_Aee_Dump(void)
 {
 	pr_debug("+%s\n", __func__);
 	if (bEnableDump == true) {
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_exception_api(__FILE__, __LINE__, DB_OPT_FTRACE,
 					 "Audio is blocked",
 					 "audio blocked dump ftrace");
@@ -83,7 +83,6 @@ static void DumpUnderFlowTime(void)
 {
 	int i = 0;
 
-	pr_debug("%s\n", __func__);
 	for (i = 0; i < UnderflowrecordNumber; i++)
 		pr_debug("UnderflowTime[%d] = %llu\n", i, UnderflowTime[i]);
 }
@@ -179,7 +178,6 @@ void Auddrv_CheckInterruptTiming(void)
 
 static void ClearInterruptTiming(void)
 {
-	pr_debug("%s\n", __func__);
 	Irq_time_t1 = 0;
 	Irq_time_t2 = 0;
 }

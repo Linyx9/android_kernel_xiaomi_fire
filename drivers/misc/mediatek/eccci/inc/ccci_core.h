@@ -92,7 +92,6 @@ struct ccb_ctrl_info {
 
 extern unsigned int ccb_configs_len;
 extern struct ccci_ccb_config ccb_configs[];
-extern void mtk_ccci_ccb_info_peek(void);
 
 
 /* ======================================================================= */
@@ -210,8 +209,6 @@ extern void mtk_ccci_ccb_info_peek(void);
 #define CCCI_IOC_SEND_SIGNAL_TO_USER		\
 	_IOW(CCCI_IOC_MAGIC, 43, unsigned int)
 /* md_init */
-#define CCCI_IOC_RESET_MD1_MD3_PCCIF		\
-	_IO(CCCI_IOC_MAGIC, 45)
 #define CCCI_IOC_SIM_LOCK_RANDOM_PATTERN \
 	_IOW(CCCI_IOC_MAGIC, 46, unsigned int)
 /* md_init */
@@ -241,9 +238,6 @@ extern void mtk_ccci_ccb_info_peek(void);
 /*mdlogger*/
 #define CCCI_IOC_MDLOG_DUMP_DONE		\
 	_IO(CCCI_IOC_MAGIC, 56)
-/* mdlogger */
-#define CCCI_IOC_GET_OTHER_MD_STATE		\
-	_IOR(CCCI_IOC_MAGIC, 57, unsigned int)
 /* META */
 #define CCCI_IOC_SET_MD_BOOT_MODE		\
 	_IOW(CCCI_IOC_MAGIC, 58, unsigned int)
@@ -268,7 +262,9 @@ extern void mtk_ccci_ccb_info_peek(void);
 
 #define CCCI_IOC_CCB_CTRL_INFO			\
 	_IOWR(CCCI_IOC_MAGIC, 71, struct ccb_ctrl_info)
-
+/* for cancel ccb poll */
+#define CCCI_IOC_SMEM_POLL_EXIT	\
+	_IO(CCCI_IOC_MAGIC, 76)
 #define CCCI_IOC_SET_HEADER			\
 	_IO(CCCI_IOC_MAGIC,  112) /* emcs_va */
 #define CCCI_IOC_CLR_HEADER			\
@@ -397,11 +393,11 @@ enum CCCI_CH {
 	CCCI_CCMNI8_DLACK_RX            = 93,
 	CCCI_MDL_MONITOR_DL             = 94,
 	CCCI_MDL_MONITOR_UL             = 95,
-	CCCI_CCMNILAN_RX                = 96,
-	CCCI_CCMNILAN_RX_ACK            = 97,
-	CCCI_CCMNILAN_TX                = 98,
-	CCCI_CCMNILAN_TX_ACK            = 99,
-	CCCI_CCMNILAN_DLACK_RX          = 100,
+	CCCI_CCMNI9_RX                  = 96,
+	CCCI_CCMNI9_RX_ACK              = 97,
+	CCCI_CCMNI9_TX                  = 98,
+	CCCI_CCMNI9_TX_ACK              = 99,
+	CCCI_CCMNI9_DLACK_RX            = 100,
 	CCCI_IMSEM_UL                   = 101,
 	CCCI_IMSEM_DL                   = 102,
 	CCCI_CCMNI10_RX                 = 103,
@@ -481,9 +477,6 @@ enum CCCI_CH {
 	CCCI_UDC_RX			= 177,
 	CCCI_UDC_TX			= 178,
 
-	CCCI_MIPI_CHANNEL_RX	= 179,
-	CCCI_MIPI_CHANNEL_TX	= 180,
-
 	CCCI_TCHE_RX			= 181,
 	CCCI_TCHE_TX			= 182,
 	CCCI_DISP_RX			= 183,
@@ -502,6 +495,27 @@ enum CCCI_CH {
 	CCCI_TIME_TX			= 203,
 	CCCI_GARB_RX			= 204,
 	CCCI_GARB_TX			= 205,
+
+	CCCI_MIPC0_CHANNEL_RX		= 214,
+	CCCI_MIPC0_CHANNEL_TX		= 215,
+	CCCI_MIPC1_CHANNEL_RX		= 216,
+	CCCI_MIPC1_CHANNEL_TX		= 217,
+	CCCI_MIPC2_CHANNEL_RX		= 218,
+	CCCI_MIPC2_CHANNEL_TX		= 219,
+	CCCI_MIPC3_CHANNEL_RX		= 220,
+	CCCI_MIPC3_CHANNEL_TX		= 221,
+	CCCI_MIPC4_CHANNEL_RX		= 222,
+	CCCI_MIPC4_CHANNEL_TX		= 223,
+	CCCI_MIPC5_CHANNEL_RX		= 224,
+	CCCI_MIPC5_CHANNEL_TX		= 225,
+	CCCI_MIPC6_CHANNEL_RX		= 226,
+	CCCI_MIPC6_CHANNEL_TX		= 227,
+	CCCI_MIPC7_CHANNEL_RX		= 228,
+	CCCI_MIPC7_CHANNEL_TX		= 229,
+	CCCI_MIPC8_CHANNEL_RX		= 230,
+	CCCI_MIPC8_CHANNEL_TX		= 231,
+	CCCI_MIPC9_CHANNEL_RX		= 232,
+	CCCI_MIPC9_CHANNEL_TX		= 233,
 
 	CCCI_EPDG1_RX			= 236,
 	CCCI_EPDG1_TX			= 237,
@@ -603,9 +617,27 @@ enum md_bc_event {
 /* common API */
 /* ========================================================================= */
 
-#ifdef FEATURE_SCP_CCCI_SUPPORT
-extern void fsm_scp_init0(void);
-#endif
+#define NORMAL_BOOT_ID 0
+#define META_BOOT_ID 1
+#define FACTORY_BOOT_ID	2
+
+/* boot type definitions */
+enum boot_mode_t {
+	NORMAL_BOOT = 0,
+	META_BOOT = 1,
+	RECOVERY_BOOT = 2,
+	SW_REBOOT = 3,
+	FACTORY_BOOT = 4,
+	ADVMETA_BOOT = 5,
+	ATE_FACTORY_BOOT = 6,
+	ALARM_BOOT = 7,
+	KERNEL_POWER_OFF_CHARGING_BOOT = 8,
+	LOW_POWER_OFF_CHARGING_BOOT = 9,
+	DONGLE_BOOT = 10,
+	UNKNOWN_BOOT
+};
+unsigned int ccci_get_boot_mode_from_dts(void);
+extern int ccci_register_dev_node(const char *name, int major_id, int minor);
 #ifdef CCCI_KMODULE_ENABLE
 int ccci_init(void);
 #endif

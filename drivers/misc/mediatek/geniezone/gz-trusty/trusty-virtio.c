@@ -42,6 +42,7 @@
 #include <linux/virtio_ring.h>
 #include <linux/atomic.h>
 #include <linux/mod_devicetable.h>
+#include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/kthread.h>
 #include <linux/sched.h>
@@ -109,7 +110,7 @@ struct trusty_vdev {
 	void *config;
 	struct fw_rsc_vdev *vdev_descr;
 	uint vring_num;
-	struct trusty_vring vrings[0];
+	struct trusty_vring vrings[];
 };
 
 #define vdev_to_tvdev(vd)  container_of((vd), struct trusty_vdev, vdev)
@@ -277,7 +278,10 @@ static int trusty_vqueue_to_cpu(struct trusty_ctx *tctx, struct virtqueue *vq)
 	if (tvr->notifyid >= TIPC_TXVQ_NOTIFYID_START)
 		cpu = tvr->notifyid - TIPC_TXVQ_NOTIFYID_START;
 
-	return cpu_possible(cpu) ? cpu : -1;
+	if (cpu < 0)
+		return -1;
+	else
+		return cpu_possible(cpu) ? cpu : -1;
 }
 
 static bool trusty_virtio_notify(struct virtqueue *vq)
@@ -1000,7 +1004,8 @@ static int trusty_thread_create(struct trusty_ctx *tctx)
 
 			init_completion(&task_info->rdy[task_cnt]);
 			task_info->fd[task_cnt] =
-				kthread_run(trusty_task_ptr, (void *)tctx, task_name);
+				kthread_run(trusty_task_ptr, (void *)tctx, "%s",
+						task_name);
 			if (IS_ERR(task_info->fd[task_cnt])) {
 				dev_info(tctx->dev, "%s unable create kthread\n", __func__);
 				ret = PTR_ERR(task_info->fd[task_cnt]);

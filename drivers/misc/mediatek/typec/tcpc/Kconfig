@@ -3,8 +3,9 @@
 #
 
 config TCPC_CLASS
-	bool "TypeC Port Controller Device Class"
+	tristate "TypeC Port Controller Device Class"
 	select MTK_USB_TYPEC
+	select RT_REGMAP
 	select TYPEC
 	help
 	  Say Y to enable
@@ -12,8 +13,18 @@ config TCPC_CLASS
 	  Controller Device
 	  Class
 
+config USB_POWER_DELIVERY
+	tristate "Support USB power delivery Function"
+	depends on TCPC_CLASS
+	default n
+	help
+	  Say Y to enable
+	  USB
+	  Power Delivery
+	  support
+
 config TCPC_RT1711H
-	bool "Richtek RT1711H TypeC port Controller Driver"
+	tristate "Richtek RT1711H TypeC port Controller Driver"
 	depends on TCPC_CLASS
 	default n
 	help
@@ -22,38 +33,17 @@ config TCPC_RT1711H
 	  TypeC port Controller
 	  Driver
 
-config TCPC_RT5081
-	bool "Richtek RT5081 TypeC port Controller Driver"
-	depends on TCPC_CLASS
-	default n
-	help
-	  Say Y to enable Richtek RT5081
-	  TypeC port Controller
-	  Also Support Power Delivery
-	  Say N to disable
-
 config TCPC_MT6360
-	bool "MediaTek MT6360 TypeC port Controller Driver"
+	tristate "MediaTek MT6360 TypeC port Controller Driver"
 	depends on TCPC_CLASS
 	help
-	  Say Y to enable MediaTek MT6370
+	  Say Y to enable MediaTek MT6360
 	  TypeC port Controller
 	  Also Support Power Delivery
 	  Say N to disable
-
-config TCPC_MT6362
-	tristate "MT6362 SPMI TCPC driver"
-	depends on TCPC_CLASS
-	depends on MFD_MT6362
-	help
-	  Say yes here to have support for the MT6362 TCPC
-	  Support TypeC port Controller and Power Delivery
-
-	  The driver can also be build as a module.
-	  If so, the module will be called tcpci_mt6362
 
 config TCPC_MT6370
-	bool "MediaTek MT6370 TypeC port Controller Driver"
+	tristate "MediaTek MT6370 TypeC port Controller Driver"
 	depends on TCPC_CLASS
 	default n
 	help
@@ -62,45 +52,25 @@ config TCPC_MT6370
 	  Also Support Power Delivery
 	  Say N to disable
 
-config TCPC_WUSB3801
-	bool "MediaTek WUSB3801 TypeC port Controller Driver"
+config TCPC_MT6375
+	tristate "Mediatek MT6375 compatible Type-C chip driver"
 	depends on TCPC_CLASS
-	default n
+	depends on MFD_MT6375
 	help
-	  Say Y to enable WUSB3801
-	  TypeC port Controller
-	  Also Support Power Delivery
-	  Say N to disable
+	  Say Y to enable MediaTek MT6375
+	  Mediatek MT6375 Type-C chip driver that works with
+	  Type-C Port Controller Manager to provide USB PD and USB
+	  Type-C functionalities.
 
-config TCPC_HUSB320
-	bool "MediaTek HUSB320 TypeC port Controller Driver"
+config TCPC_MT6379
+	tristate "Mediatek MT6379 compatible Type-C chip driver"
 	depends on TCPC_CLASS
-	default n
+	depends on MFD_MT6379_I2C || MFD_MT6379_SPMI
 	help
-	  Say Y to enable HUSB320
-	  TypeC port Controller
-	  Also Support Power Delivery
-	  Say N to disable
-
-config PD_DBG_INFO
-	bool "TCPC power delivery debug information"
-	depends on TCPC_CLASS
-	default y
-	help
-	  Say Y to enable
-	  power delivery
-	  debug information
-	  Say N to disable
-
-config USB_POWER_DELIVERY
-	bool "Support USB power delivery Function"
-	depends on TCPC_CLASS
-	default n
-	help
-	  Say Y to enable
-	  USB
-	  Power Delivery
-	  support
+	  Say Y to enable MediaTek MT6375/MT6379
+	  Mediatek MT6375/MT6379 Type-C chip driver that works with
+	  Type-C Port Controller Manager to provide USB PD and USB
+	  Type-C functionalities.
 
 config USB_PD_VBUS_STABLE_TOUT
 	int "PD VBUS Stable Timeout"
@@ -113,8 +83,18 @@ config USB_PD_VBUS_STABLE_TOUT
 	  VBUS change
 	  stable
 
+config PD_DBG_INFO
+	tristate "PD debug information"
+	depends on TCPC_CLASS
+	default y
+	help
+	  Say Y to enable PD debug
+	  for PD DBG
+	  information
+	  Say N to disable
+
 config MTK_TYPEC_WATER_DETECT
-	bool "Water detection function for type-c connector"
+	tristate "Water detection function for type-c connector"
 	depends on TCPC_CLASS
 	help
 	  Say Yes to enable water detection on type-c connector.
@@ -123,7 +103,7 @@ config MTK_TYPEC_WATER_DETECT
 	  If unsure, say N.
 
 config MTK_TYPEC_WATER_DETECT_BY_PCB
-	bool "Let PCB decides enabling water detection or not"
+	tristate "Let PCB decides enabling water detection or not"
 	depends on MTK_TYPEC_WATER_DETECT
 	help
 	  Query GPIO on PCB to judge whether type-c water detection

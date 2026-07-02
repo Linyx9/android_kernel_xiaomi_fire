@@ -156,8 +156,8 @@ static const struct snd_soc_dapm_route mtk_dai_hostless_routes[] = {
 	/* Hostless AAudio */
 	{"Hostless HW Gain AAudio In", NULL, "HW Gain 2 In"},
 	{"Hostless SRC AAudio UL", NULL, "HW Gain 2 Out"},
-	{"HW_SRC_2_IN_CH1", "HW_GAIN2_OUT_CH1", "Hostless SRC AAudio DL"},
-	{"HW_SRC_2_IN_CH2", "HW_GAIN2_OUT_CH2", "Hostless SRC AAudio DL"},
+	{"HW_SRC_2_IN_CH1", "HW_GAIN_2_CH1", "Hostless SRC AAudio DL"},
+	{"HW_SRC_2_IN_CH2", "HW_GAIN_2_CH2", "Hostless SRC AAudio DL"},
 };
 
 /* dai ops */
@@ -173,12 +173,23 @@ static int mtk_dai_hostless_startup(struct snd_pcm_substream *substream,
 	ret = snd_pcm_hw_constraint_integer(runtime,
 					    SNDRV_PCM_HW_PARAM_PERIODS);
 	if (ret < 0)
-		dev_err(afe->dev, "snd_pcm_hw_constraint_integer failed\n");
+		dev_info(afe->dev, "snd_pcm_hw_constraint_integer failed\n");
 	return ret;
+}
+
+static int mtk_dai_hostless_prepare(struct snd_pcm_substream *substream,
+				    struct snd_soc_dai *dai)
+{
+	if (substream->runtime->stop_threshold == ~(0U))
+		substream->runtime->stop_threshold = ULONG_MAX;
+	if (substream->runtime->stop_threshold == S32_MAX)
+		substream->runtime->stop_threshold = LONG_MAX;
+	return 0;
 }
 
 static const struct snd_soc_dai_ops mtk_dai_hostless_ops = {
 	.startup = mtk_dai_hostless_startup,
+	.prepare = mtk_dai_hostless_prepare,
 };
 
 /* dai driver */
@@ -436,7 +447,7 @@ int mt6853_dai_hostless_register(struct mtk_base_afe *afe)
 {
 	struct mtk_base_afe_dai *dai;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

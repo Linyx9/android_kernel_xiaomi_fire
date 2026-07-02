@@ -30,12 +30,14 @@
 //#include <mt-plat/sync_write.h>
 #include <mt-plat/aee.h>
 #include <linux/delay.h>
+#include <linux/regmap.h>
 #include "scp_feature_define.h"
 #include "scp_ipi_pin.h"
 #include "scp_helper.h"
 #include "scp_excep.h"
 #include "scp_dvfs.h"
 #include "scp.h"
+#include "sap.h"
 
 #define SCP_SECURE_DUMP_MEASURE 0
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM) && SCP_SECURE_DUMP_MEASURE
@@ -86,18 +88,45 @@ int scp_awake_lock(void *_scp_id)
 
 	/*set a direct IPI to awake SCP */
 	/*pr_debug("scp_awake_lock: try to awake %s\n", core_id);*/
-	writel(0xA0 | (1 << AP_AWAKE_LOCK), INFRA_IRQ_SET);
+	scp_lpm_req_infra();
+	if (scpreg.scpsys_regmap_en)
+		regmap_write(scpreg.scpsys_regmap,
+				INFRA_IRQ_SET_OFS, 0xA0 | (1 << AP_AWAKE_LOCK));
+	else
+		writel(0xA0 | (1 << AP_AWAKE_LOCK), INFRA_IRQ_SET);
 
 	count = 0;
 	while (++count != SCP_AWAKE_TIMEOUT) {
 #if SCP_RECOVERY_SUPPORT
-		if (atomic_read(&scp_reset_status) == RESET_STATUS_START) {
+		if (atomic_read(&scp_reset_status) != RESET_STATUS_STOP) {
 			pr_notice("%s: resetting scp, break\n", __func__);
 			break;
 		}
 #endif  // SCP_RECOVERY_SUPPORT
 
-		tmp = readl(INFRA_IRQ_SET);
+		if (scp_wdt_pending_check(0)) {
+			pr_notice("%s: wdt, break(us=%d)\n",__func__, count*10);
+			break;
+		}
+
+		if (scpreg.scpsys_regmap_en) {
+
+			if(scpreg.read_infra_irq_sta_en)
+				regmap_read(scpreg.scpsys_regmap,
+						INFRA_IRQ_STA_OFS, &tmp);
+			else
+				regmap_read(scpreg.scpsys_regmap,
+						INFRA_IRQ_SET_OFS, &tmp);
+
+		} else {
+
+			if(scpreg.read_infra_irq_sta_en)
+				tmp = readl(INFRA_IRQ_STA);
+			else
+				tmp = readl(INFRA_IRQ_SET);
+
+		}
+
 		if ((tmp & 0xA0) != 0xA0) {
 			pr_notice("%s: INFRA_IRQ_SET %x\n", __func__, tmp);
 			break;
@@ -107,21 +136,47 @@ int scp_awake_lock(void *_scp_id)
 			break;
 		}
 		udelay(10);
+
 	}
 	/* clear status */
-	writel(0xA0 | (1 << AP_AWAKE_LOCK), INFRA_IRQ_CLEAR);
+	if (scpreg.scpsys_regmap_en)
+		regmap_write(scpreg.scpsys_regmap,
+				INFRA_IRQ_CLEAR_OFS, 0xA0 | (1 << AP_AWAKE_LOCK));
+	else
+		writel(0xA0 | (1 << AP_AWAKE_LOCK), INFRA_IRQ_CLEAR);
 
 	/* scp lock awake success*/
-	if (ret != -1)
+	if (ret != -1) {
 		*scp_awake_count = *scp_awake_count + 1;
+		scp_smc_awake_ctrl(IS_AWAKE_LOCK);
+	}
+	spin_unlock_irqrestore(&scp_awake_spinlock, spin_flags);
 
 	if (ret == -1) {
-		pr_notice("%s: awake %s fail..\n", __func__, core_id);
+		pr_notice("%s: awake %s fail.., %dus\n", __func__, core_id, count*10);
+		scp_smc_awake_ctrl(IS_AWAKE_FAIL);
 #if SCP_RECOVERY_SUPPORT
-		if (atomic_read(&scp_reset_status) == RESET_STATUS_STOP) {
-			scp_set_reset_status();
+		/*
+		 * It's OK without critical section for below code flow,
+		 * recovery machine already consider the race condition
+		 * of "scp_reset_status".
+		 */
+		if (scp_set_reset_status() == RESET_STATUS_STOP) {
+			/*
+			 * Since SCP may not be accessible in bus hang issue,
+			 * then we backup some information before APMCU halt SCP.
+			 */
+			scp_reousrce_dump();
+			dump_u1u2_clock();
 			pr_notice("%s: start to reset scp...\n", __func__);
-
+			/*
+			 * Based on SCP DE suggestion, force PLL CG enable in order to avoid
+			 * be disabled by others.
+			 */
+			if (scp_dvfs_feature_enable()) {
+				pr_notice("[SCP]%s: Enable PLL\n", __func__);
+				scp_pll_ctrl_set(PLL_ENABLE, CLK_26M);
+			}
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM)
 			if (scpreg.secure_dump) {
 				scp_do_halt_set();
@@ -138,9 +193,7 @@ int scp_awake_lock(void *_scp_id)
 			pr_notice("%s: scp resetting\n", __func__);
 #endif
 	}
-
-	spin_unlock_irqrestore(&scp_awake_spinlock, spin_flags);
-
+	scp_lpm_rel_infra();
 	return ret;
 }
 EXPORT_SYMBOL_GPL(scp_awake_lock);
@@ -184,17 +237,45 @@ int scp_awake_unlock(void *_scp_id)
 
 	/* WE1: set a direct IPI to release awake SCP */
 	/*pr_debug("scp_awake_lock: try to awake %s\n", core_id);*/
-	writel(0xA0 | (1 << AP_AWAKE_UNLOCK), INFRA_IRQ_SET);
+	scp_lpm_req_infra();
+	if (scpreg.scpsys_regmap_en)
+		regmap_write(scpreg.scpsys_regmap,
+				INFRA_IRQ_SET_OFS, 0xA0 | (1 << AP_AWAKE_UNLOCK));
+	else
+		writel(0xA0 | (1 << AP_AWAKE_UNLOCK), INFRA_IRQ_SET);
 
 	count = 0;
 	while (++count != SCP_AWAKE_TIMEOUT) {
 #if SCP_RECOVERY_SUPPORT
-		if (atomic_read(&scp_reset_status) == RESET_STATUS_START) {
+		if (atomic_read(&scp_reset_status) != RESET_STATUS_STOP) {
 			pr_notice("%s: scp is being reset, break\n", __func__);
 			break;
 		}
+
 #endif  // SCP_RECOVERY_SUPPORT
-		tmp = readl(INFRA_IRQ_SET);
+		if (scp_wdt_pending_check(0)) {
+			pr_notice("%s: wdt, break(us=%d)\n",__func__, count*10);
+			break;
+		}
+
+		if (scpreg.scpsys_regmap_en) {
+
+			if(scpreg.read_infra_irq_sta_en)
+				regmap_read(scpreg.scpsys_regmap,
+						INFRA_IRQ_STA_OFS, &tmp);
+			else
+				regmap_read(scpreg.scpsys_regmap,
+						INFRA_IRQ_SET_OFS, &tmp);
+
+		} else {
+
+			if(scpreg.read_infra_irq_sta_en)
+				tmp = readl(INFRA_IRQ_STA);
+			else
+				tmp = readl(INFRA_IRQ_SET);
+
+		}
+
 		if ((tmp & 0xA0) != 0xA0) {
 			pr_notice("%s: INFRA7_IRQ_SET %x\n", __func__, tmp);
 			break;
@@ -206,7 +287,11 @@ int scp_awake_unlock(void *_scp_id)
 		udelay(10);
 	}
 	/* clear status */
-	writel(0xA0 | (1 << AP_AWAKE_UNLOCK), INFRA_IRQ_CLEAR);
+	if (scpreg.scpsys_regmap_en)
+		regmap_write(scpreg.scpsys_regmap,
+				INFRA_IRQ_CLEAR_OFS, 0xA0 | (1 << AP_AWAKE_UNLOCK));
+	else
+		writel(0xA0 | (1 << AP_AWAKE_UNLOCK), INFRA_IRQ_CLEAR);
 
 	/* scp unlock awake success*/
 	if (ret != -1) {
@@ -216,15 +301,36 @@ int scp_awake_unlock(void *_scp_id)
 
 		if (*scp_awake_count > 0)
 			*scp_awake_count = *scp_awake_count - 1;
+
+		scp_smc_awake_ctrl(IS_AWAKE_UNLOCK);
 	}
+	spin_unlock_irqrestore(&scp_awake_spinlock, spin_flags);
 
 	if (ret == -1) {
-		pr_notice("%s: awake %s fail..\n", __func__, core_id);
+		pr_notice("%s: awake %s fail.., %dus\n", __func__, core_id, count*10);
+		scp_smc_awake_ctrl(IS_AWAKE_FAIL);
 #if SCP_RECOVERY_SUPPORT
-		if (atomic_read(&scp_reset_status) == RESET_STATUS_STOP) {
-			scp_set_reset_status();
+		/*
+		 * It's OK without critical section for below code flow,
+		 * recovery machine already consider the race condition
+		 * of "scp_reset_status".
+		 */
+		if (scp_set_reset_status() == RESET_STATUS_STOP) {
+			/*
+			 * Since SCP may not be accessible in bus hang issue,
+			 * then we backup some information before APMCU halt SCP.
+			 */
+			scp_reousrce_dump();
+			dump_u1u2_clock();
 			pr_notice("%s: start to reset scp...\n", __func__);
-
+			/*
+			 * Based on SCP DE suggestion, force PLL CG enable in order to avoid
+			 * be disabled by others.
+			 */
+			if (scp_dvfs_feature_enable()) {
+				pr_notice("[SCP]%s: Enable PLL\n", __func__);
+				scp_pll_ctrl_set(PLL_ENABLE, CLK_26M);
+			}
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM)
 			if (scpreg.secure_dump) {
 				scp_do_halt_set();
@@ -241,29 +347,10 @@ int scp_awake_unlock(void *_scp_id)
 			pr_notice("%s: scp resetting\n", __func__);
 #endif
 	}
-
-
-	/* spinlock context safe */
-	spin_unlock_irqrestore(&scp_awake_spinlock, spin_flags);
-
+	scp_lpm_rel_infra();
 	return ret;
 }
 EXPORT_SYMBOL_GPL(scp_awake_unlock);
-
-void scp_enable_sram(void)
-{
-	uint32_t reg_temp;
-
-	/*enable sram, enable 1 block per time*/
-	for (reg_temp = 0xffffffff; reg_temp != 0;) {
-		reg_temp = reg_temp >> 1;
-		writel(reg_temp, SCP_CPU0_SRAM_PD);
-		writel(reg_temp, SCP_CPU1_SRAM_PD);
-	}
-	/*enable scp all TCM*/
-	writel(0, SCP_CLK_CTRL_L1_SRAM_PD);
-	writel(0, SCP_CLK_CTRL_TCM_TAIL_SRAM_PD);
-}
 
 /*
  * scp_sys_reset, reset scp
@@ -306,6 +393,7 @@ int scp_sys_full_reset(void)
 	/*set info to sram*/
 	memcpy_to_scp(scp_region_info, (const void *)&scp_region_info_copy
 			, sizeof(scp_region_info_copy));
+	sap_restore_l2tcm();
 	}
 
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM)
@@ -352,8 +440,13 @@ int scp_clr_spm_reg(void *unused)
 	 * scp side write 0x1 to SCP2SPM_IPC_SET to set SPM reg
 	 * scp set        bit[0]
 	 */
-	writel(0x1, SCP_TO_SPM_REG);
+	if (scpreg.cfgreg_ap_en)
+		writel(0x1, (scpreg.cfgreg_ap + 0x0018));
+	else
+		writel(0x1, SCP_TO_SPM_REG);
 
+	if(scpreg.ipc_wa)
+		scp_do_gpr_clear(7);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(scp_clr_spm_reg);

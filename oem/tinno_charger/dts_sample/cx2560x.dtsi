@@ -1,0 +1,13 @@
+/*
+ * this is the dtsi sample for cx2560x.
+ * update date:2024.04.22
+ */
+
+cx2560x: cx2560x@6B {
+	compatible = "cx,cx2560x_charger";
+	reg = <0x6B>;
+	status = "okay";
+	cx,intr_gpio = <&pio 4 0x0>; /* GPIO */
+	cx,chg-en-gpio = <&pio 150 0x0>;
+	chg_name = "primary_chg";
+};

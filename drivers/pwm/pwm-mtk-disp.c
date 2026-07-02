@@ -1,18 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * MediaTek display pulse-width-modulation controller driver.
  * Copyright (c) 2015 MediaTek Inc.
  * Author: YH Huang <yh.huang@mediatek.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
+#include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/io.h>
@@ -37,9 +30,6 @@
 #define PWM_HIGH_WIDTH_SHIFT	16
 #define PWM_HIGH_WIDTH_MASK	(0x1fff << PWM_HIGH_WIDTH_SHIFT)
 
-#undef pr_fmt
-#define pr_fmt(fmt) "[mtk_disp_pwm]" fmt
-
 struct mtk_pwm_data {
 	u32 enable_mask;
 	unsigned int con0;
@@ -52,6 +42,7 @@ struct mtk_pwm_data {
 
 	unsigned int bls_debug;
 	u32 bls_debug_mask;
+	bool need_power_on;
 };
 
 struct mtk_disp_pwm {
@@ -60,8 +51,11 @@ struct mtk_disp_pwm {
 	struct clk *clk_main;
 	struct clk *clk_mm;
 	void __iomem *base;
+	bool enabled;
+	struct clk *clk_source;
 	void __iomem *pmw_src_addr;
 	bool pwm_src_enabled;
+	// bool pwm_src_set;
 };
 
 static inline struct mtk_disp_pwm *to_mtk_disp_pwm(struct pwm_chip *chip)
@@ -153,13 +147,76 @@ static int pwm_src_power_off(struct mtk_disp_pwm *mdp)
 	return 0;
 }
 
-static int mtk_disp_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
-			       int duty_ns, int period_ns)
+static int mtk_disp_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
+			      const struct pwm_state *state)
 {
 	struct mtk_disp_pwm *mdp = to_mtk_disp_pwm(chip);
 	u32 clk_div, period, high_width, value;
 	u64 div, rate;
 	int err;
+
+	if (state->polarity != PWM_POLARITY_NORMAL)
+		return -EINVAL;
+
+	if (!state->enabled) {
+		mtk_disp_pwm_update_bits(mdp, DISP_PWM_EN, mdp->data->enable_mask,
+					 0x0);
+
+		if (mdp->enabled) {
+			if (mdp->clk_mm)
+				clk_disable_unprepare(mdp->clk_mm);
+			if (mdp->clk_main)
+				clk_disable_unprepare(mdp->clk_main);
+			if (mdp->data->need_power_on == true)
+				pwm_src_power_off(mdp);
+		}
+
+		mdp->enabled = false;
+		return 0;
+	}
+
+	if (!mdp->enabled) {
+		if (mdp->data->need_power_on == true) {
+#if 0
+			if(mdp->pwm_src_set != true && !IS_ERR(mdp->clk_source)) {
+				if (get_pwm_src_base(mdp->chip.dev, mdp) >= 0) {
+					err = clk_prepare_enable(mdp->clk_mm);
+					if (err < 0) {
+						dev_info(mdp->chip.dev, "clk prepare enable failed!\n");
+						return err;
+					}
+					err = clk_set_parent(mdp->clk_mm, mdp->clk_source);
+					if (err < 0) {
+						dev_info(mdp->chip.dev, "no pwm_src\n");
+						return err;
+					}
+					clk_disable_unprepare(mdp->clk_mm);
+					mdp->pwm_src_set = true;
+					dev_info(mdp->chip.dev, "select clk_mm with pwm_src\n");
+				}
+			}
+#endif
+			pwm_src_power_on(mdp);
+		}
+		if (mdp->clk_main) {
+			err = clk_prepare_enable(mdp->clk_main);
+			if (err < 0) {
+				pr_info("Can't enable mdp->clk_main: %pe\n",
+					ERR_PTR(err));
+				return err;
+			}
+		}
+
+		if (mdp->clk_mm) {
+			err = clk_prepare_enable(mdp->clk_mm);
+			if (err < 0) {
+				pr_info("Can't enable mdp->clk_mm: %pe\n",
+					ERR_PTR(err));
+				clk_disable_unprepare(mdp->clk_main);
+				return err;
+			}
+		}
+	}
 
 	/*
 	 * Find period, high_width and clk_div to suit duty_ns and period_ns.
@@ -171,35 +228,32 @@ static int mtk_disp_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	 * period = (PWM_CLK_RATE * period_ns) / (10^9 * (clk_div + 1)) - 1
 	 * high_width = (PWM_CLK_RATE * duty_ns) / (10^9 * (clk_div + 1))
 	 */
-	dev_dbg(mdp->chip.dev, "duty=%d period=%d\n", duty_ns, period_ns);
+	pr_notice("%s duty_cycle[%llu] period[%llu]\n", __func__, state->duty_cycle, state->period);
 	rate = clk_get_rate(mdp->clk_main);
-	clk_div = div_u64(rate * period_ns, NSEC_PER_SEC) >>
+	clk_div = mul_u64_u64_div_u64(state->period, rate, NSEC_PER_SEC) >>
 			  PWM_PERIOD_BIT_WIDTH;
-	if (clk_div > PWM_CLKDIV_MAX)
+	if (clk_div > PWM_CLKDIV_MAX) {
+		if (!mdp->enabled) {
+			if (mdp->clk_mm)
+				clk_disable_unprepare(mdp->clk_mm);
+			if (mdp->clk_main)
+				clk_disable_unprepare(mdp->clk_main);
+			if (mdp->data->need_power_on == true)
+				pwm_src_power_off(mdp);
+		}
 		return -EINVAL;
-	dev_dbg(mdp->chip.dev, "rate=%lld clk_div=%d\n", rate, clk_div);
+	}
 
 	div = NSEC_PER_SEC * (clk_div + 1);
-	period = div64_u64(rate * period_ns, div);
+	period = mul_u64_u64_div_u64(state->period, rate, div);
 	if (period > 0)
 		period--;
 
-	high_width = div64_u64(rate * duty_ns, div);
+	high_width = mul_u64_u64_div_u64(state->duty_cycle, rate, div);
 	value = period | (high_width << PWM_HIGH_WIDTH_SHIFT);
-	dev_dbg(mdp->chip.dev, "high_width=%d period=%d\n",
-		high_width, period);
 
-	pwm_src_power_on(mdp);
-
-	err = clk_enable(mdp->clk_main);
-	if (err < 0)
-		return err;
-
-	err = clk_enable(mdp->clk_mm);
-	if (err < 0) {
-		clk_disable(mdp->clk_main);
-		return err;
-	}
+	pr_notice("%s rate[%llx] clk_div[%u] div[%llx] high_width[%u] value[%u] period[%u]",
+		__func__, rate, clk_div, div, high_width, value, period);
 
 	mtk_disp_pwm_update_bits(mdp, mdp->data->con0,
 				 PWM_CLKDIV_MASK,
@@ -215,119 +269,11 @@ static int mtk_disp_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 		mtk_disp_pwm_update_bits(mdp, mdp->data->commit,
 					 mdp->data->commit_mask,
 					 0x0);
-	}
-
-	clk_disable(mdp->clk_mm);
-	clk_disable(mdp->clk_main);
-
-	return 0;
-}
-
-static int mtk_disp_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	struct mtk_disp_pwm *mdp = to_mtk_disp_pwm(chip);
-	int err;
-
-	dev_info(mdp->chip.dev, "%s\n", __func__);
-	err = clk_enable(mdp->clk_main);
-	if (err < 0)
-		return err;
-
-	err = clk_enable(mdp->clk_mm);
-	if (err < 0) {
-		clk_disable(mdp->clk_main);
-		return err;
-	}
-
-	pwm_src_power_on(mdp);
-
-	mtk_disp_pwm_update_bits(mdp, DISP_PWM_EN, mdp->data->enable_mask,
-				 mdp->data->enable_mask);
-
-	return 0;
-}
-
-static void mtk_disp_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	struct mtk_disp_pwm *mdp = to_mtk_disp_pwm(chip);
-
-	dev_dbg(mdp->chip.dev, "%s\n", __func__);
-	mtk_disp_pwm_update_bits(mdp, DISP_PWM_EN, mdp->data->enable_mask,
-				 0x0);
-
-	clk_disable(mdp->clk_mm);
-	clk_disable(mdp->clk_main);
-
-	pwm_src_power_off(mdp);
-}
-
-static const struct pwm_ops mtk_disp_pwm_ops = {
-	.config = mtk_disp_pwm_config,
-	.enable = mtk_disp_pwm_enable,
-	.disable = mtk_disp_pwm_disable,
-	.owner = THIS_MODULE,
-};
-
-static int mtk_disp_pwm_probe(struct platform_device *pdev)
-{
-	struct mtk_disp_pwm *mdp;
-	struct resource *r;
-	struct clk *pwm_src;
-	int ret;
-
-	mdp = devm_kzalloc(&pdev->dev, sizeof(*mdp), GFP_KERNEL);
-	if (!mdp)
-		return -ENOMEM;
-
-	mdp->data = of_device_get_match_data(&pdev->dev);
-
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	mdp->base = devm_ioremap_resource(&pdev->dev, r);
-	if (IS_ERR(mdp->base))
-		return PTR_ERR(mdp->base);
-
-	mdp->clk_main = devm_clk_get(&pdev->dev, "main");
-	if (IS_ERR(mdp->clk_main))
-		return PTR_ERR(mdp->clk_main);
-
-	mdp->clk_mm = devm_clk_get(&pdev->dev, "mm");
-	if (IS_ERR(mdp->clk_mm))
-		return PTR_ERR(mdp->clk_mm);
-
-	ret = clk_prepare(mdp->clk_main);
-	if (ret < 0)
-		return ret;
-
-	ret = clk_prepare(mdp->clk_mm);
-	if (ret < 0)
-		goto disable_clk_main;
-
-	pwm_src = devm_clk_get(&pdev->dev, "pwm_src");
-	if (!IS_ERR(pwm_src) && get_pwm_src_base(&pdev->dev, mdp) >= 0) {
-		clk_enable(mdp->clk_mm);
-		clk_set_parent(mdp->clk_mm, pwm_src);
-		clk_disable(mdp->clk_mm);
-		dev_info(&pdev->dev, "select clk_mm with pwm_src\n");
-	}
-
-	mdp->chip.dev = &pdev->dev;
-	mdp->chip.ops = &mtk_disp_pwm_ops;
-	mdp->chip.base = -1;
-	mdp->chip.npwm = 1;
-
-	ret = pwmchip_add(&mdp->chip);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "pwmchip_add() failed: %d\n", ret);
-		goto disable_clk_mm;
-	}
-
-	platform_set_drvdata(pdev, mdp);
-
-	/*
-	 * For MT2701, disable double buffer before writing register
-	 * and select manual mode and use PWM_PERIOD/PWM_HIGH_WIDTH.
-	 */
-	if (!mdp->data->has_commit) {
+	} else {
+		/*
+		 * For MT2701, disable double buffer before writing register
+		 * and select manual mode and use PWM_PERIOD/PWM_HIGH_WIDTH.
+		 */
 		mtk_disp_pwm_update_bits(mdp, mdp->data->bls_debug,
 					 mdp->data->bls_debug_mask,
 					 mdp->data->bls_debug_mask);
@@ -336,25 +282,155 @@ static int mtk_disp_pwm_probe(struct platform_device *pdev)
 					 mdp->data->con0_sel);
 	}
 
-	return 0;
+	mtk_disp_pwm_update_bits(mdp, DISP_PWM_EN, mdp->data->enable_mask,
+				 mdp->data->enable_mask);
+	mdp->enabled = true;
 
-disable_clk_mm:
-	clk_unprepare(mdp->clk_mm);
-disable_clk_main:
-	clk_unprepare(mdp->clk_main);
-	return ret;
+	return 0;
+}
+
+static int mtk_disp_pwm_get_state(struct pwm_chip *chip,
+				   struct pwm_device *pwm,
+				   struct pwm_state *state)
+{
+	struct mtk_disp_pwm *mdp = to_mtk_disp_pwm(chip);
+	u64 rate, period, high_width;
+	u32 clk_div, con0, con1;
+	int err;
+
+	if (mdp->data->need_power_on == true)
+		pwm_src_power_on(mdp);
+	if (mdp->clk_main) {
+		err = clk_prepare_enable(mdp->clk_main);
+		if (err < 0) {
+			pr_info("Can't enable mdp->clk_main: %pe\n", ERR_PTR(err));
+			return 0;
+		}
+	}
+	if (mdp->clk_mm) {
+		err = clk_prepare_enable(mdp->clk_mm);
+		if (err < 0) {
+			pr_info("Can't enable mdp->clk_mm: %pe\n", ERR_PTR(err));
+			if (mdp->clk_main)
+				clk_disable_unprepare(mdp->clk_main);
+			return 0;
+		}
+	}
+
+	if (mdp->clk_main)
+		rate = clk_get_rate(mdp->clk_main);
+	else
+		rate = 0;
+	con0 = readl(mdp->base + mdp->data->con0);
+	con1 = readl(mdp->base + mdp->data->con1);
+	state->enabled = !!(con0 & BIT(0));
+	clk_div = FIELD_GET(PWM_CLKDIV_MASK, con0);
+	period = FIELD_GET(PWM_PERIOD_MASK, con1);
+	/*
+	 * period has 12 bits, clk_div 11 and NSEC_PER_SEC has 30,
+	 * so period * (clk_div + 1) * NSEC_PER_SEC doesn't overflow.
+	 */
+	if (rate == 0) {
+		pr_notice("%s rate[%llx] will divide by zero", __func__, rate);
+		return 0;
+	}
+	state->period = DIV64_U64_ROUND_UP(period * (clk_div + 1) * NSEC_PER_SEC, rate);
+	high_width = FIELD_GET(PWM_HIGH_WIDTH_MASK, con1);
+	state->duty_cycle = DIV64_U64_ROUND_UP(high_width * (clk_div + 1) * NSEC_PER_SEC,
+					       rate);
+	state->polarity = PWM_POLARITY_NORMAL;
+	if (mdp->clk_mm)
+		clk_disable_unprepare(mdp->clk_mm);
+	if (mdp->clk_main)
+		clk_disable_unprepare(mdp->clk_main);
+	if (mdp->data->need_power_on == true)
+		pwm_src_power_off(mdp);
+	return 0;
+}
+
+static const struct pwm_ops mtk_disp_pwm_ops = {
+	.apply = mtk_disp_pwm_apply,
+	.get_state = mtk_disp_pwm_get_state,
+	.owner = THIS_MODULE,
+};
+
+static int mtk_disp_pwm_probe(struct platform_device *pdev)
+{
+	struct mtk_disp_pwm *mdp;
+	int ret;
+	struct clk *pwm_src;
+
+	mdp = devm_kzalloc(&pdev->dev, sizeof(*mdp), GFP_KERNEL);
+	if (!mdp)
+		return -ENOMEM;
+
+	mdp->data = of_device_get_match_data(&pdev->dev);
+
+	mdp->base = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(mdp->base)) {
+		pr_notice("%s mdp base null", __func__);
+		return PTR_ERR(mdp->base);
+	}
+
+	mdp->clk_main = devm_clk_get(&pdev->dev, "main");
+	if (IS_ERR(mdp->clk_main)) {
+		pr_notice("%s clk_main is null", __func__);
+		//return PTR_ERR(mdp->clk_main);
+		mdp->clk_main = NULL;
+	}
+
+	mdp->clk_mm = devm_clk_get(&pdev->dev, "mm");
+	if (IS_ERR(mdp->clk_mm)) {
+		pr_notice("%s clk_mm is null", __func__);
+		//return PTR_ERR(mdp->clk_mm);
+		mdp->clk_mm = NULL;
+	}
+
+	if (mdp->data->need_power_on == true) {
+		pwm_src = devm_clk_get(&pdev->dev, "pwm_src");
+		if (!IS_ERR(pwm_src)) {
+			mdp->clk_source = pwm_src;
+			if (get_pwm_src_base(&pdev->dev, mdp) >= 0) {
+				ret = clk_prepare_enable(mdp->clk_mm);
+				if (ret < 0) {
+					dev_info(mdp->chip.dev, "clk prepare enable failed!\n");
+					return ret;
+				}
+				ret = clk_set_parent(mdp->clk_mm, mdp->clk_source);
+				if (ret < 0) {
+					dev_info(mdp->chip.dev, "no pwm_src\n");
+					return ret;
+				}
+				clk_disable_unprepare(mdp->clk_mm);
+				// mdp->pwm_src_set = true;
+				dev_info(mdp->chip.dev, "select clk_mm with pwm_src\n");
+			}
+		} else
+			dev_info(&pdev->dev, "get pwm_src failed\n");
+	}
+
+	mdp->chip.dev = &pdev->dev;
+	mdp->chip.ops = &mtk_disp_pwm_ops;
+	mdp->chip.npwm = 1;
+
+	ret = pwmchip_add(&mdp->chip);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "pwmchip_add() failed: %pe\n", ERR_PTR(ret));
+		return ret;
+	}
+
+	platform_set_drvdata(pdev, mdp);
+
+	return 0;
 }
 
 static int mtk_disp_pwm_remove(struct platform_device *pdev)
 {
 	struct mtk_disp_pwm *mdp = platform_get_drvdata(pdev);
-	int ret;
 
-	ret = pwmchip_remove(&mdp->chip);
-	clk_unprepare(mdp->clk_mm);
-	clk_unprepare(mdp->clk_main);
+	pwmchip_remove(&mdp->chip);
 
-	return ret;
+	return 0;
 }
 
 static const struct mtk_pwm_data mt2701_pwm_data = {
@@ -367,16 +443,6 @@ static const struct mtk_pwm_data mt2701_pwm_data = {
 	.bls_debug_mask = 0x3,
 };
 
-static const struct mtk_pwm_data mt8173_pwm_data = {
-	.enable_mask = BIT(0),
-	.con0 = 0x10,
-	.con0_sel = 0x0,
-	.con1 = 0x14,
-	.has_commit = true,
-	.commit = 0x8,
-	.commit_mask = 0x1,
-};
-
 static const struct mtk_pwm_data mt6799_pwm_data = {
 	.enable_mask = BIT(0),
 	.con0 = 0x18,
@@ -387,18 +453,63 @@ static const struct mtk_pwm_data mt6799_pwm_data = {
 	.commit_mask = 0x1,
 };
 
+static const struct mtk_pwm_data mt8173_pwm_data = {
+	.enable_mask = BIT(0),
+	.con0 = 0x10,
+	.con0_sel = 0x0,
+	.con1 = 0x14,
+	.has_commit = true,
+	.commit = 0x8,
+	.commit_mask = 0x1,
+};
+
+static const struct mtk_pwm_data mt8183_pwm_data = {
+	.enable_mask = BIT(0),
+	.con0 = 0x18,
+	.con0_sel = 0x0,
+	.con1 = 0x1c,
+	.has_commit = false,
+	.bls_debug = 0x80,
+	.bls_debug_mask = 0x3,
+};
+
+static const struct mtk_pwm_data mt6768_pwm_data = {
+	.enable_mask = BIT(0),
+	.con0 = 0x18,
+	.con0_sel = 0x0,
+	.con1 = 0x1C,
+	.has_commit = true,
+	.commit = 0xC,
+	.commit_mask = 0x1,
+	.need_power_on = true,
+};
+
+static const struct mtk_pwm_data mt6991_pwm_data = {
+	.enable_mask = BIT(0),
+	.con0 = 0x18,
+	.con0_sel = 0x0,
+	.con1 = 0x1c,
+	.has_commit = false,
+	.bls_debug = 0x80,
+	.bls_debug_mask = 0x3,
+};
+
 static const struct of_device_id mtk_disp_pwm_of_match[] = {
-	{.compatible = "mediatek,mt2701-disp-pwm", .data = &mt2701_pwm_data},
-	{.compatible = "mediatek,mt6595-disp-pwm", .data = &mt8173_pwm_data},
-	{.compatible = "mediatek,mt6779-disp-pwm", .data = &mt6799_pwm_data},
-	{.compatible = "mediatek,mt6873-disp-pwm", .data = &mt6799_pwm_data},
-	{.compatible = "mediatek,mt6885-disp-pwm", .data = &mt6799_pwm_data},
-	{.compatible = "mediatek,mt6853-disp-pwm", .data = &mt6799_pwm_data},
-	{.compatible = "mediatek,mt8173-disp-pwm", .data = &mt8173_pwm_data},
-	{.compatible = "mediatek,mt6833-disp-pwm", .data = &mt6799_pwm_data},
-	{.compatible = "mediatek,mt6877-disp-pwm", .data = &mt6799_pwm_data},
-	{.compatible = "mediatek,mt6781-disp-pwm", .data = &mt6799_pwm_data},
-	{}
+	{ .compatible = "mediatek,mt2701-disp-pwm", .data = &mt2701_pwm_data},
+	{ .compatible = "mediatek,mt6595-disp-pwm", .data = &mt8173_pwm_data},
+	{ .compatible = "mediatek,mt6873-disp-pwm", .data = &mt6799_pwm_data},
+	{ .compatible = "mediatek,mt6853-disp-pwm", .data = &mt6799_pwm_data},
+	{ .compatible = "mediatek,mt6985-disp-pwm0", .data = &mt6799_pwm_data},
+	{ .compatible = "mediatek,mt8173-disp-pwm", .data = &mt8173_pwm_data},
+	{ .compatible = "mediatek,mt8183-disp-pwm", .data = &mt8183_pwm_data},
+	{ .compatible = "mediatek,mt6886-disp-pwm", .data = &mt6799_pwm_data},
+	{ .compatible = "mediatek,mt6835-disp-pwm", .data = &mt6799_pwm_data},
+	{ .compatible = "mediatek,mt6768-disp-pwm", .data = &mt6768_pwm_data},
+	{ .compatible = "mediatek,mt6761-disp-pwm", .data = &mt6768_pwm_data},
+	{ .compatible = "mediatek,mt6765-disp-pwm", .data = &mt6768_pwm_data},
+	{ .compatible = "mediatek,mt6781-disp-pwm", .data = &mt6768_pwm_data},
+	{ .compatible = "mediatek,mt6991-disp-pwm0", .data = &mt6991_pwm_data},
+	{ }
 };
 MODULE_DEVICE_TABLE(of, mtk_disp_pwm_of_match);
 

@@ -1,0 +1,9 @@
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/gpu/drm/mediatek/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/gpu/drm/mediatek/mediatek_v2/
+
+ifdef CONFIG_OEM_DRE_MODE
+	DEVINFO_OBJS += dre_mode.o
+endif
+
+obj-$(CONFIG_OEM_DRE_MODE) += oem_dre_mode.o
+oem_dre_mode-y := $(DEVINFO_OBJS)

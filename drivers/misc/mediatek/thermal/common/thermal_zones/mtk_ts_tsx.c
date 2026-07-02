@@ -66,7 +66,7 @@ static char g_bind7[20] = { 0 };
 static char g_bind8[20] = { 0 };
 static char g_bind9[20] = { 0 };
 
-static long int mtktstsx_cur_temp;
+static long mtktstsx_cur_temp;
 /*=============================================================*/
 
 static int mtktstsx_get_temp(
@@ -77,16 +77,8 @@ struct thermal_zone_device *thermal, unsigned long *t)
 /*	pr_notice("[mtktstsx_cur_temp] Raw=%d\n", mtktstsx_cur_temp);*/
 
 
-	thermal->polling_delay = interval * 1000;
+	thermal->polling_delay_jiffies = interval * 1000;
 
-#if 0
-	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
-	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
-	else
-		thermal->polling_delay = interval * polling_factor1;
-#endif
 	return 0;
 }
 
@@ -237,46 +229,6 @@ static struct thermal_zone_device_ops mtktstsx_dev_ops = {
 	.get_crit_temp = mtktstsx_get_crit_temp,
 };
 
-#if 0
-static int tstsx_sysrst_get_max_state(
-struct thermal_cooling_device *cdev, unsigned long *state)
-{
-	*state = 1;
-	return 0;
-}
-
-static int tstsx_sysrst_get_cur_state(
-struct thermal_cooling_device *cdev, unsigned long *state)
-{
-	*state = cl_dev_sysrst_state;
-	return 0;
-}
-
-static int tstsx_sysrst_set_cur_state(
-struct thermal_cooling_device *cdev, unsigned long state)
-{
-	cl_dev_sysrst_state = state;
-	if (cl_dev_sysrst_state == 1) {
-		mtktstsx_info("Power/PMIC_Thermal: reset, reset, reset!!!");
-		mtktstsx_info("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-		mtktstsx_info("*****************************************");
-		mtktstsx_info("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-
-		/* To trigger data abort to reset the system
-		 * for thermal protection.
-		 */
-		BUG();
-		/* arch_reset(0,NULL); */
-	}
-	return 0;
-}
-
-static struct thermal_cooling_device_ops mtktstsx_cooling_sysrst_ops = {
-	.get_max_state = tstsx_sysrst_get_max_state,
-	.get_cur_state = tstsx_sysrst_get_cur_state,
-	.set_cur_state = tstsx_sysrst_set_cur_state,
-};
-#endif
 
 static int mtktstsx_read(struct seq_file *m, void *v)
 {
@@ -382,7 +334,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		mtktstsx_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtktstsx_write",
 					"Bad argument");
@@ -664,3 +616,5 @@ static void __exit mtktstsx_exit(void)
 }
 module_init(mtktstsx_init);
 module_exit(mtktstsx_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

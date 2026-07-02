@@ -12,12 +12,13 @@
 #include <linux/device.h>
 #include <linux/kobject.h>
 #include <linux/version.h>
+#include <linux/device/class.h>
 
 
 static int g_fsm_class_inited;
 
-static ssize_t fsm_re25_calib_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t fsm_re25_calib_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	struct fsm_cal_result result;
 	struct fsm_calib *data;
@@ -39,8 +40,8 @@ static ssize_t fsm_re25_calib_show(struct class *class,
 	return len;
 }
 
-static ssize_t fsm_re25_calib_store(struct class *class,
-				struct class_attribute *attr, const char *buf, size_t count)
+static ssize_t fsm_re25_calib_store(const struct class *class,
+				const struct class_attribute *attr, const char *buf, size_t count)
 {
 	int value = simple_strtoul(buf, NULL, 0);
 
@@ -49,8 +50,8 @@ static ssize_t fsm_re25_calib_store(struct class *class,
 	return count;
 }
 
-static ssize_t fsm_f0_calib_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t fsm_f0_calib_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	struct fsm_cal_result result;
 	struct fsm_calib *data;
@@ -72,27 +73,27 @@ static ssize_t fsm_f0_calib_show(struct class *class,
 	return len;
 }
 
-static ssize_t fsm_f0_calib_store(struct class *class,
-				struct class_attribute *attr, const char *buf, size_t len)
+static ssize_t fsm_f0_calib_store(const struct class *class,
+				const struct class_attribute *attr, const char *buf, size_t len)
 {
 	fsm_f0_test();
 	return len;
 }
 
-static ssize_t fsm_reg_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t fsm_reg_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	return scnprintf(buf, PAGE_SIZE, "%s\n", __func__);
 }
 
-static ssize_t fsm_reg_store(struct class *class,
-				struct class_attribute *attr, const char *buf, size_t len)
+static ssize_t fsm_reg_store(const struct class *class,
+				const struct class_attribute *attr, const char *buf, size_t len)
 {
 	return 0;
 }
 
-static ssize_t fsm_dev_info_show(struct class *class,
-				struct class_attribute *attr, char *buf)
+static ssize_t fsm_dev_info_show(const struct class *class,
+				const struct class_attribute *attr, char *buf)
 {
 	fsm_version_t version;
 	struct preset_file *pfile;

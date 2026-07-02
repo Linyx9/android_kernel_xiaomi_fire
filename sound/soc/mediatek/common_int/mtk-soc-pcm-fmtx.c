@@ -50,6 +50,8 @@
 #include "mtk-soc-pcm-common.h"
 #include "mtk-soc-pcm-platform.h"
 
+#define CODE_COMMENT
+
 static struct afe_mem_control_t *pMemControl;
 static struct snd_dma_buffer *FMTX_Playback_dma_buf;
 static unsigned int mPlaybackDramState;
@@ -60,7 +62,8 @@ static struct device *mDev;
  */
 
 static int mtk_fmtx_probe(struct platform_device *pdev);
-static int mtk_pcm_fmtx_close(struct snd_pcm_substream *substream);
+static int mtk_pcm_fmtx_close(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream);
 static int mtk_afe_fmtx_component_probe(struct snd_soc_component *component);
 
 static int fmtx_hdoutput_control = true;
@@ -87,14 +90,13 @@ static int Audio_fmtx_hdoutput_Set(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 	fmtx_hdoutput_control = ucontrol->value.integer.value[0];
-	pr_debug("%s()\n", __func__);
 
-#if 0
+#ifndef CODE_COMMENT
 	if (fmtx_hdoutput_control) {
 		/* set APLL clock setting */
 		EnableApll1(true);
 		EnableApll2(true);
-#if 0
+#ifndef CODE_COMMENT
 		EnableI2SDivPower(AUDIO_APLL1_DIV0, true);
 		EnableI2SDivPower(AUDIO_APLL2_DIV0, true);
 #else
@@ -107,7 +109,7 @@ static int Audio_fmtx_hdoutput_Set(struct snd_kcontrol *kcontrol,
 		/* set APLL clock setting */
 		EnableApll1(false);
 		EnableApll2(false);
-#if 0
+#ifndef CODE_COMMENT
 		EnableI2SDivPower(AUDIO_APLL1_DIV0, false);
 		EnableI2SDivPower(AUDIO_APLL2_DIV0, false);
 #else
@@ -148,7 +150,6 @@ static int mtk_pcm_fmtx_stop(struct snd_pcm_substream *substream)
 
 	/* struct afe_block_t *Afe_Block = &(pMemControl->rBlock); */
 #if defined(FMTX_DEBUG_LOG)
-	pr_debug("mtk_pcm_fmtx_stop\n");
 #endif
 	irq_remove_user(substream,
 			irq_request_number(Soc_Aud_Digital_Block_MEM_DL1));
@@ -177,13 +178,15 @@ static int mtk_pcm_fmtx_stop(struct snd_pcm_substream *substream)
 }
 
 static snd_pcm_uframes_t
-mtk_pcm_fmtx_pointer(struct snd_pcm_substream *substream)
+mtk_pcm_fmtx_pointer(struct snd_soc_component *component,
+		     struct snd_pcm_substream *substream)
 {
 	return get_mem_frame_index(substream, pMemControl,
 				   Soc_Aud_Digital_Block_MEM_DL1);
 }
 
-static int mtk_pcm_fmtx_hw_params(struct snd_pcm_substream *substream,
+static int mtk_pcm_fmtx_hw_params(struct snd_soc_component *component,
+				  struct snd_pcm_substream *substream,
 				  struct snd_pcm_hw_params *hw_params)
 {
 	int ret = 0;
@@ -217,7 +220,8 @@ static int mtk_pcm_fmtx_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_pcm_fmtx_hw_free(struct snd_pcm_substream *substream)
+static int mtk_pcm_fmtx_hw_free(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	pr_debug("%s substream = %p\n", __func__, substream);
 	if (mPlaybackDramState == true) {
@@ -234,7 +238,8 @@ static struct snd_pcm_hw_constraint_list constraints_fmtx_sample_rates = {
 	.mask = 0,
 };
 
-static int mtk_pcm_fmtx_open(struct snd_pcm_substream *substream)
+static int mtk_pcm_fmtx_open(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -259,16 +264,16 @@ static int mtk_pcm_fmtx_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_err("ret < 0 mtkalsa_fmtx_playback close\n");
-		mtk_pcm_fmtx_close(substream);
+		mtk_pcm_fmtx_close(component, substream);
 		return ret;
 	}
 	return 0;
 }
 
-static int mtk_pcm_fmtx_close(struct snd_pcm_substream *substream)
+static int mtk_pcm_fmtx_close(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream)
 {
 #if defined(FMTX_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	/* mtk_wcn_cmb_stub_audio_ctrl((CMB_STUB_AIF_X)CMB_STUB_AIF_0); */
 
@@ -276,7 +281,8 @@ static int mtk_pcm_fmtx_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_fmtx_prepare(struct snd_pcm_substream *substream)
+static int mtk_pcm_fmtx_prepare(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	return 0;
 }
@@ -334,9 +340,10 @@ static int mtk_pcm_fmtx_start(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_fmtx_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_pcm_fmtx_trigger(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream, int cmd)
 {
-	pr_debug("mtk_pcm_fmtx_trigger cmd = %d\n", cmd);
+	pr_debug("%s cmd = %d\n", __func__, cmd);
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
@@ -348,10 +355,11 @@ static int mtk_pcm_fmtx_trigger(struct snd_pcm_substream *substream, int cmd)
 	return -EINVAL;
 }
 
-static int mtk_pcm_fmtx_copy(struct snd_pcm_substream *substream,
+static int mtk_pcm_fmtx_copy(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream,
 			     int channel,
 			     unsigned long pos,
-			     void __user *buf,
+			     struct iov_iter *buf,
 			     unsigned long bytes)
 {
 	return mtk_memblk_copy(substream,
@@ -363,53 +371,37 @@ static int mtk_pcm_fmtx_copy(struct snd_pcm_substream *substream,
 			       Soc_Aud_Digital_Block_MEM_DL1);
 }
 
-static int mtk_pcm_fmtx_silence(struct snd_pcm_substream *substream,
-				int channel,
-				unsigned long pos,
-				unsigned long bytes)
-{
-#if defined(FMTX_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
-#endif
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
-static struct page *mtk_pcm_fmtx_page(struct snd_pcm_substream *substream,
+static struct page *mtk_pcm_fmtx_page(struct snd_soc_component *component,
+				      struct snd_pcm_substream *substream,
 				      unsigned long offset)
 {
 #if defined(FMTX_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_fmtx_ops = {
+static const struct snd_soc_component_driver mtk_fmtx_soc_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_afe_fmtx_component_probe,
 	.open = mtk_pcm_fmtx_open,
 	.close = mtk_pcm_fmtx_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_pcm_fmtx_hw_params,
 	.hw_free = mtk_pcm_fmtx_hw_free,
 	.prepare = mtk_pcm_fmtx_prepare,
 	.trigger = mtk_pcm_fmtx_trigger,
 	.pointer = mtk_pcm_fmtx_pointer,
-	.copy_user = mtk_pcm_fmtx_copy,
-	.fill_silence = mtk_pcm_fmtx_silence,
+	.copy = mtk_pcm_fmtx_copy,
 	.page = mtk_pcm_fmtx_page,
-};
 
-static struct snd_soc_component_driver mtk_fmtx_soc_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_fmtx_ops,
-	.probe = mtk_afe_fmtx_component_probe,
 };
 
 static int mtk_fmtx_probe(struct platform_device *pdev)
 {
 	/* int ret = 0; */
 #if defined(FMTX_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -432,7 +424,6 @@ static int mtk_fmtx_probe(struct platform_device *pdev)
 static int mtk_afe_fmtx_component_probe(struct snd_soc_component *component)
 {
 #if defined(FMTX_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	snd_soc_add_component_controls(component, Audio_snd_fmtx_controls,
 				      ARRAY_SIZE(Audio_snd_fmtx_controls));
@@ -446,13 +437,12 @@ static int mtk_afe_fmtx_component_probe(struct snd_soc_component *component)
 static int mtk_fmtx_remove(struct platform_device *pdev)
 {
 #if defined(FMTX_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_fmtx_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_fmtx",
@@ -465,7 +455,7 @@ static struct platform_driver mtk_fmtx_driver = {
 
 			.name = MT_SOC_FM_MRGTX_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_fmtx_of_ids,
 #endif
 		},
@@ -481,7 +471,6 @@ static int __init mtk_soc_platform_init(void)
 {
 	int ret;
 #if defined(FMTX_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 #ifndef CONFIG_OF
 	soc_mtkfmtx_dev = platform_device_alloc(MT_SOC_FM_MRGTX_PCM, -1);

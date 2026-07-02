@@ -1,7 +1,15 @@
 config NFC_CHIP_SUPPORT
-	tristate "NFC driver solution - NFC Controller Driver"
-	depends on I2C
-	select NFC_ST54_SPI
+	tristate "STMicroelectronics NFC driver solution"
+	help
+	  STMicroelectronics Near Field Communication controller support.
+	  It is the master switch of STMicroelectronics NFC controller drivers.
+	  If configures to be y, NFC_ST21NFC and NFC_ST54_SPI will be
+	  selected.
+
+config NFC_ST21NFC
+	tristate "STMicroelectronics NFC driver solution - NFC Controller Driver"
+	depends on I2C && NFC_CHIP_SUPPORT
+	default m
 	help
 	  STMicroelectronics ST21NFC Near Field Communication controller
 	  support. ST21NFC is standalone NFC and ST54 is combined with secure
@@ -10,8 +18,9 @@ config NFC_CHIP_SUPPORT
 	  NFC functionality.
 
 config NFC_ST54_SPI
-	tristate "NFC driver solution - SPI Controller Driver"
-	depends on SPI && NFC_CHIP_SUPPORT
+	tristate "STMicroelectronics NFC driver solution - SPI Controller Driver"
+	depends on SPI && NFC_ST21NFC
+	default m
 	help
 	  STMicroelectronics ST54 Secure Element controller SPI interface
 	  support. ST21NFC is standalone NFC and ST54 is combined with
@@ -19,11 +28,11 @@ config NFC_ST54_SPI
 	  interface to ST54. If configures to be n, means devices doesn't
 	  support SPI interface (eSE still usable).
 
-config MTK_NFC_CLKBUF_ENABLE
-	bool "Enable clock buffer for NFC"
+config NFC_DEBUG
+	bool "STMicroelectronics NFC driver solution - NFC Driver Debug"
+	depends on NFC_CHIP_SUPPORT
 	help
-	  Enable clock buffer from PMIC for NFC.
-	  This configuration need to be set if support NFC functionality
-	  whether STMicroelectronics solution or not.
-	  If NFC solution is not STMicroelectronics,
-	  this configuration SHOULD be set.
+	  STMicroelectronics Near Field Communication driver debug support.
+	  This option is for debug only, if configures to be y, it the nfc
+	  controller driver and nfc spi controller driver will dump more
+	  log for debug.

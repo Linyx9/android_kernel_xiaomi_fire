@@ -1,0 +1,32 @@
+/*
+ * this is the dtsi sample for TURBO CHARGER.
+ * update date:2024.04.15
+ */
+
+&turbo_charger {
+	compatible = "tinno,turbo_charger";
+	status = "okay";
+	gauge = <&mtk_gauge>;
+
+	volt-steps = <20000>; /*uV*/
+	curr-steps = <40000>; /*uA*/
+	volt-max = <11000000>; /*uV*/
+	curr-max = <3000000>; /*uA*/
+	batt-curr-boost = <300000>; /*uA*/
+	batt-ovp-limit = <4800000>; /*uV*/
+	pl-chrg-vbatt-min = <3600000>; /*uV*/
+	typec-middle-current = <1500000>; /*uA*/
+	step-first-current-comp = <0>;
+	not-rerun-aicl;
+	temp-zones-num = <6>;
+	turbo-chrg-temp-zones = <0  4200 1000 0    0    0    0   >,
+				<15 4250 3000 4500 1500 0    0   >,
+				<25 4300 5800 4400 5200 4530 4000>,
+				<35 4300 5800 4400 5200 4530 4000>,
+				<45 4300 5800 4400 5200 4530 4000>,
+				<60 4200 3000 0    0    0    0   >;
+	thermal-min-level = <1500000>; /*uA*/
+	sw-charging-curr-limited = <500000>; /*uA*/
+	charging-curr-min = <2000000>; /*uA*/
+	turbo-volt-comp = <300000>; /*uV*/
+};

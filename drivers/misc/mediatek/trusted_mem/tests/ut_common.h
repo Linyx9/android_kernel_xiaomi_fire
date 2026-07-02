@@ -1,5 +1,4 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -27,6 +26,9 @@ enum UT_RET_STATE mem_basic_test(enum TRUSTED_MEM_TYPE mem_type,
 enum UT_RET_STATE mem_alloc_simple_test(enum TRUSTED_MEM_TYPE mem_type,
 					u8 *mem_owner, int region_final_state,
 					int un_order_sz_cfg);
+enum UT_RET_STATE mem_alloc_page_test(enum TRUSTED_MEM_TYPE mem_type,
+					u8 *mem_owner, int region_final_state,
+					int un_order_sz_cfg);
 enum UT_RET_STATE mem_alloc_alignment_test(enum TRUSTED_MEM_TYPE mem_type,
 					   u8 *mem_owner,
 					   int region_final_state);
@@ -50,6 +52,8 @@ enum UT_RET_STATE mem_alloc_mixed_size_test(enum TRUSTED_MEM_TYPE mem_type,
 					    int region_final_state);
 enum UT_RET_STATE mem_multi_type_alloc_multithread_test(void);
 enum UT_RET_STATE mem_mtee_mchunks_alloc_multithread_test(void);
+enum UT_RET_STATE mem_fragmentation_test(void);
+enum UT_RET_STATE mem_order_free_test(void);
 bool is_multi_type_alloc_multithread_test_locked(void);
 
 #endif /* end of TMEM_UT_COMMON_H */

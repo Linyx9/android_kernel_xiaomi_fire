@@ -7,19 +7,22 @@
 	camera0_mclk_2mA: camera0_mclk_2mA@gpio108 {
 		pins_cmd_dat {
 			pinmux = <PINMUX_GPIO108__FUNC_CMMCLK2>;
-			drive-strength = <MTK_DRIVE_2mA>;
+			/*drive-strength = <MTK_DRIVE_2mA>;*/
+			drive-strength = <7>;
 		};
 	};
 	camera0_mclk_4mA: camera0_mclk_4mA@gpio108 {
 		pins_cmd_dat {
 			pinmux = <PINMUX_GPIO108__FUNC_CMMCLK2>;
-			drive-strength = <MTK_DRIVE_4mA>;
+			/*drive-strength = <MTK_DRIVE_4mA>;*/
+			drive-strength = <7>;
 		};
 	};
 	camera0_mclk_6mA: camera0_mclk_6mA@gpio108 {
 		pins_cmd_dat {
 			pinmux = <PINMUX_GPIO108__FUNC_CMMCLK2>;
-			drive-strength = <MTK_DRIVE_6mA>;
+			/*drive-strength = <MTK_DRIVE_6mA>;*/
+			drive-strength = <7>;
 		};
 	};
 	camera0_mclk_8mA: camera0_mclk_8mA@gpio108 {
@@ -31,25 +34,25 @@
 	camera0_mclk_off: camera0_mclk_gpio_mode@gpio108 {
 		pins_cmd_dat {
 			pinmux = <PINMUX_GPIO108__FUNC_GPIO108>;
-			drive-strength = <MTK_DRIVE_4mA>;
+			drive-strength = <7>;
 		};
 	};
 	camera1_mclk_2mA: camera1_mclk_2mA@gpio100 {
 		pins_cmd_dat {
 			pinmux = <PINMUX_GPIO100__FUNC_CMMCLK1>;
-			drive-strength = <MTK_DRIVE_2mA>;
+			drive-strength = <7>;
 		};
 	};
 	camera1_mclk_4mA: camera1_mclk_4mA@gpio100 {
 		pins_cmd_dat {
 			pinmux = <PINMUX_GPIO100__FUNC_CMMCLK1>;
-			drive-strength = <MTK_DRIVE_4mA>;
+			drive-strength = <7>;
 		};
 	};
 	camera1_mclk_6mA: camera1_mclk_6mA@gpio100 {
 		pins_cmd_dat {
 			pinmux = <PINMUX_GPIO100__FUNC_CMMCLK1>;
-			drive-strength = <MTK_DRIVE_6mA>;
+			drive-strength = <7>;
 		};
 	};
 	camera1_mclk_8mA: camera1_mclk_8mA@gpio100 {
@@ -61,7 +64,7 @@
 	camera1_mclk_off: camera1_mclk_gpio_mode@gpio100 {
 		pins_cmd_dat {
 			pinmux = <PINMUX_GPIO100__FUNC_GPIO100>;
-			drive-strength = <MTK_DRIVE_4mA>;
+			drive-strength = <7>;
 		};
 	};
 	camera0_rst_low: camera0_rst_output_low@gpio109 {
@@ -192,6 +195,20 @@
 	cam1_vcamio-supply = <&mt_pmic_vcamio_ldo_reg>;
 	cam0_enable_sensor = "gc08a3_mipi_raw ov13b10_mipi_raw ov13b10txd_mipi_raw s5k4h7_mipi_raw";
 	cam1_enable_sensor = "gc08a3sub_mipi_raw s5k4h7sub_mipi_raw";
+	cam0_pin_mclk = "mclk";
+	cam0_pin_pdn = "gpio";
+	cam0_pin_rst = "gpio";
+	cam0_pin_vcama = "regulator";
+	cam0_pin_vcama1 = "regulator";
+	cam0_pin_vcamd = "regulator";
+	cam0_pin_vcamio = "regulator";
+	cam0_pin_vcamaf = "regulator";
+	cam1_pin_mclk = "mclk";
+	cam1_pin_pdn = "gpio";
+	cam1_pin_rst = "gpio";
+	cam1_pin_vcama = "regulator";
+	cam1_pin_vcamd = "regulator";
+	cam1_pin_vcamio = "regulator";
 	status = "okay";
 
 };

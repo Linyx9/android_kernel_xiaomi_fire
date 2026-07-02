@@ -33,6 +33,7 @@ enum conn_pwr_plat_type {
 	CONN_PWR_PLAT_LOW_BATTERY = 0,
 	CONN_PWR_PLAT_THERMAL = 1,
 	CONN_PWR_PLAT_CUSTOMER = 2,
+	CONN_PWR_PLAT_THERMAL_LEVEL = 3,
 	CONN_PWR_PLAT_MAX
 };
 
@@ -50,7 +51,17 @@ enum conn_pwr_low_battery_level {
 	CONN_PWR_THR_LV_3 = 3,
 	CONN_PWR_THR_LV_4 = 4,
 	CONN_PWR_THR_LV_5 = 5,
-	CONN_PWR_LOW_BATTERY_MAX
+	CONN_PWR_THR_LV_MAX
+};
+
+enum conn_pwr_thermal_level {
+	CONN_PWR_THER_LV_0 = 0,
+	CONN_PWR_THER_LV_1 = 1,
+	CONN_PWR_THER_LV_2 = 2,
+	CONN_PWR_THER_LV_3 = 3,
+	CONN_PWR_THER_LV_4 = 4,
+	CONN_PWR_THER_LV_5 = 5,
+	CONN_PWR_THER_LV_MAX
 };
 
 enum conn_pwr_arb_reason {
@@ -59,6 +70,7 @@ enum conn_pwr_arb_reason {
 	CONN_PWR_ARB_THERMAL = 2,
 	CONN_PWR_ARB_CUSTOMER = 3,
 	CONN_PWR_ARB_TEMP_CHECK = 4,
+	CONN_PWR_ARB_THERMAL_LEVEL = 5,
 	CONN_PWR_ARB_MAX
 };
 
@@ -141,3 +153,5 @@ int conn_pwr_enable(int enable);
 /* called by UT */
 int conn_pwr_set_max_temp(unsigned long arg);
 int conn_pwr_set_battery_level(int level);
+int conn_pwr_set_thermal_level(int level);
+

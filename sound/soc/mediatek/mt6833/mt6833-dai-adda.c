@@ -2,8 +2,8 @@
 /*
  *  MediaTek ALSA SoC Audio DAI ADDA Control
  *
- *  Copyright (c) 2020 MediaTek Inc.
- *  Author: Eason Yen <eason.yen@mediatek.com>
+ *  Copyright (c) 2021 MediaTek Inc.
+ *  Author: Yujie Xiao <yujie.xiao@mediatek.com>
  */
 
 #include <linux/regmap.h>
@@ -323,6 +323,23 @@ static int mtk_adda_pad_top_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static bool is_adda_mtkaif_need_phase_delay(struct mt6833_afe_private *afe_priv)
+{
+	if (mt6833_afe_gpio_is_prepared(MT6833_AFE_GPIO_DAT_MISO0_ON) &&
+	    afe_priv->mtkaif_chosen_phase[0] < 0) {
+		AUDIO_AEE("adda mtkaif miso0 calib fail");
+		return false;
+	}
+
+	if (mt6833_afe_gpio_is_prepared(MT6833_AFE_GPIO_DAT_MISO1_ON) &&
+	    afe_priv->mtkaif_chosen_phase[1] < 0) {
+		AUDIO_AEE("adda mtkaif miso1 calib fail");
+		return false;
+	}
+
+	return true;
+}
+
 static int mtk_adda_mtkaif_cfg_event(struct snd_soc_dapm_widget *w,
 				     struct snd_kcontrol *kcontrol,
 				     int event)
@@ -339,37 +356,25 @@ static int mtk_adda_mtkaif_cfg_event(struct snd_soc_dapm_widget *w,
 			/* set protocol 2 */
 			regmap_write(afe->regmap, AFE_ADDA_MTKAIF_CFG0,
 				     0x00010000);
-			/* mtkaif_rxif_clkinv_adc inverse */
+
+			/* mtkaif_rxif_clkinv_adc inverse for calibration */
 			regmap_update_bits(afe->regmap, AFE_ADDA_MTKAIF_CFG0,
 					   MTKAIF_RXIF_CLKINV_ADC_MASK_SFT,
 					   0x1 << MTKAIF_RXIF_CLKINV_ADC_SFT);
 
-			if (strcmp(w->name, "ADDA_MTKAIF_CFG") == 0) {
-				if (afe_priv->mtkaif_chosen_phase[0] < 0 &&
-				    afe_priv->mtkaif_chosen_phase[1] < 0) {
-					dev_info(afe->dev,
-						 "%s(), calib fail mtkaif_chosen_phase[0/1]:%d/%d\n",
-						 __func__,
-						 afe_priv->mtkaif_chosen_phase[0],
-						 afe_priv->mtkaif_chosen_phase[1]);
-					/* trigger mediatek AEE */
-					AUDIO_AEE("adda mtkaif calib fail");
-					break;
-				}
-
-				if (afe_priv->mtkaif_chosen_phase[0] < 0 ||
-				    afe_priv->mtkaif_chosen_phase[1] < 0) {
-					dev_info(afe->dev,
-						 "%s(), skip dealy setting mtkaif_chosen_phase[0/1]:%d/%d\n",
-						 __func__,
-						 afe_priv->mtkaif_chosen_phase[0],
-						 afe_priv->mtkaif_chosen_phase[1]);
-					break;
-				}
-
+			/* This event align the phase of every miso pin */
+			/* If only 1 miso is used, there is no need to do phase delay. */
+			if (strcmp(w->name, "ADDA_MTKAIF_CFG") == 0 &&
+			    !is_adda_mtkaif_need_phase_delay(afe_priv)) {
+				dev_warn(afe->dev,
+					 "%s(), check adda mtkaif_chosen_phase[0/1]:%d/%d\n",
+					 __func__,
+					 afe_priv->mtkaif_chosen_phase[0],
+					 afe_priv->mtkaif_chosen_phase[1]);
+				break;
 			}
 
-			/* set delay for ch12 */
+			/* set delay for ch12 to align phase of miso0 and miso1 */
 			if (afe_priv->mtkaif_phase_cycle[0] >=
 			    afe_priv->mtkaif_phase_cycle[1]) {
 				delay_data = DELAY_DATA_MISO1;
@@ -676,8 +681,8 @@ static int mtk_stf_event(struct snd_soc_dapm_widget *w,
 
 /* stf mux */
 enum {
-	STF_SRC_FROM_ADDA = 0,
-	STF_SRC_FROM_O19O20,
+	STF_SRC_ADDA = 0,
+	STF_SRC_O19O20,
 };
 
 static const char *const stf_o19o20_mux_map[] = {
@@ -686,8 +691,8 @@ static const char *const stf_o19o20_mux_map[] = {
 };
 
 static int stf_o19o20_mux_map_value[] = {
-	STF_SRC_FROM_ADDA,
-	STF_SRC_FROM_O19O20,
+	STF_SRC_ADDA,
+	STF_SRC_O19O20,
 };
 
 static SOC_VALUE_ENUM_SINGLE_DECL(stf_o19o20_mux_map_enum,
@@ -907,6 +912,7 @@ static const struct snd_soc_dapm_route mtk_dai_adda_routes[] = {
 	{"ADDA_UL_Mux", "MTKAIF", "ADDA Capture"},
 	{"ADDA_UL_Mux", "AP_DMIC", "AP DMIC Capture"},
 
+
 	{"ADDA Capture", NULL, "ADDA Enable"},
 	{"ADDA Capture", NULL, "ADDA Capture Enable"},
 	{"ADDA Capture", NULL, "AUD_PAD_TOP"},
@@ -1031,10 +1037,11 @@ static int mtk_dai_adda_hw_params(struct snd_pcm_substream *substream,
 			regmap_write(afe->regmap,
 				     AFE_ADDA_DL_SDM_AUTO_RESET_CON,
 				     SDM_AUTO_RESET_THRESHOLD);
-			regmap_update_bits(afe->regmap,
-					   AFE_ADDA_DL_SDM_AUTO_RESET_CON,
-					   SDM_AUTO_RESET_TEST_ON_MASK_SFT,
-					   0x1 << SDM_AUTO_RESET_TEST_ON_SFT);
+			regmap_update_bits(
+				afe->regmap,
+				AFE_ADDA_DL_SDM_AUTO_RESET_CON,
+				SDM_AUTO_RESET_TEST_ON_MASK_SFT,
+				0x1 << SDM_AUTO_RESET_TEST_ON_SFT);
 		}
 	} else {
 		unsigned int voice_mode = 0;
@@ -1159,7 +1166,7 @@ int mt6833_dai_adda_register(struct mtk_base_afe *afe)
 	struct mt6833_afe_private *afe_priv = afe->platform_priv;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe_priv %p\n", __func__, afe_priv);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

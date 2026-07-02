@@ -15,14 +15,15 @@
 #include <linux/spinlock.h>
 #include <linux/delay.h>
 #include <linux/jiffies.h>
+#include <linux/sched/clock.h>
 
 #include "edma_driver.h"
 #include "edma_cmd_hnd.h"
+
 #include "apusys_power.h"
 #include "edma_dbgfs.h"
 #include "edma_plat_internal.h"
 
-#define NO_INTERRUPT		0
 #define EDMA_POWEROFF_TIME_DEFAULT 2000
 
 static inline void lock_command(struct edma_sub *edma_sub)
@@ -97,23 +98,54 @@ bool edma_is_all_power_off(struct edma_device *edma_device)
 	return true;
 }
 
+static int apu_power_on_edma(struct edma_device *edma_device)
+{
+	int ret = 0;
+
+	__pm_stay_awake(edma_device->ws);
+
+	ret = apu_device_power_on(EDMA);
+	if (ret)
+		goto err;
+	return 0;
+
+err:
+	__pm_relax(edma_device->ws);
+	return ret;
+}
+
+static int apu_power_off_edma(struct edma_device *edma_device)
+{
+	int ret = 0;
+
+	ret = apu_device_power_off(EDMA);
+	if (ret)
+		goto err;
+	__pm_relax(edma_device->ws);
+	return 0;
+
+err:
+	return ret;
+}
+
 int edma_power_on(struct edma_sub *edma_sub)
 {
 	struct edma_device *edma_device;
 	int ret = 0;
 
 	edma_device = edma_sub->edma_device;
+
+	// fix power off/on sync issue
+	del_timer_sync(&edma_device->power_timer);
+	cancel_work_sync(&edma_device->power_off_work);
+
 	mutex_lock(&edma_device->power_mutex);
 	if (edma_is_all_power_off(edma_device))	{
-		if (timer_pending(&edma_device->power_timer)) {
-			del_timer(&edma_device->power_timer);
-			LOG_DBG("%s deltimer no pwr on, state = %d\n",
-					__func__, edma_device->power_state);
-		} else if (edma_device->power_state ==
+		if (edma_device->power_state ==
 			EDMA_POWER_ON) {
-			LOG_ERR("%s power on twice\n", __func__);
+			// already power on, do nothing
 		} else {
-			ret = apu_device_power_on(EDMA);
+			ret = apu_power_on_edma(edma_device);
 			if (!ret) {
 				LOG_DBG("%s power on success\n", __func__);
 				edma_device->power_state = EDMA_POWER_ON;
@@ -141,19 +173,21 @@ void edma_start_power_off(struct work_struct *work)
 	LOG_DBG("%s: contain power_state = %d!!\n", __func__,
 		edmaDev->power_state);
 
-	if (edmaDev->power_state == EDMA_POWER_OFF)
-		LOG_ERR("%s pwr off twice\n",
-						__func__);
-
 	mutex_lock(&edmaDev->power_mutex);
 
-	ret = apu_device_power_off(EDMA);
+	if (edmaDev->power_state == EDMA_POWER_OFF) {
+		// already power off, do nothing
+		goto exit;
+	}
+
+	ret = apu_power_off_edma(edmaDev);
 	if (ret != 0) {
-		LOG_ERR("%s power off fail\n", __func__);
+		LOG_ERR("%s power off fail: %i\n", __func__, ret);
 	} else {
 		pr_notice("%s: power off done!!\n", __func__);
 		edmaDev->power_state = EDMA_POWER_OFF;
 	}
+exit:
 	mutex_unlock(&edmaDev->power_mutex);
 
 }
@@ -184,17 +218,19 @@ int edma_power_off(struct edma_sub *edma_sub, u8 force)
 		return 0;
 	}
 
+	// fix multiple power off sync issue
+	del_timer_sync(&edma_device->power_timer);
+	cancel_work_sync(&edma_device->power_off_work);
+
 	mutex_lock(&edma_device->power_mutex);
 	edma_sub->power_state = EDMA_POWER_OFF;
 	if (edma_is_all_power_off(edma_device)) {
-
-		if (timer_pending(&edma_device->power_timer))
-			del_timer(&edma_device->power_timer);
 
 		if (force == 1) {
 
 			if (edma_device->power_state != EDMA_POWER_OFF) {
 				ret = apu_device_power_suspend(EDMA, 1);
+
 				pr_notice("%s: force power off!!\n", __func__);
 				if (!ret) {
 					LOG_INF("%s power off success\n",
@@ -221,7 +257,7 @@ int edma_power_off(struct edma_sub *edma_sub, u8 force)
 	return ret;
 
 }
-
+#ifndef EDMA_IOCTRL
 void edma_setup_ext_mode_request(struct edma_request *req,
 			       struct edma_ext *edma_ext,
 			       unsigned int type)
@@ -234,6 +270,9 @@ void edma_setup_ext_mode_request(struct edma_request *req,
 	req->desp_iommu_en = edma_ext->desp_iommu_en;
 	req->cmd_result = 0;
 }
+
+#endif
+
 
 int edma_execute(struct edma_sub *edma_sub, struct edma_ext *edma_ext)
 {

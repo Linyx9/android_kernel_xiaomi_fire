@@ -495,8 +495,8 @@ enum {
 
 /* AFE_GAIN1_CON1 */
 #define GAIN1_TARGET_SFT                               0
-#define GAIN1_TARGET_MASK                              0xfffff
-#define GAIN1_TARGET_MASK_SFT                          (0xfffff << 0)
+#define GAIN1_TARGET_MASK                              0xfffffff
+#define GAIN1_TARGET_MASK_SFT                          (0xfffffff << 0)
 
 /* AFE_GAIN2_CON0 */
 #define GAIN2_SAMPLE_PER_STEP_SFT                      8
@@ -511,18 +511,18 @@ enum {
 
 /* AFE_GAIN2_CON1 */
 #define GAIN2_TARGET_SFT                               0
-#define GAIN2_TARGET_MASK                              0xfffff
-#define GAIN2_TARGET_MASK_SFT                          (0xfffff << 0)
+#define GAIN2_TARGET_MASK                              0xfffffff
+#define GAIN2_TARGET_MASK_SFT                          (0xfffffff << 0)
 
 /* AFE_GAIN1_CUR */
 #define AFE_GAIN1_CUR_SFT                              0
-#define AFE_GAIN1_CUR_MASK                             0xfffff
-#define AFE_GAIN1_CUR_MASK_SFT                         (0xfffff << 0)
+#define AFE_GAIN1_CUR_MASK                             0xfffffff
+#define AFE_GAIN1_CUR_MASK_SFT                         (0xfffffff << 0)
 
 /* AFE_GAIN2_CUR */
 #define AFE_GAIN2_CUR_SFT                              0
-#define AFE_GAIN2_CUR_MASK                             0xfffff
-#define AFE_GAIN2_CUR_MASK_SFT                         (0xfffff << 0)
+#define AFE_GAIN2_CUR_MASK                             0xfffffff
+#define AFE_GAIN2_CUR_MASK_SFT                         (0xfffffff << 0)
 
 /* PCM_INTF_CON1 */
 #define PCM_FIX_VALUE_SEL_SFT                          31
@@ -1080,6 +1080,26 @@ enum {
 #define AFE_22M_ON_SFT                                 0
 #define AFE_22M_ON_MASK                                0x1
 #define AFE_22M_ON_MASK_SFT                            (0x1 << 0)
+
+/* AFE_ADDA_DL_NLE_FIFO_MON */
+#define DL_NLE_FIFO_WBIN_SFT                           8
+#define DL_NLE_FIFO_WBIN_MASK                          0xf
+#define DL_NLE_FIFO_WBIN_MASK_SFT                      (0xf << 8)
+#define DL_NLE_FIFO_RBIN_SFT                           4
+#define DL_NLE_FIFO_RBIN_MASK                          0xf
+#define DL_NLE_FIFO_RBIN_MASK_SFT                      (0xf << 4)
+#define DL_NLE_FIFO_RDACTIVE_SFT                       3
+#define DL_NLE_FIFO_RDACTIVE_MASK                      0x1
+#define DL_NLE_FIFO_RDACTIVE_MASK_SFT                  (0x1 << 3)
+#define DL_NLE_FIFO_STARTRD_SFT                        2
+#define DL_NLE_FIFO_STARTRD_MASK                       0x1
+#define DL_NLE_FIFO_STARTRD_MASK_SFT                   (0x1 << 2)
+#define DL_NLE_FIFO_RD_EMPTY_SFT                       1
+#define DL_NLE_FIFO_RD_EMPTY_MASK                      0x1
+#define DL_NLE_FIFO_RD_EMPTY_MASK_SFT                  (0x1 << 1)
+#define DL_NLE_FIFO_WR_FULL_SFT                        0
+#define DL_NLE_FIFO_WR_FULL_MASK                       0x1
+#define DL_NLE_FIFO_WR_FULL_MASK_SFT                   (0x1 << 0)
 
 /* AFE_DL1_CON0 */
 #define DL1_MODE_SFT                                   24
@@ -2174,6 +2194,13 @@ enum {
 #define RG_ADDA6_MTKAIF_RX_SYNC_WORD2_DISABLE_SFT      23
 #define RG_ADDA6_MTKAIF_RX_SYNC_WORD2_DISABLE_MASK     0x1
 #define RG_ADDA6_MTKAIF_RX_SYNC_WORD2_DISABLE_MASK_SFT (0x1 << 23)
+#define RG_ADDA_MTKAIF_RX_SYNC_WORD2_DISABLE_SFT       15
+#define RG_ADDA_MTKAIF_RX_SYNC_WORD2_DISABLE_MASK      0x1
+#define RG_ADDA_MTKAIF_RX_SYNC_WORD2_DISABLE_MASK_SFT  (0x1 << 15)
+#define RG_ADDA_MTKAIF_RX_SYNC_WORD1_DISABLE_SFT       11
+#define RG_ADDA_MTKAIF_RX_SYNC_WORD1_DISABLE_MASK      0x1
+#define RG_ADDA_MTKAIF_RX_SYNC_WORD1_DISABLE_MASK_SFT  (0x1 << 11)
+
 
 /* AFE_ADDA_MTKAIF_RX_CFG0 */
 #define MTKAIF_RXIF_VOICE_MODE_SFT                     20
@@ -2887,6 +2914,7 @@ enum {
 #define AFE_DL9_END_MSB                                0x0dc8
 #define AFE_DL9_END                                    0x0dcc
 #define AFE_HD_ENGEN_ENABLE                            0x0dd0
+#define AFE_ADDA_DL_NLE_FIFO_MON                       0x0dfc
 #define AFE_ADDA_MTKAIF_CFG0                           0x0e00
 #define AFE_ADDA_MTKAIF_SYNCWORD_CFG                   0x0e14
 #define AFE_ADDA_MTKAIF_RX_CFG0                        0x0e20
@@ -3116,7 +3144,6 @@ enum {
 #define AFE_SECURE_MASK_TINY_CONN5                     0x1214
 #define AFE_SECURE_MASK_TINY_CONN6                     0x1218
 #define AFE_SECURE_MASK_TINY_CONN7                     0x121c
-
 
 #define AFE_MAX_REGISTER AFE_SECURE_MASK_TINY_CONN7
 

@@ -45,11 +45,11 @@ int conn_md_dmp_deinit(struct conn_md_dmp_msg_log *p_log)
 int __conn_md_dmp_in(struct ipc_ilm *p_ilm, enum conn_md_msg_type msg_type,
 		     struct conn_md_dmp_msg_log *p_msg_log)
 {
-	struct timeval now;
+	struct timespec64 now;
 	struct conn_md_dmp_msg_str *p_msg = NULL;
 
 	/*get current time */
-	do_gettimeofday(&now);
+	ktime_get_real_ts64(&now);
 
 	mutex_lock(&p_msg_log->lock);
 
@@ -57,7 +57,7 @@ int __conn_md_dmp_in(struct ipc_ilm *p_ilm, enum conn_md_msg_type msg_type,
 
 	/*Log timestamp */
 	p_msg->sec = now.tv_sec;
-	p_msg->usec = now.tv_usec;
+	p_msg->usec = now.tv_nsec / NSEC_PER_USEC;
 	p_msg->type = msg_type;
 
 	/*Log p_ilm */

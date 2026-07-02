@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2020 MediaTek Inc.
  */
-
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_DEBUG_SUPPORT)
 #include <linux/device.h>       /* needed by device_* */
 #include "scp_ipi_pin.h"
 #include "scp_mbox_layout.h"
@@ -34,6 +34,11 @@ static ssize_t scpctl_store(struct device *kobj
 	cmd.type = type;
 	cmd.op = op;
 
+	/* scp reset cmd */
+	if (cmd.type == 1 && cmd.op == 1) {
+		scp_need_aed_dump = true;
+		scp_reset_stress = true;
+	}
 	ret = mtk_ipi_send(&scp_ipidev, IPI_OUT_SCPCTL_1, 0, &cmd,
 			   PIN_OUT_SIZE_SCPCTL_1, 0);
 	if (ret != IPI_ACTION_DONE)
@@ -46,5 +51,5 @@ _err:
 	return -EIO;
 }
 DEVICE_ATTR_WO(scpctl);
-
+#endif
 

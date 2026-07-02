@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (c) 2019 MediaTek Inc.
  */
 
 
@@ -50,6 +50,8 @@ extern void print_enabled_clks_once(void);
 extern void mtk_wcn_cmb_stub_clock_fail_dump(void);
 extern unsigned int cam_if_on(void);
 extern void mtk_check_subsys_swcg(enum subsys_id id);
+extern struct provider_clk *get_all_provider_clks(void);
+extern unsigned int __clk_get_enable_count(struct clk *clk);
 /*
  * Resident in clkdbg-mt6781.c
  * For debug use.
@@ -62,7 +64,7 @@ extern void print_subsys_reg(char *subsys_name);
  *[2] pwr_status 2
  *[others] local function use
  */
-#ifdef CONFIG_MTK_RAM_CONSOLE
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 extern void aee_rr_rec_clk(int id, u32 val);
 #endif
 /*extern void dump_emi_MM(void);*/

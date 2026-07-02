@@ -45,6 +45,7 @@
 #include "mtk-soc-pcm-common.h"
 #include "mtk-soc-pcm-platform.h"
 #include <linux/ftrace.h>
+#include <linux/sched/clock.h>
 
 static int fast_dl_hdoutput;
 static struct afe_mem_control_t *pMemControl;
@@ -78,7 +79,6 @@ static int fast_dl_hdoutput_get(struct snd_kcontrol *kcontrol,
 static int fast_dl_hdoutput_set(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	/* pr_debug("%s()\n", __func__); */
 	if (ucontrol->value.enumerated.item[0] >
 	    ARRAY_SIZE(fast_dl_hd_output)) {
 		pr_warn("%s(), return -EINVAL\n", __func__);
@@ -117,7 +117,8 @@ enum DEBUG_DL2 {
 /* void StartAudioPcmHardware(void); */
 /* void StopAudioPcmHardware(void); */
 static int mtk_soc_dl2_probe(struct platform_device *pdev);
-static int mtk_soc_pcm_dl2_close(struct snd_pcm_substream *substream);
+static int mtk_soc_pcm_dl2_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream);
 static int mtk_asoc_dl2_component_probe(struct snd_soc_component *component);
 
 static bool mPrepareDone;
@@ -154,8 +155,6 @@ static struct snd_pcm_hardware mtk_pcm_dl2_hardware = {
 
 static int mtk_pcm_dl2_stop(struct snd_pcm_substream *substream)
 {
-	PRINT_DEBUG_LOG("%s\n", __func__);
-
 	StartCheckTime = false;
 	if (unlikely(get_LowLatencyDebug())) {
 		struct afe_block_t *Afe_Block = &pMemControl->rBlock;
@@ -163,7 +162,7 @@ static int mtk_pcm_dl2_stop(struct snd_pcm_substream *substream)
 		if (Afe_Block->u4DataRemained < 0) {
 			pr_warn("%s, dl2 underflow\n", __func__);
 			if (get_LowLatencyDebug() & DEBUG_DL2_AEE_UNDERFLOW)
-				AUDIO_AEE("mtk_pcm_dl2_stop - dl2 underflow");
+				AUDIO_AEE("mtk pcm dl2 stop - dl2 underflow");
 		}
 	}
 
@@ -188,7 +187,8 @@ static int mtk_pcm_dl2_stop(struct snd_pcm_substream *substream)
 }
 
 static snd_pcm_uframes_t
-mtk_pcm_dl2_pointer(struct snd_pcm_substream *substream)
+mtk_pcm_dl2_pointer(struct snd_soc_component *component,
+		    struct snd_pcm_substream *substream)
 {
 	kal_int32 HW_memory_index = 0;
 	kal_int32 HW_Cur_ReadIdx = 0;
@@ -259,7 +259,8 @@ mtk_pcm_dl2_pointer(struct snd_pcm_substream *substream)
 	return Frameidx;
 }
 
-static int mtk_pcm_dl2_params(struct snd_pcm_substream *substream,
+static int mtk_pcm_dl2_params(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream,
 			      struct snd_pcm_hw_params *hw_params)
 {
 	/* struct snd_dma_buffer *dma_buf = &substream->dma_buffer; */
@@ -285,11 +286,9 @@ static int mtk_pcm_dl2_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_pcm_dl2_hw_free(struct snd_pcm_substream *substream)
+static int mtk_pcm_dl2_hw_free(struct snd_soc_component *component,
+			       struct snd_pcm_substream *substream)
 {
-#if defined(DL2_DEBUG_LOG)
-	pr_debug("%s()\n", __func__);
-#endif
 	return 0;
 }
 
@@ -299,7 +298,8 @@ static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 	.mask = 0,
 };
 
-static int mtk_pcm_dl2_open(struct snd_pcm_substream *substream)
+static int mtk_pcm_dl2_open(struct snd_soc_component *component,
+			    struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -326,16 +326,14 @@ static int mtk_pcm_dl2_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_err("ret < 0 mtk_soc_pcm_dl2_close\n");
-		mtk_soc_pcm_dl2_close(substream);
+		mtk_soc_pcm_dl2_close(component, substream);
 		return ret;
 	}
 
 #ifdef AUDIO_DL2_ISR_COPY_SUPPORT
 	if (!ISRCopyBuffer.pBufferBase) {
 		ISRCopyBuffer.pBufferBase = kmalloc(ISRCopyMaxSize, GFP_KERNEL);
-		if (!ISRCopyBuffer.pBufferBase)
-			pr_err("%s alloc ISRCopyBuffer fail\n", __func__);
-		else
+		if (ISRCopyBuffer.pBufferBase)
 			ISRCopyBuffer.u4BufferSizeMax = ISRCopyMaxSize;
 	}
 #endif
@@ -344,7 +342,8 @@ static int mtk_pcm_dl2_open(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_soc_pcm_dl2_close(struct snd_pcm_substream *substream)
+static int mtk_soc_pcm_dl2_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	pr_debug("%s, mPrepareDone = %d, fast_dl_hdoutput = %d\n",
 		 __func__, mPrepareDone, fast_dl_hdoutput);
@@ -388,13 +387,13 @@ static int mtk_soc_pcm_dl2_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_dl2_prepare(struct snd_pcm_substream *substream)
+static int mtk_pcm_dl2_prepare(struct snd_soc_component *component,
+			       struct snd_pcm_substream *substream)
 {
 	bool mI2SWLen = Soc_Aud_I2S_WLEN_WLEN_16BITS;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	unsigned int u32AudioI2S = 0;
 
-	pr_debug("%s\n", __func__);
 
 	if (mPrepareDone == false) {
 		pr_info(
@@ -490,7 +489,6 @@ static int mtk_pcm_dl2_start(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	pr_debug("%s\n", __func__);
 	/* here start digital part */
 
 	SetIntfConnection(Soc_Aud_InterCon_Connection,
@@ -503,7 +501,7 @@ static int mtk_pcm_dl2_start(struct snd_pcm_substream *substream)
 			  Soc_Aud_AFE_IO_Block_MEM_DL2,
 			  Soc_Aud_AFE_IO_Block_I2S3);
 
-#ifdef CONFIG_MTK_FPGA
+#if IS_ENABLED(CONFIG_MTK_FPGA)
 	/* set loopback test interconnection */
 	SetIntfConnection(Soc_Aud_InterCon_Connection,
 			  Soc_Aud_AFE_IO_Block_MEM_DL2,
@@ -530,7 +528,8 @@ static int mtk_pcm_dl2_start(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_dl2_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_pcm_dl2_trigger(struct snd_soc_component *component,
+			       struct snd_pcm_substream *substream, int cmd)
 {
 #if defined(DL2_DEBUG_LOG)
 	pr_debug("mtk_pcm_trigger cmd = %d\n", cmd);
@@ -588,7 +587,7 @@ static int mtk_pcm_dl2_copy_(void __user *dst, unsigned long *size,
 #endif
 	*size = copy_size;
 	PRINT_DEBUG_LOG(
-		"%s, copy_size=%d, count=%d, bCopy %d, %pf %pf %pf %pf\n",
+		"%s, copy_size=%d, count=%d, bCopy %d, %ps %ps %ps %ps\n",
 		__func__, copy_size, (unsigned int)count, bCopy,
 		(void *)CALLER_ADDR0, (void *)CALLER_ADDR1,
 		(void *)CALLER_ADDR2, (void *)CALLER_ADDR3);
@@ -770,6 +769,7 @@ retry:
 exit:
 	Auddrv_Dl2_Spinlock_unlock();
 }
+EXPORT_SYMBOL(mtk_dl2_copy2buffer);
 
 void mtk_dl2_copy_l(void)
 {
@@ -789,9 +789,11 @@ void mtk_dl2_copy_l(void)
 	ISRCopyBuffer.u4BufferSize -= count;
 	ISRCopyBuffer.u4IsrConsumeSize += count;
 }
+EXPORT_SYMBOL(mtk_dl2_copy_l);
 
-static int mtk_pcm_dl2_copy(struct snd_pcm_substream *substream, int channel,
-			    unsigned long pos, void __user *dst,
+static int mtk_pcm_dl2_copy(struct snd_soc_component *component,
+			    struct snd_pcm_substream *substream, int channel,
+			    unsigned long pos, struct iov_iter *dst,
 			    unsigned long count)
 {
 	struct afe_block_t *Afe_Block = &pMemControl->rBlock;
@@ -823,7 +825,7 @@ static int mtk_pcm_dl2_copy(struct snd_pcm_substream *substream, int channel,
 				if (get_LowLatencyDebug() &
 				    DEBUG_DL2_AEE_UNDERFLOW)
 					AUDIO_AEE(
-						"mtk_pcm_dl2_copy - dl2 underflow");
+						"mtk pcm dl2 copy - dl2 underflow");
 			}
 			PrevTime = NowTime;
 		}
@@ -923,44 +925,32 @@ static int mtk_pcm_dl2_copy(struct snd_pcm_substream *substream,
 
 #endif
 
-static int mtk_pcm_dl2_silence(struct snd_pcm_substream *substream,
-			       int channel,
-			       unsigned long pos,
-			       unsigned long bytes)
-{
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
-static struct page *mtk_pcm_dl2_page(struct snd_pcm_substream *substream,
+static struct page *mtk_pcm_dl2_page(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream,
 				     unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_dl2_ops = {
+static const struct snd_soc_component_driver mtk_soc_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_asoc_dl2_component_probe,
 	.open = mtk_pcm_dl2_open,
 	.close = mtk_soc_pcm_dl2_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_pcm_dl2_params,
 	.hw_free = mtk_pcm_dl2_hw_free,
 	.prepare = mtk_pcm_dl2_prepare,
 	.trigger = mtk_pcm_dl2_trigger,
 	.pointer = mtk_pcm_dl2_pointer,
-	.copy_user = mtk_pcm_dl2_copy,
-	.fill_silence = mtk_pcm_dl2_silence,
+	.copy = mtk_pcm_dl2_copy,
 	.page = mtk_pcm_dl2_page,
-	.mmap = mtk_pcm_mmap,
 };
 
-static const struct snd_soc_component_driver mtk_soc_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_dl2_ops,
-	.probe = mtk_asoc_dl2_component_probe,
-};
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 
 static const struct of_device_id mt_soc_pcm_dl2_of_ids[] = {
 	{
@@ -973,7 +963,6 @@ static const struct of_device_id mt_soc_pcm_dl2_of_ids[] = {
 static int mtk_soc_dl2_probe(struct platform_device *pdev)
 {
 #if defined(DL2_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -998,7 +987,6 @@ static int mtk_soc_dl2_probe(struct platform_device *pdev)
 static int mtk_asoc_dl2_component_probe(struct snd_soc_component *component)
 {
 #if defined(DL2_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	snd_soc_add_component_controls(component, fast_dl_controls,
 				      ARRAY_SIZE(fast_dl_controls));
@@ -1024,7 +1012,7 @@ static struct platform_driver mtk_dl2_driver = {
 
 			.name = MT_SOC_DL2_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_dl2_of_ids,
 #endif
 		},
@@ -1036,11 +1024,10 @@ static struct platform_driver mtk_dl2_driver = {
 static struct platform_device *soc_mtkdl2_dev;
 #endif
 
-static int __init mtk_dl2_soc_platform_init(void)
+int mtk_dl2_soc_platform_init(void)
 {
 	int ret;
 #if defined(DL2_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 #ifndef CONFIG_OF
 	soc_mtkdl2_dev = platform_device_alloc(MT_SOC_DL2_PCM, -1);
@@ -1056,13 +1043,11 @@ static int __init mtk_dl2_soc_platform_init(void)
 	ret = platform_driver_register(&mtk_dl2_driver);
 	return ret;
 }
-module_init(mtk_dl2_soc_platform_init);
 
-static void __exit mtk_dl2_soc_platform_exit(void)
+void mtk_dl2_soc_platform_exit(void)
 {
 	platform_driver_unregister(&mtk_dl2_driver);
 }
-module_exit(mtk_dl2_soc_platform_exit);
 
 MODULE_DESCRIPTION("AFE PCM module platform driver");
 MODULE_LICENSE("GPL");

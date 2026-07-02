@@ -102,7 +102,8 @@ struct apu_tags *apu_tags_alloc(const char *name, int size, int cnt,
 	}
 
 	memset(at->tags, 0, at->ent_sz * at->cnt);
-	strncpy(at->name, name, APU_TAG_NAME_SZ-1);
+	strncpy(at->name, name, sizeof(at->name)-1);
+	at->name[sizeof(at->name)-1] = '\0';
 
 	/* proc dentries */
 	if (apu_tags_alloc_procfs(at)) {
@@ -272,7 +273,7 @@ static ssize_t apu_tags_proc_write(struct file *file, const char *buf,
 	char b[APU_TAG_CMD_SZ];
 	char *cmd, *cur;
 
-	at = PDE_DATA(file->f_inode);
+	at = pde_data(file->f_inode);
 	if (!at)
 		return -EINVAL;
 
@@ -301,15 +302,15 @@ static int apu_tags_proc_show(struct seq_file *s, void *v)
 
 static int apu_tags_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, apu_tags_proc_show, PDE_DATA(inode));
+	return single_open(file, apu_tags_proc_show, pde_data(inode));
 }
 
-static const struct file_operations apu_tags_proc_fops = {
-	.open = apu_tags_proc_open,
-	.write = apu_tags_proc_write,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops apu_tags_proc_fops = {
+	.proc_open = apu_tags_proc_open,
+	.proc_write = apu_tags_proc_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int apu_tags_info_show(struct seq_file *s, void *v)
@@ -335,11 +336,11 @@ static int apu_tags_info_open(struct inode *inode, struct file *file)
 	return single_open(file, apu_tags_info_show, NULL);
 }
 
-static const struct file_operations apu_tags_info_fops = {
-	.open = apu_tags_info_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops apu_tags_info_fops = {
+	.proc_open = apu_tags_info_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int apu_tags_init_procfs(void)
@@ -363,11 +364,7 @@ static void apu_tags_exit_procfs(void)
 	proot = NULL;
 }
 
-#if !defined(USER_BUILD_KERNEL) && defined(CONFIG_MTK_ENG_BUILD)
-#define APU_TAG_PROC_MDOE		0660
-#else
-#define APU_TAG_PROC_MDOE		0440
-#endif
+#define APU_TAG_PROC_MDOE		0640
 
 static int apu_tags_alloc_procfs(struct apu_tags *at)
 {

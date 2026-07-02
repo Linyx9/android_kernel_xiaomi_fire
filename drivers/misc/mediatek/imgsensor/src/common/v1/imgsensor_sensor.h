@@ -27,7 +27,7 @@ struct IMGSENSOR_SENSOR_INST {
 	struct IMGSENSOR_I2C_CFG    i2c_cfg;
 	struct IMGSENSOR_SENSOR_STATUS status;
 	struct mutex                sensor_mutex;
-	struct timeval              profile_time;
+	struct timespec64           profile_time;
 };
 
 struct IMGSENSOR_SENSOR {

@@ -1,0 +1,95 @@
+config OEM_PROJECT
+	 bool "Enable oem project config"
+	default n
+	help
+	  enable oem project config.
+
+config PROJECT_LAMU
+	bool "oem project lamu"
+	default n
+	help
+	  config oem project name.
+
+config PROJECT_P325A
+       bool "oem project p325a"
+       default n
+       help
+          config oem project name.
+
+config FACTORY_BUILD
+       bool "oem factory build"
+       default n
+       help
+          config oem factory build.
+
+config OEM_DEVINFO
+       tristate "oem_devinfo"
+       depends on OEM_PROJECT
+       default m
+       help
+          support oem_devinfo
+
+config OEM_TOUCHSCREEN
+	tristate "oem touch"
+	depends on PROJECT_P325A
+	default m
+	help
+	  support oem_touch
+
+config OEM_PANEL
+	tristate "oem panel"
+	depends on PROJECT_P325A
+	default m
+	help
+	  support oem_panel
+
+config OEM_LAMU_TOUCHSCREEN
+	tristate "oem touch"
+	depends on PROJECT_LAMU
+	default m
+	help
+	  support oem_touch
+
+config OEM_LAMU_PANEL
+	tristate "oem panel"
+	depends on PROJECT_LAMU
+	default m
+	help
+	  support oem_panel
+
+config OEM_LAMU_FINGERPRINT
+	tristate "oem fingerprint"
+	depends on PROJECT_LAMU
+	default m
+	help
+	  support oem_touch
+
+config SND_SOC_FS1815
+	tristate "oem aduiopa"
+	depends on PROJECT_LAMU
+	default n
+	help
+	  support oem aduiopa
+
+config NXP_NFC_I2C
+    tristate "oem nxp pn560uk"
+    depends on PROJECT_LAMU
+    default m
+    help
+      support oem_nxp_pn560uk
+
+config SND_SOC_AW87XXX
+        tristate "SoC Audio for awinic AW87XXX analog PA"
+        depends on PROJECT_LAMU
+        default m
+        help
+          support aw87xxx analog aw_audiopa
+
+source "$(KCONFIG_EXT_PREFIX)/oem/sensors/Kconfig"
+
+config OEM_DRE_MODE
+	tristate "dre mode"
+	depends on PROJECT_LAMU
+	default n
+	help
+	  support dre_mode

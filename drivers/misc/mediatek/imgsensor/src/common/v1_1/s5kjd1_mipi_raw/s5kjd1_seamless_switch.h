@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 unsigned short s5kjd1_seamless_preview[] = {
 	0x6028, 0x2000,
 	0x0136, 0x1800,
@@ -580,5 +579,5 @@ unsigned short s5kjd1_seamless_custom2[] = {
 	0x0202, 0x0800, //Short Shutter
 	0x0230, 0x0300, //Long Digital Gain
 	0x0240, 0x0300, //Middle Digital Gain
-	0x020E, 0x0300, //Short Digital Gain
+	0x020E, 0x0300  //Short Digital Gain
 };

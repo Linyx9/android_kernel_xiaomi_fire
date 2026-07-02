@@ -53,6 +53,7 @@ unsigned long audio_frame_to_bytes(struct snd_pcm_substream *substream,
 
 	return bytes;
 }
+EXPORT_SYMBOL(audio_frame_to_bytes);
 
 unsigned long audio_bytes_to_frame(struct snd_pcm_substream *substream,
 				   unsigned long bytes)
@@ -75,3 +76,5 @@ unsigned long audio_bytes_to_frame(struct snd_pcm_substream *substream,
 
 	return count;
 }
+EXPORT_SYMBOL(audio_bytes_to_frame);
+MODULE_LICENSE("GPL");

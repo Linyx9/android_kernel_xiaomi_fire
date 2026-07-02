@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -17,7 +17,7 @@
 #include <linux/timekeeping.h>
 #include <linux/sched/clock.h>
 
-#include "clk-mtk-v1.h"
+// #include "clk-mtk-v1.h"
 #include "clk-mt6877-pg.h"
 #include "clkchk.h"
 #include "clkchk-mt6877.h"
@@ -52,11 +52,18 @@
 #define spm_read(addr)			__raw_readl(IOMEM(addr))
 #define spm_write(addr, val)		mt_reg_sync_writel(val, addr)
 
-#define clk_writel(addr, val)		mt_reg_sync_writel(val, addr)
-#define clk_readl(addr)			__raw_readl(IOMEM(addr))
-
 #define MFG_MISC_CON		INFRACFG_REG(0x0600)
 #define MFG_DFD_TRIGGER		(1<<19)
+
+spinlock_t *get_mtk_clk_lock(void);
+spinlock_t *get_mtk_mtcmos_lock(void);
+
+#define mtk_clk_lock(flags)	spin_lock_irqsave(get_mtk_clk_lock(), flags)
+#define mtk_clk_unlock(flags)	\
+	spin_unlock_irqrestore(get_mtk_clk_lock(), flags)
+#define mtk_mtcmos_lock(flags)	spin_lock_irqsave(get_mtk_mtcmos_lock(), flags)
+#define mtk_mtcmos_unlock(flags)	\
+	spin_unlock_irqrestore(get_mtk_mtcmos_lock(), flags)
 
 /*
  * MTCMOS
@@ -611,6 +618,41 @@ static struct subsys syss[] =	/* NR_SYSS */
 			},
 };
 
+static DEFINE_SPINLOCK(clk_ops_lock);
+static DEFINE_SPINLOCK(mtcmos_ops_lock);
+
+spinlock_t *get_mtk_clk_lock(void)
+{
+	return &clk_ops_lock;
+}
+
+spinlock_t *get_mtk_mtcmos_lock(void)
+{
+	return &mtcmos_ops_lock;
+}
+
+static struct provider_clk *__clk_pg_lookup_pvdck(const char *name)
+{
+	struct provider_clk *pvdck = get_all_provider_clks(true);
+
+	for (; pvdck->ck != NULL; pvdck++) {
+		if (!strcmp(pvdck->ck_name, name))
+			return pvdck;
+	}
+
+	return NULL;
+}
+
+static struct clk *__clk_pg_lookup(const char *name)
+{
+	struct provider_clk *pvdck = __clk_pg_lookup_pvdck(name);
+
+	if (pvdck)
+		return pvdck->ck;
+
+	return NULL;
+}
+
 struct pg_callbacks *register_pg_callback(struct pg_callbacks *pgcb)
 {
 	unsigned long spinlock_save_flags;
@@ -752,18 +794,18 @@ static void ram_console_update(void)
 
 		log_dump = true;
 
-		dump_enabled_clks_once();
+		// dump_enabled_clks_once();
 
 		for (i = 0; i < ARRAY_SIZE(data); i++)
 			pr_notice("%s: data[%i]=%08x\n", __func__, i, data[i]);
 
 		/* The code based on  clkdbg/clkdbg-mt6873. */
 		/* When power on/off fails, dump the related registers. */
-		print_subsys_reg(top);
-		print_subsys_reg(infracfg_ao_bus);
-		print_subsys_reg(ifrao);
-		print_subsys_reg(spm);
-		print_subsys_reg(apmixed);
+		print_subsys_reg_mt6877(top);
+		print_subsys_reg_mt6877(infracfg_ao_bus);
+		print_subsys_reg_mt6877(ifrao);
+		print_subsys_reg_mt6877(spm);
+		print_subsys_reg_mt6877(apmixed);
 
 		if (DBG_STA == STA_POWER_DOWN) {
 			u32 id = DBG_ID;
@@ -774,74 +816,74 @@ static void ram_console_update(void)
 			if (id == SYS_MFG0 || id == SYS_MFG1
 			|| id == SYS_MFG2 || id == SYS_MFG3
 			|| id == SYS_MFG4 || id == SYS_MFG5)
-				print_subsys_reg(mfg_ao);
+				print_subsys_reg_mt6877(mfg_ao);
 
 			if (id == SYS_AUDIO)
-				print_subsys_reg(audsys);
+				print_subsys_reg_mt6877(audsys);
 
 			if (id == SYS_DISP)
-				print_subsys_reg(mm);
+				print_subsys_reg_mt6877(mm);
 
 			/* isp/img */
 			if (id == SYS_ISP0) {
-				print_subsys_reg(mm);
-				print_subsys_reg(imgsys1);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(imgsys1);
 			}
 
 			if (id == SYS_ISP1) {
-				print_subsys_reg(mm);
-				print_subsys_reg(imgsys2);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(imgsys2);
 			}
 
 			/* ipe */
 			if (id == SYS_IPE) {
-				print_subsys_reg(mm);
-				print_subsys_reg(ipe);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(ipe);
 			}
 
 			/* venc */
 			if (id == SYS_VENC) {
-				print_subsys_reg(mm);
-				print_subsys_reg(ven1);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(ven1);
 			}
 
 			/* vdec */
 			if (id == SYS_VDEC) {
-				print_subsys_reg(mm);
-				print_subsys_reg(vde2);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(vde2);
 			}
 
 			/* cam */
 			if (id == SYS_CAM) {
-				print_subsys_reg(mm);
-				print_subsys_reg(cam_m);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(cam_m);
 			}
 
 			if (id == SYS_CAM_RAWA) {
-				print_subsys_reg(mm);
-				print_subsys_reg(cam_m);
-				print_subsys_reg(cam_ra);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(cam_m);
+				print_subsys_reg_mt6877(cam_ra);
 			}
 
 			if (id == SYS_CAM_RAWB) {
-				print_subsys_reg(mm);
-				print_subsys_reg(cam_m);
-				print_subsys_reg(cam_rb);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(cam_m);
+				print_subsys_reg_mt6877(cam_rb);
 			}
 
 			if (id == SYS_CSI) {
-				print_subsys_reg(mm);
-				print_subsys_reg(cam_m);
+				print_subsys_reg_mt6877(mm);
+				print_subsys_reg_mt6877(cam_m);
 			}
 
 			if (id == SYS_APU) {
-				print_subsys_reg(apu_ao);
-				print_subsys_reg(apu0);
-				print_subsys_reg(apu1);
-				print_subsys_reg(apuv);
-				print_subsys_reg(apu_conn1);
-				print_subsys_reg(apu_conn2);
-				print_subsys_reg(apum0);
+				print_subsys_reg_mt6877(apu_ao);
+				print_subsys_reg_mt6877(apu0);
+				print_subsys_reg_mt6877(apu1);
+				print_subsys_reg_mt6877(apuv);
+				print_subsys_reg_mt6877(apu_conn1);
+				print_subsys_reg_mt6877(apu_conn2);
+				print_subsys_reg_mt6877(apum0);
 			}
 		}
 
@@ -865,7 +907,7 @@ static void ram_console_update(void)
 		}
 		spin_unlock_irqrestore(&pgcb_lock, spinlock_save_flags);
 	}
-#ifdef CONFIG_MTK_RAM_CONSOLE
+#ifdef CONFIG_MTK_AEE_IPANIC
 	for (i = 0; i < ARRAY_SIZE(data); i++)
 		aee_rr_rec_clk(i, data[i]);
 	/*todo: add each domain's debug register to ram console*/
@@ -4410,7 +4452,7 @@ static int disable_subsys(enum subsys_id id, enum mtcmos_op action)
 		 * Check if subsys CGs are still on before the mtcmos  is going
 		 * to be off. (Could do nothing here for early porting)
 		 */
-		mtk_check_subsys_swcg(id);
+		// mtk_check_subsys_swcg(id);
 		r = sys->ops->disable(sys);
 	}
 
@@ -4452,10 +4494,10 @@ static int pg_pre_clk_ctrl(struct cg_list *list,
 			break;
 
 		if (!lp)
-			clk = list->cg[i] ? __clk_lookup(list->cg[i]) : NULL;
+			clk = list->cg[i] ? __clk_pg_lookup(list->cg[i]) : NULL;
 		else
 			clk = list->lp_cg[i] ?
-					__clk_lookup(list->lp_cg[i]) : NULL;
+					__clk_pg_lookup(list->lp_cg[i]) : NULL;
 
 		if (!clk) {
 			if (list->cg[i] && !lp)
@@ -4721,33 +4763,33 @@ struct mtk_power_gate {
 /* FIXME: all values needed to be verified */
 struct mtk_power_gate scp_clks[] = {
 	PGATE(SCP_SYS_MD, "PG_MD", NULL, NULL, NULL, SYS_MD),
-	PGATE(SCP_SYS_CONN, "PG_CONN", NULL, NULL, NULL, SYS_CONN),
-	PGATE(SCP_SYS_DISP, "PG_DISP", NULL, &mm_cg1, &mm_cg2, SYS_DISP),
+	// PGATE(SCP_SYS_CONN, "PG_CONN", NULL, NULL, NULL, SYS_CONN),
+	// PGATE(SCP_SYS_DISP, "PG_DISP", NULL, &mm_cg1, &mm_cg2, SYS_DISP),
 	PGATE(SCP_SYS_MFG0, "PG_MFG0", NULL, NULL, NULL, SYS_MFG0),
 	PGATE(SCP_SYS_MFG1, "PG_MFG1", "PG_MFG0", NULL, NULL, SYS_MFG1),
 	PGATE(SCP_SYS_MFG2, "PG_MFG2", "PG_MFG0", NULL, NULL, SYS_MFG2),
 	PGATE(SCP_SYS_MFG3, "PG_MFG3", "PG_MFG0", NULL, NULL, SYS_MFG3),
 	PGATE(SCP_SYS_MFG4, "PG_MFG4", "PG_MFG0", NULL, NULL, SYS_MFG4),
 	PGATE(SCP_SYS_MFG5, "PG_MFG5", "PG_MFG0", NULL, NULL, SYS_MFG5),
-	PGATE(SCP_SYS_ISP0, "PG_ISP0", "PG_DISP", &isp0_cg1, &isp0_cg2, SYS_ISP0),
-	PGATE(SCP_SYS_ISP1, "PG_ISP1", "PG_DISP", &isp1_cg1,
-			&isp1_cg2, SYS_ISP1),
-	PGATE(SCP_SYS_IPE, "PG_IPE", "PG_DISP", &ipe_cg1, &ipe_cg2, SYS_IPE),
-	PGATE(SCP_SYS_VDEC, "PG_VDEC", "PG_DISP", &vde_cg1, &vde_cg2, SYS_VDEC),
-	PGATE(SCP_SYS_VENC, "PG_VENC", "PG_DISP", &ven_cg1, &ven_cg2, SYS_VENC),
-	PGATE(SCP_SYS_AUDIO, "PG_AUDIO", NULL, &audio_cg1,
-			&audio_cg2, SYS_AUDIO),
+	// PGATE(SCP_SYS_ISP0, "PG_ISP0", "PG_DISP", &isp0_cg1, &isp0_cg2, SYS_ISP0),
+	// PGATE(SCP_SYS_ISP1, "PG_ISP1", "PG_DISP", &isp1_cg1,
+	// &isp1_cg2, SYS_ISP1),
+	// PGATE(SCP_SYS_IPE, "PG_IPE", "PG_DISP", &ipe_cg1, &ipe_cg2, SYS_IPE),
+	// PGATE(SCP_SYS_VDEC, "PG_VDEC", "PG_DISP", &vde_cg1, &vde_cg2, SYS_VDEC),
+	// PGATE(SCP_SYS_VENC, "PG_VENC", "PG_DISP", &ven_cg1, &ven_cg2, SYS_VENC),
+	// PGATE(SCP_SYS_AUDIO, "PG_AUDIO", NULL, &audio_cg1,
+	// &audio_cg2, SYS_AUDIO),
 	PGATE(SCP_SYS_ADSP_DORMANT, "PG_ADSP_DORMANT", NULL, &adsp_cg,
-			NULL, SYS_ADSP_DORMANT),
-	PGATE(SCP_SYS_CAM, "PG_CAM", "PG_DISP", &cam_cg1, &cam_cg2, SYS_CAM),
-	PGATE(SCP_SYS_CAM_RAWA, "PG_CAM_RAWA", "PG_CAM", NULL,
-			&cam_ra_cg, SYS_CAM_RAWA),
-	PGATE(SCP_SYS_CAM_RAWB, "PG_CAM_RAWB", "PG_CAM", NULL,
-			&cam_rb_cg, SYS_CAM_RAWB),
-	PGATE(SCP_SYS_CSI, "PG_CSI", "PG_CAM", NULL,
-			NULL, SYS_CSI),
-	/* Gary Wang: no need to turn on disp mtcmos*/
-	PGATE(SCP_SYS_APU, "PG_APU", NULL, &apu_cg, NULL, SYS_APU),
+	NULL, SYS_ADSP_DORMANT),
+	// PGATE(SCP_SYS_CAM, "PG_CAM", "PG_DISP", &cam_cg1, &cam_cg2, SYS_CAM),
+	// PGATE(SCP_SYS_CAM_RAWA, "PG_CAM_RAWA", "PG_CAM", NULL,
+	// &cam_ra_cg, SYS_CAM_RAWA),
+	// PGATE(SCP_SYS_CAM_RAWB, "PG_CAM_RAWB", "PG_CAM", NULL,
+	// &cam_rb_cg, SYS_CAM_RAWB),
+	// PGATE(SCP_SYS_CSI, "PG_CSI", "PG_CAM", NULL,
+	// NULL, SYS_CSI),
+	// /* Gary Wang: no need to turn on disp mtcmos*/
+	// PGATE(SCP_SYS_APU, "PG_APU", NULL, &apu_cg, NULL, SYS_APU),
 };
 
 static void init_clk_scpsys(struct clk_onecell_data *clk_data)
@@ -4819,11 +4861,7 @@ static struct clk_onecell_data *alloc_clk_data(unsigned int clk_num)
 /* TODO: remove this function */
 static void __iomem *get_reg(struct device_node *np, int index)
 {
-#if DUMMY_REG_TEST
-	return kzalloc(PAGE_SIZE, GFP_KERNEL);
-#else
 	return of_iomap(np, index);
-#endif
 }
 
 static int clk_mt6877_scpsys_probe(struct platform_device *pdev)
@@ -4862,22 +4900,17 @@ static int clk_mt6877_scpsys_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id of_match_clk_mt6877_scpsys[] = {
-	{ .compatible = "mediatek,mt6877-scpsys", },
+	{ .compatible = "mediatek,mt6877-scpsys-clk", },
 	{}
 };
 
 static struct platform_driver clk_mt6877_scpsys_drv = {
 	.probe = clk_mt6877_scpsys_probe,
 	.driver = {
-		.name = "clk-mt6877-scpsys",
+		.name = "clk-mt6877-scpsys-clk",
 		.of_match_table = of_match_clk_mt6877_scpsys,
 	},
 };
-static int __init clk_mt6877_scpsys_init(void)
-{
-	return platform_driver_register(&clk_mt6877_scpsys_drv);
-}
-arch_initcall_sync(clk_mt6877_scpsys_init);
 
 /* for suspend LDVT only */
 void mtcmos_force_off(void)
@@ -4948,3 +4981,10 @@ void mtcmos_force_off(void)
 	spm_mtcmos_ctrl_conn_bus_prot(STA_POWER_DOWN);
 	spm_mtcmos_ctrl_conn_pwr(STA_POWER_DOWN);
 }
+
+static int __init clk_mt6877_scpsys_init(void)
+{
+	return platform_driver_register(&clk_mt6877_scpsys_drv);
+}
+subsys_initcall(clk_mt6877_scpsys_init);
+MODULE_LICENSE("GPL");

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2015 MediaTek Inc.
  */
@@ -34,22 +34,6 @@ enum m4u_callback_ret_t DIP_M4U_TranslationFault_callback
 #define DIP_IMGSYS_BASE_HW   0x15020000
 #define DIP_A_BASE_HW   0x15021000
 
-#if (MTK_MSF_OFFSET == 1)
-#define MFB_BASE_HW   0x15810000
-#define MSS_BASE_HW   0x15812000
-#define MSF_BASE_HW   0x15810000
-#else
-#define MFB_BASE_HW   0x15010000
-#define MSS_BASE_HW   0x15012000
-#define MSF_BASE_HW   0x15010000
-#endif
-
-
-#define DIP_IMGSYS2_BASE_HW   0x15820000
-#if (MTK_DIP_COUNT == 2)
-#define DIP_B_BASE_HW   0x15821000
-#endif
-
 /*PAGE_SIZE*6 = 4096*6 <=dependent on device tree setting */
 #define DIP_REG_RANGE           (0xC000)
 #define MFB_REG_RANGE           (0x1000)
@@ -58,7 +42,7 @@ enum m4u_callback_ret_t DIP_M4U_TranslationFault_callback
 #define MAX_TILE_TOT_NO (256)
 #define MAX_ISP_DUMP_HEX_PER_TILE (256)
 #define MAX_ISP_TILE_TDR_TOTAL_HEXNO (MAX_TILE_TOT_NO*MAX_ISP_DUMP_HEX_PER_TILE)
-#define MAX_ISP_TILE_TDR_HEX_NO (MAX_ISP_TILE_TDR_TOTAL_HEXNO * MTK_DIP_COUNT)
+/*#define MAX_ISP_TILE_TDR_HEX_NO (MAX_ISP_TILE_TDR_TOTAL_HEXNO*MTK_DIP_COUNT)*/
 
 #define MAX_DIP_CMDQ_BUFFER_SIZE (0x1000)
 
@@ -82,9 +66,7 @@ enum DIP_DEV_NODE_ENUM {
 	DIP_MSS_IDX,
 	DIP_MSF_IDX,
 	DIP_IMGSYS2_CONFIG_IDX,
-#if (MTK_DIP_COUNT == 2)
 	DIP_DIP_B_IDX,
-#endif
 	DIP_DEV_NODE_NUM
 };
 
@@ -187,6 +169,13 @@ struct DIP_MEM_INFO_STRUCT {
 	unsigned int MemPa;
 	unsigned int *MemVa;
 	unsigned int MemSizeDiff;
+};
+
+struct DIP_ION_MEM_INFO {
+	unsigned int buf_fd;
+	unsigned int buf_offset;
+	unsigned int buf_pa;
+	unsigned int check_flag;
 };
 
 #ifdef CONFIG_COMPAT
@@ -299,7 +288,9 @@ enum DIP_CMD_ENUM {
 	DIP_CMD_DUMP_BUFFER,
 	DIP_CMD_GET_DUMP_INFO,
 	DIP_CMD_SET_MEM_INFO,
-	DIP_CMD_GET_GCE_FIRST_ERR
+	DIP_CMD_GET_GCE_FIRST_ERR,
+	DIP_CMD_SET_BUF_PA,
+	DIP_CMD_DET_BUF_FD
 };
 
 
@@ -338,6 +329,14 @@ enum DIP_CMD_ENUM {
 
 #define DIP_GET_GCE_FIRST_ERR \
 	_IOWR(DIP_MAGIC, DIP_CMD_GET_GCE_FIRST_ERR, unsigned int)
+
+#define DIP_SET_BUF_PA \
+	_IOWR(DIP_MAGIC, DIP_CMD_SET_BUF_PA, struct DIP_ION_MEM_INFO)
+
+#define DIP_DET_BUF_FD \
+	_IOWR(DIP_MAGIC, DIP_CMD_DET_BUF_FD, unsigned int)
+
+
 
 
 

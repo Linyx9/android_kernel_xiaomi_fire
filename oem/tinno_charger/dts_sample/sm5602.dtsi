@@ -1,0 +1,164 @@
+/*
+ * this is the dtsi sample for SM5602.
+ * update date:2024.04.15
+ */
+
+sm5602@71 {
+	compatible = "sm,sm5602";
+	reg = <0x71>;
+	interrupts = <23 2>;
+	mtk,irq-gpio = <&pio 23 0x0>; //For MTK platform
+	interrupt-parent = <&pio>; 	//For MTK platform
+
+	sm,en_temp_ex;
+	//sm,en_temp_in;
+	//sm,en_temp_3rd;
+	//sm,en_batt_det;
+	sm,iocv_man_mode;
+	sm,misc = <0x0800>;
+	sm,misc2 = <0x0000>;
+	sm,aging_ctrl = <0x0121>;
+	sm,cycle_cfg = <0x7000>;
+	sm,rsns = <0>;
+	sm,fg_irq_set = <0x07FF>;
+	sm,low_soc1 = <1>;
+	sm,low_soc2 = <15>;
+	sm,v_l_alarm = <3400>;
+	sm,v_h_alarm = <4480>;
+	sm,battery_table_num = <0>;
+	sm,param_version = <1>;
+	sm,t_l_alarm_in = <54>;
+	sm,t_h_alarm_in = <1>;
+	sm,t_l_alarm_ex = <0xD3D8>;
+	sm,t_h_alarm_ex = <0x9245>;
+	sm,rpara = <0x0>;
+	sm,curr_voffset = <0>;
+	sm,curr_vslope = <0x8080>;
+
+	//SOC_SMOOTH_TRACKING
+	//sm,en_soc_smooth_tracking;
+
+	//ENABLE_IOCV_ADJ
+	sm,enable_iocv_adj;
+	sm,iocv_max_adj_level = <0x1F33>;
+	sm,iocv_min_adj_level = <0x1d70>;
+	sm,ioci_max_adj_level = <0x1000>;
+	sm,ioci_min_adj_level = <0xCC>;
+	sm,iocv_i_slope = <100>;
+	sm,iocv_i_offset = <0>;
+
+	//SHUTDOWN_DELAY
+	sm,shutdown-delay-enable;
+	sm,shutdown_delay_h_vol = <3400>;
+	sm,shutdown_delya_l_vol = <3300>;
+
+	//ENABLE_INSPECTION_TABLE
+	sm,enable_inspection_table;
+
+	//ENABLE_TEMBASE_ZDSCON
+	sm,enable_tembase_zdscon;
+	sm,zdscon_act_temp_gap = <15>;
+	sm,t_gap_denom = <5>;
+	sm,hminman_t_value_fast = <125>;
+	sm,i_gap_denom = <1000>;
+	sm,hminman_i_value_fast = <150>;
+
+	//ENABLE_TEMP_AVG
+	//sm,enable_temp_avg;
+	sm,change_temp_time_limit = <1>;
+
+	//ENABLE_NTC_COMPENSATION
+	sm,enable_ntc_compensation;
+	sm,rtrace = <4700>;
+	sm,overheat_th_deg = <50>;
+	sm,cold_th_deg = <0>;
+
+	//ENABLE_MAP_SOC
+	//sm,enable_map_soc;
+	sm,map_max_soc = <99>;
+	sm,map_rate_soc = <995>;
+	sm,map_min_soc = <4>;
+
+	//ENABLE_WAIT_SOC_FULL
+	sm,enable_wiat_soc_full;
+	sm,wait_soc_gap = <1>;
+	sm,wait_soc_max = <100>;
+	sm,wait_soc_min = <99>;
+
+	//ENABLE_LTIM_ACT
+	sm,enable_ltim_act;
+	sm,ltim_act_temp_gap = <24>;
+	sm,ltim_i_limit = <1500>;
+	sm,ltim_factor = <42>;
+	sm,ltim_denom = <130>;
+	sm,ltim_min = <0xA>;
+
+	//ENABLE_HCIC_ACT
+	sm,enable_hcic_act;
+	sm,hcic_min = <4000>;
+	sm,hcic_factor = <2>;
+	sm,hcic_denom = <200>;
+
+	//ENABLE_HCRSM_MODE
+	//sm,enable_hcrsm_mode;
+	sm,hcrsm_volt = <4450>;
+	sm,hcrsm_curr = <1750>;
+	sm,hcrsm_min_soc = <900>;
+
+	//CHECK_ABNORMAL_TABLE
+	sm,enable_check_abnormal_table;
+
+	//DELAY_SOC_ZERO
+	//sm,enable_delay_soc_zero;
+	sm,delay_soc_zero_time_ms = <30000>;
+
+	//ENABLE_MIX_NTC_BATTDET
+	//sm,enable_mix_ntc_battdet;
+	sm,mix_ntc_battdet_hv = <0x7700>;
+	sm,mix_ntc_battdet_lv = <0x77FF>;
+
+	//ENABLE_INIT_DELAY_TEMP
+	//sm,enable_init_delay_temp;
+	sm,delay_temp_time_ms = <5000>;
+
+	battery_params {
+		//battery,id = <0>;
+		//Main Battery - 1st battery
+		battery0,param_version = <1>;
+		battery0,max_voltage_uv = <4480000>;
+		battery0,battery_type = <4480 0x0 0x1905>;
+		battery0,battery_table0 = <0x1400 0x1B32 0x1C25 0x1CE3 0x1D5F 0x1D90 0x1D9A 0x1DF4 0x1E24 0x1E60
+			0x1E87 0x1EB1 0x1F01 0x1F79 0x1FD0 0x200C 0x2071 0x211D 0x2199 0x2259
+			0x22AE 0x2344 0x238E 0x24CC>;
+		battery0,battery_table1 = <0x0 0x66 0x19D 0x32D 0x4BD 0x7DE 0xB84 0x1248 0x177C 0x1CB0
+			0x21E5 0x2719 0x2EE8 0x36B7 0x3951 0x3BEB 0x4120 0x48EE 0x4E23 0x55F1
+			0x5997 0x60E0 0x6400 0x64E6>;
+		battery0,battery_table2 = <0x1824 0x1315 0x1011 0x0E0F 0x0C0D 0x0C0C 0x0B0B 0x0B0B>;
+		battery0,alpha = <0x00CC>;
+		battery0,beta = <0x0025>;
+		battery0,rs = <0x005F>;
+		battery0,rs_value = <0x0050 0x010A 0x3800 0x0048>;
+		battery0,vit_period = <0x315A>;
+		battery0,volt_cal = <0x8000>;
+		battery0,mix_value = <0x0003>;
+		battery0,curr_offset = <0x000>;
+		battery0,curr_slope = <0x8080>;
+		battery0,topoff_soc = <7 265 65>;
+		battery0,temp_std = <25>;
+		battery0,temp_offset = <0 11 1 0 8 (-1)>;
+		battery0,temp_cal = <0 6 1 11 (-1) 0 6 1 9 1>;
+		battery0,ext_temp_cal = <0 2 1 2 1 1 2 (-3) 2 (-3)>;
+		battery0,tem_poff = <3400 100>;
+		battery0,thermal_table = <0x506E 0x4F35 0x4E07 0x4CC0 0x4B76 0x4A25 0x48BD 0x475D 0x45F5 0x4477
+			0x4304 0x4175 0x3FDE 0x3E4A 0x3CA2 0x3AF6 0x3945 0x378A 0x35CB 0x33FC
+			0x322B 0x3059 0x2E82 0x2CA0 0x2AC6 0x28C6 0x26E0 0x24EA 0x22E8 0x20EF
+			0x1EE7 0x1CEE 0x1AE8 0x18D0 0x16D6 0x14CE 0x12F3 0x10E4 0x0ED6 0x0CC4
+			0x0ABC 0x08BC 0x06A8 0x04AD 0x02A1 0x009E 0xF669 0xF471 0xF278 0xF081
+			0xEE7B 0xEC8C 0xEAA1 0xE8BE 0xE6E1 0xE505 0xE332 0xE162 0xDF9B 0xDDD9
+			0xDC1F 0xDA67 0xD8B4 0xD70B 0xD565 0xD3C7 0xD232 0xD0A1 0xCF18 0xCD94
+			0xCC18 0xCAA5 0xC936 0xC7D3 0xC670 0xC519 0xC3C6 0xC27A 0xC136 0xBFF7
+			0xBEC1 0xBD92 0xBC6E 0xBB4D 0xBA36 0xB922 0xB816 0xB712 0xB611 0xB517
+			0xB422 0xB334 0xB249 0xB164 0xB085 0xAFAD 0xAED8 0xAE0A 0xAD3E 0xAC78
+			0xABB7>;			//NTC 10K/ PU 100k table -20~80
+	};
+};

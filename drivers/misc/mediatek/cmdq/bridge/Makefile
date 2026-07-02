@@ -3,10 +3,9 @@
 # Copyright (c) 2021 MediaTek Inc.
 #
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/v3
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/v3/$(MTK_PLATFORM)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmp
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/spi_slave_drv
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/cmdq
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mmp
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/spi_slave_drv
 
-obj-y += cmdq-bdg-mailbox.o
-obj-y += cmdq-bdg-test.o
+obj-$(CONFIG_MTK_MT6382_BDG) += cmdq-bdg-mailbox.o
+obj-$(CONFIG_MTK_MT6382_BDG) += cmdq-bdg-test.o

@@ -22,11 +22,6 @@
 
 #include "hf_manager.h"
 
-
-static int major;
-static struct class *hf_manager_class;
-static struct task_struct *task;
-
 struct coordinate {
 	int8_t sign[3];
 	uint8_t map[3];
@@ -43,6 +38,10 @@ static const struct coordinate coordinates[] = {
 	{ { 1, -1, -1}, {0, 1, 2} },
 	{ { -1, -1, -1}, {1, 0, 2} },
 };
+
+static int hf_manager_major;
+static struct class *hf_manager_class;
+static uint8_t hf_manager_debug_sensor_type;
 
 static DECLARE_BITMAP(sensor_list_bitmap, SENSOR_TYPE_SENSOR_MAX);
 static struct hf_core hfcore;
@@ -68,8 +67,6 @@ static void init_hf_core(struct hf_core *core)
 
 	mutex_init(&core->device_lock);
 	INIT_LIST_HEAD(&core->device_list);
-
-	kthread_init_worker(&core->kworker);
 }
 
 void coordinate_map(unsigned char direction, int32_t *data)
@@ -120,11 +117,11 @@ static int hf_manager_report_event(struct hf_client *client,
 			hf_fifo->buffull = false;
 			hf_fifo->head = 0;
 			hf_fifo->tail = 0;
-			pr_err_ratelimited("[%s][%d:%d] buffer reset %lld\n",
+			pr_err_ratelimited("[%s][%d:%d] Buffer reset %lld\n",
 				client->proc_comm, client->leader_pid,
 				client->ppid, hang_time);
 		} else {
-			pr_err_ratelimited("[%s][%d:%d] buffer full %d %lld\n",
+			pr_err_ratelimited("[%s][%d:%d] Buffer full %d %lld\n",
 				client->proc_comm, client->leader_pid,
 				client->ppid, event->sensor_type,
 				event->timestamp);
@@ -140,7 +137,7 @@ static int hf_manager_report_event(struct hf_client *client,
 	/* only data action run filter event */
 	if (likely(event->action == DATA_ACTION) &&
 			unlikely(filter_event_by_timestamp(hf_fifo, event))) {
-		pr_err_ratelimited("[%s][%d:%d] buffer filter %d %lld\n",
+		pr_err_ratelimited("[%s][%d:%d] Buffer filter %d %lld\n",
 			client->proc_comm, client->leader_pid,
 			client->ppid, event->sensor_type, event->timestamp);
 		spin_unlock_irqrestore(&hf_fifo->buffer_lock, flags);
@@ -175,14 +172,23 @@ static int hf_manager_report_event(struct hf_client *client,
 static void hf_manager_io_schedule(struct hf_manager *manager,
 		int64_t timestamp)
 {
+	unsigned char device_bus = READ_ONCE(manager->hf_dev->device_bus);
+	unsigned char device_worker = READ_ONCE(manager->hf_dev->device_worker);
+
 	if (!atomic_read(&manager->io_enabled))
 		return;
 	set_interrupt_timestamp(manager, timestamp);
-	if (READ_ONCE(manager->hf_dev->device_bus) == HF_DEVICE_IO_ASYNC)
+	if (device_bus == HF_DEVICE_IO_ASYNC) {
 		tasklet_schedule(&manager->io_work_tasklet);
-	else if (READ_ONCE(manager->hf_dev->device_bus) == HF_DEVICE_IO_SYNC)
-		kthread_queue_work(&manager->core->kworker,
-			&manager->io_kthread_work);
+	} else if (device_bus == HF_DEVICE_IO_SYNC) {
+		if (device_worker == HF_DEVICE_COMMON_WORKER) {
+			kthread_queue_work(manager->core->kworker,
+				&manager->io_kthread_work);
+		} else if (device_worker == HF_DEVICE_SINGLE_WORKER) {
+			kthread_queue_work(manager->kworker,
+				&manager->io_kthread_work);
+		}
+	}
 }
 
 static int hf_manager_io_report(struct hf_manager *manager,
@@ -288,6 +294,7 @@ int hf_manager_create(struct hf_device *device)
 	int i = 0, err = 0;
 	uint32_t gain = 0;
 	struct hf_manager *manager = NULL;
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO / 2 };
 
 	if (!device || !device->dev_name ||
 			!device->support_list || !device->support_size)
@@ -317,12 +324,24 @@ int hf_manager_create(struct hf_device *device)
 	manager->report = hf_manager_io_report;
 	manager->complete = hf_manager_io_complete;
 
-	if (device->device_bus == HF_DEVICE_IO_ASYNC)
+	if (device->device_bus == HF_DEVICE_IO_ASYNC) {
 		tasklet_init(&manager->io_work_tasklet,
 			hf_manager_io_tasklet, (unsigned long)manager);
-	else if (device->device_bus == HF_DEVICE_IO_SYNC)
+	} else if (device->device_bus == HF_DEVICE_IO_SYNC) {
 		kthread_init_work(&manager->io_kthread_work,
 			hf_manager_io_kthread_work);
+		if (device->device_worker == HF_DEVICE_SINGLE_WORKER) {
+			manager->kworker = kthread_create_worker(0,
+				"hf_manager_%s", device->dev_name);
+			if (IS_ERR(manager->kworker)) {
+				err = PTR_ERR(manager->kworker);
+				manager->kworker = NULL;
+				goto out_err;
+			}
+			sched_setscheduler_nocheck(manager->kworker->task,
+				SCHED_FIFO, &param);
+		}
+	}
 
 	for (i = 0; i < device->support_size; ++i) {
 		sensor_type = device->support_list[i].sensor_type;
@@ -382,10 +401,16 @@ void hf_manager_destroy(struct hf_manager *manager)
 	mutex_unlock(&manager->core->manager_lock);
 	if (device->device_poll == HF_DEVICE_IO_POLLING)
 		hrtimer_cancel(&manager->io_poll_timer);
-	if (device->device_bus == HF_DEVICE_IO_ASYNC)
+	if (device->device_bus == HF_DEVICE_IO_ASYNC) {
 		tasklet_kill(&manager->io_work_tasklet);
-	else if (device->device_bus == HF_DEVICE_IO_SYNC)
-		kthread_flush_work(&manager->io_kthread_work);
+	} else if (device->device_bus == HF_DEVICE_IO_SYNC) {
+		if (device->device_worker == HF_DEVICE_COMMON_WORKER) {
+			/* common kworker only flush itself's work */
+			kthread_flush_work(&manager->io_kthread_work);
+		} else if (device->device_worker == HF_DEVICE_SINGLE_WORKER) {
+			kthread_destroy_worker(manager->kworker);
+		}
+	}
 
 	while (test_bit(HF_MANAGER_IO_IN_PROGRESS, &manager->flags))
 		cpu_relax();
@@ -998,36 +1023,6 @@ err_out:
 	return ret;
 }
 
-static int hf_manager_custom_cmd(struct hf_client *client,
-		uint8_t sensor_type, struct custom_cmd *cust_cmd)
-{
-	struct hf_manager *manager = NULL;
-	struct hf_device *device = NULL;
-	int ret = 0;
-
-	if (cust_cmd->tx_len > sizeof(cust_cmd->data) ||
-		cust_cmd->rx_len > sizeof(cust_cmd->data))
-		return -EINVAL;
-
-	mutex_lock(&client->core->manager_lock);
-	manager = hf_manager_find_manager(client->core, sensor_type);
-	if (!manager) {
-		ret = -EINVAL;
-		goto err_out;
-	}
-	device = manager->hf_dev;
-	if (!device || !device->dev_name) {
-		ret = -EINVAL;
-		goto err_out;
-	}
-	if (device->custom_cmd)
-		ret = device->custom_cmd(device, sensor_type, cust_cmd);
-
-err_out:
-	mutex_unlock(&client->core->manager_lock);
-	return ret;
-}
-
 static int hf_manager_drive_device(struct hf_client *client,
 		struct hf_manager_cmd *cmd)
 {
@@ -1039,6 +1034,9 @@ static int hf_manager_drive_device(struct hf_client *client,
 	uint8_t sensor_type = cmd->sensor_type;
 
 	if (unlikely(sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+
+	if (unlikely(cmd->length > sizeof(cmd->data)))
 		return -EINVAL;
 
 	mutex_lock(&core->manager_lock);
@@ -1103,6 +1101,95 @@ static int hf_manager_get_sensor_info(struct hf_client *client,
 	return hf_manager_device_info(client, sensor_type, info);
 }
 
+static int hf_manager_custom_cmd(struct hf_client *client,
+		uint8_t sensor_type, struct custom_cmd *cust_cmd)
+{
+	struct hf_manager *manager = NULL;
+	struct hf_device *device = NULL;
+	int ret = 0;
+
+	if (cust_cmd->tx_len > sizeof(cust_cmd->data) ||
+		cust_cmd->rx_len > sizeof(cust_cmd->data))
+		return -EINVAL;
+
+	mutex_lock(&client->core->manager_lock);
+	manager = hf_manager_find_manager(client->core, sensor_type);
+	if (!manager) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+	device = manager->hf_dev;
+	if (!device || !device->dev_name) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+	if (device->custom_cmd)
+		ret = device->custom_cmd(device, sensor_type, cust_cmd);
+
+err_out:
+	mutex_unlock(&client->core->manager_lock);
+	return ret;
+}
+
+static int hf_manager_debug(struct hf_client *client, uint8_t sensor_type,
+		uint8_t *debug_buffer, unsigned int debug_len)
+{
+	struct hf_manager *manager = NULL;
+	struct hf_device *device = NULL;
+	int ret = 0;
+
+	mutex_lock(&client->core->manager_lock);
+	manager = hf_manager_find_manager(client->core, sensor_type);
+	if (!manager) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+	device = manager->hf_dev;
+	if (!device || !device->dev_name) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+	ret = device->debug(device, sensor_type, debug_buffer, debug_len);
+err_out:
+	mutex_unlock(&client->core->manager_lock);
+	return ret;
+}
+
+static int hf_client_destroy_disable(struct hf_client *client,
+		uint8_t sensor_type)
+{
+	struct hf_manager *manager = NULL;
+	struct hf_device *device = NULL;
+
+#ifdef HF_MANAGER_DEBUG
+	pr_notice("Client destroy disable %u\n", sensor_type);
+#endif
+
+	manager = hf_manager_find_manager(client->core, sensor_type);
+	if (!manager)
+		return -EINVAL;
+	device = manager->hf_dev;
+	if (!device || !device->dev_name)
+		return -EINVAL;
+
+	return hf_manager_device_enable(device, sensor_type);
+}
+
+static int hf_client_destroy_disable_all(struct hf_client *client)
+{
+	int i = 0;
+
+	mutex_lock(&client->core->manager_lock);
+	for (i = 0; i < SENSOR_TYPE_SENSOR_MAX; ++i) {
+		/* no need modify enable due to we list_del firstly */
+		if (client->request[i].enable)
+			hf_client_destroy_disable(client, i);
+	}
+	mutex_unlock(&client->core->manager_lock);
+
+	return 0;
+}
+
 struct hf_client *hf_client_create(void)
 {
 	unsigned long flags;
@@ -1162,6 +1249,9 @@ void hf_client_destroy(struct hf_client *client)
 	spin_lock_irqsave(&client->core->client_lock, flags);
 	list_del(&client->list);
 	spin_unlock_irqrestore(&client->core->client_lock, flags);
+
+	/* after list_del then disable all enabled sensor on this client */
+	hf_client_destroy_disable_all(client);
 
 	kfree(client->hf_fifo.buffer);
 	kfree(client);
@@ -1286,6 +1376,19 @@ int hf_client_custom_cmd(struct hf_client *client,
 }
 EXPORT_SYMBOL_GPL(hf_client_custom_cmd);
 
+int hf_client_debug(struct hf_client *client, uint8_t sensor_type,
+		uint8_t *debug_buffer, unsigned int debug_len)
+{
+	if (unlikely(sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	if (!test_bit(sensor_type, sensor_list_bitmap))
+		return -EINVAL;
+	if (!debug_buffer || !debug_len)
+		return -EINVAL;
+	return hf_manager_debug(client, sensor_type, debug_buffer, debug_len);
+}
+EXPORT_SYMBOL_GPL(hf_client_debug);
+
 static int hf_manager_open(struct inode *inode, struct file *filp)
 {
 	struct hf_client *client = hf_client_create();
@@ -1369,88 +1472,251 @@ static unsigned int hf_manager_poll(struct file *filp,
 	return mask;
 }
 
-static long hf_manager_ioctl(struct file *filp,
+static long hf_manager_ioctl_request_register(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
+	unsigned int size = _IOC_SIZE(cmd);
+	void __user *ubuf = (void __user *)arg;
+	struct common_packet packet;
+
+	if (size != sizeof(packet))
+		return -EINVAL;
+	if (copy_from_user(&packet, ubuf, sizeof(packet)))
+		return -EFAULT;
+	if (unlikely(packet.sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	packet.status = test_bit(packet.sensor_type, sensor_list_bitmap);
+	if (copy_to_user(ubuf, &packet, sizeof(packet)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long hf_manager_ioctl_request_bias(struct file *filp,
 			unsigned int cmd, unsigned long arg)
 {
 	struct hf_client *client = filp->private_data;
 	unsigned int size = _IOC_SIZE(cmd);
 	void __user *ubuf = (void __user *)arg;
-	uint8_t sensor_type = 0;
-	struct ioctl_packet packet;
-	struct sensor_info info;
-	struct custom_cmd *cust_cmd = NULL;
-	struct hf_device *device = NULL;
+	struct common_packet packet;
 
-	memset(&packet, 0, sizeof(packet));
-
-	if (size != sizeof(struct ioctl_packet))
+	if (size != sizeof(packet))
 		return -EINVAL;
 	if (copy_from_user(&packet, ubuf, sizeof(packet)))
 		return -EFAULT;
-	sensor_type = packet.sensor_type;
-	if (unlikely(sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+	if (unlikely(packet.sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	hf_manager_update_bias(client, packet.sensor_type, packet.status);
+
+	return 0;
+}
+
+static long hf_manager_ioctl_request_cali(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
+	struct hf_client *client = filp->private_data;
+	unsigned int size = _IOC_SIZE(cmd);
+	void __user *ubuf = (void __user *)arg;
+	struct common_packet packet;
+
+	if (size != sizeof(packet))
+		return -EINVAL;
+	if (copy_from_user(&packet, ubuf, sizeof(packet)))
+		return -EFAULT;
+	if (unlikely(packet.sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	hf_manager_update_cali(client, packet.sensor_type, packet.status);
+
+	return 0;
+}
+
+static long hf_manager_ioctl_request_temp(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
+	struct hf_client *client = filp->private_data;
+	unsigned int size = _IOC_SIZE(cmd);
+	void __user *ubuf = (void __user *)arg;
+	struct common_packet packet;
+
+	if (size != sizeof(packet))
+		return -EINVAL;
+	if (copy_from_user(&packet, ubuf, sizeof(packet)))
+		return -EFAULT;
+	if (unlikely(packet.sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	hf_manager_update_temp(client, packet.sensor_type, packet.status);
+
+	return 0;
+}
+
+static long hf_manager_ioctl_request_test(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
+	struct hf_client *client = filp->private_data;
+	unsigned int size = _IOC_SIZE(cmd);
+	void __user *ubuf = (void __user *)arg;
+	struct common_packet packet;
+
+	if (size != sizeof(packet))
+		return -EINVAL;
+	if (copy_from_user(&packet, ubuf, sizeof(packet)))
+		return -EFAULT;
+	if (unlikely(packet.sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	hf_manager_update_test(client, packet.sensor_type, packet.status);
+
+	return 0;
+}
+
+static long hf_manager_ioctl_request_info(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
+	struct hf_client *client = filp->private_data;
+	unsigned int size = _IOC_SIZE(cmd);
+	void __user *ubuf = (void __user *)arg;
+	struct info_packet packet;
+
+	if (size != sizeof(packet))
+		return -EINVAL;
+	if (copy_from_user(&packet, ubuf, sizeof(packet)))
+		return -EFAULT;
+	if (unlikely(packet.sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	if (!test_bit(packet.sensor_type, sensor_list_bitmap))
+		return -EINVAL;
+	if (hf_manager_get_sensor_info(client, packet.sensor_type,
+			&packet.info))
+		return -EINVAL;
+	if (copy_to_user(ubuf, &packet, sizeof(packet)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long hf_manager_ioctl_request_cust(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
+	struct hf_client *client = filp->private_data;
+	unsigned int size = _IOC_SIZE(cmd);
+	void __user *ubuf = (void __user *)arg;
+	struct cust_packet packet;
+
+	if (size != sizeof(packet))
+		return -EINVAL;
+	if (copy_from_user(&packet, ubuf, sizeof(packet)))
+		return -EFAULT;
+	if (unlikely(packet.sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	if (!test_bit(packet.sensor_type, sensor_list_bitmap))
+		return -EINVAL;
+	if (hf_manager_custom_cmd(client, packet.sensor_type, &packet.cust_cmd))
+		return -EINVAL;
+	if (copy_to_user(ubuf, &packet, sizeof(packet)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long hf_manager_ioctl_request_ready(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
+	struct hf_client *client = filp->private_data;
+	unsigned int size = _IOC_SIZE(cmd);
+	void __user *ubuf = (void __user *)arg;
+	struct common_packet packet;
+	struct hf_device *device = NULL;
+
+	if (size != sizeof(packet))
+		return -EINVAL;
+	if (copy_from_user(&packet, ubuf, sizeof(packet)))
+		return -EFAULT;
+	mutex_lock(&client->core->device_lock);
+	packet.status = true;
+	list_for_each_entry(device, &client->core->device_list, list) {
+		if (!READ_ONCE(device->ready)) {
+			pr_err_ratelimited("Device:%s not ready\n",
+				device->dev_name);
+			packet.status = false;
+			break;
+		}
+	}
+	mutex_unlock(&client->core->device_lock);
+	if (copy_to_user(ubuf, &packet, sizeof(packet)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long hf_manager_ioctl_request_debug(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
+	int ret = 0;
+	struct hf_client *client = filp->private_data;
+	unsigned int size = _IOC_SIZE(cmd);
+	struct debug_packet packet;
+	void __user *ubuf = (void __user *)arg;
+	uint8_t *read_buffer = NULL;
+
+	if (size != sizeof(struct debug_packet))
+		return -EINVAL;
+	if (copy_from_user(&packet, ubuf, sizeof(packet)))
+		return -EFAULT;
+	if (unlikely(packet.sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	if (!test_bit(packet.sensor_type, sensor_list_bitmap))
+		return -EINVAL;
+	if (!packet.read_buffer || !packet.read_size)
 		return -EINVAL;
 
+	read_buffer = kzalloc(packet.read_size, GFP_KERNEL);
+	if (!read_buffer)
+		return -ENOMEM;
+	ret = hf_manager_debug(client, packet.sensor_type,
+			read_buffer, packet.read_size);
+	if (ret < 0)
+		goto err_out;
+	if (copy_to_user(packet.read_buffer, read_buffer, ret)) {
+		ret = -EFAULT;
+		goto err_out;
+	}
+	packet.read_size = ret;
+	if (copy_to_user(ubuf, &packet, sizeof(packet))) {
+		ret = -EFAULT;
+		goto err_out;
+	}
+
+err_out:
+	kfree(read_buffer);
+	return ret;
+}
+
+static long hf_manager_ioctl(struct file *filp,
+			unsigned int cmd, unsigned long arg)
+{
 	switch (cmd) {
 	case HF_MANAGER_REQUEST_REGISTER_STATUS:
-		packet.status = test_bit(sensor_type, sensor_list_bitmap);
-		if (copy_to_user(ubuf, &packet, sizeof(packet)))
-			return -EFAULT;
-		break;
+		return hf_manager_ioctl_request_register(filp, cmd, arg);
 	case HF_MANAGER_REQUEST_BIAS_DATA:
-		hf_manager_update_bias(client, sensor_type, packet.status);
-		break;
+		return hf_manager_ioctl_request_bias(filp, cmd, arg);
 	case HF_MANAGER_REQUEST_CALI_DATA:
-		hf_manager_update_cali(client, sensor_type, packet.status);
-		break;
+		return hf_manager_ioctl_request_cali(filp, cmd, arg);
 	case HF_MANAGER_REQUEST_TEMP_DATA:
-		hf_manager_update_temp(client, sensor_type, packet.status);
-		break;
+		return hf_manager_ioctl_request_temp(filp, cmd, arg);
 	case HF_MANAGER_REQUEST_TEST_DATA:
-		hf_manager_update_test(client, sensor_type, packet.status);
-		break;
+		return hf_manager_ioctl_request_test(filp, cmd, arg);
 	case HF_MANAGER_REQUEST_SENSOR_INFO:
-		if (!test_bit(sensor_type, sensor_list_bitmap))
-			return -EINVAL;
-		memset(&info, 0, sizeof(info));
-		if (hf_manager_get_sensor_info(client, sensor_type, &info))
-			return -EINVAL;
-		if (sizeof(packet.byte) < sizeof(info))
-			return -EINVAL;
-		memcpy(packet.byte, &info, sizeof(info));
-		if (copy_to_user(ubuf, &packet, sizeof(packet)))
-			return -EFAULT;
-		break;
+		return hf_manager_ioctl_request_info(filp, cmd, arg);
 	case HF_MANAGER_REQUEST_CUST_DATA:
-		if (!test_bit(sensor_type, sensor_list_bitmap))
-			return -EINVAL;
-		if (sizeof(packet.byte) < sizeof(*cust_cmd))
-			return -EINVAL;
-		cust_cmd = (struct custom_cmd *)packet.byte;
-		if (hf_manager_custom_cmd(client, sensor_type, cust_cmd))
-			return -EINVAL;
-		if (copy_to_user(ubuf, &packet, sizeof(packet)))
-			return -EFAULT;
-		break;
+		return hf_manager_ioctl_request_cust(filp, cmd, arg);
 	case HF_MANAGER_REQUEST_READY_STATUS:
-		mutex_lock(&client->core->device_lock);
-		packet.status = true;
-		list_for_each_entry(device, &client->core->device_list, list) {
-			if (!READ_ONCE(device->ready)) {
-				pr_err_ratelimited("Device:%s not ready\n",
-					device->dev_name);
-				packet.status = false;
-				break;
-			}
-		}
-		mutex_unlock(&client->core->device_lock);
-		if (copy_to_user(ubuf, &packet, sizeof(packet)))
-			return -EFAULT;
-		break;
+		return hf_manager_ioctl_request_ready(filp, cmd, arg);
+	case HF_MANAGER_REQUEST_DEBUG_INFO:
+		return hf_manager_ioctl_request_debug(filp, cmd, arg);
 	default:
 		pr_err("Unknown command %u\n", cmd);
 		return -EINVAL;
 	}
+
 	return 0;
 }
 
@@ -1465,7 +1731,7 @@ static const struct file_operations hf_manager_fops = {
 	.compat_ioctl   = hf_manager_ioctl,
 };
 
-static int hf_manager_proc_show(struct seq_file *m, void *v)
+static int hf_manager_proc_show_manager(struct seq_file *m, void *v)
 {
 	int i = 0, j = 0, k = 0;
 	uint8_t sensor_type = 0;
@@ -1490,10 +1756,11 @@ static int hf_manager_proc_show(struct seq_file *m, void *v)
 			atomic_read(&manager->io_enabled),
 			print_s64((int64_t)atomic64_read(
 				&manager->io_poll_interval)));
-		seq_printf(m, " device:%s poll:%s bus:%s online\n",
+		seq_printf(m, " device:%s poll:%s bus:%s worker:%s online\n",
 			device->dev_name,
 			device->device_poll ? "io_polling" : "io_interrupt",
-			device->device_bus ? "io_async" : "io_sync");
+			device->device_bus ? "io_async" : "io_sync",
+			device->device_worker ? "single" : "common");
 		for (i = 0; i < device->support_size; ++i) {
 			sensor_type = device->support_list[i].sensor_type;
 			seq_printf(m, "  (%d) type:%u info:[%u,%s,%s]\n",
@@ -1559,7 +1826,7 @@ static int hf_manager_proc_show(struct seq_file *m, void *v)
 			continue;
 		if (device->debug(device, SENSOR_TYPE_INVALID, debug_buffer,
 				debug_len) > 0) {
-			seq_printf(m, "Debug Sub Module: %s\n",
+			seq_printf(m, "Debug Host Sub Module: %s\n",
 				device->dev_name);
 			seq_printf(m, "%s\n", debug_buffer);
 		}
@@ -1569,16 +1836,80 @@ static int hf_manager_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int hf_manager_proc_open(struct inode *inode, struct file *filp)
+static int hf_manager_proc_show_sensor(struct seq_file *m, void *v,
+		uint8_t sensor_type)
 {
-	return single_open(filp, hf_manager_proc_show, PDE_DATA(inode));
+	struct hf_core *core = (struct hf_core *)m->private;
+	struct hf_manager *manager = NULL;
+	struct hf_device *device = NULL;
+	const unsigned int debug_len = 4096;
+	uint8_t *debug_buffer = NULL;
+
+	seq_puts(m, "**************************************************\n");
+	seq_printf(m, "Debug Host Sensor Type: %u\n", sensor_type);
+	mutex_lock(&core->manager_lock);
+	manager = hf_manager_find_manager(core, sensor_type);
+	if (!manager)
+		goto out;
+	device = READ_ONCE(manager->hf_dev);
+	if (!device || !device->dev_name)
+		goto out;
+	debug_buffer = kzalloc(debug_len, GFP_KERNEL);
+	if (device->debug(device, sensor_type, debug_buffer,
+			debug_len) > 0) {
+		seq_printf(m, "On Host Sub Module: %s\n", device->dev_name);
+		seq_printf(m, "%s\n", debug_buffer);
+	}
+	kfree(debug_buffer);
+out:
+	mutex_unlock(&core->manager_lock);
+
+	return 0;
 }
 
-static const struct file_operations hf_manager_proc_fops = {
-	.open           = hf_manager_proc_open,
-	.release        = single_release,
-	.read           = seq_read,
-	.llseek         = seq_lseek,
+static int hf_manager_proc_show(struct seq_file *m, void *v)
+{
+	uint8_t sensor_type = READ_ONCE(hf_manager_debug_sensor_type);
+
+	if (sensor_type == SENSOR_TYPE_INVALID)
+		hf_manager_proc_show_manager(m, v);
+	else
+		hf_manager_proc_show_sensor(m, v, sensor_type);
+
+	return 0;
+}
+
+static int hf_manager_proc_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, hf_manager_proc_show, pde_data(inode));
+}
+
+static ssize_t hf_manager_proc_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	uint32_t sensor_type = 0;
+	char recv_str[16] = {0}, kbuf[64] = {0};
+	const char *debug = "debug";
+	size_t buf_size = min(count, sizeof(kbuf));
+
+	if (copy_from_user(kbuf, user_buf, buf_size))
+		return -EFAULT;
+	if (sscanf(kbuf, "%5s %u", recv_str, &sensor_type) != 2)
+		return -EINVAL;
+	if (strncmp(debug, recv_str, strlen(debug)))
+		return -EINVAL;
+	if (unlikely(sensor_type >= SENSOR_TYPE_SENSOR_MAX))
+		return -EINVAL;
+	WRITE_ONCE(hf_manager_debug_sensor_type, sensor_type);
+	return count;
+}
+
+static const struct proc_ops hf_manager_proc_fops = {
+	.proc_open           = hf_manager_proc_open,
+	.proc_write          = hf_manager_proc_write,
+	.proc_release        = single_release,
+	.proc_read           = seq_read,
+	.proc_lseek          = seq_lseek,
 };
 
 static int __init hf_manager_init(void)
@@ -1589,21 +1920,21 @@ static int __init hf_manager_init(void)
 
 	init_hf_core(&hfcore);
 
-	major = register_chrdev(0, "hf_manager", &hf_manager_fops);
-	if (major < 0) {
+	hf_manager_major = register_chrdev(0, "hf_manager", &hf_manager_fops);
+	if (hf_manager_major < 0) {
 		pr_err("Unable to get major\n");
-		ret = major;
+		ret = hf_manager_major;
 		goto err_exit;
 	}
 
-	hf_manager_class = class_create(THIS_MODULE, "hf_manager");
+	hf_manager_class = class_create("hf_manager");
 	if (IS_ERR(hf_manager_class)) {
 		pr_err("Failed to create class\n");
 		ret = PTR_ERR(hf_manager_class);
 		goto err_chredev;
 	}
 
-	dev = device_create(hf_manager_class, NULL, MKDEV(major, 0),
+	dev = device_create(hf_manager_class, NULL, MKDEV(hf_manager_major, 0),
 		NULL, "hf_manager");
 	if (IS_ERR(dev)) {
 		pr_err("Failed to create device\n");
@@ -1611,36 +1942,36 @@ static int __init hf_manager_init(void)
 		goto err_class;
 	}
 
-	if (!proc_create_data("hf_manager", 0440, NULL,
+	if (!proc_create_data("hf_manager", 0600, NULL,
 			&hf_manager_proc_fops, &hfcore))
 		pr_err("Failed to create proc\n");
 
-	task = kthread_run(kthread_worker_fn,
-			&hfcore.kworker, "hf_manager");
-	if (IS_ERR(task)) {
+	hfcore.kworker = kthread_create_worker(0, "hf_manager");
+	if (IS_ERR(hfcore.kworker)) {
 		pr_err("Failed to create kthread\n");
-		ret = PTR_ERR(task);
+		ret = PTR_ERR(hfcore.kworker);
+		hfcore.kworker = NULL;
 		goto err_device;
 	}
-	sched_setscheduler(task, SCHED_FIFO, &param);
+	sched_setscheduler_nocheck(hfcore.kworker->task, SCHED_FIFO, &param);
 	return 0;
 
 err_device:
-	device_destroy(hf_manager_class, MKDEV(major, 0));
+	device_destroy(hf_manager_class, MKDEV(hf_manager_major, 0));
 err_class:
 	class_destroy(hf_manager_class);
 err_chredev:
-	unregister_chrdev(major, "hf_manager");
+	unregister_chrdev(hf_manager_major, "hf_manager");
 err_exit:
 	return ret;
 }
 
 static void __exit hf_manager_exit(void)
 {
-	kthread_stop(task);
-	device_destroy(hf_manager_class, MKDEV(major, 0));
+	kthread_destroy_worker(hfcore.kworker);
+	device_destroy(hf_manager_class, MKDEV(hf_manager_major, 0));
 	class_destroy(hf_manager_class);
-	unregister_chrdev(major, "hf_manager");
+	unregister_chrdev(hf_manager_major, "hf_manager");
 }
 
 subsys_initcall(hf_manager_init);

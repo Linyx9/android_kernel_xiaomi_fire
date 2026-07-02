@@ -18,8 +18,8 @@
 #include "mach/mtk_thermal.h"
 #include <linux/uidgid.h>
 #include <linux/slab.h>
-#include "../../mt6768/inc/tmp_bts.h"
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#include <tmp_btscharger.h>
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 #include <linux/iio/consumer.h>
 #endif
 
@@ -51,7 +51,7 @@ do { \
 #define mtktscharger_pr_notice(fmt, args...) \
 	pr_notice("[Thermal/tzcharger]" fmt, ##args)
 
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 struct iio_channel *thermistor_ch2;
 #endif
 
@@ -60,9 +60,9 @@ static kgid_t gid = KGIDT_INIT(1000);
 static DEFINE_SEMAPHORE(sem_mutex);
 
 static int kernelmode;
-static unsigned int interval = 2; /* seconds, 0 : no auto polling */
+static unsigned int interval; /* seconds, 0 : no auto polling */
 static int num_trip = 1;
-static int trip_temp[10] = { 120000, 110000, 100000, 90000, 80000,
+static int trip_temp[10] = { 125000, 110000, 100000, 90000, 80000,
 				70000, 65000, 60000, 55000, 50000 };
 
 static int g_THERMAL_TRIP[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -535,7 +535,7 @@ static __s16 mtk_ts_btscharger_volt_to_temp(__u32 dwVolt)
 
 static int mtktscharger_get_hw_temp(void)
 {
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	int val = 0;
 	int ret = 0, output;
 #else
@@ -547,7 +547,7 @@ static int mtktscharger_get_hw_temp(void)
 	#endif
 #endif
 
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	ret = iio_read_channel_processed(thermistor_ch2, &val);
 	if (ret < 0) {
 		mtktscharger_dprintk_always(
@@ -637,11 +637,11 @@ static int mtktscharger_get_temp(struct thermal_zone_device *thermal, int *t)
 		mtktscharger_dprintk_always("HT %d\n", *t);
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -820,7 +820,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 	}
 
 	return 0;
@@ -966,7 +966,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		if (num_trip < 0 || num_trip > 10) {
 			mtktscharger_dprintk_always("%s bad argument\n",
 								__func__);
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "%s",
 					"Bad argument", __func__);
@@ -1236,7 +1236,7 @@ static const struct file_operations mtkts_btscharger_param_fops = {
 };
 
 
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 static int mtktscharger_pdrv_probe(struct platform_device *pdev)
 {
 	int err = 0;
@@ -1301,7 +1301,7 @@ static int mtktscharger_pdrv_remove(struct platform_device *pdev)
 }
 
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 const struct of_device_id mt_thermistor_of_match3[2] = {
 	{.compatible = "mediatek,mtboard-thermistor3",},
 	{},
@@ -1314,18 +1314,18 @@ static struct platform_driver mtktscharger_driver = {
 	.remove = mtktscharger_pdrv_remove,
 	.driver = {
 		.name = THERMAL_THERMISTOR_NAME,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 		.of_match_table = mt_thermistor_of_match3,
 #endif
 	},
 };
 
-#endif /*CONFIG_MEDIATEK_MT6577_AUXADC*/
+#endif /*CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC*/
 
 static int __init mtktscharger_init(void)
 {
 	int err = 0;
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	/* Move this segment to probe function
 	 * in case mtktscharger reads temperature
 	 * before mtk_charger allows it.
@@ -1340,7 +1340,7 @@ static int __init mtktscharger_init(void)
 	if (err)
 		return err;
 
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	err = platform_driver_register(&mtktscharger_driver);
 	if (err) {
 		mtktscharger_dprintk("%s fail to reg driver\n", __func__);
@@ -1387,3 +1387,5 @@ static void __exit mtktscharger_exit(void)
 
 late_initcall(mtktscharger_init);
 module_exit(mtktscharger_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

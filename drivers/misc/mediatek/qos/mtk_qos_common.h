@@ -6,16 +6,13 @@
 #ifndef __MTK_QOS_COMMON_H__
 #define __MTK_QOS_COMMON_H__
 
-#include <sspm_ipi.h>
-#include <sspm_ipi_pin.h>
 
 struct mtk_qos;
+struct platform_device;
 
 struct mtk_qos_soc {
 	const struct qos_ipi_cmd *ipi_pin;
 	const struct qos_sram_addr *sram_pin;
-	int (*qos_sspm_init)(void);
-	int (*qos_ipi_recv_handler)(void *arg);
 };
 
 struct mtk_qos {
@@ -28,5 +25,9 @@ struct mtk_qos {
 
 extern int mtk_qos_probe(struct platform_device *pdev,
 			const struct mtk_qos_soc *soc);
+extern void qos_ipi_init(struct mtk_qos *qos);
+extern void qos_ipi_recv_init(struct mtk_qos *qos);
+extern int qos_get_ipi_cmd(int idx);
+extern unsigned int is_mtk_qos_enable(void);
 #endif
 

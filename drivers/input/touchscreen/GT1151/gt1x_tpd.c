@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2014 Goodix Technology.
+ * Copyright (C) 2019 MediaTek Inc.
  */
 
 #include "gt1x_tpd_common.h"
@@ -13,6 +13,8 @@
 #endif
 
 #include <linux/regulator/consumer.h>
+#include <linux/pinctrl/consumer.h>
+#include <linux/gpio.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
 
@@ -61,11 +63,10 @@ static int tpd_def_calmat_local[8] = TPD_CALIBRATION_MATRIX;
 #endif
 
 static int tpd_event_handler(void *unused);
-static int tpd_i2c_probe(struct i2c_client *client,
-				const struct i2c_device_id *id);
+static int tpd_i2c_probe(struct i2c_client *client);
 static int tpd_i2c_detect(struct i2c_client *client,
 				struct i2c_board_info *info);
-static int tpd_i2c_remove(struct i2c_client *client);
+static void tpd_i2c_remove(struct i2c_client *client);
 
 static irqreturn_t tpd_eint_interrupt_handler(int irq,
 							void *desc);
@@ -588,7 +589,7 @@ static int tpd_irq_registration(void)
 		if (of_property_read_u32_array(node, "debounce",
 						ints, ARRAY_SIZE(ints)) == 0) {
 			GTP_INFO("debounce:%d-%d\n", ints[0], ints[1]);
-			gpio_set_debounce(ints[0], ints[1]);
+			gpiod_set_debounce(gpio_to_desc(ints[0]), ints[1]);
 		} else
 			GTP_INFO("debounce time not found\n");
 
@@ -777,8 +778,7 @@ static int tpd_registration(void *client)
 	return 0;
 }
 
-static s32 tpd_i2c_probe(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int tpd_i2c_probe(struct i2c_client *client)
 {
 	int err = 0;
 	/*int count = 0;*/
@@ -1114,11 +1114,9 @@ static u16 convert_productname(u8 *name)
 	return product;
 }
 
-static int tpd_i2c_remove(struct i2c_client *client)
+static void tpd_i2c_remove(struct i2c_client *client)
 {
 	gt1x_deinit();
-
-	return 0;
 }
 
 static int tpd_local_init(void)
@@ -1337,7 +1335,37 @@ void tpd_off(void)
 	tpd_halt = 1;
 	gt1x_irq_disable();
 }
+#if IS_ENABLED(CONFIG_TRUSTONIC_TRUSTED_UI)
+int gt1151_tpd_enter_tui(void)
+{
+	int ret = 0;
 
+	tpd_tui_flag = 1;
+	GTP_INFO("[%s] enter tui", __func__);
+	return ret;
+}
+EXPORT_SYMBOL(gt1151_tpd_enter_tui);
+
+int gt1151_tpd_exit_tui(void)
+{
+	int ret = 0;
+
+	GTP_INFO("[%s] exit TUI+", __func__);
+	tpd_reregister_from_tui();
+	mutex_lock(&tui_lock);
+	tpd_tui_flag = 0;
+	mutex_unlock(&tui_lock);
+	if (tpd_tui_low_power_skipped) {
+		tpd_tui_low_power_skipped = 0;
+		GTP_INFO("[%s] do low power again+", __func__);
+		tpd_suspend(NULL);
+		GTP_INFO("[%s] do low power again-", __func__);
+	}
+	GTP_INFO("[%s] exit TUI-", __func__);
+	return ret;
+}
+EXPORT_SYMBOL(gt1151_tpd_exit_tui);
+#else
 int tpd_enter_tui(void)
 {
 	int ret = 0;
@@ -1365,6 +1393,7 @@ int tpd_exit_tui(void)
 	GTP_INFO("[%s] exit TUI-", __func__);
 	return ret;
 }
+#endif
 
 void tpd_on(void)
 {

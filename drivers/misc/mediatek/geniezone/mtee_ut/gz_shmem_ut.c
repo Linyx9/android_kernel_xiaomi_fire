@@ -15,7 +15,6 @@
  *    ecosystem, ex: M-TEE, Trusty, GlobalPlatform, ...)
  */
 
-
 #include "gz_shmem_ut.h"
 #include <linux/string.h>
 #include <linux/slab.h>
@@ -38,7 +37,7 @@ INIT_UNITTESTS;
 int verify_data(char *buf, int size, char ch)
 {
 	int i;
-	int cnt = 0;
+	int __maybe_unused cnt = 0;
 
 	for (i = 0; i < size; i++) {
 		if (buf[i] != ch)
@@ -371,8 +370,7 @@ out_create_mem_sn:
 		KREE_ERR("mem_sn close fail\n");
 
 out_free_paAry:
-	if (paAry)
-		kfree(paAry);
+	kfree(paAry);
 
 out_free_buf2:
 	/*free test shmem region */

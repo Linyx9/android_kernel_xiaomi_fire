@@ -73,7 +73,6 @@ static void mtk_cl_mdtxpwr_set_mdtxpwr_limit(void)
 
 	if (min_limit != cl_mdtxpwr_cur_limit) {
 		cl_mdtxpwr_cur_limit = min_limit;
-#if 1
 		if (cl_mdtxpwr_cur_limit >= 65535) {
 			/* TODO: 30db as unlimit... */
 			int ret = eemcs_notify_md_by_sys_msg(MD_SYS5,
@@ -92,7 +91,6 @@ static void mtk_cl_mdtxpwr_set_mdtxpwr_limit(void)
 					"%s() ret %d limit=%d\n", __func__,
 					cl_mdtxpwr_cur_limit);
 		}
-#endif
 	}
 }
 

@@ -13,18 +13,28 @@
 
 /* if IPI expand, need to modify maximum data length(unit: int) */
 
-#define VOW_IPI_HEADER_LENGTH         2  /* 2 * 4byte = 8 */
-#define VOW_IPI_SEND_BUFFER_LENGTH    7  /* 7 * 4byte = 28 */
-#define VOW_IPI_RECEIVE_LENGTH        24 /* 24 * 4byte = 96 */
-#define VOW_IPI_ACK_LENGTH            2  /* 2 * 4byte = 8 */
+#define VOW_IPI_HEADER_LENGTH         (2)  /* 2 * 4byte = 8 */
+#define VOW_IPI_SEND_BUFFER_LENGTH    (9)  /* 9 * 4byte = 36 */
+#define VOW_IPI_RECEIVE_LENGTH        (24) /* 24 * 4byte = 96 */
+#define VOW_IPI_ACK_LENGTH            (2)  /* 2 * 4byte = 8 */
 
-#define VOW_IPI_WAIT_ACK_TIMEOUT      10
-#define VOW_IPI_RESEND_TIMES          2
+#define VOW_IPI_WAIT_ACK_TIMEOUT      (10)
+#define VOW_IPI_RESEND_TIMES          (2)
+
+#define VOW_IPI_MAGIC_NUM             (0x98)
 
 enum {
 	VOW_IPI_BYPASS_ACK = 0,
 	VOW_IPI_NEED_ACK,
 	VOW_IPI_ACK_BACK
+};
+
+enum {
+	IPI_SCP_DIE = -1,
+	IPI_SCP_SEND_FAIL = -2,
+	IPI_SCP_NO_SUPPORT = -3,
+	IPI_SCP_SEND_PASS = 0,
+	IPI_SCP_RECOVERING = 1
 };
 
 /* AP -> SCP ipi structure */
@@ -62,9 +72,9 @@ unsigned int vow_check_scp_status(void);
 void vow_ipi_register(void (*ipi_rx_call)(unsigned int, void *),
 		      bool (*ipi_tx_ack_call)(unsigned int, unsigned int));
 
-bool vow_ipi_send(unsigned int msg_id,
-		  unsigned int payload_len,
-		  unsigned int *payload,
-		  unsigned int need_ack);
+int vow_ipi_send(unsigned int msg_id,
+		 unsigned int payload_len,
+		 unsigned int *payload,
+		 unsigned int need_ack);
 
 #endif /*__VOW_SCP_H__ */

@@ -1,5 +1,5 @@
 config MTK_LEGACY_THERMAL
-	bool "Use MTK legacy thermal code"
+	tristate "Use MTK legacy thermal code"
 	help
 	  Upstream thermal code and legacy thermal
 	  code are not compatiable. As a result,
@@ -7,8 +7,7 @@ config MTK_LEGACY_THERMAL
 	  CONFIG_THERMAL for MTK legacy thermal code.
 
 config MTK_THERMAL_PA_VIA_ATCMD
-	bool "Thermal switch for query modem RF temp"
-	depends on MTK_LEGACY_THERMAL
+	tristate "Thermal switch for query modem RF temp"
 	help
 	  Internal switch for thermal management
 	  to query modem RF temperature
@@ -16,16 +15,17 @@ config MTK_THERMAL_PA_VIA_ATCMD
 	  (RIL sockets)
 
 config MTK_LEGACY_THERMAL_PLATFORM
-	string "MTK legacy thermal platform name"
-	depends on MTK_LEGACY_THERMAL
+	string "chip name"
 	help
 	  To separate platform codes for legacy thermal
 	  drivers. Config platform name for your
 	  selection. It's used for legacy thermal
 	  drivers only.
 
-config WT_FIRE_THERMAL_NTC
-	bool "Thermal switch for query modem RF temp"
-	default y
+config MTK_LEGACY_PLATFORM
+	string "chip name"
 	help
-	S98019AA1 ntc use
+	  To separate platform codes for legacy thermal
+	  drivers. Config platform name for your
+	  selection. It's used for legacy thermal
+	  drivers only.

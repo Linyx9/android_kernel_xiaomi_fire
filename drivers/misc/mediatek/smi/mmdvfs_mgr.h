@@ -8,10 +8,10 @@
 
 #include <linux/plist.h>
 #include <linux/of_address.h>
-#include <aee.h>
-#include "mtk_smi.h"
+//#include <aee.h>
+#include "mtk-smi-bwc.h"
 
-#define _BIT_(_bit_) (unsigned int)(1 << (_bit_))
+#define _BIT_(_bit_) ((unsigned int)(1 << (_bit_)))
 #define _BITS_(_bits_, _val_) ((((unsigned int) -1 >> (31 - ((1) ? _bits_))) \
 & ~((1U << ((0) ? _bits_)) - 1)) & ((_val_)<<((0) ? _bits_)))
 #define _BITMASK_(_bits_) \
@@ -190,6 +190,7 @@ extern int primary_display_switch_mode_for_mmdvfs(
 #define MMDVFS_PROFILE_SYL (16)
 #define MMDVFS_PROFILE_CAN (17)
 #define MMDVFS_PROFILE_MER (18)
+#define MMDVFS_PROFILE_CER (19)
 
 /* Macro used to resovling step setting ioctl command */
 #define MMDVFS_IOCTL_CMD_STEP_FIELD_LEN (8)
@@ -211,16 +212,12 @@ enum mmdvfs_lcd_size_enum {
 	MMDVFS_LCD_SIZE_WQHD, MMDVFS_LCD_SIZE_END_OF_ENUM
 };
 
-
-#ifndef CONFIG_MTK_SMI_EXT
-#define mmdvfs_set_step(scenario, step)
-#define mmdvfs_set_fine_step(scenario, step)
-#else
+#if IS_ENABLED(CONFIG_MTK_SMI_BWC)
 int mmdvfs_set_step(enum MTK_SMI_BWC_SCEN scenario,
 	enum mmdvfs_voltage_enum step);
 int mmdvfs_set_fine_step(enum MTK_SMI_BWC_SCEN smi_scenario,
 	int mmdvfs_fine_step);
-#endif /* CONFIG_MTK_SMI_EXT */
+#endif /* CONFIG_MTK_SMI_BWC */
 
 extern int mmdvfs_get_mmdvfs_profile(void);
 extern int is_mmdvfs_supported(void);

@@ -455,52 +455,45 @@ static int imgsensor_proc_status_open(struct inode *inode, struct file *file)
 	return single_open(file, imgsensor_proc_status_read, NULL);
 };
 
-static const struct file_operations fcamera_proc_fops_status = {
-	.owner = THIS_MODULE,
-	.open = imgsensor_proc_status_open,
-	.read = seq_read,
+static const struct proc_ops fcamera_proc_fops_status = {
+	.proc_open = imgsensor_proc_status_open,
+	.proc_read = seq_read,
 };
 
-static const struct file_operations fcamera_proc_fops1 = {
-	.owner = THIS_MODULE,
-	.open = proc_camera_info_open,
-	.read = seq_read,
+static const struct proc_ops fcamera_proc_fops1 = {
+	.proc_open = proc_camera_info_open,
+	.proc_read = seq_read,
 };
 
-static const struct file_operations fcamera_proc_fops = {
-	.owner = THIS_MODULE,
-	.read = seq_read,
-	.open = proc_camsensor_open,
-	.write = CAMERA_HW_Reg_Debug
+static const struct proc_ops fcamera_proc_fops = {
+	.proc_read = seq_read,
+	.proc_open = proc_camsensor_open,
+	.proc_write = CAMERA_HW_Reg_Debug
 };
 
-static const struct file_operations fcamera_proc_fops2 = {
-	.owner = THIS_MODULE,
-	.read = seq_read,
-	.open = proc_camsensor_open,
-	.write = CAMERA_HW_Reg_Debug2
+static const struct proc_ops fcamera_proc_fops2 = {
+	.proc_read = seq_read,
+	.proc_open = proc_camsensor_open,
+	.proc_write = CAMERA_HW_Reg_Debug2
 };
 
-static const struct file_operations fcamera_proc_fops3 = {
-	.owner = THIS_MODULE,
-	.read = seq_read,
-	.open = proc_camsensor_open,
-	.write = CAMERA_HW_Reg_Debug3
+static const struct proc_ops fcamera_proc_fops3 = {
+	.proc_read = seq_read,
+	.proc_open = proc_camsensor_open,
+	.proc_write = CAMERA_HW_Reg_Debug3
 };
 
-static const struct file_operations fcamera_proc_fops4 = {
-	.owner = THIS_MODULE,
-	.read = seq_read,
-	.open = proc_camsensor_open,
-	.write = CAMERA_HW_Reg_Debug4
+static const struct proc_ops fcamera_proc_fops4 = {
+	.proc_read = seq_read,
+	.proc_open = proc_camsensor_open,
+	.proc_write = CAMERA_HW_Reg_Debug4
 };
 
 
-static const struct file_operations fcamera_proc_fops_set_pdaf_type = {
-	.owner = THIS_MODULE,
-	.open = proc_SensorType_open,
-	.read = seq_read,
-	.write = proc_SensorType_write
+static const struct proc_ops fcamera_proc_fops_set_pdaf_type = {
+	.proc_open = proc_SensorType_open,
+	.proc_read = seq_read,
+	.proc_write = proc_SensorType_write
 };
 
 

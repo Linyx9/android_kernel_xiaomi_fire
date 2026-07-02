@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2024 MediaTek Inc.
+ */
 
 #ifndef PANEL_NT36672C_FHDP_DSI_VDO_144HZ_TIANMA
 #define PANEL_NT36672C_FHDP_DSI_VDO_144HZ_TIANMA

@@ -1,0 +1,6 @@
+ifdef CONFIG_OEM_QC_LOGIC_WT6670F
+	QC_lOGIC_WT6670F_OBJS += wt6670f_charger.o
+endif
+
+obj-$(CONFIG_OEM_QC_LOGIC_WT6670F) += wt6670f.o
+wt6670f-y := $(QC_lOGIC_WT6670F_OBJS)

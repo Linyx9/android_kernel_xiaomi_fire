@@ -1,8 +1,19 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Goodix Firmware Update Driver.
+ *
+ * Copyright (C) 2019 - 2020 Goodix, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be a reference
+ * to you, when you are integrating the GOODiX's CTP IC into your system,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
  */
-
 #include "goodix_ts_core.h"
 #include "goodix_cfg_bin.h"
 #include "goodix_default_fw.h"
@@ -152,7 +163,7 @@ struct fw_update_ctrl {
 	struct gt9896s_ts_device *ts_dev;
 	struct gt9896s_ts_core *core_data;
 
-	char fw_name[64];
+	char fw_name[128];
 	struct bin_attribute attr_fwimage;
 };
 static struct fw_update_ctrl gt9896s_fw_update_ctrl;
@@ -1188,7 +1199,7 @@ out:
 	}
 	return r;
 }
-
+#ifdef GT9896S_FWU_SYSFS
 /*
  * gt9896s_sysfs_update_en_store: start fw update manually
  * @buf: '1'[001] update in blocking mode with fwdata from sysfs
@@ -1353,39 +1364,27 @@ static ssize_t gt9896s_sysfs_fwimage_store(struct file *file,
 	struct fw_update_ctrl *fw_ctrl;
 	struct firmware_data *fw_data;
 
-	if(IS_ERR_OR_NULL(attr) || IS_ERR_OR_NULL(kobj)) {
-		ts_err("attr or kobj is invalid or NULL!!!\n");
-		return -EINVAL;
-	}
-
 	fw_ctrl = container_of(attr, struct fw_update_ctrl,
 			attr_fwimage);
 	fw_data = &fw_ctrl->fw_data;
 
-	if ((!fw_data->firmware) || (!buf)) {
+	mutex_lock(&fw_ctrl->mutex);
+	if (!fw_data->firmware) {
 		ts_err("Need set fw image size first");
+		mutex_unlock(&fw_ctrl->mutex);
 		return -ENOMEM;
 	}
 
 	if (fw_data->firmware->size == 0) {
 		ts_err("Invalid firmware size");
+		mutex_unlock(&fw_ctrl->mutex);
 		return -EINVAL;
 	}
 
-	if (pos + count > fw_data->firmware->size)
+	if (pos + count > fw_data->firmware->size) {
+		mutex_unlock(&fw_ctrl->mutex);
 		return -EFAULT;
-
-	if(IS_ERR_OR_NULL(buf)) {
-		ts_err("The buf is invalid!!!\n");
-		return -ENOMEM;
 	}
-
-	if (IS_ERR_OR_NULL(&fw_data->firmware->data[pos])) {
-		ts_err("fw_data->firmware->data[pos] is invalid or NULL!!!");
-		return -ENOMEM;
-	}
-
-	mutex_lock(&fw_ctrl->mutex);
 	memcpy((u8 *)&fw_data->firmware->data[pos], buf, count);
 	mutex_unlock(&fw_ctrl->mutex);
 	return count;
@@ -1401,9 +1400,9 @@ static ssize_t gt9896s_sysfs_force_update_store(
 
 static struct gt9896s_ext_attribute gt9896s_fwu_attrs[] = {
 	__EXTMOD_ATTR(update_en, 0220, NULL, gt9896s_sysfs_update_en_store),
-	__EXTMOD_ATTR(progress, S_IRUGO, gt9896s_sysfs_update_progress_show, NULL),
-	__EXTMOD_ATTR(result, S_IRUGO, gt9896s_sysfs_update_result_show, NULL),
-	__EXTMOD_ATTR(fwversion, S_IRUGO,
+	__EXTMOD_ATTR(progress, 0440, gt9896s_sysfs_update_progress_show, NULL),
+	__EXTMOD_ATTR(result, 0440, gt9896s_sysfs_update_result_show, NULL),
+	__EXTMOD_ATTR(fwversion, 0440,
 			gt9896s_sysfs_update_fwversion_show, NULL),
 	__EXTMOD_ATTR(fwsize, 0660, gt9896s_sysfs_fwsize_show,
 			gt9896s_sysfs_fwsize_store),
@@ -1452,21 +1451,7 @@ static int gt9896s_fw_sysfs_init(struct gt9896s_ts_core *core_data,
 exit_sysfs_init:
 	return ret;
 }
-
-static void gt9896s_fw_sysfs_remove(struct gt9896s_ext_module *module)
-{
-	struct fw_update_ctrl *fw_ctrl = module->priv_data;
-	int i;
-
-	sysfs_remove_bin_file(&module->kobj, &fw_ctrl->attr_fwimage);
-
-	for (i = 0; i < ARRAY_SIZE(gt9896s_fwu_attrs); i++)
-		sysfs_remove_file(&module->kobj,
-				&gt9896s_fwu_attrs[i].attr);
-
-	kobject_put(&module->kobj);
-}
-
+#endif
 int gt9896s_do_fw_update(int mode)
 {
 	struct task_struct *fwu_thrd;
@@ -1529,39 +1514,44 @@ static int gt9896s_fw_update_init(struct gt9896s_ts_core *core_data,
 		strlcpy(gt9896s_fw_update_ctrl.fw_name, ts_bdata->fw_name,
 			sizeof(gt9896s_fw_update_ctrl.fw_name));
 	else {
-		if (ts_bdata->lcm_max_x == 1080 && ts_bdata->lcm_max_y == 2280) {
-			ret = snprintf(gt9896s_fw_update_ctrl.fw_name,
-						sizeof(gt9896s_fw_update_ctrl.fw_name),
-						"%s%s_1080x2280.bin",
-						TS_DEFAULT_FIRMWARE,
-						gt9896s_firmware_buf);
-		} else if (ts_bdata->lcm_max_x == 1080 && ts_bdata->lcm_max_y == 2300) {
-			ret = snprintf(gt9896s_fw_update_ctrl.fw_name,
-						sizeof(gt9896s_fw_update_ctrl.fw_name),
-						"%s%s_1080x2300.bin",
-						TS_DEFAULT_FIRMWARE,
-						gt9896s_firmware_buf);
+		if (gt9896s_find_touch_node == 1) {
+			/*check if panel_firmware_buf has enough space to append ".bin" and a null terminator*/
+			if (strlen(panel_firmware_buf) + strlen(".bin") < sizeof(panel_firmware_buf))
+				strncat(panel_firmware_buf, ".bin", strlen(".bin"));
+			else
+				ts_err("No enough space in panel_firmware_buf, len:%lu",strlen(panel_firmware_buf));
+
+			/*Check if gt9896s_fw_update_ctrl.fw_name has enough space to contain panel_firmware_buf*/
+			if (strlen(panel_firmware_buf) < sizeof(gt9896s_fw_update_ctrl.fw_name)) {
+				strscpy(gt9896s_fw_update_ctrl.fw_name, panel_firmware_buf, strlen(panel_firmware_buf));
+				gt9896s_fw_update_ctrl.fw_name[strlen(panel_firmware_buf)] = '\0';
+			} else {
+				ts_err("string in panel_firmware_buf is too long, len:%lu, size:%lu",
+				strlen(panel_firmware_buf), sizeof(gt9896s_fw_update_ctrl.fw_name));
+			}
 		} else {
 			ret = snprintf(gt9896s_fw_update_ctrl.fw_name,
-						sizeof(gt9896s_fw_update_ctrl.fw_name),
-						"%s%s.bin",
-						TS_DEFAULT_FIRMWARE,
-						gt9896s_firmware_buf);
+				sizeof(gt9896s_fw_update_ctrl.fw_name),
+				"%s%s.bin",
+				TS_DEFAULT_FIRMWARE,
+				gt9896s_firmware_buf);
+			if (ret >= sizeof(gt9896s_fw_update_ctrl.fw_name))
+				ts_err("get firmware_bin_name name FAILED!!!");
 		}
-
-		ts_info("firmware_bin_name %s!!!", gt9896s_fw_update_ctrl.fw_name);
-		if (ret >= sizeof(gt9896s_fw_update_ctrl.fw_name))
-			ts_err("get firmware_bin_name name FAILED!!!");
 	}
-
+	ts_info("gt9896s_fw_update_ctrl.fw_name:%s",
+				gt9896s_fw_update_ctrl.fw_name);
+#ifdef GT9896S_FWU_SYSFS
 	ret = gt9896s_fw_sysfs_init(core_data, module);
 	if (ret) {
 		ts_err("failed create fwupate sysfs node");
 		goto err_out;
 	}
-
+#endif
 	gt9896s_fw_update_ctrl.initialized = 1;
+#ifdef GT9896S_FWU_SYSFS
 err_out:
+#endif
 	mutex_unlock(&gt9896s_fw_update_ctrl.mutex);
 	return ret;
 }
@@ -1632,27 +1622,9 @@ static struct gt9896s_ext_module gt9896s_fwu_module = {
 	.priority = EXTMOD_PRIO_FWUPDATE,
 };
 
-static int __init gt9896s_fwu_module_init(void)
+int gt9896s_fwu_module_init(void *data)
 {
 	ts_info("gt9896s_fwupdate_module_ini IN");
 	mutex_init(&gt9896s_fw_update_ctrl.mutex);
 	return gt9896s_register_ext_module(&gt9896s_fwu_module);
 }
-
-static void __exit gt9896s_fwu_module_exit(void)
-{
-	mutex_lock(&gt9896s_fw_update_ctrl.mutex);
-	gt9896s_unregister_ext_module(&gt9896s_fwu_module);
-	if (gt9896s_fw_update_ctrl.initialized) {
-		gt9896s_fw_sysfs_remove(&gt9896s_fwu_module);
-		gt9896s_fw_update_ctrl.initialized = 0;
-	}
-	mutex_lock(&gt9896s_fw_update_ctrl.mutex);
-}
-
-late_initcall(gt9896s_fwu_module_init);
-module_exit(gt9896s_fwu_module_exit);
-
-MODULE_DESCRIPTION("Goodix FWU Module");
-MODULE_AUTHOR("Goodix, Inc.");
-MODULE_LICENSE("GPL v2");

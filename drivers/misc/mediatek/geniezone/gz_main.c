@@ -33,11 +33,19 @@
 #include <tz_cross/ta_test.h>
 #include <tz_cross/trustzone.h>
 #include <linux/vmalloc.h>
+#include <linux/dma-buf.h>
+#include <mtk_heap.h>
 
 #include "gz_main.h"
+#if IS_ENABLED(CONFIG_ARM_FFA_TRANSPORT)
+#include "gz_ffa.h"
+#include <linux/arm_ffa.h>
+#endif
 #include "mtee_ut/gz_ut.h"
 #include "mtee_ut/gz_shmem_ut.h"
+#if IS_ENABLED(CONFIG_MTK_TRUSTED_MEMORY_SUBSYSTEM)
 #include "mtee_ut/gz_chmem_ut.h"
+#endif
 #include "mtee_ut/gz_vreg_ut.h"
 #include "unittest.h"
 
@@ -45,25 +53,24 @@
 
 #if enable_code
 /*devapc related function is not supported in Kernel-4.19*/
-#if IS_ENABLED(CONFIG_MTK_DEVAPC) && !IS_ENABLED(CONFIG_DEVAPC_LEGACY)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_DEVAPC) && !IS_ENABLED(CONFIG_DEVAPC_LEGACY)
 #include <mt-plat/devapc_public.h>
 #endif
 
-#endif
-
-/* FIXME: MTK_PPM_SUPPORT is disabled temporarily */
-#ifdef MTK_PPM_SUPPORT
-#if IS_ENABLED(CONFIG_MACH_MT6758)
-#include "legacy_controller.h"
-#else
-#include "mtk_ppm_platform.h"
-#endif
 #endif
 
 //#define KREE_DEBUG(fmt...) pr_debug("[KREE]" fmt)
 #define KREE_DEBUG(fmt...) pr_info("[KREE]" fmt)
 #define KREE_INFO(fmt...) pr_info("[KREE]" fmt)
 #define KREE_ERR(fmt...) pr_info("[KREE][ERR]" fmt)
+
+static int gz_dev_open(struct inode *inode, struct file *filp);
+static int gz_dev_release(struct inode *inode, struct file *filp);
+
+static long gz_ioctl(struct file *filep, unsigned int cmd, unsigned long arg);
+#if IS_ENABLED(CONFIG_COMPAT)
+static long gz_compat_ioctl(struct file *filep, unsigned int cmd, unsigned long arg);
+#endif
 
 static const struct file_operations fops = {.owner = THIS_MODULE,
 	.open = gz_dev_open,
@@ -99,7 +106,7 @@ static ssize_t gz_test_store(struct device *dev,
 {
 	char tmp[50];
 	char c;
-	struct task_struct *th;
+	struct task_struct __maybe_unused *th;
 
 	if (n <= 0 || n > 50) {
 		KREE_DEBUG("err: n > 50\n");
@@ -129,8 +136,10 @@ static ssize_t gz_test_store(struct device *dev,
 		th = kthread_run(gz_test_shm, NULL, "test_shm");
 		break;
 	case '4':
+#if IS_ENABLED(CONFIG_MTK_TRUSTED_MEMORY_SUBSYSTEM)
 		KREE_DEBUG("gz_test_chm\n");
 		th = kthread_run(gz_test_chm, NULL, "test_chm");
+#endif
 		break;
 	case '5':
 		KREE_DEBUG("gz_test_vreg\n");
@@ -143,10 +152,7 @@ static ssize_t gz_test_store(struct device *dev,
 	}
 	return n;
 }
-
-
 DEVICE_ATTR_RW(gz_test);
-
 
 static int create_files(void)
 {
@@ -158,16 +164,26 @@ static int create_files(void)
 		KREE_DEBUG("ERR: misc register failed.");
 		return res;
 	}
+
 	res = device_create_file(gz_device.this_device, &dev_attr_gz_test);
 	if (res != 0) {
 		KREE_DEBUG("ERR: create sysfs do_info failed.");
 		return res;
 	}
+
 	return 0;
 }
 
+static void remove_files(void)
+{
+	device_remove_file(gz_device.this_device, &dev_attr_gz_test);
+
+	misc_deregister(&gz_device);
+}
+
 /*********** test case implementations *************/
-static const char echo_srv_name[] = "com.mediatek.geniezone.srv.echo";
+static const char __maybe_unused echo_srv_name[] =
+		"com.mediatek.geniezone.srv.echo";
 #define APP_NAME2 "com.mediatek.gz.srv.sync-ut"
 
 static int get_gz_version(void *args)
@@ -405,59 +421,6 @@ int mtee_sdsp_enable(u32 on)
 			on, 0, 0);
 }
 
-int gz_get_cpuinfo_thread(void *data)
-{
-#ifdef MTK_PPM_SUPPORT
-	struct cpufreq_policy curr_policy;
-#endif
-
-	if (platform_driver_register(&tz_system_driver))
-		KREE_ERR("%s driver register fail\n", __func__);
-
-	KREE_DEBUG("%s driver register done\n", __func__);
-
-#if IS_ENABLED(CONFIG_MACH_MT6758)
-	msleep(3000);
-#else
-	msleep(1000);
-#endif
-
-#ifdef MTK_PPM_SUPPORT
-	cpufreq_get_policy(&curr_policy, 0);
-	cpus_cluster_freq[0].max_freq = curr_policy.cpuinfo.max_freq;
-	cpus_cluster_freq[0].min_freq = curr_policy.cpuinfo.min_freq;
-	cpufreq_get_policy(&curr_policy, 4);
-	cpus_cluster_freq[1].max_freq = curr_policy.cpuinfo.max_freq;
-	cpus_cluster_freq[1].min_freq = curr_policy.cpuinfo.min_freq;
-	KREE_INFO("%s, cluster [0]=%u-%u, [1]=%u-%u\n", __func__,
-		  cpus_cluster_freq[0].max_freq, cpus_cluster_freq[0].min_freq,
-		  cpus_cluster_freq[1].max_freq, cpus_cluster_freq[1].min_freq);
-#endif
-
-	perf_boost_cnt = 0;
-	mutex_init(&perf_boost_lock);
-
-#if IS_ENABLED(CONFIG_PM_SLEEP)
-	/*kernel-4.14*/
-	//wakeup_source_init(&TeeServiceCall_wake_lock, "KREE_TeeServiceCall");
-
-	/*kernel-4.19*/
-	if (IS_ERR_OR_NULL(tz_system_dev))
-		return TZ_RESULT_ERROR_GENERIC;
-
-	TeeServiceCall_wake_lock =
-		wakeup_source_register(
-		tz_system_dev->dev.parent, "KREE_TeeServiceCall");
-	if (!TeeServiceCall_wake_lock) {
-		KREE_ERR("TeeServiceCall_wake_lock null\n");
-		return TZ_RESULT_ERROR_GENERIC;
-	}
-
-#endif
-
-	return 0;
-}
-
 static int gz_dev_open(struct inode *inode, struct file *filp)
 {
 	return _init_session_info(filp);
@@ -487,7 +450,7 @@ static long tz_client_open_session(struct file *filep, void __user *arg)
 		return -EFAULT;
 
 	/* Check if can we access UUID string. 10 for min uuid len. */
-	if (!access_ok(VERIFY_READ, (void *)param.data, 10))
+	if (!access_ok((void *)param.data, 10))
 		return -EFAULT;
 
 	KREE_DEBUG("%s: uuid addr = 0x%llx\n", __func__, param.data);
@@ -551,14 +514,14 @@ static long tz_client_tee_service(struct file *file, void __user *arg,
 	unsigned int compat)
 {
 	struct kree_tee_service_cmd_param cparam = { 0 };
-	unsigned long cret;
-	uint32_t tmpTypes;
-	union MTEEC_PARAM param[4], oparam[4];
-	uint i;
-	TZ_RESULT ret;
-	KREE_SESSION_HANDLE handle;
-	void __user *ubuf;
-	uint32_t ubuf_sz;
+	unsigned long cret = 0UL;
+	uint32_t tmpTypes = 0U;
+	union MTEEC_PARAM param[4] = { 0 }, oparam[4] = { 0 };
+	uint i = 0U;
+	TZ_RESULT ret = 0;
+	KREE_SESSION_HANDLE handle = 0;
+	void __user *ubuf = NULL;
+	uint32_t ubuf_sz = 0U;
 
 	cret = copy_from_user(&cparam, arg, sizeof(cparam));
 	if (cret) {
@@ -567,8 +530,7 @@ static long tz_client_tee_service(struct file *file, void __user *arg,
 	}
 
 	if (cparam.paramTypes != TZPT_NONE || cparam.param) {
-		if (!access_ok(VERIFY_READ, (void *)cparam.param,
-			sizeof(oparam)))
+		if (!access_ok((void *)cparam.param, sizeof(oparam)))
 			return -EFAULT;
 
 		cret = copy_from_user(oparam,
@@ -619,7 +581,7 @@ static long tz_client_tee_service(struct file *file, void __user *arg,
 				ubuf, ubuf_sz);
 
 			if (type != TZPT_MEM_OUTPUT) {
-				if (!access_ok(VERIFY_READ, ubuf, ubuf_sz)) {
+				if (!access_ok(ubuf, ubuf_sz)) {
 					KREE_ERR("%s: cannnot read mem\n",
 						__func__);
 					cret = -EFAULT;
@@ -627,7 +589,7 @@ static long tz_client_tee_service(struct file *file, void __user *arg,
 				}
 			}
 			if (type != TZPT_MEM_INPUT) {
-				if (!access_ok(VERIFY_WRITE, ubuf, ubuf_sz)) {
+				if (!access_ok(ubuf, ubuf_sz)) {
 					KREE_ERR("%s: cannnot write mem\n",
 						__func__);
 					cret = -EFAULT;
@@ -776,7 +738,7 @@ static TZ_RESULT _reg_shmem_from_userspace(
 
 	struct MTIOMMU_PIN_RANGE_T *pin = NULL;
 	uint64_t *map_p = NULL;
-	int numOfPA = 0;
+	int __maybe_unused numOfPA  = 0;
 	KREE_SHAREDMEM_PARAM shm_param = {0};
 
 	KREE_DEBUG("[%s][%d] runs.\n", __func__, __LINE__);
@@ -957,12 +919,39 @@ TZ_RESULT gz_manual_adjust_trusty_wq_attr(void __user *user_req)
 	return gz_adjust_task_attr(&manual_task_attr);
 }
 
+static TZ_RESULT DMAFd2MemHandle(int buf_fd,
+	KREE_SECUREMEM_HANDLE *mem_handle)
+{
+	struct dma_buf *dbuf = NULL;
+	uint32_t secure_handle = 0;
+
+	dbuf = dma_buf_get(buf_fd);
+	if (!dbuf || IS_ERR(dbuf)) {
+		KREE_ERR("dma_buf_get error\n");
+		return TZ_RESULT_ERROR_ITEM_NOT_FOUND;
+	}
+
+#if IS_ENABLED(CONFIG_MTK_TRUSTED_MEMORY_SUBSYSTEM)
+	secure_handle = dmabuf_to_secure_handle(dbuf);
+#endif
+	if (!secure_handle) {
+		KREE_ERR("dmabuf_to_secure_handle failed!\n");
+		*mem_handle = 0;
+		return TZ_RESULT_ERROR_GENERIC;
+	}
+
+	dma_buf_put(dbuf);
+	*mem_handle = secure_handle;
+	return TZ_RESULT_SUCCESS;
+}
+
 static long _gz_ioctl(struct file *filep, unsigned int cmd, void __user *arg,
 	unsigned int compat)
 {
 	int err;
 	TZ_RESULT ret = 0;
 	struct user_shm_param shm_data;
+	struct user_chm_fd_to_hd_param cparam;
 	KREE_SHAREDMEM_HANDLE shm_handle = 0;
 
 	if (_IOC_TYPE(cmd) != MTEE_IOC_MAGIC)
@@ -1031,6 +1020,32 @@ static long _gz_ioctl(struct file *filep, unsigned int cmd, void __user *arg,
 			cmd);
 		return tz_client_tee_service(filep, arg, compat);
 
+	case MTEE_CMD_GET_CHM_HANDLE:
+		KREE_DEBUG("[%s]cmd=MTEE_CMD_GET_CHM_HANDLE(0x%x)\n", __func__,
+			cmd);
+		err = copy_from_user(&cparam, arg, sizeof(cparam));
+		if (err) {
+			KREE_ERR("[%s]copy_from_user fail(0x%x)\n", __func__,
+				err);
+			return err;
+		}
+		ret =
+			DMAFd2MemHandle(cparam.buf_fd,
+			&(cparam.secm_handle));
+		if (ret != TZ_RESULT_SUCCESS) {
+			KREE_ERR("[%s]DMAFd2MemHandle fail(0x%x)\n",
+				__func__, ret);
+			return ret;
+		}
+		err = copy_to_user(arg, &cparam, sizeof(cparam));
+		if (err) {
+			KREE_ERR("[%s]copy_to_user fail(0x%x)\n", __func__,
+				err);
+			return err;
+		}
+		ret = err;
+		break;
+
 #ifndef CONFIG_MTK_GZ_SUPPORT_SDSP
 	case MTEE_CMD_FOD_TEE_SHM_ON:
 		KREE_DEBUG("====> MTEE_CMD_FOD_TEE_SHM_ON ====\n");
@@ -1079,7 +1094,7 @@ static long gz_compat_ioctl(struct file *filep, unsigned int cmd,
 
 #if enable_code
 
-#if IS_ENABLED(CONFIG_MTK_DEVAPC) && !IS_ENABLED(CONFIG_DEVAPC_LEGACY)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_DEVAPC) && !IS_ENABLED(CONFIG_DEVAPC_LEGACY)
 static void gz_devapc_vio_dump(void)
 {
 	pr_debug("%s:%d GZ devapc is triggered!\n", __func__, __LINE__);
@@ -1101,47 +1116,93 @@ static struct devapc_vio_callbacks gz_devapc_vio_handle = {
 #endif
 
 #endif
+
 /************ kernel module init entry ***************/
-static int __init gz_init(void)
+static int gz_main_probe(struct platform_device *pdev)
 {
 	int res;
 
-	tz_system_dev = NULL;
+	KREE_DEBUG("%s+\n", __func__);
 
 	res = create_files();
 	if (res) {
 		KREE_DEBUG("create sysfs failed: %d\n", res);
-	} else {
-		struct task_struct *gz_get_cpuinfo_task;
-
-		gz_get_cpuinfo_task =
-		    kthread_create(gz_get_cpuinfo_thread, NULL,
-				"gz_get_cpuinfo_task");
-		if (IS_ERR(gz_get_cpuinfo_task)) {
-			KREE_ERR("Unable to start kernel thread %s\n",
-				__func__);
-			res = PTR_ERR(gz_get_cpuinfo_task);
-		} else
-			wake_up_process(gz_get_cpuinfo_task);
 	}
 
 #if enable_code
 
-#if IS_ENABLED(CONFIG_MTK_DEVAPC) && !IS_ENABLED(CONFIG_DEVAPC_LEGACY)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_DEVAPC) && !IS_ENABLED(CONFIG_DEVAPC_LEGACY)
 	register_devapc_vio_callback(&gz_devapc_vio_handle);
 #endif
 
 #endif
 
+	KREE_DEBUG("%s-\n", __func__);
 	return res;
 }
 
-/************ kernel module exit entry ***************/
-static void __exit gz_exit(void)
+static int gz_main_remove(struct platform_device *pdev)
 {
-	KREE_DEBUG("gz driver exit\n");
+	KREE_DEBUG("%s gz driver exit\n", __func__);
+
+	remove_files();
+
+	return 0;
 }
 
+static const struct of_device_id gz_main_of_match[] = {
+	{ .compatible = "mediatek,trusty-mtee-v1", },
+	{},
+};
+MODULE_DEVICE_TABLE(of, gz_main_of_match);
 
-module_init(gz_init);
-module_exit(gz_exit);
+struct platform_driver gz_main_driver = {
+	.probe = gz_main_probe,
+	.remove = gz_main_remove,
+	.driver	= {
+		.name = "gz_main",
+		.owner = THIS_MODULE,
+		.of_match_table = gz_main_of_match,
+	},
+};
+
+static int __init gz_main_init(void)
+{
+	int ret = 0;
+#if IS_ENABLED(CONFIG_ARM_FFA_TRANSPORT)
+	struct ffa_driver *get_ffa_drv;
+#endif
+
+	ret = platform_driver_register(&gz_main_driver);
+	if (ret) {
+		KREE_ERR("%s driver register fail, ret %d\n", __func__, ret);
+		return ret;
+	}
+
+	// msleep(1000);
+
+#if IS_ENABLED(CONFIG_ARM_FFA_TRANSPORT)
+	/* ffa driver register, init procedure won't stop when register failed */
+	get_ffa_drv = gz_get_ffa_dev();
+	if (!get_ffa_drv)
+		KREE_ERR("get_ffa_drv is null\n");
+
+	ret = ffa_driver_register(get_ffa_drv, THIS_MODULE, KBUILD_MODNAME);
+	if (ret)
+		KREE_ERR("%s gz_ffa_dev driver register fail, ret=%d\n", __func__, ret);
+
+	// msleep(1000);
+#endif
+
+	return 0;
+}
+
+static void __exit gz_main_exit(void)
+{
+	platform_driver_unregister(&gz_main_driver);
+}
+
+module_init(gz_main_init);
+module_exit(gz_main_exit);
+MODULE_IMPORT_NS(DMA_BUF);
+MODULE_LICENSE("GPL v2");

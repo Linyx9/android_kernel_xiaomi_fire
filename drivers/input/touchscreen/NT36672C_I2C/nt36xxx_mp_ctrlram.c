@@ -1,19 +1,8 @@
- /*
-  * Copyright (C) 2010 - 2017 Novatek, Inc.
-  *
-  * Revision: 15504
-  *
-  * This program is free software; you can redistribute it and/or modify
-  * it under the terms of the GNU General Public License as published by
-  * the Free Software Foundation; either version 2 of the License, or
-  * (at your option) any later version.
-  *
-  * This program is distributed in the hope that it will be useful, but WITHOUT
-  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  * more details.
-  *
-  */
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (c) 2023 MediaTek Inc.
+ */
+
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/delay.h>
@@ -360,12 +349,9 @@ static int32_t nvt_save_rawdata_to_csv(int32_t *rawdata, uint8_t x_ch,
 	int32_t x = 0;
 	int32_t y = 0;
 	int32_t iArrayIndex = 0;
-	struct file *fp = NULL;
 	char *fbufp = NULL;
-	mm_segment_t org_fs;
-	int32_t write_ret = 0;
-	uint32_t output_len = 0;
-	loff_t pos = 0;
+	/* uint32_t output_len = 0; */
+
 #if TOUCH_KEY_NUM > 0
 	int32_t k = 0;
 	int32_t keydata_output_offset = 0;
@@ -400,41 +386,14 @@ static int32_t nvt_save_rawdata_to_csv(int32_t *rawdata, uint8_t x_ch,
 	sprintf(fbufp + y_ch * x_ch * 7 + y_ch * 2 + Key_Channel * 7, "\r\n");
 #endif /* #if TOUCH_KEY_NUM > 0 */
 
-	org_fs = get_fs();
-	set_fs(KERNEL_DS);
-	fp = filp_open(file_path, O_RDWR | O_CREAT, 0644);
-	if (fp == NULL || IS_ERR(fp)) {
-		NVT_ERR("open %s failed\n", file_path);
-		set_fs(org_fs);
-		kfree(fbufp);
-		fbufp = NULL;
-		return -1;
-	}
+/*
+ *#if TOUCH_KEY_NUM > 0
+ *	output_len = y_ch * x_ch * 7 + y_ch * 2 + Key_Channel * 7 + 2;
+ *#else
+ *	output_len = y_ch * x_ch * 7 + y_ch * 2;
+ *#endif //#if TOUCH_KEY_NUM > 0
+ */
 
-#if TOUCH_KEY_NUM > 0
-	output_len = y_ch * x_ch * 7 + y_ch * 2 + Key_Channel * 7 + 2;
-#else
-	output_len = y_ch * x_ch * 7 + y_ch * 2;
-#endif /* #if TOUCH_KEY_NUM > 0 */
-	pos = offset;
-	write_ret = vfs_write(fp, (char __user *)fbufp, output_len, &pos);
-	if (write_ret <= 0) {
-		NVT_ERR("write %s failed\n", file_path);
-		set_fs(org_fs);
-		if (fp) {
-			filp_close(fp, NULL);
-			fp = NULL;
-		}
-		kfree(fbufp);
-		fbufp = NULL;
-		return -1;
-	}
-
-	set_fs(org_fs);
-	if (fp) {
-		filp_close(fp, NULL);
-		fp = NULL;
-	}
 	kfree(fbufp);
 	fbufp = NULL;
 
@@ -573,7 +532,6 @@ static int32_t nvt_read_baseline(int32_t *xdata)
 	}
 #endif /* #if TOUCH_KEY_NUM > 0 */
 
-	pr_info("%s:\n", __func__);
 	// Save Rawdata to CSV file
 	if (nvt_save_rawdata_to_csv(xdata, X_Channel, Y_Channel,
 		FW_RAWDATA_CSV_FILE, 0) < 0) {
@@ -640,7 +598,6 @@ static int32_t nvt_read_CC(int32_t *xdata)
 	}
 #endif /* #if TOUCH_KEY_NUM > 0 */
 
-	pr_info("%s:\n", __func__);
 	if (ts->carrier_system) {
 		pr_info("%s:RawData_CC_I:\n", __func__);
 		// Save Rawdata to CSV file
@@ -1776,12 +1733,11 @@ static int32_t nvt_selftest_open(struct inode *inode, struct file *file)
 	return seq_open(file, &nvt_selftest_seq_ops);
 }
 
-static const struct file_operations nvt_selftest_fops = {
-	.owner = THIS_MODULE,
-	.open = nvt_selftest_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = seq_release,
+static const struct proc_ops nvt_selftest_fops = {
+	.proc_open = nvt_selftest_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = seq_release,
 };
 
 #ifdef CONFIG_OF
@@ -2094,7 +2050,7 @@ int32_t nvt_mp_proc_init(void)
 #ifdef CONFIG_OF
 	/* Parsing criteria from dts */
 	if (of_property_read_bool(np,
-		"novatek,mp-support-dt")) {
+		"novatek-mp-criteria-nvtpid")) {
 		/*
 		 * Parsing Criteria by Novatek PID
 		 * The string rule is

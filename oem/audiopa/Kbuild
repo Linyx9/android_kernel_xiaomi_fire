@@ -1,0 +1,3 @@
+ifdef CONFIG_SND_SOC_FS1815
+	obj-y += fs1815/
+endif

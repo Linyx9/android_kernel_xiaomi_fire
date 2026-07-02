@@ -407,17 +407,6 @@ struct  SENSOR_ATR_INFO {
 	MUINT16 OverExp_Max_H;
 	MUINT16 OverExp_Max_L;
 };
-#if 0
-static SENSOR_ATR_INFO sensorATR_Info[4] = {	/* Strength Range Min */
-	{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-	/* Strength Range Std */
-	{0x00, 0x32, 0x00, 0x3c, 0x03, 0xff},
-	/* Strength Range Max */
-	{0x3f, 0xff, 0x3f, 0xff, 0x3f, 0xff},
-	/* Strength Range Custom */
-	{0x3F, 0xFF, 0x00, 0x0, 0x3F, 0xFF}
-};
-#endif
 
 #define IMX398MIPI_MaxGainIndex (223)
 kal_uint16 IMX398MIPI_sensorGainMapping[IMX398MIPI_MaxGainIndex][2] = {
@@ -667,39 +656,6 @@ static int write_cmos_sensor(kal_uint32 addr, kal_uint32 para)
 	return iWriteRegI2C(pu_send_cmd, 3, imgsensor.i2c_write_id);
 }
 
-#if 0
-static kal_uint32 imx398_ATR(UINT16 DarkLimit, UINT16 OverExp)
-{
-	/*
-	 * write_cmos_sensor(0x6e50,sensorATR_Info[DarkLimit].DarkLimit_H);
-	 * write_cmos_sensor(0x6e51,sensorATR_Info[DarkLimit].DarkLimit_L);
-	 * write_cmos_sensor(0x9340,sensorATR_Info[OverExp].OverExp_Min_H);
-	 * write_cmos_sensor(03x941,sensorATR_Info[OverExp].OverExp_Min_L);
-	 * write_cmos_sensor(0x9342,sensorATR_Info[OverExp].OverExp_Max_H);
-	 * write_cmos_sensor(0x9343,sensorATR_Info[OverExp].OverExp_Max_L);
-	 * write_cmos_sensor(0x9706,0x10);
-	 * write_cmos_sensor(0x9707,0x03);
-	 * write_cmos_sensor(0x9708,0x03);
-	 * write_cmos_sensor(0x9e24,0x00);
-	 * write_cmos_sensor(0x9e25,0x8c);
-	 * write_cmos_sensor(0x9e26,0x00);
-	 * write_cmos_sensor(0x9e27,0x94);
-	 * write_cmos_sensor(0x9e28,0x00);
-	 * write_cmos_sensor(0x9e29,0x96);
-	 * pr_debug("DarkLimit 0x6e50(0x%x), 0x6e51(0x%x)\n",
-	 * sensorATR_Info[DarkLimit].DarkLimit_H,
-	 * sensorATR_Info[DarkLimit].DarkLimit_L);
-	 * pr_debug("OverExpMin 0x9340(0x%x), 0x9341(0x%x)\n",
-	 * sensorATR_Info[OverExp].OverExp_Min_H,
-	 * sensorATR_Info[OverExp].OverExp_Min_L);
-	 * pr_debug("OverExpMin 0x9342(0x%x), 0x9343(0x%x)\n",
-	 * sensorATR_Info[OverExp].OverExp_Max_H,
-	 * sensorATR_Info[OverExp].OverExp_Max_L);
-	 */
-	return ERROR_NONE;
-}
-#endif
-
 static void imx398_apply_SPC(void)
 {
 	unsigned int start_reg = 0x7E00;
@@ -747,7 +703,7 @@ static void set_dummy(void)
 
 static kal_uint32 return_sensor_id(void)
 {
-	kal_uint8 tmph, tmpl;
+	kal_uint8 tmph __maybe_unused, tmpl __maybe_unused;
 
 	pr_debug("Enter\n");
 	if (write_cmos_sensor(0x0A02, 0x1F) < 0)
@@ -1094,74 +1050,6 @@ static void ihdr_write_shutter_gain(
 
 }
 
-#if 0
-static void set_mirror_flip(kal_uint8 image_mirror)
-{
-	pr_debug("image_mirror = %d\n", image_mirror);
-
-	/********************************************************
-	 *
-	 *   0x3820[2] ISP Vertical flip
-	 *   0x3820[1] Sensor Vertical flip
-	 *
-	 *   0x3821[2] ISP Horizontal mirror
-	 *   0x3821[1] Sensor Horizontal mirror
-	 *
-	 *   ISP and Sensor flip or mirror register bit should be the same!!
-	 *
-	 ********************************************************/
-
-	switch (image_mirror) {
-	case IMAGE_NORMAL:
-		write_cmos_sensor(0x0101, 0x00);
-		write_cmos_sensor(0x3A27, 0x00);
-		write_cmos_sensor(0x3A28, 0x00);
-		write_cmos_sensor(0x3A29, 0x01);
-		write_cmos_sensor(0x3A2A, 0x00);
-		write_cmos_sensor(0x3A2B, 0x00);
-		write_cmos_sensor(0x3A2C, 0x00);
-		write_cmos_sensor(0x3A2D, 0x01);
-		write_cmos_sensor(0x3A2E, 0x01);
-		break;
-	case IMAGE_H_MIRROR:
-		write_cmos_sensor(0x0101, 0x01);
-		write_cmos_sensor(0x3A27, 0x01);
-		write_cmos_sensor(0x3A28, 0x01);
-		write_cmos_sensor(0x3A29, 0x00);
-		write_cmos_sensor(0x3A2A, 0x00);
-		write_cmos_sensor(0x3A2B, 0x01);
-		write_cmos_sensor(0x3A2C, 0x00);
-		write_cmos_sensor(0x3A2D, 0x00);
-		write_cmos_sensor(0x3A2E, 0x01);
-		break;
-	case IMAGE_V_MIRROR:
-		write_cmos_sensor(0x0101, 0x02);
-		write_cmos_sensor(0x3A27, 0x10);
-		write_cmos_sensor(0x3A28, 0x10);
-		write_cmos_sensor(0x3A29, 0x01);
-		write_cmos_sensor(0x3A2A, 0x01);
-		write_cmos_sensor(0x3A2B, 0x00);
-		write_cmos_sensor(0x3A2C, 0x01);
-		write_cmos_sensor(0x3A2D, 0x01);
-		write_cmos_sensor(0x3A2E, 0x00);
-		break;
-	case IMAGE_HV_MIRROR:
-		write_cmos_sensor(0x0101, 0x03);
-		write_cmos_sensor(0x3A27, 0x11);
-		write_cmos_sensor(0x3A28, 0x11);
-		write_cmos_sensor(0x3A29, 0x00);
-		write_cmos_sensor(0x3A2A, 0x01);
-		write_cmos_sensor(0x3A2B, 0x01);
-		write_cmos_sensor(0x3A2C, 0x01);
-		write_cmos_sensor(0x3A2D, 0x00);
-		write_cmos_sensor(0x3A2E, 0x00);
-		break;
-	default:
-		pr_debug("Error image_mirror setting\n");
-	}
-
-}
-#endif
 /*************************************************************************
  * FUNCTION
  *    night_mode

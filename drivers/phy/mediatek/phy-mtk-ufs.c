@@ -4,12 +4,22 @@
  * Author: Stanley Chu <stanley.chu@mediatek.com>
  */
 
+#include <linux/arm-smccc.h>
+#include <linux/arm_ffa.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/of_platform.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
+#include <linux/pm.h>
+#include <linux/pm_domain.h>
+
+#include <ufs-mediatek-sip.h>
+#include <ufs-mediatek.h>
+
+#define UFSPHY_CLKS_CNT    2
 
 /* mphy register and offsets */
 #define MP_GLB_DIG_8C               0x008C
@@ -34,8 +44,8 @@
 struct ufs_mtk_phy {
 	struct device *dev;
 	void __iomem *mmio;
-	struct clk *mp_clk;
-	struct clk *unipro_clk;
+	u32 ver;
+	struct clk_bulk_data clks[UFSPHY_CLKS_CNT];
 };
 
 static inline u32 mphy_readl(struct ufs_mtk_phy *phy, u32 reg)
@@ -68,26 +78,22 @@ static void mphy_clr_bit(struct ufs_mtk_phy *phy, u32 reg, u32 bit)
 
 static struct ufs_mtk_phy *get_ufs_mtk_phy(struct phy *generic_phy)
 {
-	return (struct ufs_mtk_phy *) phy_get_drvdata(generic_phy);
+	return (struct ufs_mtk_phy *)phy_get_drvdata(generic_phy);
+}
+
+static inline bool ufs_mtk_phy_pm_allowed(struct ufs_mtk_phy *phy)
+{
+	return (phy->ver > 0);
 }
 
 static int ufs_mtk_phy_clk_init(struct ufs_mtk_phy *phy)
 {
 	struct device *dev = phy->dev;
+	struct clk_bulk_data *clks = phy->clks;
 
-	phy->unipro_clk = devm_clk_get(dev, "unipro");
-	if (IS_ERR(phy->unipro_clk)) {
-		dev_info(dev, "unipro clock is not found, ignored.");
-		phy->unipro_clk = NULL;
-	}
-
-	phy->mp_clk = devm_clk_get(dev, "mp");
-	if (IS_ERR(phy->mp_clk)) {
-		dev_info(dev, "mp clock is not found, ignored.");
-		phy->mp_clk = NULL;
-	}
-
-	return 0;
+	clks[0].id = "unipro";
+	clks[1].id = "mp";
+	return devm_clk_bulk_get(dev, UFSPHY_CLKS_CNT, clks);
 }
 
 static void ufs_mtk_phy_set_active(struct ufs_mtk_phy *phy)
@@ -145,48 +151,32 @@ static void ufs_mtk_phy_set_deep_hibern(struct ufs_mtk_phy *phy)
 	mphy_clr_bit(phy, MP_GLB_DIG_8C, PLL_PWR_ON);
 }
 
-#define ufs_mtk_phy_clk_prepare_enable(clk) \
-	clk ? clk_prepare_enable(clk) : 0
-
-#define ufs_mtk_phy_clk_disable_unprepare(clk) \
-	clk ? clk_disable_unprepare(clk) : 0
-
 static int ufs_mtk_phy_power_on(struct phy *generic_phy)
 {
 	struct ufs_mtk_phy *phy = get_ufs_mtk_phy(generic_phy);
 	int ret;
 
-	ret = ufs_mtk_phy_clk_prepare_enable(phy->unipro_clk);
-	if (ret) {
-		dev_err(phy->dev, "unipro_clk enable failed %d\n", ret);
-		goto out;
-	}
+	if (phy->ver)
+		return 0;
 
-	ret = ufs_mtk_phy_clk_prepare_enable(phy->mp_clk);
-	if (ret) {
-		dev_err(phy->dev, "mp_clk enable failed %d\n", ret);
-		goto out_unprepare_unipro_clk;
-	}
+	ret = clk_bulk_prepare_enable(UFSPHY_CLKS_CNT, phy->clks);
+	if (ret)
+		return ret;
 
 	ufs_mtk_phy_set_active(phy);
-
 	return 0;
-
-out_unprepare_unipro_clk:
-	ufs_mtk_phy_clk_disable_unprepare(phy->unipro_clk);
-out:
-	return ret;
 }
 
 static int ufs_mtk_phy_power_off(struct phy *generic_phy)
 {
+
 	struct ufs_mtk_phy *phy = get_ufs_mtk_phy(generic_phy);
 
+	if (phy->ver)
+		return 0;
+
 	ufs_mtk_phy_set_deep_hibern(phy);
-
-	ufs_mtk_phy_clk_disable_unprepare(phy->unipro_clk);
-	ufs_mtk_phy_clk_disable_unprepare(phy->mp_clk);
-
+	clk_bulk_disable_unprepare(UFSPHY_CLKS_CNT, phy->clks);
 	return 0;
 }
 
@@ -196,45 +186,119 @@ static const struct phy_ops ufs_mtk_phy_ops = {
 	.owner          = THIS_MODULE,
 };
 
+static int ufs_mtk_phy_runtime_suspend(struct device *dev)
+{
+	struct ufs_mtk_phy *phy = dev_get_drvdata(dev);
+
+	if (!ufs_mtk_phy_pm_allowed(phy))
+		goto out;
+
+out:
+	return 0;
+}
+
+static int ufs_mtk_phy_runtime_resume(struct device *dev)
+{
+	struct ufs_mtk_phy *phy = dev_get_drvdata(dev);
+
+	if (!ufs_mtk_phy_pm_allowed(phy))
+		goto out;
+
+out:
+	return 0;
+}
+
+static int ufs_mtk_phy_system_suspend(struct device *dev)
+{
+	struct ufs_mtk_phy *phy = dev_get_drvdata(dev);
+
+	if (pm_runtime_suspended(dev))
+		goto out;
+
+	if (!ufs_mtk_phy_pm_allowed(phy))
+		goto out;
+
+out:
+	return 0;
+}
+
+static int ufs_mtk_phy_system_resume(struct device *dev)
+{
+	struct ufs_mtk_phy *phy = dev_get_drvdata(dev);
+
+	if (!ufs_mtk_phy_pm_allowed(phy))
+		goto out;
+
+out:
+	return 0;
+}
+
+static int ufs_mtk_phy_init(struct ufs_mtk_phy *phy)
+{
+	struct device *dev = phy->dev;
+	u32 val = 0;
+	int ret;
+
+#if IS_ENABLED(CONFIG_UFS_MEDIATEK_INTERNAL)
+	struct tag_chipid *chipid;
+	/* Get chip id from bootmode */
+	chipid = (struct tag_chipid *)ufs_mtk_get_boot_property(dev->of_node,
+								"atag,chipid", NULL);
+
+	ret = of_property_read_u32(dev->of_node, "mediatek,pm-forbidden-on-hwver", &val);
+	if (!ret && chipid) {
+		if (chipid->hw_ver == val) {
+			pm_runtime_forbid(dev);
+			dev_info(dev, "pm forbidden");
+		}
+	}
+#endif
+
+	ret = of_property_read_u32(dev->of_node, "mphy-ver", &val);
+	if (!ret)
+		phy->ver = val;
+
+	if (!phy->ver)
+		ufs_mtk_phy_clk_init(phy);
+
+	return 0;
+}
+
+
 static int ufs_mtk_phy_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct phy *generic_phy;
 	struct phy_provider *phy_provider;
-	struct resource *res;
 	struct ufs_mtk_phy *phy;
-	int ret;
+	int ret = 0;
 
 	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy)
 		return -ENOMEM;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	phy->mmio = devm_ioremap_resource(dev, res);
+	phy->mmio = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(phy->mmio))
 		return PTR_ERR(phy->mmio);
 
 	phy->dev = dev;
 
-	ret = ufs_mtk_phy_clk_init(phy);
-	if (ret) {
-		dev_err(dev, "%s mtk phy clk init fail: %d\n", __func__, ret);
+	ret = ufs_mtk_phy_init(phy);
+	if (ret)
 		return ret;
-	}
 
 	generic_phy = devm_phy_create(dev, NULL, &ufs_mtk_phy_ops);
-	if (IS_ERR(generic_phy)) {
-		dev_err(dev, "%s mtk phy clk create fail: %d\n", __func__, PTR_ERR(generic_phy));
+	if (IS_ERR(generic_phy))
 		return PTR_ERR(generic_phy);
-	}
 
 	phy_set_drvdata(generic_phy, phy);
+	dev_set_drvdata(dev, phy);
 
 	phy_provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
-	if (IS_ERR(phy_provider)) {
-		dev_err(dev, "%s mtk phy clk register fail: %d\n", __func__, PTR_ERR(phy_provider));
-	}
-	return PTR_ERR_OR_ZERO(phy_provider);
+	if (IS_ERR(phy_provider))
+		return PTR_ERR(phy_provider);
+
+	return ret;
 }
 
 static const struct of_device_id ufs_mtk_phy_of_match[] = {
@@ -243,15 +307,21 @@ static const struct of_device_id ufs_mtk_phy_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, ufs_mtk_phy_of_match);
 
+static const struct dev_pm_ops ufs_mtk_phy_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(ufs_mtk_phy_system_suspend, ufs_mtk_phy_system_resume)
+	SET_RUNTIME_PM_OPS(ufs_mtk_phy_runtime_suspend, ufs_mtk_phy_runtime_resume, NULL)
+};
+
 static struct platform_driver ufs_mtk_phy_driver = {
 	.probe = ufs_mtk_phy_probe,
 	.driver = {
 		.of_match_table = ufs_mtk_phy_of_match,
+		.pm     = &ufs_mtk_phy_pm_ops,
 		.name = "ufs_mtk_phy",
 	},
 };
 module_platform_driver(ufs_mtk_phy_driver);
 
 MODULE_DESCRIPTION("Universal Flash Storage (UFS) MediaTek MPHY");
-MODULE_AUTHOR("Stanley Chu <stanley.chu@medaitek.com>");
+MODULE_AUTHOR("Stanley Chu <stanley.chu@mediatek.com>");
 MODULE_LICENSE("GPL v2");

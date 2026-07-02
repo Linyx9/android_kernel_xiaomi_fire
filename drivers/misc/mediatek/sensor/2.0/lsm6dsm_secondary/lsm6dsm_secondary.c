@@ -39,8 +39,8 @@ struct lsm6dsm_device {
 static sensor_info support_sensors[] = {
 	.sensor_type = SENSOR_TYPE_GYRO_SECONDARY,
 	.gain = 1,
-	.name = {'a', 'c', 'c', 'e', 'l'},
-	.vendor = {'m', 't', 'k'},
+	.name = "gyro_second",
+	.vendor = "mtk",
 };
 
 static int lsm6dsm_enable(struct hf_device *hfdev, int sensor_type, int en)
@@ -95,7 +95,7 @@ static void lsm6dsm_sample_complete(void *ctx)
 		(driver_dev->async_rx_buffer[4]));
 	coordinate_map(driver_dev->direction, data);
 	memset(&event, 0, sizeof(struct hf_manager_event));
-	event.timestamp = ktime_get_boottime_ns();
+	event.timestamp = ktime_get_boot_ns();
 	event.sensor_type = SENSOR_TYPE_GYRO_SECONDARY;
 	event.accurancy = SENSOR_ACCURANCY_HIGH;
 	event.action = DATA_ACTION;

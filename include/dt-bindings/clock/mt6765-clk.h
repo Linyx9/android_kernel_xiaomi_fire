@@ -1,6 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0 OR MIT */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
+ */
+/*
  * Author: Owen Chen <owen.chen@mediatek.com>
  */
 
@@ -253,14 +255,6 @@
 #define CLK_IFR_PERI_DCM_RG_FORCE_CLKOFF	85
 #define CLK_IFR_NR_CLK				86
 
-/* PERICFG */
-#define CLK_PERIAXI_DISABLE		0
-#define CLK_PERI_NR_CLK			1
-
-/* GCE */
-#define CLK_GCE				0
-#define CLK_GCE_NR_CLK			1
-
 /* AUDIO */
 #define CLK_AUDIO_AFE			0
 #define CLK_AUDIO_22M			1
@@ -279,39 +273,6 @@
 
 #define CLK_MIPI0A_CSR_CSI_EN_0A	0
 #define CLK_MIPI0A_NR_CLK		1
-
-/* MIPI_RX_ANA_CSI0B */
-
-#define CLK_MIPI0B_CSR_CSI_EN_0B	0
-#define CLK_MIPI0B_NR_CLK		1
-
-/* MIPI_RX_ANA_CSI1A */
-
-#define CLK_MIPI1A_CSR_CSI_EN_1A	0
-#define CLK_MIPI1A_NR_CLK		1
-
-/* MIPI_RX_ANA_CSI1B */
-
-#define CLK_MIPI1B_CSR_CSI_EN_1B	0
-#define CLK_MIPI1B_NR_CLK		1
-
-/* MIPI_RX_ANA_CSI2A */
-
-#define CLK_MIPI2A_CSR_CSI_EN_2A	0
-#define CLK_MIPI2A_NR_CLK		1
-
-/* MIPI_RX_ANA_CSI2B */
-
-#define CLK_MIPI2B_CSR_CSI_EN_2B	0
-#define CLK_MIPI2B_NR_CLK		1
-
-/* MFG */
-
-#define CLK_MFGCFG_BAXI			0
-#define CLK_MFGCFG_BMEM			1
-#define CLK_MFGCFG_BG3D			2
-#define CLK_MFGCFG_B26M			3
-#define CLK_MFGCFG_NR_CLK		4
 
 /* MMSYS_CONFIG */
 
@@ -377,19 +338,11 @@
 #define CLK_CAM_CCU			8
 #define CLK_CAM_NR_CLK			9
 
+
+
 /* SCP_SYS */
 
 #define SCP_SYS_MD1		0
-#define SCP_SYS_CONN		1
-#define SCP_SYS_DPY		2
-#define SCP_SYS_DIS		3
-#define SCP_SYS_MFG		4
-#define SCP_SYS_ISP		5
-#define SCP_SYS_IFR		6
-#define SCP_SYS_MFG_CORE0	7
-#define SCP_SYS_MFG_ASYNC	8
-#define SCP_SYS_CAM		9
-#define SCP_SYS_VCODEC		10
-#define SCP_NR_SYSS		11
+#define SCP_NR_SYSS		1
 
 #endif /* _DT_BINDINGS_CLK_MT6765_H */

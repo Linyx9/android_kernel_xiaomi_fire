@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #include <linux/kernel.h>
@@ -359,9 +359,7 @@ static struct platform_driver mt6362_adc_driver = {
 	},
 	.probe = mt6362_adc_probe,
 };
-#if 0
-module_platform_driver(mt6362_adc_driver);
-#else
+
 static int __init mt6362_adc_driver_init(void)
 {
 	return platform_driver_register(&mt6362_adc_driver);
@@ -373,7 +371,6 @@ static void __exit mt6362_adc_driver_exit(void)
 }
 subsys_initcall(mt6362_adc_driver_init);
 module_exit(mt6362_adc_driver_exit);
-#endif
 
 MODULE_AUTHOR("ChiYuan Huang <cy_huang@richtek.com>");
 MODULE_DESCRIPTION("MT6362 SPMI ADC Driver");

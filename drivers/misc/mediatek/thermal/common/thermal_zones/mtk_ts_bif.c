@@ -106,11 +106,11 @@ static int mtkts_bif_get_temp(struct thermal_zone_device *thermal, int *t)
 	bif_cur_temp = *t;
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -310,7 +310,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		mtkts_bif_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtkts_bif_write",
 					"Bad argument");
@@ -377,7 +377,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 	}
 
 	mtkts_bif_dprintk("[%s] bad argument\n", __func__);
-    #ifdef CONFIG_MTK_AEE_FEATURE
+    #if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 					"mtkts_bif_write", "Bad argument");
     #endif
@@ -461,7 +461,7 @@ static const struct file_operations mtkts_bif_fops = {
 	.release = single_release,
 };
 
-static int __init mtkts_bif_init(void)
+int mtkts_bif_init(void)
 {
 	struct proc_dir_entry *entry = NULL;
 	struct proc_dir_entry *mtkts_dir = NULL;
@@ -486,12 +486,14 @@ static int __init mtkts_bif_init(void)
 	return 0;
 }
 
-static void __exit mtkts_bif_exit(void)
+void  mtkts_bif_exit(void)
 {
 	mtkts_bif_dprintk("[%s]\n", __func__);
 	mtkts_bif_unregister_thermal();
 	mtkTTimer_unregister("mtktsbif");
 }
 
-module_init(mtkts_bif_init);
-module_exit(mtkts_bif_exit);
+//module_init(mtkts_bif_init);
+//module_exit(mtkts_bif_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

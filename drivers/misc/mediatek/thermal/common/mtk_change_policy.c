@@ -27,12 +27,8 @@
 
 #define MAX_LEN	256
 
-#if 1
 #define mtk_thermal_policy_dprintk(fmt, args...)	\
 	pr_notice("thermal/thermal_policy " fmt, ##args)
-#else
-#define mtk_thermal_policy_dprintk(fmt, args...)
-#endif
 
 #define TM_CLIENT_chgpolicy 4
 
@@ -74,7 +70,7 @@ static int _mtk_tp_pid_read(struct seq_file *m, void *v)
 
 static int _mtk_tp_pid_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _mtk_tp_pid_read, PDE_DATA(inode));
+	return single_open(file, _mtk_tp_pid_read, pde_data(inode));
 }
 
 static const struct file_operations _tp_pid_fops = {
@@ -188,7 +184,7 @@ static int _mtk_tp_test_read(struct seq_file *m, void *v)
 
 static int _mtk_tp_test_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _mtk_tp_test_read, PDE_DATA(inode));
+	return single_open(file, _mtk_tp_test_read, pde_data(inode));
 }
 
 static const struct file_operations _tp_test_fops = {
@@ -248,3 +244,6 @@ static void __exit mtk_thermal_policy_exit(void)
 }
 module_init(mtk_thermal_policy_init);
 module_exit(mtk_thermal_policy_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");
+

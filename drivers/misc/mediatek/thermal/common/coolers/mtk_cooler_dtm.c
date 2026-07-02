@@ -13,7 +13,7 @@
 #include <linux/proc_fs.h>
 #include "mt-plat/mtk_thermal_monitor.h"
 #include "mach/mtk_thermal.h"
-#if defined(CONFIG_MTK_CLKMGR)
+#if IS_ENABLED(CONFIG_MTK_CLKMGR)
 #include <mach/mtk_clkmgr.h>
 #else
 #include <linux/clk.h>
@@ -26,14 +26,14 @@
 #include <linux/uidgid.h>
 
 #if defined(THERMAL_VPU_SUPPORT)
-#if defined(CONFIG_MTK_APUSYS_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_APUSYS_SUPPORT)
 #include "apu_power_table.h"
 #else
 #include "vpu_dvfs.h"
 #endif
 #endif
 #if defined(THERMAL_MDLA_SUPPORT)
-#if defined(CONFIG_MTK_APUSYS_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_APUSYS_SUPPORT)
 #include "apu_power_table.h"
 #else
 #include "mdla_dvfs.h"
@@ -206,16 +206,8 @@ static int tscpu_set_power_consumption_state(void)
 						power);
 
 				} else if (Num_of_GPU_OPP == 1) {
-#if 0
-					/* 653mW,GPU 500Mhz,1V
-					 * (preloader default)
-					 */
-					/* 1016mW,GPU 700Mhz,1.1V */
-					power = (i * 100 + 700) - 653;
-#else
 					power = (i * 100 + 700) -
 						mtk_gpu_power[0].gpufreq_power;
-#endif
 					set_static_cpu_power_limit(power);
 					tscpu_dprintk(
 						"Num_of_GPU_OPP=%d, gpufreq_power=%d, power=%d\n",
@@ -315,7 +307,7 @@ static ssize_t clvpu_opp_proc_write
 	if (kstrtoint(tmp, 10, &vpu_upper_opp) == 0) {
 		if (vpu_upper_opp == -1)
 			vpu_power = 0;
-#ifdef CONFIG_MTK_APUSYS_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_APUSYS_SUPPORT)
 		else if (vpu_upper_opp >= APU_OPP_0 &&
 			vpu_upper_opp < APU_OPP_NUM)
 #else
@@ -347,16 +339,15 @@ static int clvpu_opp_proc_read(struct seq_file *m, void *v)
 
 static int clvpu_opp_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, clvpu_opp_proc_read, PDE_DATA(inode));
+	return single_open(file, clvpu_opp_proc_read, pde_data(inode));
 }
 
-static const struct file_operations clvpu_opp_fops = {
-	.owner = THIS_MODULE,
-	.open = clvpu_opp_proc_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = clvpu_opp_proc_write,
-	.release = single_release,
+static const struct proc_ops clvpu_opp_fops = {
+	.proc_open = clvpu_opp_proc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = clvpu_opp_proc_write,
+	.proc_release = single_release,
 };
 
 static void thermal_vpu_init(void)
@@ -394,7 +385,7 @@ struct file *filp, const char __user *buf, size_t len, loff_t *data)
 	if (kstrtoint(tmp, 10, &mdla_upper_opp) == 0) {
 		if (mdla_upper_opp == -1)
 			mdla_power = 0;
-#ifdef CONFIG_MTK_APUSYS_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_APUSYS_SUPPORT)
 		else if (mdla_upper_opp >= APU_OPP_0 &&
 			mdla_upper_opp < APU_OPP_NUM)
 #else
@@ -426,16 +417,15 @@ static int clmdla_opp_proc_read(struct seq_file *m, void *v)
 
 static int clmdla_opp_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, clmdla_opp_proc_read, PDE_DATA(inode));
+	return single_open(file, clmdla_opp_proc_read, pde_data(inode));
 }
 
-static const struct file_operations clmdla_opp_fops = {
-	.owner = THIS_MODULE,
-	.open = clmdla_opp_proc_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = clmdla_opp_proc_write,
-	.release = single_release,
+static const struct proc_ops clmdla_opp_fops = {
+	.proc_open = clmdla_opp_proc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = clmdla_opp_proc_write,
+	.proc_release = single_release,
 };
 
 static void thermal_mdla_init(void)
@@ -498,7 +488,7 @@ free_cl_dev_state:
 	return ret;
 }
 
-static int __init mtk_cooler_dtm_init(void)
+int mtk_cooler_dtm_init(void)
 {
 	int err = 0, i;
 
@@ -537,7 +527,7 @@ static int __init mtk_cooler_dtm_init(void)
 	return 0;
 }
 
-static void __exit mtk_cooler_dtm_exit(void)
+void  mtk_cooler_dtm_exit(void)
 {
 	int i;
 
@@ -551,5 +541,7 @@ static void __exit mtk_cooler_dtm_exit(void)
 
 	apthermolmt_unregister_user(&ap_dtm);
 }
-module_init(mtk_cooler_dtm_init);
-module_exit(mtk_cooler_dtm_exit);
+//module_init(mtk_cooler_dtm_init);
+//module_exit(mtk_cooler_dtm_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

@@ -1,10 +1,10 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2019 MediaTek Inc.
- * Author: Xia Jiang <xia.jiang@mediatek.com>
- *
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: Ming Hsiu Tsai <minghsiu.tsai@mediatek.com>
+ *         Rick Chang <rick.chang@mediatek.com>
+ *         Xia Jiang <xia.jiang@mediatek.com>
  */
-
 
 #ifndef _MTK_JPEG_DEC_HW_H
 #define _MTK_JPEG_DEC_HW_H
@@ -53,13 +53,9 @@ struct mtk_jpeg_dec_param {
 	u32 uv_size;
 	u32 dec_size;
 	u8 uv_brz_w;
-	u8 huffman_exist;
+	u8 huffman_tb_exist;
+	u8 eoi_exist;
 };
-
-static inline u32 mtk_jpeg_align(u32 val, u32 align)
-{
-	return (val + align - 1) & ~(align - 1);
-}
 
 struct mtk_jpeg_bs {
 	dma_addr_t	str_addr;
@@ -75,8 +71,9 @@ struct mtk_jpeg_fb {
 int mtk_jpeg_dec_fill_param(struct mtk_jpeg_dec_param *param);
 u32 mtk_jpeg_dec_get_int_status(void __iomem *dec_reg_base);
 u32 mtk_jpeg_dec_enum_result(u32 irq_result);
-void mtk_jpeg_dec_set_config(void __iomem *base,
+void mtk_jpeg_dec_set_config(void __iomem *base, u32 support_34bit,
 			     struct mtk_jpeg_dec_param *config,
+			     u32 bitstream_size,
 			     struct mtk_jpeg_bs *bs,
 			     struct mtk_jpeg_fb *fb);
 void mtk_jpeg_dec_reset(void __iomem *dec_reg_base);

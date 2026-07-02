@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (C) 2020 MediaTek Inc.
  */
+
 /* TOUCH start */
 &spi4 {
 	status = "okay";
@@ -69,7 +70,6 @@
 		reg = <0x14>;
 		status = "okay";
 	};
-
 	gt9886@5d {
 		compatible = "goodix,gt9886";
 		reg = <0x5d>;
@@ -116,7 +116,7 @@
 	goodix,reset-gpio = <&pio 15 0x0>;
 	vtouch-supply = <&mt_pmic_vtp_ldo_reg>;
 
-	/* goodix rotate cord should close for hw rotate */
+	/* hw rotate */
 	/* goodix,x2x; */
 	/* goodix,y2y; */
 

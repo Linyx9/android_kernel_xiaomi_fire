@@ -15,6 +15,7 @@
 
 enum mtk_ipi_dev {
 	IPI_DEV_SCP,
+	IPI_DEV_SAP,
 	IPI_DEV_SSPM,
 	IPI_DEV_ADSP,
 	IPI_DEV_MCUPM,
@@ -22,6 +23,7 @@ enum mtk_ipi_dev {
 	IPI_DEV_APUSYS,
 	IPI_DEV_GPUEB,
 	IPI_DEV_VCP,
+	IPI_DEV_MMUP,
 	IPI_DEV_TOTAL,
 };
 
@@ -115,6 +117,7 @@ struct mtk_ipi_device  {
 #define IPI_COMPL_TIMEOUT	-7 /* polling or wait for ack ipi timeout */
 #define IPI_PRE_CB_FAIL		-8 /* pre-callback fail */
 #define IPI_POST_CB_FAIL	-9 /* post-callback fail */
+#define IPI_FAKE_SIGNAL		-10
 #define IPI_RPMSG_ERR		-99 /* some error from rpmsg layer */
 
 
@@ -128,7 +131,7 @@ int mtk_ipi_register(struct mtk_ipi_device *ipidev, int ipi_id,
 int mtk_ipi_unregister(struct mtk_ipi_device *ipidev, int ipi_id);
 
 int mtk_ipi_send(struct mtk_ipi_device *ipidev, int ipi_id,
-		int opt, void *data, int len, int retry_timeout);
+		int opt, void *data, int len, int timeout);
 int mtk_ipi_send_compl(struct mtk_ipi_device *ipidev, int ipi_id,
 		int opt, void *data, int len, unsigned long timeout);
 int mtk_ipi_recv(struct mtk_ipi_device *ipidev, int ipi_id);

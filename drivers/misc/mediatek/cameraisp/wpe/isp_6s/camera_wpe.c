@@ -1,14 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2015 MediaTek Inc.
+ * Copyright (c) 2018 MediaTek Inc.
  */
-/**************************************************************
- * camera_wpe.c - Linux WPE Device Driver
- *
- * DESCRIPTION:
- *     This file provid the other drivers WPE relative functions
- *
- **************************************************************/
+
 
 #include <linux/types.h>
 #include <linux/device.h>
@@ -29,6 +23,11 @@
 #include <linux/mm.h>
 #include <linux/seq_file.h>
 #include <linux/dma-mapping.h>
+#include <linux/dma-buf.h>
+#include <linux/pm_runtime.h>
+#include <linux/suspend.h>
+#include <linux/rtc.h>
+
 
 /*#include <linux/xlog.h>		 For xlog_printk(). */
 /*  */
@@ -41,25 +40,34 @@
 /* #include <mach/mt_clkmgr.h> */
 /* For clock mgr APIS. enable_clock()/disable_clock(). */
 /* #endif */
-#include <mt-plat/sync_write.h>	/* For mt65xx_reg_sync_writel(). */
+/*#include <mt-plat/sync_write.h>*//* For mt65xx_reg_sync_writel(). */
 /* #include <mach/mt_spm_idle.h>For spm_enable_sodi()/spm_disable_sodi(). */
 
 #include <linux/of_platform.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 
+#ifdef CONFIG_OF
+#include <soc/mediatek/smi.h>   /* for GKI larb open*/
+#endif
+
 #ifdef CONFIG_MTK_IOMMU_V2
-#include <mach/mt_iommu.h>
-#include "mach/pseudo_m4u.h"
+/* #include <mach/mt_iommu.h>*/ /* [GKI Modify]- */
+#include "mtk_iommu.h" /* [GKI Modify]+ */
+/*#include "mach/pseudo_m4u.h" */
 #else
 #ifdef CONFIG_MTK_M4U
 #include <m4u.h>
 #endif
 #endif
 
-#include "mdp_cmdq_helper_ext.h"
+#include <cmdq_helper_ext.h>
+#include <cmdq-util.h>
+#ifdef CONFIG_MTK_SMI_EXT /* [GKI Modify]+ */
 #include <smi_public.h>
-#include <mt-plat/mtk_chip.h>
+#endif
+
+/*#include <mt-plat/mtk_chip.h>*/
 
 /*#define __WPE_EP_NO_CLKMGR__*/
 /* Measure the kernel performance
@@ -68,25 +76,6 @@
 #ifdef __WPE_KERNEL_PERFORMANCE_MEASURE__
 #include <linux/met_drv.h>
 #include <linux/mtk_ftrace.h>
-#endif
-#ifdef Another_Performance
-/* Another Performance Measure Usage */
-#include <linux/kallsyms.h>
-#include <linux/ftrace_event.h>
-static unsigned long __read_mostly tracing_mark_write_addr;
-#define _kernel_trace_begin(name) {\
-	tracing_mark_write_addr = kallsyms_lookup_name("tracing_mark_write");\
-	event_trace_printk(tracing_mark_write_addr,  "B|%d|%s\n", \
-			current->tgid, name);\
-}
-#define _kernel_trace_end() {\
-	event_trace_printk(tracing_mark_write_addr,  "E\n");\
-}
-/* How to Use */
-/* char strName[128]; */
-/* sprintf(strName, "TAG_K_WAKEUP (%d)",sof_count[_PASS1]); */
-/* _kernel_trace_begin(strName); */
-/* _kernel_trace_end(); */
 #endif
 
 
@@ -105,37 +94,49 @@ static unsigned long __read_mostly tracing_mark_write_addr;
 #include <linux/pm_wakeup.h>
 #endif
 
+struct wpe_fd_list_template {
+	int fd;
+	struct dma_buf *buf;
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
+	unsigned int dma_addr;
+	struct list_head list;
+};
+
+LIST_HEAD(wpe_fd_head);
+int wpe_put_cnt;
+int wpe_get_cnt;
+
+
 #include "inc/camera_wpe.h"
+
+#define WPE_CHECK_SERVICE_IF_0    0
 
 /* CCF */
 #include <linux/clk.h>
 struct WPE_CLK_STRUCT {
 	struct clk *CG_IMGSYS_LARB9;
 	struct clk *CG_IMGSYS_WPE_A;
-#if (MTK_WPE_COUNT == 2)
 	struct clk *CG_IMGSYS_LARB11;
 	struct clk *CG_IMGSYS_WPE_B;
-#endif
-#ifdef FORCE_IMG1_ON
 	struct clk *CG_IMGSYS1;
-#endif
 };
 struct WPE_CLK_STRUCT wpe_clk;
 
 #ifndef M4U_PORT_L11_IMG_WPE_WDMA_DISP
-#define M4U_PORT_L11_IMG_WPE_WDMA_DISP M4U_PORT_L11_IMG_WPE_WDMA
+#define M4U_PORT_L11_IMG_WPE_WDMA_DISP M4U_PORT_L11_IMG_WPE_WDMA_DISP
 #endif
 
 #ifndef M4U_PORT_L11_IMG_WPE_RDMA1_DISP
-#define M4U_PORT_L11_IMG_WPE_RDMA1_DISP M4U_PORT_L11_IMG_WPE_RDMA1
+#define M4U_PORT_L11_IMG_WPE_RDMA1_DISP M4U_PORT_L11_IMG_WPE_RDMA1_DISP
 #endif
 
 #ifndef M4U_PORT_L9_IMG_WPE_WDMA_MDP
-#define M4U_PORT_L9_IMG_WPE_WDMA_MDP M4U_PORT_L9_IMG_WPE_WDMA
+#define M4U_PORT_L9_IMG_WPE_WDMA_MDP M4U_PORT_L9_IMG_WPE_WDMA_MDP
 #endif
 
 #ifndef M4U_PORT_L9_IMG_WPE_RDMA1_MDP
-#define M4U_PORT_L9_IMG_WPE_RDMA1_MDP M4U_PORT_L9_IMG_WPE_RDMA1
+#define M4U_PORT_L9_IMG_WPE_RDMA1_MDP M4U_PORT_L9_IMG_WPE_RDMA1_MDP
 #endif
 
 unsigned int ver;
@@ -158,12 +159,12 @@ unsigned int ver;
 /* #define WPE_MULTIPROCESS_TIMING_ISSUE  */
 /*I can' test the situation in FPGA, because the velocity of FPGA is so slow. */
 
-#define WPE_IOCTL_RW	(0)//0:disable ioctl write register
+#define WPE_IOCTL_RW    (0)//0:disable ioctl write register
 
 #define MyTag "[WPE]"
 #define IRQTag "KEEPER"
 
-#define LOG_VRB(format,	args...) \
+#define LOG_VRB(format, args...) \
 pr_debug(MyTag "[%s] " format, __func__, ##args)
 
 #define WPE_DEBUG
@@ -185,14 +186,17 @@ pr_info(MyTag "[%s] " format, __func__, ##args)
 #define LOG_AST(format, args...) \
 pr_debug(MyTag "[%s] " format, __func__, ##args)
 
+
 /***********************************************************************
  *
  ***********************************************************************/
 /* #define WPE_WR32(addr, data)  iowrite32(data, addr) For other projects.*/
+/* #define DIP_WR32(addr, data)    iowrite32(data, addr) */
+#define WPE_WR32(addr, data)    writel(data, addr) /*GKI Modify*/
+#define WPE_RD32(addr)          readl((void *)addr)  /*GKI Modify*/
 
-#define WPE_WR32(addr, data)    mt_reg_sync_writel(data, addr)
-				/* For 89 Only.   // NEED_TUNING_BY_PROJECT */
-#define WPE_RD32(addr)          ioread32(addr)
+/*#define WPE_WR32(addr, data)    mt_reg_sync_writel(data, addr)*/
+/*#define WPE_RD32(addr)          ioread32(addr)*/
 /***********************************************************************
  *
  ***********************************************************************/
@@ -221,7 +225,7 @@ pr_debug(MyTag "[%s] " format, __func__, ##args)
 /*
  *    IRQ signal mask
  */
-#define IRQ_LOG_EN
+
 #define INT_ST_MASK_WPE     ( \
 			WPE_INT_ST)
 
@@ -232,6 +236,8 @@ pr_debug(MyTag "[%s] " format, __func__, ##args)
 
 #define WPE_IS_BUSY    0x2
 
+#define CG_ENABLE      0x1
+#define CG_DISABLE     0x0
 
 /* static irqreturn_t WPE_Irq_CAM_A(signed int  Irq,void *DeviceId); */
 static irqreturn_t ISP_Irq_WPE(signed int Irq, void *DeviceId);
@@ -239,7 +245,8 @@ static bool ConfigWPE(void);
 static signed int ConfigWPEHW(struct WPE_Config *pWpeConfig);
 static void WPE_ScheduleWork(struct work_struct *data);
 
-
+/*For GKI 2.0*/
+static int CG_DUAL_WPE_ON;
 
 typedef irqreturn_t(*IRQ_CB) (signed int, void *);
 
@@ -286,6 +293,8 @@ struct wakeup_source *WPE_MDP_wake_lock;
 static DEFINE_MUTEX(gWpeMutex);
 static DEFINE_MUTEX(gWpeDequeMutex);
 static DEFINE_MUTEX(gWpeClkMutex);
+static DEFINE_MUTEX(gWpeMutexbuf); /*GKI AOSP ION*/
+
 
 #ifdef CONFIG_OF
 
@@ -293,6 +302,9 @@ struct WPE_device {
 	void __iomem *regs;
 	struct device *dev;
 	int irq;
+	struct device *larb9;
+	struct device *larb11;
+
 };
 
 static struct WPE_device *WPE_devs;
@@ -307,9 +319,8 @@ static int nr_WPE_devs;
 
 
 #define ISP_WPE_BASE                  (WPE_devs[WPE_DEV_NODE_IDX].regs)
-#if (MTK_WPE_COUNT == 2)
 #define ISP_WPE_B_BASE                (WPE_devs[WPE_B_DEV_NODE_IDX].regs)
-#endif
+
 
 /* #define ISP_WPE_BASE                  (gISPSYS_Reg[WPE_DEV_NODE_IDX]) */
 
@@ -332,40 +343,40 @@ static int WPE_MEM_USE_VIRTUAL = 1;
 
 
 enum WPE_FRAME_STATUS_ENUM {
-	WPE_FRAME_STATUS_EMPTY,    /* 0 */
-	WPE_FRAME_STATUS_ENQUE,    /* 1 */
-	WPE_FRAME_STATUS_RUNNING,  /* 2 */
-	WPE_FRAME_STATUS_FINISHED, /* 3 */
+	WPE_FRAME_STATUS_EMPTY,	/* 0 */
+	WPE_FRAME_STATUS_ENQUE,	/* 1 */
+	WPE_FRAME_STATUS_RUNNING,	/* 2 */
+	WPE_FRAME_STATUS_FINISHED,	/* 3 */
 	WPE_FRAME_STATUS_TOTAL
 };
 
 
 enum WPE_REQUEST_STATE_ENUM {
-	WPE_REQUEST_STATE_EMPTY,     /* 0 */
-	WPE_REQUEST_STATE_PENDING,   /* 1 */
-	WPE_REQUEST_STATE_RUNNING,   /* 2 */
-	WPE_REQUEST_STATE_FINISHED,  /* 3 */
+	WPE_REQUEST_STATE_EMPTY,	/* 0 */
+	WPE_REQUEST_STATE_PENDING,	/* 1 */
+	WPE_REQUEST_STATE_RUNNING,	/* 2 */
+	WPE_REQUEST_STATE_FINISHED,	/* 3 */
 	WPE_REQUEST_STATE_TOTAL
 };
 
 
 struct WPE_REQUEST_STRUCT {
 	enum WPE_REQUEST_STATE_ENUM State;
-	pid_t processID;        /* caller process ID */
-	unsigned int callerID;  /* caller thread ID */
+	pid_t processID;	/* caller process ID */
+	unsigned int callerID;	/* caller thread ID */
 	unsigned int enqueReqNum;
 		/* to judge it belongs to which frame package */
-	unsigned int FrameWRIdx;  /* Frame write Index */
-	unsigned int FrameRDIdx;  /* Frame read Index */
+	signed int FrameWRIdx;	/* Frame write Index */
+	signed int FrameRDIdx;	/* Frame read Index */
 	enum WPE_FRAME_STATUS_ENUM
 			WpeFrameStatus[_SUPPORT_MAX_WPE_FRAME_REQUEST_];
 	struct WPE_Config WpeFrameConfig[_SUPPORT_MAX_WPE_FRAME_REQUEST_];
 };
 
 struct WPE_REQUEST_RING_STRUCT {
-	unsigned int WriteIdx;     /* enque how many request  */
-	unsigned int ReadIdx;      /* read which request index */
-	unsigned int HWProcessIdx; /* HWWriteIdx */
+	signed int WriteIdx;	/* enque how many request  */
+	signed int ReadIdx;		/* read which request index */
+	signed int HWProcessIdx;	/* HWWriteIdx */
 	struct WPE_REQUEST_STRUCT
 		WPEReq_Struct[_SUPPORT_MAX_WPE_REQUEST_RING_SIZE_];
 };
@@ -454,7 +465,6 @@ static struct SV_LOG_STR gSvLog[WPE_IRQ_TYPE_AMOUNT];
  *    each log must shorter than 512 bytes
  *    total log length in each irq/logtype can't over 1024 bytes
  */
-#ifdef IRQ_LOG_EN
 #define IRQ_LOG_KEEPER(irq, ppb, logT, fmt, ...) do {                         \
 	char *ptr;                                                            \
 	char *pDes;                                                           \
@@ -549,15 +559,13 @@ static struct SV_LOG_STR gSvLog[WPE_IRQ_TYPE_AMOUNT];
 		}                                                             \
 	}                                                                     \
 } while (0)
-#endif
 
-#ifdef IRQ_LOG_EN
 #define IRQ_LOG_PRINTER(irq, ppb_in, logT_in) do {\
 	struct SV_LOG_STR *pSrc = &gSvLog[irq];\
 	char *ptr;\
 	unsigned int i;\
-	unsigned int ppb = 0;\
-	unsigned int logT = 0;\
+	signed int ppb = 0;\
+	signed int logT = 0;\
 	if (ppb_in > 1) {\
 		ppb = 1;\
 	} else {\
@@ -611,10 +619,6 @@ static struct SV_LOG_STR gSvLog[WPE_IRQ_TYPE_AMOUNT];
 	} \
 } while (0)
 
-
-#else
-#define IRQ_LOG_PRINTER(irq, ppb, logT)
-#endif
 
 /* WPE unmapped base address macro for GCE to access */
 #define WPE_WPE_START_HW                (WPE_BASE_HW)
@@ -1485,7 +1489,7 @@ static inline int m4u_control_iommu_port(void)
 #endif
 
 
-static bool ConfigWPERequest(unsigned int ReqIdx)
+static bool ConfigWPERequest(signed int ReqIdx)
 {
 #ifdef WPE_USE_GCE
 	unsigned int j;
@@ -2403,13 +2407,13 @@ static bool Check_WPE_Is_Busy(void)
 static signed int WPE_DumpReg(void)
 {
 	signed int  Ret = 0;
-	unsigned int  i, j;
+	/*unsigned int  i, j;  */
+
+	cmdq_util_err("- E.");
 	/*  */
-	LOG_INF("- E.");
-	/*  */
-	LOG_INF("WPE Registers Info\n");
+	cmdq_util_err("WPE (IMG2) Registers Info\n");
 	/* WPE Config0 */
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+	cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_WPE_START_HW),
 		(unsigned int)WPE_RD32(WPE_WPE_START_REG),
 		(unsigned int)(WPE_CTL_MOD_EN_HW),
@@ -2418,7 +2422,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_CTL_DMA_EN_REG),
 		(unsigned int)(WPE_CTL_CFG_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_CFG_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+	cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_CTL_FMT_SEL_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_FMT_SEL_REG),
 		(unsigned int)(WPE_CTL_INT_EN_HW),
@@ -2427,14 +2431,14 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_CTL_INT_STATUS_REG),
 		(unsigned int)(WPE_CTL_INT_STATUSX_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_INT_STATUSX_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+	cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_CTL_TDR_TILE_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_TDR_TILE_REG),
 		(unsigned int)(WPE_CTL_TDR_DBG_STATUS_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_TDR_DBG_STATUS_REG),
 		(unsigned int)(WPE_CTL_TDR_TCM_EN_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_TDR_TCM_EN_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+	cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_CTL_WPE_DCM_DIS_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_WPE_DCM_DIS_REG),
 		(unsigned int)(WPE_CTL_DMA_DCM_DIS_HW),
@@ -2443,7 +2447,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_CTL_WPE_DCM_STATUS_REG),
 		(unsigned int)(WPE_CTL_DMA_DCM_STATUS_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_DMA_DCM_STATUS_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_CTL_DBG_R_BW_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_DBG_R_BW_REG),
@@ -2453,7 +2457,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_CTL_DBG_RUNTIME_REG),
 		(unsigned int)(WPE_RDMA1_PEND_DATA_CNT_HW),
 		(unsigned int)WPE_RD32(WPE_RDMA1_PEND_DATA_CNT_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_CTL_WPE_REQ_STATUS_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_WPE_REQ_STATUS_REG),
@@ -2463,7 +2467,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_CTL_WPE_RDY_STATUS_REG),
 		(unsigned int)(WPE_CTL_DMA_RDY_STATUS_HW),
 		(unsigned int)WPE_RD32(WPE_CTL_DMA_RDY_STATUS_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_VGEN_CTL_HW),
 		(unsigned int)WPE_RD32(WPE_VGEN_CTL_REG),
@@ -2475,7 +2479,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_VGEN_HORI_STEP_REG),
 		(unsigned int)(WPE_VGEN_VERT_STEP_HW),
 		(unsigned int)WPE_RD32(WPE_VGEN_VERT_STEP_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_VFIFO_CTL_HW),
 		(unsigned int)WPE_RD32(WPE_VFIFO_CTL_REG),
@@ -2487,7 +2491,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_MDP_CROP_X_REG),
 		(unsigned int)(WPE_MDP_CROP_Y_HW),
 		(unsigned int)WPE_RD32(WPE_MDP_CROP_Y_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_ISPCROP_CON1_HW),
 		(unsigned int)WPE_RD32(WPE_ISPCROP_CON1_REG),
@@ -2499,7 +2503,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_PSP2_CTL_REG),
 		(unsigned int)(WPE_PSP_BORDER_HW),
 		(unsigned int)WPE_RD32(WPE_PSP_BORDER_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+	cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_ADDR_GEN_SOFT_RSTSTAT_0_HW),
 		(unsigned int)WPE_RD32(WPE_ADDR_GEN_SOFT_RSTSTAT_0_REG),
 		(unsigned int)(WPE_ADDR_GEN_BASE_ADDR_0_HW),
@@ -2508,7 +2512,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_ADDR_GEN_OFFSET_ADDR_0_REG),
 		(unsigned int)(WPE_ADDR_GEN_STRIDE_0_HW),
 		(unsigned int)WPE_RD32(WPE_ADDR_GEN_STRIDE_0_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+	cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_ADDR_GEN_SOFT_RSTSTAT_1_HW),
 		(unsigned int)WPE_RD32(WPE_ADDR_GEN_SOFT_RSTSTAT_1_REG),
 		(unsigned int)(WPE_ADDR_GEN_BASE_ADDR_1_HW),
@@ -2517,7 +2521,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_ADDR_GEN_OFFSET_ADDR_1_REG),
 		(unsigned int)(WPE_ADDR_GEN_STRIDE_1_HW),
 		(unsigned int)WPE_RD32(WPE_ADDR_GEN_STRIDE_1_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+	cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_DMA_SOFT_RSTSTAT_HW),
 		(unsigned int)WPE_RD32(WPE_DMA_SOFT_RSTSTAT_REG),
 		(unsigned int)(WPE_TDRI_BASE_ADDR_HW),
@@ -2526,7 +2530,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_TDRI_OFST_ADDR_REG),
 		(unsigned int)(WPE_TDRI_XSIZE_HW),
 		(unsigned int)WPE_RD32(WPE_TDRI_XSIZE_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_WPEO_BASE_ADDR_HW),
 		(unsigned int)WPE_RD32(WPE_WPEO_BASE_ADDR_REG),
@@ -2538,7 +2542,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_WPEO_YSIZE_REG),
 		(unsigned int)(WPE_WPEO_STRIDE_HW),
 		(unsigned int)WPE_RD32(WPE_WPEO_STRIDE_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X][ 0x%08X %08X]\n",
 		(unsigned int)(WPE_VECI_BASE_ADDR_HW),
 		(unsigned int)WPE_RD32(WPE_VECI_BASE_ADDR_REG),
@@ -2550,7 +2554,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_VECI_YSIZE_REG),
 		(unsigned int)(WPE_VECI_STRIDE_HW),
 		(unsigned int)WPE_RD32(WPE_VECI_STRIDE_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_VEC2I_BASE_ADDR_HW),
 		(unsigned int)WPE_RD32(WPE_VEC2I_BASE_ADDR_REG),
@@ -2562,7 +2566,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_VEC2I_YSIZE_REG),
 		(unsigned int)(WPE_VEC2I_STRIDE_HW),
 		(unsigned int)WPE_RD32(WPE_VEC2I_STRIDE_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_VEC3I_BASE_ADDR_HW),
 		(unsigned int)WPE_RD32(WPE_VEC3I_BASE_ADDR_REG),
@@ -2574,7 +2578,7 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)WPE_RD32(WPE_VEC3I_YSIZE_REG),
 		(unsigned int)(WPE_VEC3I_STRIDE_HW),
 		(unsigned int)WPE_RD32(WPE_VEC3I_STRIDE_REG));
-	LOG_INF(
+	cmdq_util_err(
 		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
 		(unsigned int)(WPE_DMA_ERR_CTRL_HW),
 		(unsigned int)WPE_RD32(WPE_DMA_ERR_CTRL_REG),
@@ -2587,188 +2591,189 @@ static signed int WPE_DumpReg(void)
 		(unsigned int)(WPE_VEC3I_ERR_STAT_HW),
 		(unsigned int)WPE_RD32(WPE_VEC3I_ERR_STAT_REG));
 
-#if (MTK_WPE_COUNT == 2)
-	LOG_INF("WPE B Registers Info\n");
-	/* WPE Config0 */
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_WPE_START_HW),
-		(unsigned int)WPE_RD32(WPE_B_WPE_START_REG),
-		(unsigned int)(WPE_B_CTL_MOD_EN_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_MOD_EN_REG),
-		(unsigned int)(WPE_B_CTL_DMA_EN_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_DMA_EN_REG),
-		(unsigned int)(WPE_B_CTL_CFG_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_CFG_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_CTL_FMT_SEL_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_FMT_SEL_REG),
-		(unsigned int)(WPE_B_CTL_INT_EN_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_INT_EN_REG),
-		(unsigned int)(WPE_B_CTL_INT_STATUS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_INT_STATUS_REG),
-		(unsigned int)(WPE_B_CTL_INT_STATUSX_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_INT_STATUSX_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_CTL_TDR_TILE_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_TDR_TILE_REG),
-		(unsigned int)(WPE_B_CTL_TDR_DBG_STATUS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_TDR_DBG_STATUS_REG),
-		(unsigned int)(WPE_B_CTL_TDR_TCM_EN_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_TDR_TCM_EN_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_CTL_WPE_DCM_DIS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_WPE_DCM_DIS_REG),
-		(unsigned int)(WPE_B_CTL_DMA_DCM_DIS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_DMA_DCM_DIS_REG),
-		(unsigned int)(WPE_B_CTL_WPE_DCM_STATUS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_WPE_DCM_STATUS_REG),
-		(unsigned int)(WPE_B_CTL_DMA_DCM_STATUS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_DMA_DCM_STATUS_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_CTL_DBG_R_BW_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_DBG_R_BW_REG),
-		(unsigned int)(WPE_B_CTL_DBG_W_BW_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_DBG_W_BW_REG),
-		(unsigned int)(WPE_B_CTL_DBG_RUNTIME_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_DBG_RUNTIME_REG),
-		(unsigned int)(WPE_B_RDMA1_PEND_DATA_CNT_HW),
-		(unsigned int)WPE_RD32(WPE_B_RDMA1_PEND_DATA_CNT_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_CTL_WPE_REQ_STATUS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_WPE_REQ_STATUS_REG),
-		(unsigned int)(WPE_B_CTL_DMA_REQ_STATUS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_DMA_REQ_STATUS_REG),
-		(unsigned int)(WPE_B_CTL_WPE_RDY_STATUS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_WPE_RDY_STATUS_REG),
-		(unsigned int)(WPE_B_CTL_DMA_RDY_STATUS_HW),
-		(unsigned int)WPE_RD32(WPE_B_CTL_DMA_RDY_STATUS_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_VGEN_CTL_HW),
-		(unsigned int)WPE_RD32(WPE_B_VGEN_CTL_REG),
-		(unsigned int)(WPE_B_VGEN_IN_IMG_HW),
-		(unsigned int)WPE_RD32(WPE_B_VGEN_IN_IMG_REG),
-		(unsigned int)(WPE_B_VGEN_OUT_IMG_HW),
-		(unsigned int)WPE_RD32(WPE_B_VGEN_OUT_IMG_REG),
-		(unsigned int)(WPE_B_VGEN_HORI_STEP_HW),
-		(unsigned int)WPE_RD32(WPE_B_VGEN_HORI_STEP_REG),
-		(unsigned int)(WPE_B_VGEN_VERT_STEP_HW),
-		(unsigned int)WPE_RD32(WPE_B_VGEN_VERT_STEP_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_VFIFO_CTL_HW),
-		(unsigned int)WPE_RD32(WPE_B_VFIFO_CTL_REG),
-		(unsigned int)(WPE_B_CFIFO_CTL_HW),
-		(unsigned int)WPE_RD32(WPE_B_CFIFO_CTL_REG),
-		(unsigned int)(WPE_B_C24_TILE_EDGE_HW),
-		(unsigned int)WPE_RD32(WPE_B_C24_TILE_EDGE_REG),
-		(unsigned int)(WPE_B_MDP_CROP_X_HW),
-		(unsigned int)WPE_RD32(WPE_B_MDP_CROP_X_REG),
-		(unsigned int)(WPE_B_MDP_CROP_Y_HW),
-		(unsigned int)WPE_RD32(WPE_B_MDP_CROP_Y_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_ISPCROP_CON1_HW),
-		(unsigned int)WPE_RD32(WPE_B_ISPCROP_CON1_REG),
-		(unsigned int)(WPE_B_ISPCROP_CON2_HW),
-		(unsigned int)WPE_RD32(WPE_B_ISPCROP_CON2_REG),
-		(unsigned int)(WPE_B_PSP_CTL_HW),
-		(unsigned int)WPE_RD32(WPE_B_PSP_CTL_REG),
-		(unsigned int)(WPE_B_PSP2_CTL_HW),
-		(unsigned int)WPE_RD32(WPE_B_PSP2_CTL_REG),
-		(unsigned int)(WPE_B_PSP_BORDER_HW),
-		(unsigned int)WPE_RD32(WPE_B_PSP_BORDER_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_ADDR_GEN_SOFT_RSTSTAT_0_HW),
-		(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_SOFT_RSTSTAT_0_REG),
-		(unsigned int)(WPE_B_ADDR_GEN_BASE_ADDR_0_HW),
-		(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_BASE_ADDR_0_REG),
-		(unsigned int)(WPE_B_ADDR_GEN_OFFSET_ADDR_0_HW),
-		(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_OFFSET_ADDR_0_REG),
-		(unsigned int)(WPE_B_ADDR_GEN_STRIDE_0_HW),
-		(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_STRIDE_0_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_ADDR_GEN_SOFT_RSTSTAT_1_HW),
-		(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_SOFT_RSTSTAT_1_REG),
-		(unsigned int)(WPE_B_ADDR_GEN_BASE_ADDR_1_HW),
-		(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_BASE_ADDR_1_REG),
-		(unsigned int)(WPE_B_ADDR_GEN_OFFSET_ADDR_1_HW),
-		(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_OFFSET_ADDR_1_REG),
-		(unsigned int)(WPE_B_ADDR_GEN_STRIDE_1_HW),
-		(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_STRIDE_1_REG));
-	LOG_INF("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_DMA_SOFT_RSTSTAT_HW),
-		(unsigned int)WPE_RD32(WPE_B_DMA_SOFT_RSTSTAT_REG),
-		(unsigned int)(WPE_B_TDRI_BASE_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_TDRI_BASE_ADDR_REG),
-		(unsigned int)(WPE_B_TDRI_OFST_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_TDRI_OFST_ADDR_REG),
-		(unsigned int)(WPE_B_TDRI_XSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_TDRI_XSIZE_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_WPEO_BASE_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_WPEO_BASE_ADDR_REG),
-		(unsigned int)(WPE_B_WPEO_OFST_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_WPEO_OFST_ADDR_REG),
-		(unsigned int)(WPE_B_WPEO_XSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_WPEO_XSIZE_REG),
-		(unsigned int)(WPE_B_WPEO_YSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_WPEO_YSIZE_REG),
-		(unsigned int)(WPE_B_WPEO_STRIDE_HW),
-		(unsigned int)WPE_RD32(WPE_B_WPEO_STRIDE_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X][ 0x%08X %08X]\n",
-		(unsigned int)(WPE_B_VECI_BASE_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_VECI_BASE_ADDR_REG),
-		(unsigned int)(WPE_B_VECI_OFST_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_VECI_OFST_ADDR_REG),
-		(unsigned int)(WPE_B_VECI_XSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VECI_XSIZE_REG),
-		(unsigned int)(WPE_B_VECI_YSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VECI_YSIZE_REG),
-		(unsigned int)(WPE_B_VECI_STRIDE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VECI_STRIDE_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_VEC2I_BASE_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC2I_BASE_ADDR_REG),
-		(unsigned int)(WPE_B_VEC2I_OFST_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC2I_OFST_ADDR_REG),
-		(unsigned int)(WPE_B_VEC2I_XSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC2I_XSIZE_REG),
-		(unsigned int)(WPE_B_VEC2I_YSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC2I_YSIZE_REG),
-		(unsigned int)(WPE_B_VEC2I_STRIDE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC2I_STRIDE_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_VEC3I_BASE_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC3I_BASE_ADDR_REG),
-		(unsigned int)(WPE_B_VEC3I_OFST_ADDR_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC3I_OFST_ADDR_REG),
-		(unsigned int)(WPE_B_VEC3I_XSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC3I_XSIZE_REG),
-		(unsigned int)(WPE_B_VEC3I_YSIZE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC3I_YSIZE_REG),
-		(unsigned int)(WPE_B_VEC3I_STRIDE_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC3I_STRIDE_REG));
-	LOG_INF(
-		"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
-		(unsigned int)(WPE_B_DMA_ERR_CTRL_HW),
-		(unsigned int)WPE_RD32(WPE_B_DMA_ERR_CTRL_REG),
-		(unsigned int)(WPE_B_WPEO_ERR_STAT_HW),
-		(unsigned int)WPE_RD32(WPE_B_WPEO_ERR_STAT_REG),
-		(unsigned int)(WPE_B_VECI_ERR_STAT_HW),
-		(unsigned int)WPE_RD32(WPE_B_VECI_ERR_STAT_REG),
-		(unsigned int)(WPE_B_VEC2I_ERR_STAT_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC2I_ERR_STAT_REG),
-		(unsigned int)(WPE_B_VEC3I_ERR_STAT_HW),
-		(unsigned int)WPE_RD32(WPE_B_VEC3I_ERR_STAT_REG));
-#endif
+	if (CG_DUAL_WPE_ON == CG_ENABLE) {
+		cmdq_util_err("DUAL WPE (IMG1) Registers Info\n");
+		/* WPE Config0 */
+		cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_WPE_START_HW),
+			(unsigned int)WPE_RD32(WPE_B_WPE_START_REG),
+			(unsigned int)(WPE_B_CTL_MOD_EN_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_MOD_EN_REG),
+			(unsigned int)(WPE_B_CTL_DMA_EN_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_DMA_EN_REG),
+			(unsigned int)(WPE_B_CTL_CFG_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_CFG_REG));
+		cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_CTL_FMT_SEL_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_FMT_SEL_REG),
+			(unsigned int)(WPE_B_CTL_INT_EN_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_INT_EN_REG),
+			(unsigned int)(WPE_B_CTL_INT_STATUS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_INT_STATUS_REG),
+			(unsigned int)(WPE_B_CTL_INT_STATUSX_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_INT_STATUSX_REG));
+		cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_CTL_TDR_TILE_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_TDR_TILE_REG),
+			(unsigned int)(WPE_B_CTL_TDR_DBG_STATUS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_TDR_DBG_STATUS_REG),
+			(unsigned int)(WPE_B_CTL_TDR_TCM_EN_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_TDR_TCM_EN_REG));
+		cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_CTL_WPE_DCM_DIS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_WPE_DCM_DIS_REG),
+			(unsigned int)(WPE_B_CTL_DMA_DCM_DIS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_DMA_DCM_DIS_REG),
+			(unsigned int)(WPE_B_CTL_WPE_DCM_STATUS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_WPE_DCM_STATUS_REG),
+			(unsigned int)(WPE_B_CTL_DMA_DCM_STATUS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_DMA_DCM_STATUS_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_CTL_DBG_R_BW_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_DBG_R_BW_REG),
+			(unsigned int)(WPE_B_CTL_DBG_W_BW_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_DBG_W_BW_REG),
+			(unsigned int)(WPE_B_CTL_DBG_RUNTIME_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_DBG_RUNTIME_REG),
+			(unsigned int)(WPE_B_RDMA1_PEND_DATA_CNT_HW),
+			(unsigned int)WPE_RD32(WPE_B_RDMA1_PEND_DATA_CNT_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_CTL_WPE_REQ_STATUS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_WPE_REQ_STATUS_REG),
+			(unsigned int)(WPE_B_CTL_DMA_REQ_STATUS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_DMA_REQ_STATUS_REG),
+			(unsigned int)(WPE_B_CTL_WPE_RDY_STATUS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_WPE_RDY_STATUS_REG),
+			(unsigned int)(WPE_B_CTL_DMA_RDY_STATUS_HW),
+			(unsigned int)WPE_RD32(WPE_B_CTL_DMA_RDY_STATUS_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_VGEN_CTL_HW),
+			(unsigned int)WPE_RD32(WPE_B_VGEN_CTL_REG),
+			(unsigned int)(WPE_B_VGEN_IN_IMG_HW),
+			(unsigned int)WPE_RD32(WPE_B_VGEN_IN_IMG_REG),
+			(unsigned int)(WPE_B_VGEN_OUT_IMG_HW),
+			(unsigned int)WPE_RD32(WPE_B_VGEN_OUT_IMG_REG),
+			(unsigned int)(WPE_B_VGEN_HORI_STEP_HW),
+			(unsigned int)WPE_RD32(WPE_B_VGEN_HORI_STEP_REG),
+			(unsigned int)(WPE_B_VGEN_VERT_STEP_HW),
+			(unsigned int)WPE_RD32(WPE_B_VGEN_VERT_STEP_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_VFIFO_CTL_HW),
+			(unsigned int)WPE_RD32(WPE_B_VFIFO_CTL_REG),
+			(unsigned int)(WPE_B_CFIFO_CTL_HW),
+			(unsigned int)WPE_RD32(WPE_B_CFIFO_CTL_REG),
+			(unsigned int)(WPE_B_C24_TILE_EDGE_HW),
+			(unsigned int)WPE_RD32(WPE_B_C24_TILE_EDGE_REG),
+			(unsigned int)(WPE_B_MDP_CROP_X_HW),
+			(unsigned int)WPE_RD32(WPE_B_MDP_CROP_X_REG),
+			(unsigned int)(WPE_B_MDP_CROP_Y_HW),
+			(unsigned int)WPE_RD32(WPE_B_MDP_CROP_Y_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_ISPCROP_CON1_HW),
+			(unsigned int)WPE_RD32(WPE_B_ISPCROP_CON1_REG),
+			(unsigned int)(WPE_B_ISPCROP_CON2_HW),
+			(unsigned int)WPE_RD32(WPE_B_ISPCROP_CON2_REG),
+			(unsigned int)(WPE_B_PSP_CTL_HW),
+			(unsigned int)WPE_RD32(WPE_B_PSP_CTL_REG),
+			(unsigned int)(WPE_B_PSP2_CTL_HW),
+			(unsigned int)WPE_RD32(WPE_B_PSP2_CTL_REG),
+			(unsigned int)(WPE_B_PSP_BORDER_HW),
+			(unsigned int)WPE_RD32(WPE_B_PSP_BORDER_REG));
+		cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_ADDR_GEN_SOFT_RSTSTAT_0_HW),
+			(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_SOFT_RSTSTAT_0_REG),
+			(unsigned int)(WPE_B_ADDR_GEN_BASE_ADDR_0_HW),
+			(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_BASE_ADDR_0_REG),
+			(unsigned int)(WPE_B_ADDR_GEN_OFFSET_ADDR_0_HW),
+			(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_OFFSET_ADDR_0_REG),
+			(unsigned int)(WPE_B_ADDR_GEN_STRIDE_0_HW),
+			(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_STRIDE_0_REG));
+		cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_ADDR_GEN_SOFT_RSTSTAT_1_HW),
+			(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_SOFT_RSTSTAT_1_REG),
+			(unsigned int)(WPE_B_ADDR_GEN_BASE_ADDR_1_HW),
+			(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_BASE_ADDR_1_REG),
+			(unsigned int)(WPE_B_ADDR_GEN_OFFSET_ADDR_1_HW),
+			(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_OFFSET_ADDR_1_REG),
+			(unsigned int)(WPE_B_ADDR_GEN_STRIDE_1_HW),
+			(unsigned int)WPE_RD32(WPE_B_ADDR_GEN_STRIDE_1_REG));
+		cmdq_util_err("[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_DMA_SOFT_RSTSTAT_HW),
+			(unsigned int)WPE_RD32(WPE_B_DMA_SOFT_RSTSTAT_REG),
+			(unsigned int)(WPE_B_TDRI_BASE_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_TDRI_BASE_ADDR_REG),
+			(unsigned int)(WPE_B_TDRI_OFST_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_TDRI_OFST_ADDR_REG),
+			(unsigned int)(WPE_B_TDRI_XSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_TDRI_XSIZE_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_WPEO_BASE_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_WPEO_BASE_ADDR_REG),
+			(unsigned int)(WPE_B_WPEO_OFST_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_WPEO_OFST_ADDR_REG),
+			(unsigned int)(WPE_B_WPEO_XSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_WPEO_XSIZE_REG),
+			(unsigned int)(WPE_B_WPEO_YSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_WPEO_YSIZE_REG),
+			(unsigned int)(WPE_B_WPEO_STRIDE_HW),
+			(unsigned int)WPE_RD32(WPE_B_WPEO_STRIDE_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X][ 0x%08X %08X]\n",
+			(unsigned int)(WPE_B_VECI_BASE_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_VECI_BASE_ADDR_REG),
+			(unsigned int)(WPE_B_VECI_OFST_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_VECI_OFST_ADDR_REG),
+			(unsigned int)(WPE_B_VECI_XSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VECI_XSIZE_REG),
+			(unsigned int)(WPE_B_VECI_YSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VECI_YSIZE_REG),
+			(unsigned int)(WPE_B_VECI_STRIDE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VECI_STRIDE_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_VEC2I_BASE_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC2I_BASE_ADDR_REG),
+			(unsigned int)(WPE_B_VEC2I_OFST_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC2I_OFST_ADDR_REG),
+			(unsigned int)(WPE_B_VEC2I_XSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC2I_XSIZE_REG),
+			(unsigned int)(WPE_B_VEC2I_YSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC2I_YSIZE_REG),
+			(unsigned int)(WPE_B_VEC2I_STRIDE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC2I_STRIDE_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_VEC3I_BASE_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC3I_BASE_ADDR_REG),
+			(unsigned int)(WPE_B_VEC3I_OFST_ADDR_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC3I_OFST_ADDR_REG),
+			(unsigned int)(WPE_B_VEC3I_XSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC3I_XSIZE_REG),
+			(unsigned int)(WPE_B_VEC3I_YSIZE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC3I_YSIZE_REG),
+			(unsigned int)(WPE_B_VEC3I_STRIDE_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC3I_STRIDE_REG));
+		cmdq_util_err(
+			"[0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X] [0x%08X %08X]\n",
+			(unsigned int)(WPE_B_DMA_ERR_CTRL_HW),
+			(unsigned int)WPE_RD32(WPE_B_DMA_ERR_CTRL_REG),
+			(unsigned int)(WPE_B_WPEO_ERR_STAT_HW),
+			(unsigned int)WPE_RD32(WPE_B_WPEO_ERR_STAT_REG),
+			(unsigned int)(WPE_B_VECI_ERR_STAT_HW),
+			(unsigned int)WPE_RD32(WPE_B_VECI_ERR_STAT_REG),
+			(unsigned int)(WPE_B_VEC2I_ERR_STAT_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC2I_ERR_STAT_REG),
+			(unsigned int)(WPE_B_VEC3I_ERR_STAT_HW),
+			(unsigned int)WPE_RD32(WPE_B_VEC3I_ERR_STAT_REG));
+	}
 
+/*
 	for (i = 0; i < _SUPPORT_MAX_WPE_REQUEST_RING_SIZE_; i++) {
 		LOG_INF(
 			"WPE Req:State:%d, procID:0x%08X, callerID:0x%08X, enqReqNum:%d, FraWRIdx:%d, FraRDIdx:%d\n",
@@ -2797,170 +2802,91 @@ static signed int WPE_DumpReg(void)
 		}
 
 	}
+*/
 
-	LOG_INF("- X.");
+	cmdq_util_err("- X.");
 	/*  */
 	return Ret;
 }
+
 #ifndef __WPE_EP_NO_CLKMGR__  /*CCF*/
-#ifdef Prepare_ccf_clock_En
-static inline void WPE_Prepare_ccf_clock(void)
-{
-	int ret;
-	/* must keep this clk open order: */
-	/*CG_SCP_SYS_DIS-> CG_MM_SMI_COMMON ->*/
-	/*CG_SCP_SYS_ISP -> WPE clk */
-	smi_bus_prepare_enable(SMI_LARB9, WPE_DEV_NAME);
-
-	ret = clk_prepare(wpe_clk.CG_IMGSYS_LARB9);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_LARB9 clock\n");
-
-	ret = clk_prepare(wpe_clk.CG_IMGSYS_WPE_A);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_WPE_A clock\n");
-#if (MTK_WPE_COUNT == 2)
-	smi_bus_prepare_enable(SMI_LARB11, WPE_DEV_NAME);
-
-	ret = clk_prepare(wpe_clk.CG_IMGSYS_LARB11);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_LARB11 clock\n");
-
-	ret = clk_prepare(wpe_clk.CG_IMGSYS_WPE_B);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_WPE_B clock\n");
-#endif
-}
-
-static inline void WPE_Enable_ccf_clock(void)
-{
-	int ret;
-	/* must keep this clk open order: */
-	/*CG_SCP_SYS_DIS-> CG_MM_SMI_COMMON*/
-	/*-> CG_SCP_SYS_ISP -> WPE  clk */
-
-	smi_bus_prepare_enable(SMI_LARB9, WPE_DEV_NAME);
-
-	ret = clk_enable(wpe_clk.CG_IMGSYS_LARB9);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_LARB9\n");
-
-	ret = clk_enable(wpe_clk.CG_IMGSYS_WPE_A);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_WPE_A clock\n");
-#if (MTK_WPE_COUNT == 2)
-	smi_bus_prepare_enable(SMI_LARB11, WPE_DEV_NAME);
-
-	ret = clk_enable(wpe_clk.CG_IMGSYS_LARB11);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_LARB11 clock\n");
-
-	ret = clk_enable(wpe_clk.CG_IMGSYS_WPE_B);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_WPE_B clock\n");
-#endif
-
-}
-#endif
 static inline void WPE_Prepare_Enable_ccf_clock(void)
 {
 	int ret;
-	/* must keep this clk open order:*/
-	/*CG_SCP_SYS_DIS-> CG_MM_SMI_COMMON ->*/
-	/*CG_SCP_SYS_ISP -> WPE clk */
-	/*smi_bus_enable(SMI_LARB_IMGSYS1, "camera_wpe");*/
-	smi_bus_prepare_enable(SMI_LARB9, WPE_DEV_NAME);
-#ifdef WPE_B_ONLY
-	smi_bus_prepare_enable(SMI_LARB11, WPE_DEV_NAME);
-#endif
 
-	ret = clk_prepare_enable(wpe_clk.CG_IMGSYS_LARB9);
-	if (ret)
-		LOG_ERR("cannot prepare and enable IMG_LARB9 clock\n");
+	pm_runtime_get_sync(WPE_devs->dev);
 
-	ret = clk_prepare_enable(wpe_clk.CG_IMGSYS_WPE_A);
-	if (ret)
-		LOG_ERR("cannot prepare CG_IMGSYS_WPE_A clock\n");
+	/* In 6873, 6853, larb9 here  is IMG2 larb11*/
+	LOG_INF("WPE Prepare Enable CCF clock");
 
-#ifdef FORCE_IMG1_ON
-	ret = clk_prepare_enable(wpe_clk.CG_IMGSYS1);
-	if (ret)
-		LOG_ERR("cannot prepare and enable IMGSYS1 clock\n");
-#endif
+	if (wpe_clk.CG_IMGSYS_LARB9 != NULL) {
+		ret = clk_prepare_enable(wpe_clk.CG_IMGSYS_LARB9);
+		if (ret)
+			LOG_INF("cannot prepare and enable IMG_LARB9 clock\n");
+		LOG_INF("get CG_IMGSYS_LARB9 OK");
+	}
 
-#if (MTK_WPE_COUNT == 2)
-	smi_bus_prepare_enable(SMI_LARB11, WPE_DEV_NAME);
+	if (wpe_clk.CG_IMGSYS_WPE_A != NULL) {
+		ret = clk_prepare_enable(wpe_clk.CG_IMGSYS_WPE_A);
+		if (ret)
+			LOG_INF("cannot prepare CG_IMGSYS_WPE_A clock\n");
+		LOG_INF("get CG_IMGSYS_WPE_A OK");
+	}
 
-	ret = clk_prepare_enable(wpe_clk.CG_IMGSYS_LARB11);
-	if (ret)
-		LOG_ERR("cannot prepare and enable IMG_LARB11 clock\n");
+	if (wpe_clk.CG_IMGSYS1 != NULL) {
+		ret = clk_prepare_enable(wpe_clk.CG_IMGSYS1);
+		if (ret) {
+			LOG_INF("cannot prepare and enable IMGSYS1 clock\n");
+		}
+		LOG_INF("get wpe_clk.CG_IMGSYS1 OK");
+	}
 
-	ret = clk_prepare_enable(wpe_clk.CG_IMGSYS_WPE_B);
-	if (ret)
-		LOG_ERR("cannot prepare and enable CG_IMGSYS_WPE_B clock\n");
-#endif
+	if (wpe_clk.CG_IMGSYS_LARB11 != NULL) {
+		ret = clk_prepare_enable(wpe_clk.CG_IMGSYS_LARB11);
+		if (ret)
+			LOG_INF("cannot prepare and enable IMG_LARB11 clock\n");
+		LOG_INF("get CG_IMGSYS_LARB11 OK");
+	}
 
-}
-#ifdef Unprepare_ccf_clock_En
-static inline void WPE_Unprepare_ccf_clock(void)
-{
-	/* must keep this clk close order:*/
-	/*WPE clk -> CG_SCP_SYS_ISP ->*/
-	/*CG_MM_SMI_COMMON -> CG_SCP_SYS_DIS */
-	clk_unprepare(wpe_clk.CG_IMGSYS_WPE_A);
-	clk_unprepare(wpe_clk.CG_IMGSYS_LARB9);
+	if (wpe_clk.CG_IMGSYS_WPE_B != NULL) {
+		ret = clk_prepare_enable(wpe_clk.CG_IMGSYS_WPE_B);
+		if (ret)
+			LOG_INF("cannot prepare and enable CG_IMGSYS_WPE_B clock\n");
+		LOG_INF("get CG_IMGSYS_WPE_B OK");
+	}
 
-	smi_bus_disable_unprepare(SMI_LARB9, WPE_DEV_NAME);
-#if (MTK_WPE_COUNT == 2)
-	clk_unprepare(wpe_clk.CG_IMGSYS_WPE_B);
-	clk_unprepare(wpe_clk.CG_IMGSYS_LARB11);
-
-	//smi_bus_disable_unprepare(SMI_LARB11, WPE_DEV_NAME);
-#endif
-
+	LOG_INF("CG_DUAL_WPE_ON = %d\n",CG_DUAL_WPE_ON);
 }
 
-static inline void WPE_Disable_ccf_clock(void)
-{
-	/* must keep this clk close order:*/
-	/*WPE clk -> CG_SCP_SYS_ISP ->*/
-	/*CG_MM_SMI_COMMON -> CG_SCP_SYS_DIS */
-	clk_disable(wpe_clk.CG_IMGSYS_WPE_A);
-	clk_disable(wpe_clk.CG_IMGSYS_LARB9);
-
-	smi_bus_disable_unprepare(SMI_LARB9, WPE_DEV_NAME);
-#if (MTK_WPE_COUNT == 2)
-	clk_disable(wpe_clk.CG_IMGSYS_WPE_B);
-	clk_disable(wpe_clk.CG_IMGSYS_LARB11);
-
-	//smi_bus_disable_unprepare(SMI_LARB11, WPE_DEV_NAME);
-#endif
-
-}
-#endif
 static inline void WPE_Disable_Unprepare_ccf_clock(void)
 {
 	/* must keep this clk close order:*/
 	/*WPE clk -> CG_SCP_SYS_ISP -> */
 	/*CG_MM_SMI_COMMON -> CG_SCP_SYS_DIS */
-#ifdef FORCE_IMG1_ON
-	clk_disable_unprepare(wpe_clk.CG_IMGSYS1);
-#endif
-	clk_disable_unprepare(wpe_clk.CG_IMGSYS_WPE_A);
-	clk_disable_unprepare(wpe_clk.CG_IMGSYS_LARB9);
+	LOG_INF("WPE Disable UnPrepare CCF clock");
 
-	smi_bus_disable_unprepare(SMI_LARB9, WPE_DEV_NAME);
-#ifdef WPE_B_ONLY
-	smi_bus_disable_unprepare(SMI_LARB11, WPE_DEV_NAME);
-#endif
-	/*smi_bus_disable(SMI_LARB_IMGSYS1, "camera_wpe");*/
-#if (MTK_WPE_COUNT == 2)
-	clk_disable_unprepare(wpe_clk.CG_IMGSYS_WPE_B);
-	clk_disable_unprepare(wpe_clk.CG_IMGSYS_LARB11);
+	if (wpe_clk.CG_IMGSYS1 != NULL)
+		clk_disable_unprepare(wpe_clk.CG_IMGSYS1);
 
-	smi_bus_disable_unprepare(SMI_LARB11, WPE_DEV_NAME);
-#endif
+	if (wpe_clk.CG_IMGSYS_WPE_A != NULL)
+		clk_disable_unprepare(wpe_clk.CG_IMGSYS_WPE_A);
 
+	/* In 6873, 6853, larb9 here is IMG2 larb11*/
+	if (wpe_clk.CG_IMGSYS_LARB9 != NULL)
+		clk_disable_unprepare(wpe_clk.CG_IMGSYS_LARB9);
+
+	/* In 6873, 6853, larb11 here is IMG1 larb9*/
+
+	if (wpe_clk.CG_IMGSYS_WPE_B != NULL)
+		clk_disable_unprepare(wpe_clk.CG_IMGSYS_WPE_B);
+	if (wpe_clk.CG_IMGSYS_LARB11 != NULL)
+		clk_disable_unprepare(wpe_clk.CG_IMGSYS_LARB11);
+
+	CG_DUAL_WPE_ON = CG_DISABLE;
+
+	pm_runtime_put_sync(WPE_devs->dev);
+
+	LOG_INF("CG_DUAL_WPE_ON = %d\n",CG_DUAL_WPE_ON);
 }
 #endif
 
@@ -2984,15 +2910,6 @@ static void WPE_EnableClock(bool En)
 		case 0:
 #ifndef __WPE_EP_NO_CLKMGR__ /*CCF*/
 			WPE_Prepare_Enable_ccf_clock();
-#else
-			enable_clock(MT_CG_DOWE0_SMI_COMMON, "CAMERA");
-			enable_clock(MT_CG_IMAGE_CAM_SMI, "CAMERA");
-			enable_clock(MT_CG_IMAGE_CAM_CAM, "CAMERA");
-			enable_clock(MT_CG_IMAGE_SEN_TG, "CAMERA");
-			enable_clock(MT_CG_IMAGE_SEN_CAM, "CAMERA");
-			enable_clock(MT_CG_IMAGE_CAM_SV, "CAMERA");
-			/* enable_clock(MT_CG_IMAGE_FD, "CAMERA"); */
-			enable_clock(MT_CG_IMAGE_LARB5_SMI, "CAMERA");
 #endif
 			break;
 		default:
@@ -3001,6 +2918,7 @@ static void WPE_EnableClock(bool En)
 		g_u4EnableClockCount++;
 		mutex_unlock(&gWpeClkMutex);
 #ifdef CONFIG_MTK_IOMMU_V2
+		LOG_INF("get CONFIG_MTK_IOMMU_V2 enable");
 		if (g_u4EnableClockCount == 1) {
 			ret = m4u_control_iommu_port();
 			if (ret)
@@ -3017,16 +2935,6 @@ static void WPE_EnableClock(bool En)
 		case 0:
 #ifndef __WPE_EP_NO_CLKMGR__ /*CCF*/
 			WPE_Disable_Unprepare_ccf_clock();
-#else
-			/* do disable clock */
-			disable_clock(MT_CG_IMAGE_CAM_SMI, "CAMERA");
-			disable_clock(MT_CG_IMAGE_CAM_CAM, "CAMERA");
-			disable_clock(MT_CG_IMAGE_SEN_TG, "CAMERA");
-			disable_clock(MT_CG_IMAGE_SEN_CAM, "CAMERA");
-			disable_clock(MT_CG_IMAGE_CAM_SV, "CAMERA");
-			/* disable_clock(MT_CG_IMAGE_FD, "CAMERA"); */
-			disable_clock(MT_CG_IMAGE_LARB5_SMI, "CAMERA");
-			disable_clock(MT_CG_DOWE0_SMI_COMMON, "CAMERA");
 #endif
 			break;
 		default:
@@ -3161,8 +3069,6 @@ static signed int WPE_WriteRegToHw
 
 		if (((ISP_WPE_BASE + pReg[i].Addr) <
 			(ISP_WPE_BASE + WPE_REG_RANGE))
-			&& ((ISP_WPE_BASE + pReg[i].Addr) >=
-			ISP_WPE_BASE)
 			&& ((pReg[i].Addr & 0x3) == 0)) {
 			WPE_WR32(ISP_WPE_BASE + pReg[i].Addr, pReg[i].Val);
 		} else {
@@ -3251,19 +3157,11 @@ static signed int WPE_WaitIrq(struct WPE_WAIT_IRQ_STRUCT *WaitIrq)
 	/* FIX to avoid build warning */
 	unsigned int irqStatus;
 	/*int cnt = 0; */
-	struct timeval time_getrequest;
-	unsigned long long sec = 0;
-	unsigned long usec = 0;
+	struct timespec64 time_getrequest ;
 
 	/* do_gettimeofday(&time_getrequest); */
-#ifdef cpu_clock_En // mt6789
-	sec = cpu_clock(0);	/* ns */
-#endif
-	do_div(sec, 1000);	/* usec */
-	usec = do_div(sec, 1000000);	/* sec and usec */
-	time_getrequest.tv_usec = usec;
-	time_getrequest.tv_sec = sec;
 
+	ktime_get_ts64(&time_getrequest);
 
 	/* Debug interrupt */
 	if (WPEInfo.DebugMask & WPE_DBG_INT) {
@@ -3489,7 +3387,7 @@ EXIT:
 	return Ret;
 }
 
-static inline unsigned int WPE_GetFrameState(unsigned int WPEReadIdx)
+static inline unsigned int WPE_GetFrameState(signed int WPEReadIdx)
 {
 	unsigned int j;
 	unsigned int ret = 0;
@@ -3533,8 +3431,9 @@ static long WPE_ioctl(struct file *pFile,
 	struct WPE_CLEAR_IRQ_STRUCT ClearIrq;
 	struct WPE_Config wpe_WpeConfig;
 	struct WPE_Request wpe_WpeReq;
-	unsigned int WPEWriteIdx = 0;
-	unsigned int WPEReadIdx = 0;
+	struct WPE_ION_MEM_INFO ion_mem_info;
+	signed int WPEWriteIdx = 0;
+	signed int WPEReadIdx = -1;
 	int idx;
 	struct WPE_USER_INFO_STRUCT *pUserInfo;
 	int enqueNum;
@@ -3542,7 +3441,9 @@ static long WPE_ioctl(struct file *pFile,
 	unsigned long flags;	/* old: MUINT32 flags; */
 				/* FIX to avoid build warning */
 	signed int restTime = 0;
-
+	int fd;
+	struct wpe_fd_list_template *wpe_ion_list, *wpe_ion_entry;
+	struct list_head *pos;
 
 
 	/*  */
@@ -3731,14 +3632,6 @@ static long WPE_ioctl(struct file *pFile,
 				if (WPE_REQUEST_STATE_EMPTY ==
 				    g_WPE_ReqRing.WPEReq_Struct[
 				    g_WPE_ReqRing.WriteIdx].State) {
-					if (enqueNum >
-						_SUPPORT_MAX_WPE_FRAME_REQUEST_ ||
-						enqueNum < 0) {
-						LOG_ERR(
-						"WPE Enque Num is bigger than enqueNum:%d\n",
-						enqueNum);
-						break;
-					}
 					spin_lock_irqsave(
 						&(WPEInfo.SpinLockIrq
 						[WPE_IRQ_TYPE_INT_WPE_ST]),
@@ -3754,6 +3647,12 @@ static long WPE_ioctl(struct file *pFile,
 					spin_unlock_irqrestore(
 						&(WPEInfo.SpinLockIrq
 					[WPE_IRQ_TYPE_INT_WPE_ST]), flags);
+					if (enqueNum >
+					_SUPPORT_MAX_WPE_FRAME_REQUEST_) {
+						LOG_ERR(
+							"WPE Enque Num is bigger than enqueNum:%d\n",
+						     enqueNum);
+					}
 					LOG_DBG("WPE_ENQNUE_NUM:%d\n",
 						enqueNum);
 				} else {
@@ -4457,6 +4356,97 @@ static long WPE_ioctl(struct file *pFile,
 
 			break;
 		}
+	case WPE_SET_BUF_PA: {
+		if (copy_from_user(&ion_mem_info,
+			(void *)Param,
+			sizeof(struct WPE_ION_MEM_INFO)) == 0) {
+			if (ion_mem_info.buf_fd == 0) {
+				LOG_ERR("buf fd equal 0\n");
+				Ret = -EFAULT;
+				goto EXIT;
+			}
+			LOG_AST("gki add list fd:%d\n", ion_mem_info.buf_fd);
+			mutex_lock(&(gWpeMutexbuf));
+
+			wpe_ion_list = kzalloc(sizeof(struct wpe_fd_list_template), GFP_KERNEL);
+			wpe_ion_entry = kzalloc(sizeof(struct wpe_fd_list_template), GFP_KERNEL);
+			if (ion_mem_info.check_flag == 1) {
+				list_for_each(pos, &wpe_fd_head) {
+					wpe_ion_entry = list_entry(pos,
+							struct wpe_fd_list_template, list);
+					if (ion_mem_info.buf_fd == wpe_ion_entry->fd) {
+						LOG_AST("fd:%d\n", ion_mem_info.buf_fd);
+						ion_mem_info.buf_pa = wpe_ion_entry->dma_addr;
+					}
+				}
+			}
+			if (ion_mem_info.check_flag == 0) {
+				wpe_put_cnt = 0;
+				wpe_get_cnt++;
+				wpe_ion_list->fd = ion_mem_info.buf_fd;
+				wpe_ion_list->buf = dma_buf_get(ion_mem_info.buf_fd);
+				wpe_ion_list->attach = dma_buf_attach(wpe_ion_list->buf,
+						WPE_devs->dev);
+				wpe_ion_list->sgt = dma_buf_map_attachment_unlocked(wpe_ion_list->attach,
+						DMA_BIDIRECTIONAL);
+				wpe_ion_list->dma_addr =
+					(unsigned int)sg_dma_address(wpe_ion_list->sgt->sgl);
+				ion_mem_info.buf_pa =
+					(unsigned int)sg_dma_address(wpe_ion_list->sgt->sgl);
+				LOG_AST("gki add list cnt:%d,fd:%d, pa:%x\n", wpe_get_cnt,
+						ion_mem_info.buf_fd, ion_mem_info.buf_pa);
+				list_add_tail(&wpe_ion_list->list, &wpe_fd_head);
+			}
+				if (copy_to_user((void *)Param,
+					&ion_mem_info,
+					sizeof(struct WPE_ION_MEM_INFO)) != 0) {
+					LOG_ERR("WPE_SET_BUF_PA copy to user failed\n");
+				}
+				mutex_unlock(&(gWpeMutexbuf));
+
+			} else {
+				LOG_ERR("WPE_SET_BUF_PA failed\n");
+				Ret = -EFAULT;
+			}
+			break;
+	}
+	/* unmap delete dip fd list */
+	case WPE_DEL_BUF_FD: {
+		if (copy_from_user(&fd,
+			(void *)Param,
+			sizeof(unsigned int)) == 0) {
+			if (fd == 0) {
+				LOG_ERR("wpe buf fd equal 0\n");
+				Ret = -EFAULT;
+				goto EXIT;
+			}
+			wpe_get_cnt = 0;
+			wpe_put_cnt++;
+			mutex_lock(&(gWpeMutexbuf));
+			list_for_each(pos, &wpe_fd_head) {
+				wpe_ion_list = list_entry(pos, struct wpe_fd_list_template, list);
+				if (fd == wpe_ion_list->fd) {
+					if (wpe_ion_list->buf) {
+						dma_buf_unmap_attachment_unlocked(wpe_ion_list->attach,
+								wpe_ion_list->sgt,
+								DMA_BIDIRECTIONAL);
+						dma_buf_detach(wpe_ion_list->buf,
+								wpe_ion_list->attach);
+						dma_buf_put(wpe_ion_list->buf);
+					}
+					list_del(&wpe_ion_list->list);
+					kfree(wpe_ion_list);
+					break;
+				}
+			}
+			LOG_AST("unmap dma successful\n");
+			mutex_unlock(&(gWpeMutexbuf));
+		} else {
+			LOG_ERR("WPE_DEL_BUF_FD failed\n");
+			Ret = -EFAULT;
+		}
+		break;
+	}
 	default:
 		{
 			LOG_ERR("Unknown Cmd(%d)", Cmd);
@@ -4491,6 +4481,7 @@ EXIT:
 /***********************************************************************
  *
  ***********************************************************************/
+/*
 static int compat_get_WPE_read_register_data(
 		struct compat_WPE_REG_IO_STRUCT __user *data32,
 		struct WPE_REG_IO_STRUCT __user *data)
@@ -4511,11 +4502,9 @@ static int compat_put_WPE_read_register_data(
 		struct WPE_REG_IO_STRUCT __user *data)
 {
 	compat_uint_t count;
-	/*compat_uptr_t uptr; */
+
 	int err = 0;
-	/* Assume data pointer is unchanged. */
-	/* err = get_user(compat_ptr(uptr), &data->pData); */
-	/* err |= put_user(uptr, &data32->pData); */
+
 	err |= get_user(count, &data->Count);
 	err |= put_user(count, &data32->Count);
 	return err;
@@ -4542,11 +4531,9 @@ static int compat_put_WPE_enque_req_data(
 		struct WPE_Request __user *data)
 {
 	compat_uint_t count;
-	/*compat_uptr_t uptr; */
+
 	int err = 0;
-	/* Assume data pointer is unchanged. */
-	/* err = get_user(compat_ptr(uptr), &data->m_pDpeConfig); */
-	/* err |= put_user(uptr, &data32->m_pDpeConfig); */
+
 	err |= get_user(count, &data->m_ReqNum);
 	err |= put_user(count, &data32->m_ReqNum);
 	return err;
@@ -4574,20 +4561,18 @@ static int compat_put_WPE_deque_req_data(
 		struct WPE_Request __user *data)
 {
 	compat_uint_t count;
-	/*compat_uptr_t uptr; */
+
 	int err = 0;
-	/* Assume data pointer is unchanged. */
-	/* err = get_user(compat_ptr(uptr), &data->m_pDpeConfig); */
-	/* err |= put_user(uptr, &data32->m_pDpeConfig); */
+
 	err |= get_user(count, &data->m_ReqNum);
 	err |= put_user(count, &data32->m_ReqNum);
 	return err;
 }
-
+*/
 static long WPE_ioctl_compat(
 		struct file *filp, unsigned int cmd, unsigned long arg)
 {
-	long ret;
+	long ret = 0;
 
 
 	if (!filp->f_op || !filp->f_op->unlocked_ioctl) {
@@ -4597,6 +4582,8 @@ static long WPE_ioctl_compat(
 	switch (cmd) {
 	case COMPAT_WPE_READ_REGISTER:
 		{
+#ifdef WPE_K61
+
 			struct compat_WPE_REG_IO_STRUCT __user *data32;
 			struct WPE_REG_IO_STRUCT __user *data;
 			int err;
@@ -4623,13 +4610,17 @@ static long WPE_ioctl_compat(
 					);
 				return err;
 			}
+#endif
 			return ret;
 		}
 	case COMPAT_WPE_WRITE_REGISTER:
 		{
+#ifdef WPE_K61
+
 			struct compat_WPE_REG_IO_STRUCT __user *data32;
 			struct WPE_REG_IO_STRUCT __user *data;
 			int err;
+
 
 			data32 = compat_ptr(arg);
 			data = compat_alloc_user_space(sizeof(*data));
@@ -4644,10 +4635,13 @@ static long WPE_ioctl_compat(
 			ret =
 			    filp->f_op->unlocked_ioctl(filp, WPE_WRITE_REGISTER,
 						       (unsigned long)data);
+#endif
 			return ret;
 		}
 	case COMPAT_WPE_ENQUE_REQ:
 		{
+#ifdef WPE_K61
+
 			struct compat_WPE_Request __user *data32;
 			struct WPE_Request __user *data;
 			int err;
@@ -4670,10 +4664,14 @@ static long WPE_ioctl_compat(
 				LOG_INF("COMPAT_WPE_WPE_ENQUE_REQ error!!!\n");
 				return err;
 			}
+#endif
+
 			return ret;
 		}
 	case COMPAT_WPE_DEQUE_REQ:
 		{
+#ifdef WPE_K61
+
 			struct compat_WPE_Request __user *data32;
 			struct WPE_Request __user *data;
 			int err;
@@ -4696,10 +4694,15 @@ static long WPE_ioctl_compat(
 				LOG_INF("COMPAT_WPE_WPE_DEQUE_REQ error!!!\n");
 				return err;
 			}
+#endif
+
 			return ret;
+
 		}
 	case COMPAT_WPE_DEQUE_DONE:
 		{
+#ifdef WPE_K61
+
 			struct compat_WPE_Request __user *data32;
 			struct WPE_Request __user *data;
 			int err;
@@ -4719,9 +4722,11 @@ static long WPE_ioctl_compat(
 
 			err = compat_put_WPE_deque_req_data(data32, data);
 			if (err) {
-				LOG_INF("COMPAT_WPE_WPE_DEQUE_DONE error!!!\n");
+				LOG_INF("COMPAT_WPE_WPE_DEQUE_REQ error!!!\n");
 				return err;
 			}
+#endif
+
 			return ret;
 		}
 	case COMPAT_WPE_WAIT_DEQUE:
@@ -4861,7 +4866,7 @@ EXIT:
  ***********************************************************************/
 static signed int WPE_release(struct inode *pInode, struct file *pFile)
 {
-	struct WPE_USER_INFO_STRUCT *pUserInfo;
+	struct WPE_USER_INFO_STRUCT *pUserInfo __maybe_unused;
 	/*MUINT32 Reg; */
 
 	LOG_DBG("- E. UserCount: %d.", WPEInfo.UserCount);
@@ -5046,6 +5051,68 @@ EXIT:
 	return Ret;
 }
 
+static void WPE_add_device_link(struct platform_device *pDev)
+{
+	char mtk_larb_str[32];
+	int i = 0, mtk_larb = 0, mtk_larbs = 0, larb_num = 0;
+	unsigned int larb_id = 0;
+	struct device_node *larb_node;
+	struct device_link *link;
+	struct platform_device *larb_pdev;
+
+	mtk_larb = of_count_phandle_with_args(pDev->dev.of_node, "mediatek,larb", NULL);
+	mtk_larbs = of_count_phandle_with_args(pDev->dev.of_node, "mediatek,larbs", NULL);
+
+	if (mtk_larb > mtk_larbs) {
+		larb_num = mtk_larb;
+		strncpy(mtk_larb_str, "mediatek,larb", 14);
+		} else {
+		larb_num = mtk_larbs;
+		strncpy(mtk_larb_str, "mediatek,larbs", 15);
+		}
+
+		LOG_INF("WPE larb_num: %d; (%d, %d)\n", larb_num, mtk_larb, mtk_larbs);
+
+		if (larb_num <= 0) {
+			LOG_ERR("WPE %s: find no larb", pDev->dev.of_node->name);
+			return;
+			}
+
+		for (i = 0; i < larb_num; i++) {
+			larb_node = of_parse_phandle(pDev->dev.of_node, mtk_larb_str, i);
+
+			if (!larb_node) {
+				LOG_ERR("WPE %s: [%d]: failed to get larb from %s\n",
+					pDev->dev.of_node->name, i, mtk_larb_str);
+				continue;
+				}
+
+			larb_pdev = of_find_device_by_node(larb_node);
+
+			if (WARN_ON(!larb_pdev)) {
+				of_node_put(larb_node);
+				LOG_ERR("WPE %s: failed to get larb pdev\n", pDev->dev.of_node->name);
+				continue;
+				}
+
+			if (of_property_read_u32(larb_node, "mediatek,larb-id", &larb_id))
+				LOG_INF(" WPE Error: get larb id from DTS fail!!\n");
+			else
+				LOG_INF("WPE %s gets larb_id=%d\n",
+				pDev->dev.of_node->name, larb_id);
+
+			of_node_put(larb_node);
+
+			link = device_link_add(&pDev->dev, &larb_pdev->dev,
+				DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS);
+
+			if (!link)
+				LOG_INF("WPE %s: [%d]: unable to link smi larb %d\n",
+				pDev->dev.of_node->name, i, larb_id);
+		}
+}
+
+
 /***********************************************************************
  *
  ***********************************************************************/
@@ -5058,9 +5125,12 @@ static signed int WPE_probe(struct platform_device *pDev)
 	unsigned int irq_info[3];/* Record interrupts info from device tree */
 	struct device *dev = NULL;
 	struct WPE_device *_wpe_dev;
+
 #ifdef CONFIG_OF
 	struct WPE_device *WPE_dev;
+
 #endif
+
 
 	LOG_INF("- E. WPE driver probe.");
 
@@ -5080,9 +5150,21 @@ static signed int WPE_probe(struct platform_device *pDev)
 		LOG_ERR("[ERROR] Unable to allocate WPE_devs\n");
 		return -ENOMEM;
 	}
+
 	WPE_devs = _wpe_dev;
 
+	if (WPE_devs == NULL || nr_WPE_devs <= 0) {
+		LOG_ERR("No device instances available\n");
+		return -EINVAL;
+	}
+
 	WPE_dev = &(WPE_devs[nr_WPE_devs - 1]);
+
+	if (!WPE_dev) {
+		LOG_ERR("WPE_dev is NULL\n");
+		return -EFAULT;
+	}
+
 	WPE_dev->dev = &pDev->dev;
 
 	/* iomap registers */
@@ -5095,6 +5177,45 @@ static signed int WPE_probe(struct platform_device *pDev)
 			nr_WPE_devs, pDev->dev.of_node->name);
 		return -ENOMEM;
 	}
+	if (nr_WPE_devs == 1) {
+		pm_runtime_enable(WPE_devs->dev);
+		if (!pm_runtime_enabled(WPE_devs->dev)){
+			LOG_ERR("[ERROR] WPE pm runtime enabled failed");
+			goto EXIT;
+		}
+		/* parse larb node*/
+#ifdef WPE_PARSE_LARB
+		node_larb9 = of_parse_phandle(pDev->dev.of_node, "mediatek,larb", 0);
+		if (!node_larb9)
+			return -EINVAL;
+
+		pdev_larb9 = of_find_device_by_node(node_larb9);
+		if (WARN_ON(!pdev_larb9)) {
+			of_node_put(node_larb9);
+			return -EINVAL;
+		}
+		of_node_put(node_larb9);
+		WPE_devs->larb9 = &pdev_larb9->dev;
+		LOG_INF("larb 9 %p", WPE_devs->larb9);
+/*!#ifdef WPE_GKI_IMG1_LARB_ON*/
+		/* parse larb node*/
+		/* In 6873, 6853, larb11 here  is IMG1 larb9*/
+		node_larb11 = of_parse_phandle(pDev->dev.of_node, "mediatek,larb", 1);
+		if (!node_larb11)
+			return -EINVAL;
+
+		pdev_larb11 = of_find_device_by_node(node_larb11);
+		if (WARN_ON(!pdev_larb11)) {
+			of_node_put(node_larb11);
+			return -EINVAL;
+		}
+
+		of_node_put(node_larb11);
+		WPE_devs->larb11 = &pdev_larb11->dev;
+		LOG_INF("larb11 %p", WPE_devs->larb11);
+#endif
+//!#endif
+	}
 
 #if defined(CONFIG_MTK_IOMMU_PGTABLE_EXT) && \
 	(CONFIG_MTK_IOMMU_PGTABLE_EXT > 32)
@@ -5103,6 +5224,7 @@ static signed int WPE_probe(struct platform_device *pDev)
 		WPE_dev->dev->coherent_dma_mask =
 			(u64)DMA_BIT_MASK(CONFIG_MTK_IOMMU_PGTABLE_EXT);
 #endif
+	dma_set_mask_and_coherent(WPE_devs->dev, DMA_BIT_MASK(34));
 
 	LOG_INF("nr_WPE_devs=%d, devnode(%s), map_addr=0x%lx\n", nr_WPE_devs,
 		pDev->dev.of_node->name, (unsigned long)WPE_dev->regs);
@@ -5165,6 +5287,8 @@ static signed int WPE_probe(struct platform_device *pDev)
 	}
 #endif
 
+	WPE_add_device_link(pDev);
+
 	/* Only register char driver in the 1st time */
 	if (nr_WPE_devs == 1) {
 
@@ -5183,8 +5307,8 @@ static signed int WPE_probe(struct platform_device *pDev)
 		LOG_INF("devm_clk_get CG_IMGSYS_LARB9");
 
 		if (IS_ERR(wpe_clk.CG_IMGSYS_LARB9)) {
-			LOG_ERR("cannot get CG_IMGSYS_LARB9 clock\n");
-			return PTR_ERR(wpe_clk.CG_IMGSYS_LARB9);
+			wpe_clk.CG_IMGSYS_LARB9 = NULL;
+			LOG_INF("cannot get CG_IMGSYS_LARB9 clock\n");
 		}
 
 		wpe_clk.CG_IMGSYS_WPE_A =
@@ -5192,23 +5316,22 @@ static signed int WPE_probe(struct platform_device *pDev)
 		LOG_INF("devm_clk_get WPE_CLK_IMG_WPE_A");
 
 		if (IS_ERR(wpe_clk.CG_IMGSYS_WPE_A)) {
-			LOG_ERR("cannot get CG_IMGSYS_WPE_A clock\n");
-			return PTR_ERR(wpe_clk.CG_IMGSYS_WPE_A);
+			wpe_clk.CG_IMGSYS_WPE_A = NULL;
+			LOG_INF("cannot get CG_IMGSYS_WPE_A clock\n");
 		}
 
-#ifdef FORCE_IMG1_ON
 		wpe_clk.CG_IMGSYS1 =
-			devm_clk_get(&pDev->dev, "WPE_CLK_IMG");
-		LOG_INF("devm_clk_get CG_IMGSYS1");
+				devm_clk_get(&pDev->dev, "WPE_CLK_IMG");
+				LOG_INF("devm_clk_get CG_IMGSYS1");
 
 		if (IS_ERR(wpe_clk.CG_IMGSYS1)) {
-			LOG_ERR("cannot get CG_IMGSYS1 clock\n");
-			return PTR_ERR(wpe_clk.CG_IMGSYS1);
+			LOG_INF("cannot get CG_IMGSYS1 clock\n");
+			wpe_clk.CG_IMGSYS1 = NULL;
 		}
-#endif
+
 #endif
 		/* Create class register */
-		pWPEClass = class_create(THIS_MODULE, "WPEdrv");
+		pWPEClass = class_create("WPEdrv");
 		if (IS_ERR(pWPEClass)) {
 			Ret = PTR_ERR(pWPEClass);
 			LOG_ERR("Unable to create class, err = %d", Ret);
@@ -5254,40 +5377,44 @@ static signed int WPE_probe(struct platform_device *pDev)
 		/*  */
 		WPEInfo.IrqInfo.Mask[WPE_IRQ_TYPE_INT_WPE_ST] =
 							INT_ST_MASK_WPE;
+
+		/* Init ION FD LIST*/
+		wpe_put_cnt = 0;
+		wpe_get_cnt = 0;
 	}
+
 	if (nr_WPE_devs == 2) {
 #ifdef EP_NO_CLKMGR
 
 #else
-#if (MTK_WPE_COUNT == 2)
 		 /*CCF*/
 		wpe_clk.CG_IMGSYS_LARB11 =
 			devm_clk_get(&pDev->dev, "WPE_CLK_IMG_LARB11");
-		LOG_INF("devm_clk_get CG_IMGSYS_LARB11");
 
 		if (IS_ERR(wpe_clk.CG_IMGSYS_LARB11)) {
 			LOG_ERR("cannot get CG_IMGSYS_LARB11 clock\n");
-			return PTR_ERR(wpe_clk.CG_IMGSYS_LARB11);
+			wpe_clk.CG_IMGSYS_LARB11 = NULL;
 		}
 
 		wpe_clk.CG_IMGSYS_WPE_B =
 			devm_clk_get(&pDev->dev, "WPE_CLK_IMG_WPE_B");
-		LOG_INF("devm_clk_get WPE_CLK_IMG_WPE_B");
 
 		if (IS_ERR(wpe_clk.CG_IMGSYS_WPE_B)) {
-			LOG_ERR("cannot get CG_IMGSYS_WPE_B clock\n");
-			return PTR_ERR(wpe_clk.CG_IMGSYS_WPE_B);
+			LOG_ERR("cannot get CG_DUAL_WPE_B clock\n");
+			wpe_clk.CG_IMGSYS_WPE_B = NULL;
+		}else {
+			LOG_INF("get CG_DUAL_WPE_B clock");
+			CG_DUAL_WPE_ON = CG_ENABLE;
 		}
 #endif
-#endif
-
 	}
+
 
 EXIT:
 	if (Ret < 0)
 		WPE_UnregCharDev();
 
-	LOG_INF("- X. WPE driver probe.");
+	LOG_INF("- X. WPE driver probe.[CG_DUAL_WPE_ON] = %d\n",CG_DUAL_WPE_ON);
 
 	return Ret;
 }
@@ -5313,38 +5440,7 @@ static signed int WPE_remove(struct platform_device *pDev)
 	/* kill tasklet */
 	for (i = 0; i < WPE_IRQ_TYPE_AMOUNT; i++)
 		tasklet_kill(WPE_tasklet[i].pWPE_tkt);
-#ifdef all_registered_irq
-	/* free all registered irq(child nodes) */
-	WPE_UnRegister_AllregIrq();
-	/* free father nodes of irq user list */
-	struct my_list_head *head;
-	struct my_list_head *father;
 
-	head = ((struct my_list_head *)(&SupIrqUserListHead.list));
-	while (1) {
-		father = head;
-		if (father->nextirq != father) {
-			father = father->nextirq;
-			REG_IRQ_NODE *accessNode;
-
-			typeof(((REG_IRQ_NODE *) 0)->list) * __mptr = (father);
-			accessNode =
-			    ((REG_IRQ_NODE *)
-			    ((char *)__mptr - offsetof(REG_IRQ_NODE, list)));
-
-			LOG_INF("free father,reg_T(%d)\n", accessNode->reg_T);
-			if (father->nextirq != father) {
-				head->nextirq = father->nextirq;
-				father->nextirq = father;
-			} else {	/* last father node */
-				head->nextirq = head;
-				LOG_INF("break\n");
-				break;
-			}
-			kfree(accessNode);
-		}
-	}
-#endif
 	/*  */
 	device_destroy(pWPEClass, WPEDevNo);
 	/*  */
@@ -5362,19 +5458,6 @@ static signed int bPass1_On_In_Resume_TG1;
 static signed int WPE_suspend(
 		struct platform_device *pDev, pm_message_t Mesg)
 {
-	/*signed int ret = 0; */
-
-	/*LOG_DBG("bPass1_On_In_Resume_TG1(%d)\n", bPass1_On_In_Resume_TG1);*/
-
-	bPass1_On_In_Resume_TG1 = 0;
-
-	if (g_u4EnableClockCount > 0) {
-		WPE_EnableClock(MFALSE);
-		g_u4WpeCnt++;
-	}
-
-	LOG_INF("%s: WPE suspend g_u4EnableClockCount: %d, g_u4WpeCnt: %d",
-		 __func__, g_u4EnableClockCount, g_u4WpeCnt);
 
 	return 0;
 }
@@ -5384,20 +5467,55 @@ static signed int WPE_suspend(
  ***********************************************************************/
 static signed int WPE_resume(struct platform_device *pDev)
 {
-	/*LOG_DBG("bPass1_On_In_Resume_TG1(%d).\n", bPass1_On_In_Resume_TG1);*/
-	if (g_u4WpeCnt > 0) {
-		WPE_EnableClock(MTRUE);
-		g_u4WpeCnt--;
-	}
-
-	LOG_INF("%s: WPE resume g_u4EnableClockCount: %d, g_u4WpeCnt: %d",
-		 __func__, g_u4EnableClockCount, g_u4WpeCnt);
 
 	return 0;
 }
+//#if IS_ENABLED(CONFIG_PM)
 
+static int wpe_suspend_pm_event(struct notifier_block *notifier,
+			unsigned long pm_event, void *unused)
+{
+	struct timespec64 ts;
+	struct rtc_time tm;
+
+	ktime_get_ts64(&ts);
+	rtc_time64_to_tm(ts.tv_sec, &tm);
+
+	switch (pm_event) {
+	case PM_HIBERNATION_PREPARE:
+		return NOTIFY_DONE;
+	case PM_RESTORE_PREPARE:
+		return NOTIFY_DONE;
+	case PM_POST_HIBERNATION:
+		return NOTIFY_DONE;
+	case PM_SUSPEND_PREPARE: /*enter suspend*/
+		/*LOG_DBG("bPass1_On_In_Resume_TG1(%d)\n", bPass1_On_In_Resume_TG1);*/
+		bPass1_On_In_Resume_TG1 = 0;
+		if (g_u4EnableClockCount > 0) {
+			WPE_EnableClock(MFALSE);
+			g_u4WpeCnt++;
+		}
+
+		LOG_INF("%s: WPE suspend g_u4EnableClockCount: %d, g_u4WpeCnt: %d",
+		__func__, g_u4EnableClockCount, g_u4WpeCnt);
+
+		return NOTIFY_DONE;
+	case PM_POST_SUSPEND:    /*after resume*/
+		if (g_u4WpeCnt > 0) {
+			WPE_EnableClock(MTRUE);
+			g_u4WpeCnt--;
+		}
+
+		LOG_INF("%s: WPE resume g_u4EnableClockCount: %d, g_u4WpeCnt: %d",
+		__func__, g_u4EnableClockCount, g_u4WpeCnt);
+
+
+		return NOTIFY_DONE;
+}
+	return NOTIFY_OK;
+}
+#if IS_ENABLED(CONFIG_PM)
 /*---------------------------------------------------------------------*/
-#ifdef CONFIG_PM
 /*---------------------------------------------------------------------*/
 int WPE_pm_suspend(struct device *device)
 {
@@ -5448,9 +5566,7 @@ int WPE_pm_restore_noirq(struct device *device)
  */
 static const struct of_device_id WPE_of_ids[] = {
 	{.compatible = "mediatek,wpe_a",},
-#if (MTK_WPE_COUNT == 2)
 	{.compatible = "mediatek,wpe_b",},
-#endif
 	{}
 };
 #endif
@@ -5480,91 +5596,21 @@ static struct platform_driver WPEDriver = {
 #ifdef CONFIG_OF
 		   .of_match_table = WPE_of_ids,
 #endif
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 		   .pm = &WPE_pm_ops,
 #endif
 		}
 };
 
+#if IS_ENABLED(CONFIG_PM)
+static struct notifier_block wpe_suspend_pm_notifier_func = {
+	.notifier_call = wpe_suspend_pm_event,
+	.priority = 0,
+};
+#endif
 
 static int wpe_dump_read(struct seq_file *m, void *v)
 {
-	int i, j;
-
-	spin_lock(&WPEInfo.SpinLockWPE);
-	if (g_u4EnableClockCount == 0) {
-		spin_unlock(&WPEInfo.SpinLockWPE);
-		return 0;
-	}
-	spin_unlock(&WPEInfo.SpinLockWPE);
-
-	seq_puts(m, "\n============ wpe dump register============\n");
-	seq_puts(m, "WPE Config Info\n");
-
-	for (i = 0x400; i < 0x4A8; i = i + 4) {
-		seq_printf(m, "[0x%08X %08X]\n",
-			(unsigned int)(WPE_BASE_HW + i),
-			(unsigned int)WPE_RD32(ISP_WPE_BASE + i));
-	}
-	seq_puts(m, "WPE Debug Info\n");
-	for (i = 0x4A8; i < 0x4B8; i = i + 4) {
-		seq_printf(m, "[0x%08X %08X]\n",
-			(unsigned int)(WPE_BASE_HW + i),
-			(unsigned int)WPE_RD32(ISP_WPE_BASE + i));
-	}
-
-	seq_puts(m, "\n");
-	seq_printf(m, "WPE Clock Count:%d\n", g_u4EnableClockCount);
-
-	/*seq_printf(m, "[0x%08X %08X]\n", */
-		/*(unsigned int)(DMA_DEBUG_DATA_HW),*/
-		  /* (unsigned int)WPE_RD32(DMA_DEBUG_DATA_REG));*/
-	/*seq_printf(m, "[0x%08X %08X]\n",*/
-		/*(unsigned int)(DMA_DCM_ST_HW),*/
-		   /*(unsigned int)WPE_RD32(DMA_DCM_ST_REG));*/
-	/*seq_printf(m, "[0x%08X %08X]\n",*/
-		/*(unsigned int)(DMA_RDY_ST_HW),*/
-		  /* (unsigned int)WPE_RD32(DMA_RDY_ST_REG));*/
-	/*seq_printf(m, "[0x%08X %08X]\n", */
-		/*(unsigned int)(DMA_REQ_ST_HW),*/
-		   /*(unsigned int)WPE_RD32(DMA_REQ_ST_REG));*/
-
-	seq_printf(m, "WPE:HWProcessIdx:%d, WriteIdx:%d, ReadIdx:%d\n",
-		   g_WPE_ReqRing.HWProcessIdx,
-		   g_WPE_ReqRing.WriteIdx,
-		   g_WPE_ReqRing.ReadIdx);
-
-	for (i = 0; i < _SUPPORT_MAX_WPE_REQUEST_RING_SIZE_; i++) {
-		seq_printf(m,
-			   "WPE:State:%d, processID:0x%08X, callerID:0x%08X, enqueReqNum:%d, FrameWRIdx:%d, FrameRDIdx:%d\n",
-			   g_WPE_ReqRing.WPEReq_Struct[i].State,
-			   g_WPE_ReqRing.WPEReq_Struct[i].processID,
-			   g_WPE_ReqRing.WPEReq_Struct[i].callerID,
-			   g_WPE_ReqRing.WPEReq_Struct[i].enqueReqNum,
-			   g_WPE_ReqRing.WPEReq_Struct[i].FrameWRIdx,
-			   g_WPE_ReqRing.WPEReq_Struct[i].FrameRDIdx);
-
-		for (j = 0; j < _SUPPORT_MAX_WPE_FRAME_REQUEST_;) {
-			seq_printf(m,
-				   "WPE:FrameStatus[%d]:%d, FrameStatus[%d]:%d, FrameStatus[%d]:%d, FrameStatus[%d]:%d\n",
-				   j,
-				   g_WPE_ReqRing.WPEReq_Struct[i]
-				   .WpeFrameStatus[j],
-				   j + 1,
-				   g_WPE_ReqRing.WPEReq_Struct[i]
-				   .WpeFrameStatus[j + 1],
-				   j + 2,
-				   g_WPE_ReqRing.WPEReq_Struct[i]
-				   .WpeFrameStatus[j + 2],
-				   j + 3,
-				   g_WPE_ReqRing.WPEReq_Struct[i]
-				   .WpeFrameStatus[j + 3]);
-			j = j + 4;
-		}
-	}
-
-	seq_puts(m, "\n============ WPE dump debug ============\n");
-
 	return 0;
 }
 
@@ -5574,7 +5620,7 @@ static int proc_wpe_dump_open(struct inode *inode, struct file *file)
 	return single_open(file, wpe_dump_read, NULL);
 }
 
-static const struct file_operations WPE_dump_proc_fops = {
+static const struct file_operations WPE_dump_proc_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_wpe_dump_open,
 	.read = seq_read,
@@ -5604,13 +5650,12 @@ static ssize_t wpe_reg_write(
 		loff_t *data)
 {
 	char desc[128];
-	unsigned int len = 0;
+	int len = 0;
 	/*char *pEnd; */
 	char addrSzBuf[24];
 	char valSzBuf[24];
 	char *pszTmp;
 	int addr = 0, val = 0;
-	long tempval;
 
 	if (WPEInfo.UserCount <= 0)
 		return 0;
@@ -5625,9 +5670,14 @@ static ssize_t wpe_reg_write(
 		pszTmp = strstr(addrSzBuf, "0x");
 		if (pszTmp == NULL) {
 			/*if (sscanf(addrSzBuf, "%d", &addr) != 1) */
-			if (kstrtol(addrSzBuf, 10, (long *)&tempval) != 0)
+#if WPE_CHECK_SERVICE_IF_0
+			if (kstrtoint(addrSzBuf, 0, &addr) != 0)
 				LOG_ERR("scan decimal addr is wrong !!:%s",
-				addrSzBuf);
+							addrSzBuf);
+#else
+			LOG_ERR("hex address only:%s", addrSzBuf);
+#endif
+
 		} else {
 			if (strlen(addrSzBuf) > 2) {
 				if (sscanf(addrSzBuf + 2, "%x", &addr) != 1)
@@ -5642,10 +5692,14 @@ static ssize_t wpe_reg_write(
 		pszTmp = strstr(valSzBuf, "0x");
 		if (pszTmp == NULL) {
 			/*if (sscanf(valSzBuf, "%d", &val) != 1) */
-			if (kstrtol(valSzBuf, 10, (long *)&tempval) != 0)
-				LOG_ERR(
-				"scan decimal value is wrong !!:%s",
-				valSzBuf);
+#if WPE_CHECK_SERVICE_IF_0
+			if (kstrtoint(valSzBuf, 0, &val) != 0)
+				LOG_ERR("scan decimal value is wrong !!:%s",
+							valSzBuf);
+#else
+			LOG_ERR("HEX address only :%s", valSzBuf);
+#endif
+
 		} else {
 			if (strlen(valSzBuf) > 2) {
 				if (sscanf(valSzBuf + 2, "%x", &val) != 1)
@@ -5674,11 +5728,14 @@ static ssize_t wpe_reg_write(
 		pszTmp = strstr(addrSzBuf, "0x");
 		if (pszTmp == NULL) {
 			/*if (1 != sscanf(addrSzBuf, "%d", &addr)) */
-			if (kstrtol(addrSzBuf, 10, (long *)&tempval) != 0)
+#if WPE_CHECK_SERVICE_IF_0
+			if (kstrtoint(addrSzBuf, 0, &addr) != 0)
 				LOG_ERR("scan decimal addr is wrong !!:%s",
-				addrSzBuf);
-			else
-				addr = tempval;
+							addrSzBuf);
+#else
+			LOG_ERR("HEX address only :%s", addrSzBuf);
+#endif
+
 		} else {
 			if (strlen(addrSzBuf) > 2) {
 				if (sscanf(addrSzBuf + 2, "%x", &addr) != 1)
@@ -5700,9 +5757,7 @@ static ssize_t wpe_reg_write(
 				"Read-Address Range exceeds the size of hw WPE!! addr:0x%x, value:0x%x\n",
 			     addr, val);
 		}
-
 	}
-
 
 	return count;
 }
@@ -5712,7 +5767,7 @@ static int proc_wpe_reg_open(struct inode *inode, struct file *file)
 	return single_open(file, wpe_reg_read, NULL);
 }
 
-static const struct file_operations WPE_reg_proc_fops = {
+static const struct file_operations WPE_reg_proc_fops __maybe_unused = {
 	.owner = THIS_MODULE,
 	.open = proc_wpe_reg_open,
 	.read = seq_read,
@@ -5771,57 +5826,25 @@ static signed int __init WPE_Init(void)
 	signed int Ret = 0, j;
 	void *tmp;
 	/* FIX-ME: linux-3.10 procfs API changed */
-	/* use proc_create */
-/* #if 0 */
-/*	struct proc_dir_entry *proc_entry; */
-/*	struct proc_dir_entry *isp_wpe_dir; */
-/*#endif */
-
 
 	int i;
+
+	/*for GKI 2.0 */
+	CG_DUAL_WPE_ON = CG_DISABLE;
+
 	/*  */
-	LOG_INF("- E.");
+	LOG_INF("- E. WPE_Init");
 	/*  */
 	Ret = platform_driver_register(&WPEDriver);
 	if (Ret < 0) {
+		LOG_INF("- platform_driver_register fail");
 		LOG_ERR("platform_driver_register fail");
 		return Ret;
 	}
-#ifdef find_compatible_node
-	struct device_node *node = NULL;
-
-	node = of_find_compatible_node(NULL, NULL, "mediatek,WPE");
-	if (!node) {
-		LOG_ERR("find mediatek,WPE node failed!!!\n");
-		return -ENODEV;
-	}
-	ISP_WPE_BASE = of_iomap(node, 0);
-	if (!ISP_WPE_BASE) {
-		LOG_ERR("unable to map ISP_WPE_BASE registers!!!\n");
-		return -ENODEV;
-	}
-	LOG_DBG("ISP_WPE_BASE: %lx\n", ISP_WPE_BASE);
-#endif
-
-/* #if 0 */
-/*	isp_wpe_dir = proc_mkdir("wpe", NULL); */
-/*	if (!isp_wpe_dir) { */
-/*		LOG_ERR("[%s]: fail to mkdir /proc/wpe\n", __func__); */
-/*		return 0; */
-/*	} */
-/* #endif */
-
+	LOG_INF("- platform_driver_register OK");
 	/* proc_entry = */
 	/*	proc_create("pll_test", S_IRUGO | */
 	/*		S_IWUSR, isp_wpe_dir, &pll_test_proc_fops); */
-
-/* #if 0 */
-/*	proc_entry = proc_create("wpe_dump", 0444, isp_wpe_dir, */
-/*					&WPE_dump_proc_fops); */
-
-/*	proc_entry = proc_create("wpe_reg", 0644, isp_wpe_dir, */
-/*					&WPE_reg_proc_fops); */
-/* #endif */
 
 	/* isr log */
 	if (PAGE_SIZE <
@@ -5837,6 +5860,7 @@ static signed int __init WPE_Init(void)
 	} else {
 		i = PAGE_SIZE;
 	}
+
 	pLog_kmalloc = kmalloc(i, GFP_KERNEL);
 	if (pLog_kmalloc == NULL) {
 		LOG_ERR("log mem not enough\n");
@@ -5870,13 +5894,24 @@ static signed int __init WPE_Init(void)
 
 	/* Cmdq */
 	/* Register WPE callback */
-	LOG_DBG("register wpe callback for CMDQ");
-	cmdqCoreRegisterCB(CMDQ_GROUP_WPE,
-			   WPE_ClockOnCallback,
-			   WPE_DumpCallback,
-			   WPE_ResetCallback,
-			   WPE_ClockOffCallback);
+#ifndef EP_CODE_MARK_CMDQ
+	LOG_INF("register wpe callback for CMDQ");
+	cmdqCoreRegisterCB(mdp_get_group_wpe(),
+					WPE_ClockOnCallback,
+					WPE_DumpCallback,
+					WPE_ResetCallback,
+					WPE_ClockOffCallback);
+#endif
 
+#if IS_ENABLED(CONFIG_PM)
+	Ret = register_pm_notifier(&wpe_suspend_pm_notifier_func);
+	if (Ret) {
+		pr_debug("[Camera WPE] Failed to register PM notifier.\n");
+		return Ret;
+	}
+#endif
+
+	LOG_INF("- X. CG_DUAL_WPE_ON = %d\n",CG_DUAL_WPE_ON);
 	LOG_DBG("- X. Ret: %d.", Ret);
 	return Ret;
 }
@@ -5894,7 +5929,9 @@ static void __exit WPE_Exit(void)
 	/*  */
 	/* Cmdq */
 	/* Unregister WPE callback */
-	cmdqCoreRegisterCB(CMDQ_GROUP_WPE, NULL, NULL, NULL, NULL);
+#ifndef EP_CODE_MARK_CMDQ
+	cmdqCoreRegisterCB(mdp_get_group_wpe(), NULL, NULL, NULL, NULL);
+#endif
 
 	kfree(pLog_kmalloc);
 
@@ -6021,4 +6058,5 @@ module_init(WPE_Init);
 module_exit(WPE_Exit);
 MODULE_DESCRIPTION("Camera WPE driver");
 MODULE_AUTHOR("MM3SW5");
+MODULE_IMPORT_NS(DMA_BUF);
 MODULE_LICENSE("GPL");

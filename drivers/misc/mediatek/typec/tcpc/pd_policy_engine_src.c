@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #include <linux/delay.h>
@@ -34,13 +34,13 @@ void pe_src_discovery_entry(struct pd_port *pd_port)
 	 */
 
 	pd_port->pe_data.pd_connected = false;
+	pd_init_spec_revision(pd_port);
+
+	if (pd_is_discover_cable(pd_port) &&
+	    !pd_port->pe_data.cable_discovered_state)
+		pd_enable_timer(pd_port, PD_TIMER_DISCOVER_ID);
 
 	pd_enable_timer(pd_port, PD_TIMER_SOURCE_CAPABILITY);
-
-#ifdef CONFIG_USB_PD_SRC_STARTUP_DISCOVER_ID
-	if (pd_is_discover_cable(pd_port))
-		pd_enable_timer(pd_port, PD_TIMER_DISCOVER_ID);
-#endif
 }
 
 void pe_src_send_capabilities_entry(struct pd_port *pd_port)
@@ -66,7 +66,7 @@ void pe_src_transition_supply_entry(struct pd_port *pd_port)
 	struct pd_event *pd_event = pd_get_curr_pd_event(pd_port);
 
 	/* goto-min */
-	if (pd_event->event_type == PD_EVT_TCP_MSG)	 {
+	if (pd_event->event_type == PD_EVT_TCP_MSG) {
 		msg = PD_CTRL_GOTO_MIN;
 		pd_port->request_i_new = pd_port->request_i_op;
 	}
@@ -137,10 +137,9 @@ void pe_src_get_sink_cap_exit(struct pd_port *pd_port)
 	pd_dpm_dr_inform_sink_cap(pd_port);
 }
 
-void pe_src_wait_new_capabilities_entry(
-			struct pd_port *pd_port)
+void pe_src_wait_new_capabilities_entry(struct pd_port *pd_port)
 {
-	/* Wait for new Source Capabilities */
+	tcpci_notify_wait_new_cap(pd_port->tcpc);
 }
 
 void pe_src_send_soft_reset_entry(struct pd_port *pd_port)
@@ -158,9 +157,6 @@ void pe_src_soft_reset_entry(struct pd_port *pd_port)
  Source Startup Structured VDM Discover Identity State Diagram (TODO)
  */
 
-#ifdef CONFIG_USB_PD_SRC_STARTUP_DISCOVER_ID
-
-#ifdef CONFIG_PD_SRC_RESET_CABLE
 void pe_src_cbl_send_soft_reset_entry(struct pd_port *pd_port)
 {
 	PE_STATE_WAIT_RESPONSE(pd_port);
@@ -169,30 +165,26 @@ void pe_src_cbl_send_soft_reset_entry(struct pd_port *pd_port)
 
 	pd_send_cable_soft_reset(pd_port);
 }
-#endif	/* CONFIG_PD_SRC_RESET_CABLE */
 
 void pe_src_vdm_identity_request_entry(struct pd_port *pd_port)
 {
 	pd_set_rx_enable(pd_port, PD_RX_CAP_PE_DISCOVER_CABLE);
 
-	pd_port->pe_data.discover_id_counter++;
+	pd_port->pe_data.discover_cable_id_counter++;
 	pd_send_vdm_discover_id(pd_port, TCPC_TX_SOP_PRIME);
 }
 
 void pe_src_vdm_identity_acked_entry(struct pd_port *pd_port)
 {
-	pd_dpm_inform_cable_id(pd_port, true);
+	pd_dpm_inform_cable_id(pd_port, true, true);
 }
 
 void pe_src_vdm_identity_naked_entry(struct pd_port *pd_port)
 {
-	pd_dpm_inform_cable_id(pd_port, true);
+	pd_dpm_inform_cable_id(pd_port, false, true);
 }
 
-#endif	/* CONFIG_USB_PD_SRC_STARTUP_DISCOVER_ID */
-
-
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 
 /*
  * [PD3.0] Source Port Not Supported Message State Diagram
@@ -221,7 +213,7 @@ void pe_src_chunk_received_entry(struct pd_port *pd_port)
  * [PD3.0] Figure 8-73 Source Port Source Alert State Diagram
  */
 
-#ifdef CONFIG_USB_PD_REV30_ALERT_LOCAL
+#if CONFIG_USB_PD_REV30_ALERT_LOCAL
 void pe_src_send_source_alert_entry(struct pd_port *pd_port)
 {
 	PE_STATE_WAIT_TX_SUCCESS(pd_port);
@@ -233,7 +225,7 @@ void pe_src_send_source_alert_entry(struct pd_port *pd_port)
  * [PD3.0] Figure 8-76 Source Port Sink Alert State Diagram
  */
 
-#ifdef CONFIG_USB_PD_REV30_ALERT_REMOTE
+#if CONFIG_USB_PD_REV30_ALERT_REMOTE
 void pe_src_sink_alert_received_entry(struct pd_port *pd_port)
 {
 	PE_STATE_DPM_INFORMED(pd_port);
@@ -246,7 +238,7 @@ void pe_src_sink_alert_received_entry(struct pd_port *pd_port)
  * [PD3.0] Figure 8-78 Source Give Source Capabilities Extended State Diagram
  */
 
-#ifdef CONFIG_USB_PD_REV30_SRC_CAP_EXT_LOCAL
+#if CONFIG_USB_PD_REV30_SRC_CAP_EXT_LOCAL
 void pe_src_give_source_cap_ext_entry(struct pd_port *pd_port)
 {
 	PE_STATE_WAIT_TX_SUCCESS(pd_port);
@@ -255,11 +247,22 @@ void pe_src_give_source_cap_ext_entry(struct pd_port *pd_port)
 }
 #endif	/* CONFIG_USB_PD_REV30_SRC_CAP_EXT_LOCAL */
 
+/*TN Begin modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+#if IS_ENABLED(CONFIG_OEM_TCPC_PD_SC2150)
+void pe_src_give_sink_cap_ext_entry(struct pd_port *pd_port)
+{
+	PE_STATE_WAIT_TX_SUCCESS(pd_port);
+
+	pd_dpm_send_sink_cap_ext(pd_port);
+}
+#endif /* CONFIG_OEM_TCPC_PD_SC2150 */
+/*TN End modified by jirui.li/860702 20240706 CR/EKLAMU-202*/
+
 /*
  * [PD3.0] Figure 8-80 Source Give Source Status State Diagram
  */
 
-#ifdef CONFIG_USB_PD_REV30_STATUS_LOCAL
+#if CONFIG_USB_PD_REV30_STATUS_LOCAL
 void pe_src_give_source_status_entry(struct pd_port *pd_port)
 {
 	PE_STATE_WAIT_TX_SUCCESS(pd_port);
@@ -272,7 +275,7 @@ void pe_src_give_source_status_entry(struct pd_port *pd_port)
  * [PD3.0] Figure 8-81 Source Port Get Sink Status State Diagram
  */
 
-#ifdef CONFIG_USB_PD_REV30_STATUS_REMOTE
+#if CONFIG_USB_PD_REV30_STATUS_REMOTE
 void pe_src_get_sink_status_entry(struct pd_port *pd_port)
 {
 	PE_STATE_WAIT_MSG(pd_port);
@@ -289,7 +292,7 @@ void pe_src_get_sink_status_exit(struct pd_port *pd_port)
  * [PD3.0] Figure 8-84 Source Give Source PPS Status State Diagram
  */
 
-#ifdef CONFIG_USB_PD_REV30_PPS_SOURCE
+#if CONFIG_USB_PD_REV30_PPS_SOURCE
 void pe_src_give_pps_status_entry(struct pd_port *pd_port)
 {
 	PE_STATE_WAIT_TX_SUCCESS(pd_port);
@@ -298,5 +301,16 @@ void pe_src_give_pps_status_entry(struct pd_port *pd_port)
 	PD_BUG_ON(1);
 }
 #endif	/* CONFIG_USB_PD_REV30_PPS_SOURCE */
+
+void pe_src_get_sink_cap_ext_entry(struct pd_port *pd_port)
+{
+	PE_STATE_WAIT_MSG(pd_port);
+	pd_send_sop_ctrl_msg(pd_port, PD_CTRL_GET_SINK_CAP_EXT);
+}
+
+void pe_src_get_sink_cap_ext_exit(struct pd_port *pd_port)
+{
+	pd_dpm_inform_sink_cap_ext(pd_port);
+}
 
 #endif	/* CONFIG_USB_PD_REV30 */

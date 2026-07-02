@@ -1,11 +1,11 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
-#include "mdp_cmdq_device.h"
+#include "cmdq_device.h"
 #include "cmdq_virtual.h"
-#include "mdp_cmdq_helper_ext.h"
+#include "cmdq_helper_ext.h"
 
 #ifdef CMDQ_CONFIG_SMI
 #include "smi_public.h"
@@ -18,7 +18,6 @@
 #include <linux/of_platform.h>
 #include <linux/io.h>
 #include <linux/dma-mapping.h>
-#include <mt-plat/mtk_lpae.h>
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/clk-provider.h>
@@ -34,12 +33,10 @@ struct CmdqDeviceStruct {
 	u32 irqSecId;
 	s32 dma_mask_result;
 
-#if IS_ENABLED(CONFIG_MACH_MT6885) || IS_ENABLED(CONFIG_MACH_MT6893)
 	struct device *pdev2;
 	unsigned long va2;
 	phys_addr_t pa2;
 	u32 irqId2;
-#endif
 };
 static struct CmdqDeviceStruct gCmdqDev;
 static u32 gThreadCount;
@@ -70,7 +67,7 @@ phys_addr_t cmdq_dev_get_module_base_PA_GCE(void)
 	return gCmdqDev.regBasePA;
 }
 
-#if IS_ENABLED(CONFIG_MACH_MT6885) || IS_ENABLED(CONFIG_MACH_MT6893)
+#if IS_ENABLED(CONFIG_MACH_MT6885)
 unsigned long cmdq_dev_get_va2(void)
 {
 	return gCmdqDev.va2;
@@ -289,7 +286,7 @@ void cmdq_dev_init_MDP_PA(struct device_node *node)
 	u32 *pMDPBaseAddress = cmdq_core_get_dts_data()->MDPBaseAddress;
 	phys_addr_t module_pa_start = 0;
 
-	module_pa_start = cmdq_dev_get_reference_PA("mm_mutex", 0);
+	module_pa_start = cmdq_dev_get_reference_PA("mm-mutex", 0);
 
 	if (!module_pa_start)
 		CMDQ_ERR("DEV: init mm_mutex PA fail!!\n");
@@ -308,7 +305,7 @@ void cmdq_dev_get_subsys_by_name(struct device_node *node,
 	struct SubsysStruct *gceSubsysStruct = NULL;
 
 	do {
-		if (subsys < 0 || subsys >= (u32)CMDQ_SUBSYS_MAX_COUNT)
+		if (subsys >= (u32)CMDQ_SUBSYS_MAX_COUNT)
 			break;
 
 		gceSubsysStruct = cmdq_core_get_dts_data()->subsys;
@@ -332,7 +329,7 @@ void cmdq_dev_test_subsys_correctness_impl(enum CMDQ_SUBSYS_ENUM subsys)
 {
 	struct SubsysStruct *gceSubsysStruct = NULL;
 
-	if (subsys >= 0 && subsys < CMDQ_SUBSYS_MAX_COUNT) {
+	if (subsys < CMDQ_SUBSYS_MAX_COUNT) {
 		gceSubsysStruct = cmdq_core_get_dts_data()->subsys;
 
 		if (gceSubsysStruct[subsys].subsysID != -1) {
@@ -402,7 +399,7 @@ void cmdq_dev_init_event_table(struct device_node *node)
 			events[i].dts_name);
 	}
 
-#if IS_ENABLED(CONFIG_MACH_MT6885) || IS_ENABLED(CONFIG_MACH_MT6893)
+#if IS_ENABLED(CONFIG_MACH_MT6885)
 	cmdq_core_set_event_table(CMDQ_EVENT_DISP_RDMA0_SOF, 2);
 	cmdq_core_set_event_table(CMDQ_EVENT_DISP_WDMA0_EOF, 60);
 	cmdq_core_set_event_table(CMDQ_EVENT_DISP_RDMA0_EOF, 68);
@@ -426,23 +423,23 @@ void cmdq_dev_test_dts_correctness(void)
 void cmdq_dev_init_resource(CMDQ_DEV_INIT_RESOURCE_CB init_cb)
 {
 	int status, index;
-	u32 count = 0;
+	u32 count;
 
 	status = of_property_read_u32(gCmdqDev.pDev->of_node,
-		"sram_share_cnt", &count);
+		"sram-share-cnt", &count);
 	if (status < 0)
 		return;
 
 	for (index = 0; index < count; index++) {
-		u32 engine, event;
+		u32 engine = 0, event = 0;
 
 		status = of_property_read_u32_index(
-			gCmdqDev.pDev->of_node, "sram_share_engine",
+			gCmdqDev.pDev->of_node, "sram-share-engine",
 			index, &engine);
 		if (status < 0)
 			return;
 		status = of_property_read_u32_index(
-			gCmdqDev.pDev->of_node, "sram_share_event",
+			gCmdqDev.pDev->of_node, "sram-share-event",
 			index, &event);
 		if (status < 0)
 			return;
@@ -460,7 +457,7 @@ void cmdq_dev_init_device_tree(struct device_node *node)
 	gThreadCount = 16;
 	gMMSYSDummyRegOffset = 0;
 	cmdq_core_init_dts_data();
-	status = of_property_read_u32(node, "thread_count", &thread_count);
+	status = of_property_read_u32(node, "thread-count", &thread_count);
 	if (status >= 0)
 		gThreadCount = thread_count;
 	/* init GCE subsys */
@@ -486,20 +483,21 @@ void cmdq_dev_init(struct platform_device *pDevice)
 	struct device_node *node = pDevice->dev.of_node;
 	u32 dma_mask_bit = 0;
 	s32 ret;
-#if IS_ENABLED(CONFIG_MACH_MT6885) || IS_ENABLED(CONFIG_MACH_MT6893)
+	unsigned long mdpsys_base_va;
+	uint32_t mdpsys_base_pa;
 	struct device_node *node2;
 	struct platform_device	*pdevice2;
 	struct resource res;
-#endif
 
 	/* init cmdq device dependent data */
 	do {
 		memset(&gCmdqDev, 0x0, sizeof(struct CmdqDeviceStruct));
 
 		gCmdqDev.pDev = &pDevice->dev;
-#if !IS_ENABLED(CONFIG_MACH_MT6885) && !IS_ENABLED(CONFIG_MACH_MT6893)
-		gCmdqDev.regBaseVA = (unsigned long)of_iomap(node, 0);
-		gCmdqDev.regBasePA = cmdq_dev_get_gce_node_PA(node, 0);
+
+		mdpsys_base_va = cmdq_dev_alloc_reference_by_name("mmsys-config", &mdpsys_base_pa);
+		gCmdqDev.regBaseVA = (unsigned long)mdpsys_base_va;
+		gCmdqDev.regBasePA = mdpsys_base_pa;
 		gCmdqDev.irqId = irq_of_parse_and_map(node, 0);
 		gCmdqDev.irqSecId = irq_of_parse_and_map(node, 1);
 		gCmdqDev.clk_gce = devm_clk_get(&pDevice->dev, "GCE");
@@ -514,7 +512,6 @@ void cmdq_dev_init(struct platform_device *pDevice)
 			gCmdqDev.regBaseVA, gCmdqDev.irqId,
 			gCmdqDev.irqSecId);
 
-#else
 		node2 = of_parse_phandle(node, "mediatek,mailbox-gce-m", 0);
 		if (!node2)
 			break;
@@ -564,15 +561,16 @@ void cmdq_dev_init(struct platform_device *pDevice)
 			"[CMDQ] 2nd dev:%p PA:%pa VA:%lx irqId:%d\n",
 			gCmdqDev.pdev2, &gCmdqDev.pa2,
 			gCmdqDev.va2, gCmdqDev.irqId2);
-#endif
 	} while (0);
 
-	ret = of_property_read_u32(gCmdqDev.pDev->of_node, "dma_mask_bit",
+	ret = of_property_read_u32(gCmdqDev.pDev->of_node, "dma-mask-bit",
 		&dma_mask_bit);
 	/* if not assign from dts, give default 32bit for legacy chip */
 	if (ret != 0 || !dma_mask_bit)
 		dma_mask_bit = 32;
 	gCmdqDev.dma_mask_result = dma_set_coherent_mask(
+		&pDevice->dev, DMA_BIT_MASK(dma_mask_bit));
+	gCmdqDev.dma_mask_result = dma_set_mask_and_coherent(
 		&pDevice->dev, DMA_BIT_MASK(dma_mask_bit));
 	CMDQ_LOG("set dma mask bit:%u result:%d\n",
 		dma_mask_bit, gCmdqDev.dma_mask_result);

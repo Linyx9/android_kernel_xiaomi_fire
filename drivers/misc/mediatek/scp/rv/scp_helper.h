@@ -14,10 +14,12 @@
 #include "scp_reg.h"
 #include "scp_feature_define.h"
 #include "scp.h"
+#include <linux/regulator/consumer.h>
 
 #define ROUNDUP(a, b)		        (((a) + ((b)-1)) & ~((b)-1))
 
-/* scp config reg. definition*/
+/* scp config reg. definition */
+#define SCP_PREFIX_PATTERN	(0x53435000)
 #define SCP_TCM_SIZE		(scpreg.total_tcmsize)
 #define SCP_A_TCM_SIZE		(scpreg.scp_tcmsize)
 #define SCP_TCM			(scpreg.sram)
@@ -25,11 +27,12 @@
 #define SCP_RTOS_START		(0x800)
 
 #define SCP_DRAM_MAPSIZE	(0x100000)
+#define SCP_MAX_REGULATOR_NUM	(10)
 
 /* scp dvfs return status flag */
 #define SET_PLL_FAIL		(1)
 #define SET_PMIC_VOLT_FAIL	(2)
-
+#define SCP_DEBUG_MAGIC_PATTERN (0x05515521)
 #define mt_reg_sync_writel(v, a) \
 	do {    \
 		__raw_writel((v), (void __force __iomem *)((a)));   \
@@ -101,6 +104,23 @@ enum SCP_RESET_TYPE {
 	RESET_TYPE_TIMEOUT = 3,
 };
 
+/* scp pm notify message */
+enum SCP_PM_NOTIFY {
+	PM_AP_SUSPEND = 0,
+	PM_AP_RESUME = 1,
+};
+
+enum SCP_DUMP_TYPE {
+	SKIP_DUMP = 0,
+	DO_DUMP = 1,
+};
+
+enum SCP_AWAKE_STATUS {
+	IS_AWAKE_UNLOCK = 0,
+	IS_AWAKE_LOCK = 1,
+	IS_AWAKE_FAIL = 2,
+};
+
 struct scp_bus_tracker_status {
 	u32 dbg_con;
 	u32 dbg_r[32];
@@ -117,6 +137,8 @@ struct scp_regs {
 	void __iomem *cfg_core1;
 	void __iomem *cfg_sec;
 	void __iomem *bus_tracker;
+	void __iomem *cfgreg_ap;
+	struct regmap *scpsys_regmap; /* infracfg_ao base */
 	int irq0;
 	int irq1;
 	unsigned int total_tcmsize;
@@ -125,6 +147,15 @@ struct scp_regs {
 	unsigned int core_nums;
 	unsigned int twohart;
 	unsigned int secure_dump;
+	unsigned int low_pwr_dbg;
+	int scp_dram_region;
+	unsigned int cfgreg_ap_en;
+	unsigned int ipc_wa;
+	unsigned int read_infra_irq_sta_en;
+	unsigned int scpsys_regmap_en;
+	unsigned int mbrain;
+	unsigned int recovery_wfi_detect;
+	unsigned int ipi_timeout_bugon;
 	struct scp_bus_tracker_status tracker_status;
 };
 
@@ -137,6 +168,7 @@ struct scp_work_struct {
 
 struct scp_reserve_mblock {
 	enum scp_reserve_mem_id_t num;
+	u32 alignment;
 	u64 start_phys;
 	u64 start_virt;
 	u64 size;
@@ -165,16 +197,42 @@ struct scp_region_info_st {
 	uint32_t ap_params_start;
 };
 
+struct scp_reg_dump_st {
+	uint32_t addr;
+	uint32_t size;
+};
+
+struct scp_resource_dump_info_st {
+	uint32_t en;
+	struct regulator *scp_regulator[SCP_MAX_REGULATOR_NUM];
+	uint32_t scp_regulator_cnt;
+	struct scp_reg_dump_st *dump_regs;
+	uint32_t regs_cell;
+	uint32_t dump_regs_cnt;
+};
+
+struct scp_clk_fmeter_dump_info_st {
+	uint32_t en;
+	uint32_t fm_ulposc_ck;
+	uint32_t fm_ulposc2_ck;
+};
+
+struct scp_kasan_info_st {
+	uint32_t ubsan_en;
+	uint32_t asan_en;
+};
+
+extern struct scp_regs scpreg;
+extern const struct file_operations scp_A_log_file_ops;
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_DEBUG_SUPPORT)
 /* scp device attribute */
 extern struct device_attribute dev_attr_scp_A_mobile_log_UT;
 extern struct device_attribute dev_attr_scp_A_logger_wakeup_AP;
-extern const struct file_operations scp_A_log_file_ops;
-
-extern struct scp_regs scpreg;
 extern struct device_attribute dev_attr_scp_mobile_log;
 extern struct device_attribute dev_attr_scp_A_get_last_log;
 extern struct device_attribute dev_attr_scp_A_status;
 extern struct device_attribute dev_attr_log_filter;
+#endif
 extern struct bin_attribute bin_attr_scp_dump;
 
 /* scp loggger */
@@ -197,6 +255,7 @@ extern void scp_A_irq_init(void);
 /* scp helper */
 extern void scp_schedule_work(struct scp_work_struct *scp_ws);
 extern void scp_schedule_logger_work(struct scp_work_struct *scp_ws);
+extern void scp_schedule_reset_work(struct scp_work_struct *scp_ws);
 
 extern void memcpy_to_scp(void __iomem *trg,
 		const void *src, int size);
@@ -211,6 +270,7 @@ extern phys_addr_t scp_mem_base_virt;
 extern phys_addr_t scp_mem_size;
 extern atomic_t scp_reset_status;
 
+extern struct scp_resource_dump_info_st scp_resource_dump_info;
 extern bool mbox_check_send_table(unsigned int id);
 extern bool mbox_check_recv_table(unsigned int id);
 extern void mbox_setup_pin_table(int mbox);
@@ -226,11 +286,10 @@ extern void scp_extern_notify(enum SCP_NOTIFY_EVENT notify_status);
 extern void scp_status_set(unsigned int value);
 extern void scp_logger_init_set(unsigned int value);
 extern unsigned int scp_set_reset_status(void);
-extern void scp_enable_sram(void);
 extern int scp_sys_full_reset(void);
 extern void scp_reset_awake_counts(void);
 extern void scp_awake_init(void);
-extern unsigned int mt_get_abist_freq(unsigned int ID);
+extern void scp_reousrce_dump(void);
 
 #if SCP_RECOVERY_SUPPORT
 extern unsigned int scp_reset_by_cmd;
@@ -243,6 +302,9 @@ extern struct tasklet_struct scp_A_irq0_tasklet;
 extern struct tasklet_struct scp_A_irq1_tasklet;
 #endif
 
+/* scp awake variable */
+extern unsigned int scp_awake_timeout;
+
 enum MTK_TINYSYS_SCP_KERNEL_OP {
 	MTK_TINYSYS_SCP_KERNEL_OP_DUMP_START = 0,
 	MTK_TINYSYS_SCP_KERNEL_OP_DUMP_POLLING,
@@ -253,55 +315,165 @@ enum MTK_TINYSYS_SCP_KERNEL_OP {
 	MTK_TINYSYS_SCP_KERNEL_OP_WDT_SET,
 	MTK_TINYSYS_SCP_KERNEL_OP_HALT_SET,
 	MTK_TINYSYS_SCP_KERNEL_OP_WDT_CLEAR,
+	MTK_TINYSYS_SCP_KERNEL_OP_GPR_CLEAR,
+	MTK_TINYSYS_SCP_KERNEL_OP_INFRA_REQ,
+	MTK_TINYSYS_SCP_KERNEL_OP_INFRA_REL,
+	MTK_TINYSYS_SCP_KERNEL_OP_DRAM_REQ,
+	MTK_TINYSYS_SCP_KERNEL_OP_DRAM_REL,
+	MTK_TINYSYS_SCP_KERNEL_OP_AWAKE_CTRL,
 	MTK_TINYSYS_SCP_KERNEL_OP_NUM,
 };
 
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM)
-static inline unsigned long scp_do_dump(void)
+static inline unsigned long scp_do_dump(enum SCP_DUMP_TYPE type)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_DUMP_START,
+			type, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
 static inline unsigned long scp_do_polling(void)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_DUMP_POLLING,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
 static inline uint64_t scp_do_rstn_set(uint64_t boot_ok)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_RESET_SET,
+			boot_ok, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
 static inline uint64_t scp_do_rstn_clr(void)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_RESET_RELEASE,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
 static inline unsigned long scp_restore_l2tcm(void)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_RESTORE_L2TCM,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
 static inline unsigned long scp_restore_dram(void)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_RESTORE_DRAM,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
 static inline uint64_t scp_do_wdt_set(uint64_t coreid)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_WDT_SET,
+			coreid, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
 static inline uint64_t scp_do_halt_set(void)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_HALT_SET,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
 static inline uint64_t scp_do_wdt_clear(uint64_t coreid)
 {
-	return 0;
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_WDT_CLEAR,
+			coreid, 0, 0, 0, 0, 0, &res);
+	return res.a0;
 }
 
+static inline uint64_t scp_do_gpr_clear(uint64_t idx)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_GPR_CLEAR,
+			idx, 0, 0, 0, 0, 0, &res);
+	return res.a0;
+}
+
+static inline uint64_t scp_lpm_req_infra(void)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_INFRA_REQ,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
+}
+
+static inline uint64_t scp_lpm_rel_infra(void)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_INFRA_REL,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
+}
+
+static inline uint64_t scp_lpm_req_dram(void)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_DRAM_REQ,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
+}
+
+static inline uint64_t scp_lpm_rel_dram(void)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_DRAM_REL,
+			0, 0, 0, 0, 0, 0, &res);
+	return res.a0;
+}
+
+static inline uint64_t scp_smc_awake_ctrl(uint8_t awakeStatus)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(MTK_SIP_TINYSYS_SCP_CONTROL,
+			MTK_TINYSYS_SCP_KERNEL_OP_AWAKE_CTRL,
+			awakeStatus, 0, 0, 0, 0, 0, &res);
+	return res.a0;
+}
 #endif
 
 #endif

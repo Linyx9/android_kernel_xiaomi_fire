@@ -6,6 +6,7 @@
 #ifndef __MODEM_CD_H__
 #define __MODEM_CD_H__
 
+#include <linux/atomic.h>
 #include <linux/pm_wakeup.h>
 #include <linux/dmapool.h>
 #include <linux/timer.h>
@@ -13,13 +14,15 @@
 #include <linux/hrtimer.h>
 #include <linux/skbuff.h>
 #include "mt-plat/mtk_ccci_common.h"
-
+#include "ccmni.h"
 #include "ccci_config.h"
 #include "ccci_common_config.h"
 #include "ccci_bm.h"
 #include "ccci_hif_internal.h"
-#include "modem_sys.h"
+//#include "modem_sys.h"
 #include "ccci_cldma_plat.h"
+#include "ccmni.h"
+
 /*
  * hardcode, max queue number should be synced with port array in port_cfg.c
  * and macros in ccci_core.h following number should sync with MAX_TXQ/RXQ_NUM
@@ -31,7 +34,7 @@
 #define NET_RXQ_NUM 1
 #define NORMAL_TXQ_NUM 0
 #define NORMAL_RXQ_NUM 0
-
+#define CLDMA_TXQ_FULL_LOG_INTERVAL 500
 #define MAX_BD_NUM (MAX_SKB_FRAGS + 1)
 #define TRAFFIC_MONITOR_INTERVAL 10	/* seconds */
 #define SKB_RX_QUEUE_MAX_LEN 200000
@@ -121,13 +124,6 @@ struct ccci_fast_header {
 	u32 reserved;
 };
 #endif
-
-struct cldma_hw_info {
-	unsigned long cldma_ap_ao_base;
-	unsigned long cldma_ap_pdn_base;
-	unsigned int cldma_irq_id;
-	unsigned long cldma_irq_flags;
-};
 
 static inline struct cldma_request *cldma_ring_step_forward(
 	struct cldma_ring *ring, struct cldma_request *req)
@@ -230,6 +226,15 @@ struct md_cd_queue {
 	unsigned char hif_id;
 	enum DIRECTION dir;
 	unsigned int busy_count;
+
+	/* only for txq used by stop/start ccmni queue */
+	atomic_t            txq_ccmni_stop_counter;
+	spinlock_t          txq_stop_start_lock;
+	unsigned long       txq_ccmni_state[MD_HW_Q_MAX];
+	unsigned long       txq_start_tick[MD_HW_Q_MAX];
+	unsigned int        txq_start_cnt[MD_HW_Q_MAX];
+	unsigned long       txq_stop_tick[MD_HW_Q_MAX];
+	unsigned int        txq_stop_cnt[MD_HW_Q_MAX];
 };
 
 #define QUEUE_LEN(a) (sizeof(a)/sizeof(struct md_cd_queue))
@@ -255,7 +260,6 @@ struct md_cd_ctrl {
 	 */
 	struct work_struct cldma_irq_work;
 	struct workqueue_struct *cldma_irq_worker;
-	unsigned char md_id;
 	unsigned char hif_id;
 	struct ccci_hif_traffic traffic_info;
 	atomic_t wakeup_src;
@@ -296,6 +300,7 @@ struct md_cd_ctrl {
 	int cldma_platform;
 
 	struct ccci_cldma_plat_ops cldma_plat_ops;
+	struct platform_device *plat_dev; /* maybe: no need. */
 };
 
 struct cldma_tgpd {
@@ -367,93 +372,10 @@ enum {
 	CCCI_TRACE_RX_IRQ = 1,
 };
 
-static inline void md_cd_queue_struct_init(struct md_cd_queue *queue,
-	unsigned char hif_id, enum DIRECTION dir, unsigned char index)
-{
-	queue->dir = dir;
-	queue->index = index;
-	queue->hif_id = hif_id;
-	queue->tr_ring = NULL;
-	queue->tr_done = NULL;
-	queue->tx_xmit = NULL;
-	init_waitqueue_head(&queue->req_wq);
-	spin_lock_init(&queue->ring_lock);
-	queue->busy_count = 0;
-#ifdef ENABLE_FAST_HEADER
-	queue->fast_hdr.gpd_count = 0;
-#endif
-}
-
-
-static inline int ccci_cldma_hif_send_skb(unsigned char hif_id, int tx_qno,
-	struct sk_buff *skb, int from_pool, int blocking)
-{
-	struct md_cd_ctrl *md_ctrl =
-		(struct md_cd_ctrl *)ccci_hif_get_by_id(hif_id);
-
-	if (md_ctrl)
-		return md_ctrl->ops->send_skb(hif_id, tx_qno, skb,
-			from_pool, blocking);
-	else
-		return -1;
-}
-
-static inline int ccci_cldma_hif_write_room(unsigned char hif_id,
-	unsigned char qno)
-{
-	struct md_cd_ctrl *md_ctrl =
-		(struct md_cd_ctrl *)ccci_hif_get_by_id(hif_id);
-
-	if (md_ctrl)
-		return md_ctrl->ops->write_room(hif_id, qno);
-	else
-		return -1;
-
-}
-static inline int ccci_cldma_hif_give_more(unsigned char hif_id, int rx_qno)
-{
-	struct md_cd_ctrl *md_ctrl =
-		(struct md_cd_ctrl *)ccci_hif_get_by_id(hif_id);
-
-	if (md_ctrl)
-		return md_ctrl->ops->give_more(hif_id, rx_qno);
-	else
-		return -1;
-
-}
-
-static inline int ccci_cldma_hif_dump_status(unsigned char hif_id,
-	enum MODEM_DUMP_FLAG dump_flag, void *buff, int length)
-{
-	struct md_cd_ctrl *md_ctrl =
-		(struct md_cd_ctrl *)ccci_hif_get_by_id(hif_id);
-
-	if (md_ctrl)
-		return md_ctrl->ops->dump_status(hif_id, dump_flag,
-			buff, length);
-	else
-		return -1;
-
-}
-
-static inline int ccci_cldma_hif_set_wakeup_src(unsigned char hif_id,
-	int value)
-{
-	struct md_cd_ctrl *md_ctrl =
-		(struct md_cd_ctrl *)ccci_hif_get_by_id(hif_id);
-
-	if (md_ctrl) {
-		atomic_set(&md_ctrl->wakeup_src, value);
-		return value;
-	}
-	else
-		return -1;
-
-}
-int md_cd_clear_all_queue(unsigned char hif_id, enum DIRECTION dir);
-int cldma_stop_for_ee(unsigned char hif_id);
-int md_cldma_allQreset_work(unsigned char hif_id);
-int md_cldma_clear(unsigned char hif_id);
+struct ccci_cldma_clk_node {
+	struct clk *clk_ref;
+	unsigned char *clk_name;
+};
 
 extern struct regmap *syscon_regmap_lookup_by_phandle(struct device_node *np,
 	const char *property);
@@ -466,7 +388,7 @@ extern unsigned long ccci_modem_boot_count[];
 /* used for throttling feature - end */
 
 extern struct md_cd_ctrl *cldma_ctrl;
-extern struct ccci_clk_node cldma_clk_table[];
+extern struct ccci_cldma_clk_node cldma_clk_table[];
 
 extern int regmap_write(struct regmap *map, unsigned int reg, unsigned int val);
 extern int regmap_read(struct regmap *map, unsigned int reg, unsigned int *val);

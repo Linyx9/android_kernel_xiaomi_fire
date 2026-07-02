@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef _TYPEDEFS_H
 #define _TYPEDEFS_H
@@ -69,7 +69,8 @@ enum { RX, TX, NONE };
 #define MASKREG8(x, y, z)   OUTREG8(x, (INREG8(x)&~(y))|(z))
 
 #define INREG16(x)          READ_REGISTER_UINT16((unsigned short *)((void *)(x)))
-#define OUTREG16(x, y)      WRITE_REGISTER_UINT16((unsigned short *)((void *)(x)), (unsigned short)(y))
+#define OUTREG16(x, y)      WRITE_REGISTER_UINT16((unsigned short *)((void *)(x)), \
+		(unsigned short)(y))
 #define SETREG16(x, y)      OUTREG16(x, INREG16(x)|(y))
 #define CLRREG16(x, y)      OUTREG16(x, INREG16(x)&~(y))
 #define MASKREG16(x, y, z)  OUTREG16(x, (INREG16(x)&~(y))|(z))
@@ -90,21 +91,6 @@ enum { RX, TX, NONE };
 #define DRV_WriteReg16(addr, data)  OUTREG16(addr, data)
 #define DRV_SetReg16(addr, data)    SETREG16(addr, data)
 #define DRV_ClrReg16(addr, data)    CLRREG16(addr, data)
-#if 0
-#ifndef DRV_Reg32
-#define DRV_Reg32(addr)             INREG32(addr)
-#endif
-#ifndef DRV_WriteReg32
-#define DRV_WriteReg32(addr, data)  OUTREG32(addr, data)
-#endif
-#ifndef DRV_SetReg32
-#define DRV_SetReg32(addr, data)    SETREG32(addr, data)
-#endif
-#ifndef DRV_ClrReg32
-#define DRV_ClrReg32(addr, data)    CLRREG32(addr, data)
-#endif
-#endif
-
 /* !!! DEPRECATED, WILL BE REMOVED LATER !!! */
 #define DRV_Reg(addr)               DRV_Reg16(addr)
 #define DRV_WriteReg(addr, data)    DRV_WriteReg16(addr, data)
@@ -121,16 +107,6 @@ enum { RX, TX, NONE };
 /* --------------------------------------------------------------------------- */
 /* Assertions */
 /* --------------------------------------------------------------------------- */
-
-/*
-*#ifndef ASSERT
-*#define ASSERT(expr)        BUG_ON(!(expr))
-*#endif
-*
-*#ifndef NOT_IMPLEMENTED
-*#define NOT_IMPLEMENTED()   BUG_ON(1)
-*#endif
-*/
 #define STATIC_ASSERT(pred)         STATIC_ASSERT_X(pred, __LINE__)
 #define STATIC_ASSERT_X(pred, line) STATIC_ASSERT_XX(pred, line)
 #define STATIC_ASSERT_XX(pred, line) \

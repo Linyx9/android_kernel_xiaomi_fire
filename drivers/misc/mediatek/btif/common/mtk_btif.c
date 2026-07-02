@@ -13,7 +13,6 @@
 #include <linux/cdev.h>
 #include <linux/poll.h>
 #include <uapi/linux/sched/types.h>
-#include <asm/cacheflush.h>
 
 /*#include <mach/eint.h>*/
 /*-----------driver own header files----------------*/
@@ -245,6 +244,7 @@ struct platform_driver mtk_btif_dev_drv = {
 };
 
 static int btif_probed;
+static spinlock_t g_bbs_lock;
 
 #define BTIF_STATE_RELEASE(x) _btif_state_release(x)
 
@@ -521,7 +521,7 @@ static int btif_chrdev_init(void)
 	}
 	BTIF_INFO_FUNC("add btif dev to kernel succeed\n");
 
-	p_btif_class = class_create(THIS_MODULE, p_btif_dev_name);
+	p_btif_class = class_create(p_btif_dev_name);
 	if (IS_ERR(p_btif_class)) {
 		BTIF_ERR_FUNC("error happened when doing class_create\n");
 		unregister_chrdev_region(btif_dev, 1);
@@ -753,7 +753,7 @@ static ssize_t driver_flag_set(struct device_driver *drv,
 	long x = 0;
 	long y = 0;
 	long z = 0;
-	int result = 0;
+	int result;
 	char *p_token = NULL;
 	char *p_delimiter = " \t";
 #ifdef BTIF_FLAG_SET_ENABLE_ALL_FUNC
@@ -793,7 +793,7 @@ static ssize_t driver_flag_set(struct device_driver *drv,
 	else
 		z = 0;
 
-	BTIF_INFO_FUNC("x(0x%08lx), y(0x%08lx), z(0x%08lx)\n\r", x, y, z);
+	BTIF_INFO_FUNC("x(0x%08lx), y(0x%08lx), z(0x%08lx), ret(%d)\n\r", x, y, z, result);
 
 	switch (x) {
 #ifdef BTIF_FLAG_SET_ENABLE_ALL_FUNC
@@ -1099,8 +1099,10 @@ unsigned int btif_dma_rx_data_receiver(struct _MTK_DMA_INFO_STR_ *p_dma_info,
 	struct _mtk_btif_ *p_btif = &(g_btif[index]);
 
 	/* Although we use coherent DMA, we still need to flush cache. */
-	/* Or some data might be inconsistent. */
-	__flush_dcache_area(p_buf, buf_len);
+	/* However, btif cannot invoke cache API directly because btif is KO. */
+	/* We unmap dma buffer to resolve this problem */
+	dma_unmap_single(p_btif->private_data, p_dma_info->p_vfifo->phy_addr,
+			p_dma_info->p_vfifo->vfifo_size, DMA_FROM_DEVICE);
 
 	btif_bbs_write(&(p_btif->btif_buf), p_buf, buf_len);
 /*save DMA Rx packet here*/
@@ -1716,6 +1718,17 @@ int _btif_exit_dpidle_from_dpidle(struct _mtk_btif_ *p_btif)
 /*enable BTIF's clock*/
 	i_ret += hal_btif_clk_ctrl(p_btif->p_btif_info, CLK_OUT_ENABLE);
 
+	if ((p_btif->tx_mode == BTIF_MODE_DMA &&
+			hal_btif_dma_check_status(p_btif->p_tx_dma->p_dma_info) < 0) ||
+		(p_btif->rx_mode == BTIF_MODE_DMA &&
+			hal_btif_dma_check_status(p_btif->p_rx_dma->p_dma_info) < 0)) {
+		BTIF_ERR_FUNC("tx or rx dma is reset. re-init btif");
+		_btif_controller_free(p_btif);
+		_btif_controller_tx_free(p_btif);
+		_btif_controller_rx_free(p_btif);
+		i_ret = _btif_init(p_btif);
+	}
+
 	if (i_ret != 0)
 		BTIF_WARN_FUNC("failed, i_ret:%d\n", i_ret);
 	return i_ret;
@@ -1759,11 +1772,12 @@ int _btif_enter_dpidle_from_on(struct _mtk_btif_ *p_btif)
 
 	btif_do_gettimeofday(&timer_start);
 
-	while ((!btif_is_tx_complete(p_btif)) && (retry < max_retry)) {
+	while ((!btif_is_tx_complete(p_btif) || !btif_is_rx_complete(p_btif)) &&
+		(retry < max_retry)) {
 		btif_do_gettimeofday(&timer_now);
 		if ((MAX_WAIT_TIME_MS/1000) <=
 				(timer_now.tv_sec - timer_start.tv_sec)) {
-			BTIF_WARN_FUNC("expired start:%lld,now:%lld,retry:%d\n",
+			BTIF_WARN_FUNC("expired start:%ld,now:%ld,retry:%d\n",
 					timer_start.tv_sec, timer_now.tv_sec,
 					retry);
 			break;
@@ -1864,6 +1878,19 @@ bool btif_is_tx_complete(struct _mtk_btif_ *p_btif)
 	return b_ret;
 }
 
+bool btif_is_rx_complete(struct _mtk_btif_ *p_btif)
+{
+	enum _ENUM_BTIF_MODE_ rx_mode = p_btif->rx_mode;
+
+	if (btif_rx_buf_has_pending_data(p_btif))
+		return false;
+
+	if (rx_mode == BTIF_MODE_DMA && hal_dma_rx_has_pending(p_btif->p_rx_dma->p_dma_info))
+		return false;
+
+	return true;
+}
+
 /*--------------------------------Functions-----------------------------------*/
 
 #if ENABLE_BTIF_TX_DMA
@@ -1886,8 +1913,10 @@ static int _btif_vfifo_init(struct _mtk_btif_dma_ *p_dma)
 	}
 
 	dev = (struct device *)p_btif->private_data;
-	if (dev == NULL)
+	if (dev == NULL) {
 		BTIF_WARN_FUNC("Null dev pointer!!!!\n");
+		return E_BTIF_BAD_POINTER;
+	}
 
 	p_vfifo = p_dma->p_dma_info->p_vfifo;
 	if (p_vfifo->p_vir_addr != NULL) {
@@ -1897,19 +1926,19 @@ static int _btif_vfifo_init(struct _mtk_btif_dma_ *p_dma)
 	}
 
 /*vFIFO memory allocation*/
-	p_vfifo->p_vir_addr = dma_zalloc_coherent(dev, p_vfifo->vfifo_size,
-			&p_vfifo->phy_addr, GFP_DMA | GFP_DMA32);
+	p_vfifo->p_vir_addr = dma_alloc_coherent(dev, p_vfifo->vfifo_size,
+			&p_vfifo->phy_addr, GFP_DMA | GFP_DMA32 | __GFP_ZERO);
 	if (p_vfifo->p_vir_addr == NULL) {
 		BTIF_ERR_FUNC("alloc vFIFO memory for BTIF failed\n");
 		return E_BTIF_FAIL;
 	}
 
 	if (sizeof(dma_addr_t) == sizeof(unsigned long long))
-		BTIF_INFO_FUNC("alloc vFIFO succeed in arch64,vir addr:0x%p,"
-		"phy addr:0x%llx\n", p_vfifo->p_vir_addr, p_vfifo->phy_addr);
+		BTIF_INFO_FUNC("alloc vFIFO succeed in arch64,vir addr:0x%p,phy addr:0x%llx\n",
+			p_vfifo->p_vir_addr, p_vfifo->phy_addr);
 	else
-		BTIF_INFO_FUNC("alloc vFIFO succeed in arch32,vir addr:0x%p,"
-		"phy addr:0x%08x\n", p_vfifo->p_vir_addr, p_vfifo->phy_addr);
+		BTIF_INFO_FUNC("alloc vFIFO succeed in arch32,vir addr:0x%p,phy addr:0x%08x\n",
+			p_vfifo->p_vir_addr, p_vfifo->phy_addr);
 
 	return 0;
 }
@@ -1933,8 +1962,10 @@ static int _btif_vfifo_deinit(struct _mtk_btif_dma_ *p_dma)
 	}
 
 	dev = (struct device *)p_btif->private_data;
-	if (dev == NULL)
+	if (dev == NULL) {
 		BTIF_WARN_FUNC("Null dev pointer!!!!\n");
+		return E_BTIF_BAD_POINTER;
+	}
 
 	p_vfifo = p_dma->p_dma_info->p_vfifo;
 
@@ -2131,7 +2162,12 @@ static int btif_rx_data_consummer(struct _mtk_btif_ *p_btif)
  * in order not to be effected by case in which irq interrupt this operation,
  * we record wr_idx here
  */
-	unsigned int wr_idx = p_bbs->wr_idx;
+	unsigned int wr_idx;
+	unsigned long irq_flag = 0;
+
+	spin_lock_irqsave(&(g_bbs_lock), irq_flag);
+	wr_idx = p_bbs->wr_idx;
+	spin_unlock_irqrestore(&(g_bbs_lock), irq_flag);
 
 	length = BBS_COUNT_CUR(p_bbs, wr_idx);
 
@@ -2155,7 +2191,9 @@ static int btif_rx_data_consummer(struct _mtk_btif_ *p_btif)
 					else
 						BTIF_ERR_FUNC("rx_cb = NULL\n");
 					/*update rx data read index*/
+					spin_lock_irqsave(&(g_bbs_lock), irq_flag);
 					p_bbs->rd_idx = wr_idx;
+					spin_unlock_irqrestore(&(g_bbs_lock), irq_flag);
 				} else {
 					unsigned int len_tail =
 					    BBS_SIZE(p_bbs) - (p_bbs)->rd_idx;
@@ -2175,7 +2213,9 @@ static int btif_rx_data_consummer(struct _mtk_btif_ *p_btif)
 					else
 						BTIF_ERR_FUNC("rx_cb = NULL\n");
 					/*update rx data read index*/
+					spin_lock_irqsave(&(g_bbs_lock), irq_flag);
 					p_bbs->rd_idx = wr_idx;
+					spin_unlock_irqrestore(&(g_bbs_lock), irq_flag);
 				}
 			} else if (p_btif->rx_notify != NULL) {
 				(*p_btif->rx_notify) ();
@@ -2189,7 +2229,9 @@ static int btif_rx_data_consummer(struct _mtk_btif_ *p_btif)
 			BTIF_DBG_FUNC("length:%d\n", length);
 			break;
 		}
+		spin_lock_irqsave(&(g_bbs_lock), irq_flag);
 		wr_idx = p_bbs->wr_idx;
+		spin_unlock_irqrestore(&(g_bbs_lock), irq_flag);
 		length = BBS_COUNT_CUR(p_bbs, wr_idx);
 	} while (1);
 	return length;
@@ -2207,7 +2249,7 @@ static int mtk_btif_rxd_be_blocked_by_timer(void)
 	btif_do_gettimeofday(&now);
 
 	for (i = 0; i < MAX_BTIF_RXD_TIME_REC; i++) {
-		BTIF_INFO_FUNC("btif_rxd_time_stamp[%d]=%lld.%ld\n", i,
+		BTIF_INFO_FUNC("btif_rxd_time_stamp[%d]=%ld.%ld\n", i,
 				btif_rxd_time_stamp[i].tv_sec,
 				btif_rxd_time_stamp[i].tv_nsec);
 		if (now.tv_sec >= btif_rxd_time_stamp[i].tv_sec) {
@@ -2227,7 +2269,7 @@ static int mtk_btif_rxd_be_blocked_by_timer(void)
 					time_gap[i], counter);
 		} else {
 			time_gap[i] = 0;
-			BTIF_ERR_FUNC("!!!now[%lld]<time_stamp[%d]:%ld\n",
+			BTIF_ERR_FUNC("!!!now[%ld]<time_stamp[%d]:%ld\n",
 					now.tv_sec, i,
 					btif_rxd_time_stamp[i].tv_nsec);
 		}
@@ -2512,19 +2554,8 @@ static int _btif_rx_btm_init(struct _mtk_btif_ *p_btif)
 		}
 
 #if ENABLE_BTIF_RX_THREAD_RT_SCHED
-		{
-			int i_ret = -1;
-			int policy = SCHED_FIFO;
-			struct sched_param param;
-
-			param.sched_priority = MAX_RT_PRIO - 20;
-			i_ret = sched_setscheduler(p_btif->p_task, policy,
-					&param);
-			if (i_ret != 0)
-				BTIF_WARN_FUNC("set RT to workqueue failed\n");
-			else
-				BTIF_INFO_FUNC("set RT to workqueue succeed\n");
-		}
+		sched_set_fifo(p_btif->p_task);
+		BTIF_INFO_FUNC("set btif_rxd to real time priority.\n");
 #endif
 
 		wake_up_process(p_btif->p_task);
@@ -2644,11 +2675,16 @@ unsigned int btif_bbs_write(struct _btif_buf_str_ *p_bbs,
 /*in IRQ context, so read operation won't interrupt this operation*/
 
 	unsigned int wr_len = 0;
-
-	unsigned int emp_len = BBS_LEFT(p_bbs);
-	unsigned int ava_len = emp_len - 1;
+	unsigned int emp_len;
+	unsigned int ava_len;
 	struct _mtk_btif_ *p_btif = container_of(p_bbs, struct _mtk_btif_,
 						 btif_buf);
+	unsigned long irq_flag = 0;
+
+	spin_lock_irqsave(&(g_bbs_lock), irq_flag);
+	emp_len = BBS_LEFT(p_bbs);
+	spin_unlock_irqrestore(&(g_bbs_lock), irq_flag);
+	ava_len = emp_len - 1;
 
 	if (ava_len <= 0) {
 		BTIF_ERR_FUNC
@@ -2676,6 +2712,7 @@ unsigned int btif_bbs_write(struct _btif_buf_str_ *p_bbs,
 	}
 
 	wr_len = min(buf_len, ava_len);
+	spin_lock_irqsave(&(g_bbs_lock), irq_flag);
 	btif_bbs_wr_direct(p_bbs, p_buf, wr_len);
 
 	if (BBS_COUNT(p_bbs) >= g_max_pding_data_size) {
@@ -2687,6 +2724,7 @@ unsigned int btif_bbs_write(struct _btif_buf_str_ *p_bbs,
 		_btif_dump_memory("<DMA Rx vFIFO>", p_buf, buf_len);
 		BBS_INIT(p_bbs);
 	}
+	spin_unlock_irqrestore(&(g_bbs_lock), irq_flag);
 
 	return wr_len;
 }
@@ -2886,6 +2924,8 @@ int btif_dump_reg(struct _mtk_btif_ *p_btif, enum _ENUM_BTIF_REG_ID_ flag)
 		BTIF_ERR_FUNC("switch to B_S_ON failed\n");
 		goto dmp_reg_err;
 	}
+/*dump APDMA register*/
+	hal_dma_dump_clk_reg();
 
 /*dump BTIF register*/
 	hal_btif_dump_reg(p_btif->p_btif_info, flag);
@@ -3040,7 +3080,6 @@ static void btif_log_buf_dmp_out_work(struct work_struct *work)
 	struct _btif_log_queue_t_ *p_log_que = container_of(work,
 		struct _btif_log_queue_t_, dump_work);
 	struct _btif_log_buf_t_ *p_log_buf = NULL;
-	unsigned char *p_buf = NULL;
 	unsigned int len = 0;
 	unsigned int pkt_count = 0;
 	unsigned char *p_dir = NULL;
@@ -3059,7 +3098,6 @@ static void btif_log_buf_dmp_out_work(struct work_struct *work)
 	for (i = 0; i < p_log_que->dump_size; i++) {
 		p_log_buf = p_log_que->p_dump_queue + i;
 		len = p_log_buf->len;
-		p_buf = p_log_buf->buffer;
 		p_timer = &p_log_buf->timer;
 		p_ts = &p_log_buf->ts;
 		len = len > BTIF_LOG_SZ ? BTIF_LOG_SZ : len;
@@ -3279,6 +3317,7 @@ static int BTIF_init(void)
 	while (btif_probed == 0)
 		msleep(500);
 
+	spin_lock_init(&g_bbs_lock);
 /*SW init*/
 	for (index = 0; index < BTIF_PORT_NR; index++) {
 		p_btif_buffer = kmalloc(BTIF_RX_BUFFER_SIZE, GFP_ATOMIC);
@@ -3536,34 +3575,53 @@ static int _btif_rx_thread_lock(struct _mtk_btif_ *p_btif, bool enable)
 
 int btif_rx_data_path_lock(struct _mtk_btif_ *p_btif)
 {
-	/* rx_thread_lock takes the mutex, and dma_lock takes the spinlock,
-	 * and we must take the thread_lock before spinlock
-	 */
 	if (_btif_rx_thread_lock(p_btif, true))
 		return E_BTIF_FAIL;
-
-	if (hal_rx_dma_lock(true)) {
-		_btif_rx_thread_lock(p_btif, false);
-		return E_BTIF_FAIL;
-	}
 	return 0;
 }
 
 int btif_rx_data_path_unlock(struct _mtk_btif_ *p_btif)
 {
-	hal_rx_dma_lock(false);
 	_btif_rx_thread_lock(p_btif, false);
 	return 0;
 }
 
 int btif_rx_dma_has_pending_data(struct _mtk_btif_ *p_btif)
 {
-	return hal_dma_rx_has_pending(p_btif->p_rx_dma->p_dma_info);
+	unsigned int ori_state;
+	int ret;
+
+	if (p_btif == NULL || _btif_state_hold(p_btif))
+		return 0;
+
+	ori_state = _btif_state_get(p_btif);
+	if (ori_state != B_S_ON) {
+		BTIF_STATE_RELEASE(p_btif);
+		return 0;
+	}
+
+	ret = hal_dma_rx_has_pending(p_btif->p_rx_dma->p_dma_info);
+	BTIF_STATE_RELEASE(p_btif);
+	return ret;
 }
 
 int btif_tx_dma_has_pending_data(struct _mtk_btif_ *p_btif)
 {
-	return hal_dma_tx_has_pending(p_btif->p_tx_dma->p_dma_info);
+	unsigned int ori_state;
+	int ret;
+
+	if (p_btif == NULL || _btif_state_hold(p_btif))
+		return 0;
+
+	ori_state = _btif_state_get(p_btif);
+	if (ori_state != B_S_ON) {
+		BTIF_STATE_RELEASE(p_btif);
+		return 0;
+	}
+
+	ret = hal_dma_tx_has_pending(p_btif->p_tx_dma->p_dma_info);
+	BTIF_STATE_RELEASE(p_btif);
+	return ret;
 }
 
 int btif_rx_buf_has_pending_data(struct _mtk_btif_ *p_btif)

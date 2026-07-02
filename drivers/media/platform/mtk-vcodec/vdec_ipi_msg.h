@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: PC Chen <pc.chen@mediatek.com>
  */
 
 #ifndef _VDEC_IPI_MSG_H_
@@ -29,7 +30,15 @@ enum vdec_src_chg_type {
 	VDEC_NEED_SEQ_HEADER        = (1 << 3),
 	VDEC_NEED_MORE_OUTPUT_BUF   = (1 << 4),
 	VDEC_CROP_CHANGED           = (1 << 5),
-	VDEC_OUTPUT_NOT_GENERATED     = (1 << 6),
+	VDEC_OUTPUT_NOT_GENERATED   = (1 << 6),
+	VDEC_COLOR_ASPECT_CHANGED   = (1 << 7),
+};
+
+enum vdec_fb_flag_type {
+	VDEC_FB_NO_FLAGS            = (0 << 0),
+	VDEC_FB_EOS                 = (1 << 0),
+	VDEC_FB_NO_GENERATED        = (1 << 1),
+	VDEC_FB_CROP_CHANGED        = (1 << 2),
 };
 
 enum vdec_ipi_msg_status {
@@ -42,34 +51,80 @@ enum vdec_ipi_msg_status {
 };
 
 /**
- * enum vdec_ipi_msgid - message id between AP and VCU
+ * enum vdec_ipi_msg_id - message id between AP and VCU
  * @AP_IPIMSG_XXX       : AP to VCU cmd message id
  * @VCU_IPIMSG_XXX_ACK  : VCU ack AP cmd message id
  */
-enum vdec_ipi_msgid {
-	AP_IPIMSG_DEC_INIT = 0xA000,
-	AP_IPIMSG_DEC_START = 0xA001,
-	AP_IPIMSG_DEC_END = 0xA002,
-	AP_IPIMSG_DEC_DEINIT = 0xA003,
-	AP_IPIMSG_DEC_RESET = 0xA004,
-	AP_IPIMSG_DEC_SET_PARAM = 0xA005,
-	AP_IPIMSG_DEC_QUERY_CAP = 0xA006,
+enum vdec_ipi_msg_id {
+	AP_IPIMSG_DEC_INIT = AP_IPIMSG_VDEC_SEND_BASE,
+	AP_IPIMSG_DEC_START,
+	AP_IPIMSG_DEC_DEINIT,
+	AP_IPIMSG_DEC_RESET,
+	AP_IPIMSG_DEC_SET_PARAM,
+	AP_IPIMSG_DEC_FRAME_BUFFER,
+	/** ipi with no driver inst **/
+	AP_IPIMSG_DEC_QUERY_CAP = AP_IPIMSG_VDEC_SEND_BASE + IPIMSG_NO_INST_OFFSET,
+	AP_IPIMSG_DEC_BACKUP,
+	AP_IPIMSG_DEC_RESUME,
+	AP_IPIMSG_DEC_PWR_CTRL,
 
-	VCU_IPIMSG_DEC_INIT_ACK = 0xB000,
-	VCU_IPIMSG_DEC_START_ACK = 0xB001,
-	VCU_IPIMSG_DEC_END_ACK = 0xB002,
-	VCU_IPIMSG_DEC_DEINIT_ACK = 0xB003,
-	VCU_IPIMSG_DEC_RESET_ACK = 0xB004,
-	VCU_IPIMSG_DEC_SET_PARAM_ACK = 0xB005,
-	VCU_IPIMSG_DEC_QUERY_CAP_ACK = 0xB006,
+	VCU_IPIMSG_DEC_INIT_DONE = VCU_IPIMSG_VDEC_ACK_BASE,
+	VCU_IPIMSG_DEC_START_DONE,
+	VCU_IPIMSG_DEC_DEINIT_DONE,
+	VCU_IPIMSG_DEC_RESET_DONE,
+	VCU_IPIMSG_DEC_SET_PARAM_DONE,
+	VCU_IPIMSG_DEC_DONE,
+	/** ack for ipi with no driver inst **/
+	VCU_IPIMSG_DEC_QUERY_CAP_DONE = VCU_IPIMSG_VDEC_ACK_BASE + IPIMSG_NO_INST_OFFSET,
+	VCU_IPIMSG_DEC_BACKUP_DONE,
+	VCU_IPIMSG_DEC_RESUME_DONE,
+	VCU_IPIMSG_DEC_PWR_CTRL_DONE,
 
-	VCU_IPIMSG_DEC_WAITISR = 0xC000,
-	VCU_IPIMSG_DEC_GET_FRAME_BUFFER = 0xC001,
-	VCU_IPIMSG_DEC_PUT_FRAME_BUFFER = 0xC002,
-	VCU_IPIMSG_DEC_LOCK_CORE = 0xC003,
-	VCU_IPIMSG_DEC_UNLOCK_CORE = 0xC004,
-	VCU_IPIMSG_DEC_LOCK_LAT = 0xC005,
-	VCU_IPIMSG_DEC_UNLOCK_LAT = 0xC006
+	VCU_IPIMSG_DEC_PUT_FRAME_BUFFER = VCU_IPIMSG_VDEC_SEND_BASE,
+	VCU_IPIMSG_DEC_LOCK_CORE,
+	VCU_IPIMSG_DEC_UNLOCK_CORE,
+	VCU_IPIMSG_DEC_LOCK_LAT,
+	VCU_IPIMSG_DEC_UNLOCK_LAT,
+	VCU_IPIMSG_DEC_MEM_ALLOC,
+	VCU_IPIMSG_DEC_MEM_FREE,
+	VCU_IPIMSG_DEC_WAITISR,
+	VCU_IPIMSG_DEC_CHECK_CODEC_ID,
+	VCU_IPIMSG_DEC_GET_KERNEL_PARAM,
+	VCU_IPIMSG_DEC_SMI_DBG_DUMP,
+	/** only support in vcu **/
+	VCU_IPIMSG_DEC_GET_FRAME_BUFFER,
+	VCU_IPIMSG_DEC_SLICE_DONE_ISR,
+
+	AP_IPIMSG_DEC_PUT_FRAME_BUFFER_DONE = AP_IPIMSG_VDEC_ACK_BASE,
+	AP_IPIMSG_DEC_LOCK_CORE_DONE,
+	AP_IPIMSG_DEC_UNLOCK_CORE_DONE,
+	AP_IPIMSG_DEC_LOCK_LAT_DONE,
+	AP_IPIMSG_DEC_UNLOCK_LAT_DONE,
+	AP_IPIMSG_DEC_MEM_ALLOC_DONE,
+	AP_IPIMSG_DEC_MEM_FREE_DONE,
+	AP_IPIMSG_DEC_WAITISR_DONE,
+	AP_IPIMSG_DEC_CHECK_CODEC_ID_DONE,
+	AP_IPIMSG_DEC_GET_KERNEL_PARAM_DONE,
+	AP_IPIMSG_DEC_SMI_DBG_DUMP_DONE,
+
+	VCU_ASYNCIPIMSG_DEC_PUT_FRAME_BUFFER = VCU_IPIMSG_VDEC_SEND_ASYNC_BASE,
+};
+
+enum vdec_flush_type {
+	FLUSH_BITSTREAM = (1 << 0),
+	FLUSH_FRAME     = (1 << 1),
+};
+
+/**
+ * enum vdec_reset_type - decoder reset type
+ * @VDEC_FLUSH      : flush, no need to cotinue decode and return all frame buffers
+ * @VDEC_DRAIN      : drain, need to decode done all inputs and return all decoded frames
+ * @VDEC_DRAIN_EOS  : drain for EOS, except for drain, need to free one more buffer for EOS
+ */
+enum vdec_reset_type {
+	VDEC_FLUSH = 0,
+	VDEC_DRAIN = 1,
+	VDEC_DRAIN_EOS = 2,
 };
 
 /* For GET_PARAM_DISP_FRAME_BUFFER and GET_PARAM_FREE_FRAME_BUFFER,
@@ -83,8 +138,8 @@ enum vdec_ipi_msgid {
  * GET_PARAM_DPB_SIZE           : get dpb size, __s32*
  * GET_PARAM_FRAME_INTERVAL     : get frame interval info*
  * GET_PARAM_ERRORMB_MAP        : get error mocroblock when decode error*
- * GET_PARAM_CAPABILITY_SUPPORTED_FORMATS: get codec supported format capability
- * GET_PARAM_CAPABILITY_FRAME_SIZES:
+ * GET_PARAM_VDEC_CAP_SUPPORTED_FORMATS: get codec supported format capability
+ * GET_PARAM_VDEC_CAP_FRAME_SIZES:
  *                       get codec supported frame size & alignment info
  */
 enum vdec_get_param_type {
@@ -96,15 +151,24 @@ enum vdec_get_param_type {
 	GET_PARAM_DPB_SIZE,
 	GET_PARAM_FRAME_INTERVAL,
 	GET_PARAM_ERRORMB_MAP,
-	GET_PARAM_CAPABILITY_SUPPORTED_FORMATS,
-	GET_PARAM_CAPABILITY_FRAME_SIZES,
+	GET_PARAM_VDEC_CAP_SUPPORTED_FORMATS,
+	GET_PARAM_VDEC_CAP_FRAME_SIZES,
 	GET_PARAM_COLOR_DESC,
 	GET_PARAM_ASPECT_RATIO,
 	GET_PARAM_PLATFORM_SUPPORTED_FIX_BUFFERS,
-	GET_PARAM_PLATFORM_SUPPORTED_FIX_BUFFERS_SVP,
 	GET_PARAM_INTERLACING,
-	GET_PARAM_CODEC_TYPE,
-	GET_PARAM_INPUT_DRIVEN
+	GET_PARAM_INPUT_DRIVEN,
+	GET_PARAM_OUTPUT_ASYNC,
+	GET_PARAM_LOW_POWER_MODE,
+	GET_PARAM_INTERLACING_FIELD_SEQ,
+	GET_PARAM_VDEC_CAP_FRAMEINTERVALS,
+	GET_PARAM_RES_INFO,
+	GET_PARAM_VDEC_CAP_MAX_BUF_INFO,
+	GET_PARAM_BANDWIDTH_INFO,
+	GET_PARAM_TRICK_MODE,
+	GET_PARAM_VDEC_VCU_VPUD_LOG,
+
+	GET_PARAM_MAX = 0xFFFFFFFF
 };
 
 /*
@@ -114,54 +178,145 @@ enum vdec_get_param_type {
  * SET_PARAM_DECODE_MODE: set decoder mode
  * SET_PARAM_FRAME_SIZE: set container frame size
  * SET_PARAM_SET_FIXED_MAX_OUTPUT_BUFFER: set fixed maximum buffer size
- * SET_PARAM_UFO_MODE: set UFO mode
+ * SET_PARAM_COMPRESSED_MODE: set compressed mode
  * SET_PARAM_CRC_PATH: set CRC path used for UT
  * SET_PARAM_GOLDEN_PATH: set Golden YUV path used for UT
  * SET_PARAM_FB_NUM_PLANES                      : frame buffer plane count
- * SET_PARAM_DEC_LOG: set decoder log
  */
 enum vdec_set_param_type {
 	SET_PARAM_DECODE_MODE,
-	SET_PARAM_FRAME_SIZE,
 	SET_PARAM_SET_FIXED_MAX_OUTPUT_BUFFER,
-	SET_PARAM_UFO_MODE,
+	SET_PARAM_COMPRESSED_MODE,
 	SET_PARAM_CRC_PATH,
 	SET_PARAM_GOLDEN_PATH,
 	SET_PARAM_FB_NUM_PLANES,
 	SET_PARAM_WAIT_KEY_FRAME,
-	SET_PARAM_NAL_SIZE_LENGTH,
 	SET_PARAM_OPERATING_RATE,
+	SET_PARAM_TOTAL_BITSTREAM_BUFQ_COUNT,
 	SET_PARAM_TOTAL_FRAME_BUFQ_COUNT,
-	SET_PARAM_DEC_LOG,
+	SET_PARAM_FRAME_BUFFER,
+	SET_PARAM_VDEC_PROPERTY,
+	SET_PARAM_VDEC_VCP_LOG_INFO,
+	SET_PARAM_SET_DV,
+	SET_PARAM_PUT_FB,
+	SET_PARAM_CROP_INFO,
+	SET_PARAM_HDR10_INFO,
+	SET_PARAM_TRICK_MODE,
+	SET_PARAM_NO_REORDER,
+	SET_PARAM_DECODE_ERROR_HANDLE_MODE,
+	SET_PARAM_DEC_PARAMS,
+	SET_PARAM_MMDVFS,
+	SET_PARAM_PER_FRAME_SUBSAMPLE_MODE,
+	SET_PARAM_ACQUIRE_RESOURCE,
+	SET_PARAM_VPEEK_MODE,
+	SET_PARAM_VDEC_PLUS_DROP_RATIO,
+	SET_PARAM_CONTAINER_FRAMERATE,
+	SET_PARAM_DISABLE_DEBLOCK,
+	SET_PARAM_LOW_LATENCY,
+	SET_PARAM_VDEC_LINECOUNT_THRESHOLD,
+	/** only for kernel **/
+	SET_PARAM_VDEC_PWR_CTRL,
+	SET_PARAM_VDEC_VCU_VPUD_LOG,
+	SET_PARAM_VDEC_IN_GROUP,
+	SET_PARAM_MAX = 0xFFFFFFFF
 };
+
+enum vdec_get_kernel_param_type {
+	GET_KPARAM_VP_MODE_BUF,
+	GET_KPARAM_MAX = 0xFFFFFFFF
+};
+
+#define VDEC_MSG_AP_SEND_PREFIX	\
+	__u32 msg_id;	\
+	__u32 ctx_id;	\
+	__u64 vcu_inst_addr
+
+#ifndef CONFIG_64BIT
+#define VDEC_MSG_PREFIX	\
+	__u32 msg_id;	\
+	__u32 ctx_id;	\
+	union {	\
+		__u64 ap_inst_addr_64;		\
+		__u32 ap_inst_addr;	\
+	}; \
+	__s32 status;	\
+	__u32 reserved;
+#else
+#define VDEC_MSG_PREFIX	\
+	__u32 msg_id;	\
+	__u32 ctx_id;	\
+	__u64 ap_inst_addr;	\
+	__s32 status;	\
+	__u32 reserved
+#endif
 
 /**
  * struct vdec_ap_ipi_cmd - generic AP to VCU ipi command format
- * @msg_id      : vdec_ipi_msgid
+ * @msg_id      : vdec_ipi_msg_id
  * @vcu_inst_addr       : VCU decoder instance address
  */
 struct vdec_ap_ipi_cmd {
-	__u32 msg_id;
-	__u32 vcu_inst_addr;
+	VDEC_MSG_AP_SEND_PREFIX;
+	__u32 drain_type;
+	__u32 reserved;
+};
+
+/**
+ * struct vdec_ap_ipi_cmd - generic AP to VCU ipi command format for instance independent
+ * @msg_id      : vdec_ipi_msg_id
+ * @ap_inst_addr        : AP video decoder instance address
+ */
+struct vdec_ap_ipi_cmd_indp {
+	VDEC_MSG_PREFIX;
 };
 
 /**
  * struct vdec_vcu_ipi_ack - generic VCU to AP ipi command format
- * @msg_id      : vdec_ipi_msgid
- * @status      : VCU exeuction result
+ * @msg_id      : vdec_ipi_msg_id
+ * @status      : VCU execution result, carries hw id when lock/unlock
+ * @id          : s32 id data for ack: codec_id for CHECK_ID
+ * @data        : u32 extra data for ack: no_need_put flag for put frame, dvfs_update for lock & unlock
+ * @payload     : u64 extra data for ack
  * @ap_inst_addr        : AP video decoder instance address
  */
 struct vdec_vcu_ipi_ack {
-	__u32 msg_id;
-	__s32 status;
+	VDEC_MSG_PREFIX;
+	__s32 id;
+	__u32 data;
+	__u64 payload;
+};
+
+/**
+ * struct vdec_vcu_ipi_mem_op -VCU/AP bi-direction memory operation cmd structure
+ * @msg_id:   message id (VCU_IPIMSG_XXX_ENC_DEINIT_DONE)
+ * @status:   cmd status (venc_ipi_msg_status)
+ * @ap_inst_addr:	AP decoder instance (struct vdec_inst*)
+ * @struct vcodec_mem_obj: encoder memories
+ */
+struct vdec_vcu_ipi_mem_op {
+	VDEC_MSG_PREFIX;
+	struct vcodec_mem_obj mem;
+	__u32 vcp_addr[2];
+};
+
+/**
+ * struct vdec_ap_ipi_pwr_ctrl -VCU/AP bi-direction smi power contrl operation cmd structure
+ * @msg_id:   message id (VCU_IPIMSG_XXX_ENC_DEINIT_DONE)
+ * @status:   cmd status (venc_ipi_msg_status)
+ * @ap_inst_addr:	AP decoder instance (struct vdec_inst*)
+ * @struct vcodec_mem_obj: encoder memories
+ */
+struct vdec_ap_ipi_pwr_ctrl {
+	VDEC_MSG_PREFIX;
 #ifndef CONFIG_64BIT
 	union {
-		__u64 ap_inst_addr_64;
-		__u32 ap_inst_addr;
+		__u64 ap_data_addr_64;
+		__u32 ap_data_addr;
 	};
 #else
-	__u64 ap_inst_addr;
+	__u64 ap_data_addr;
 #endif
+	struct mtk_smi_pwr_ctrl_info info;
 };
 
 /**
@@ -171,37 +326,19 @@ struct vdec_vcu_ipi_ack {
  * @ap_inst_addr        : AP video decoder instance address
  */
 struct vdec_ap_ipi_init {
-	__u32 msg_id;
-	__u32 reserved;
-#ifndef CONFIG_64BIT
-	union {
-		__u64 ap_inst_addr_64;
-		__u32 ap_inst_addr;
-	};
-#else
-	__u64 ap_inst_addr;
-#endif
+	VDEC_MSG_PREFIX;
 };
 
 /**
  * struct vdec_vcu_ipi_init_ack - for VCU_IPIMSG_DEC_INIT_ACK
  * @msg_id        : VCU_IPIMSG_DEC_INIT_ACK
- * @status        : VCU exeuction result
+ * @status        : VCU execution result
  * @ap_inst_addr        : AP vcodec_vcu_inst instance address
  * @vcu_inst_addr : VCU decoder instance address
  */
 struct vdec_vcu_ipi_init_ack {
-	__u32 msg_id;
-	__s32 status;
-#ifndef CONFIG_64BIT
-	union {
-		__u64 ap_inst_addr_64;
-		__u32 ap_inst_addr;
-	};
-#else
-	__u64 ap_inst_addr;
-#endif
-	__u32 vcu_inst_addr;
+	VDEC_MSG_PREFIX;
+	__u64 vcu_inst_addr;
 };
 
 /**
@@ -213,10 +350,8 @@ struct vdec_vcu_ipi_init_ack {
  * @ack msg use vdec_vcu_ipi_ack
  */
 struct vdec_ap_ipi_dec_start {
-	__u32 msg_id;
-	__u32 vcu_inst_addr;
-	__u32 data[3];
-	__u32 reserved;
+	VDEC_MSG_AP_SEND_PREFIX;
+	__u32 data[6];
 };
 
 /**
@@ -227,10 +362,10 @@ struct vdec_ap_ipi_dec_start {
  * @data          : param data
  */
 struct vdec_ap_ipi_set_param {
-	__u32 msg_id;
-	__u32 vcu_inst_addr;
+	VDEC_MSG_AP_SEND_PREFIX;
 	__u32 id;
-	__u32 data[8];
+	__u32 reserved;
+	__u32 data[10];
 };
 
 /**
@@ -240,67 +375,72 @@ struct vdec_ap_ipi_set_param {
  * @vdec_inst     : AP query data address
  */
 struct vdec_ap_ipi_query_cap {
-	__u32 msg_id;
-	__u32 id;
+	VDEC_MSG_PREFIX;
 #ifndef CONFIG_64BIT
-	union {
-		__u64 ap_inst_addr_64;
-		__u32 ap_inst_addr;
-	};
 	union {
 		__u64 ap_data_addr_64;
 		__u32 ap_data_addr;
 	};
 #else
-	__u64 ap_inst_addr;
 	__u64 ap_data_addr;
 #endif
+	__u32 id;
 };
 
 /**
  * struct vdec_vcu_ipi_query_cap_ack - for VCU_IPIMSG_DEC_QUERY_CAP_ACK
  * @msg_id      : VCU_IPIMSG_DEC_QUERY_CAP_ACK
- * @status      : VCU exeuction result
+ * @status      : VCU execution result
  * @ap_data_addr   : AP query data address
  * @vcu_data_addr  : VCU query data address
  */
 struct vdec_vcu_ipi_query_cap_ack {
-	__u32 msg_id;
-	__s32 status;
+	VDEC_MSG_PREFIX;
 #ifndef CONFIG_64BIT
-	union {
-		__u64 ap_inst_addr_64;
-		__u32 ap_inst_addr;
-	};
-	__u32 id;
 	union {
 		__u64 ap_data_addr_64;
 		__u32 ap_data_addr;
 	};
 #else
-	__u64 ap_inst_addr;
-	__u32 id;
 	__u64 ap_data_addr;
 #endif
-	__u32 vcu_data_addr;
+	__u64 vcu_data_addr;
+	__u32 id;
 };
 
 /*
- * struct vdec_ipi_fb - decoder frame buffer information
+ * struct vdec_ipi_fb - decoder frame buffer information for set frame ipi
  * @vdec_fb_va  : virtual address of struct vdec_fb
  * @y_fb_dma    : dma address of Y frame buffer
  * @c_fb_dma    : dma address of C frame buffer
- * @poc         : picture order count of frame buffer
- * @timestamp : timestamp of frame buffer
+ * @dma_general_addr: dma address of meta
+ * @general_size: meta size
  * @reserved    : for 8 bytes alignment
  */
 struct vdec_ipi_fb {
 	__u64 vdec_fb_va;
 	__u64 y_fb_dma;
 	__u64 c_fb_dma;
-	__s32 poc;
-	__u64 timestamp;
+	__u64 dma_general_addr;
+	__s32 general_size;
 	__u32 reserved;
+};
+
+/*
+ * struct vdec_fb_entry - decoder frame buffer information for free/disp list
+ * @vdec_fb_va  : virtual address of struct vdec_fb
+ * @poc         : picture order count of frame buffer
+ * @timestamp : timestamp of frame buffer
+ * @field       : enum v4l2_field, field type of frame buffer
+ * @frame_type  : enum mtk_frame_type, I/P/B frame type
+ * @reserved    : for 8 bytes alignment
+ */
+struct vdec_fb_entry {
+	__u64 vdec_fb_va;
+	__u64 timestamp;
+	__u16 field;
+	__u16 frame_type;
+	__u32 flags;
 };
 
 /**
@@ -326,11 +466,18 @@ struct ring_bs_list {
  * @count     : buffer count in list
  */
 struct ring_fb_list {
-	struct vdec_ipi_fb fb_list[DEC_MAX_FB_NUM];
+	struct vdec_fb_entry fb_list[DEC_MAX_FB_NUM];
 	__u32 read_idx;
 	__u32 write_idx;
 	__u32 count;
 	__u32 reserved;
+};
+
+struct vdec_vp_mode_buf_info {
+	__u8 enable_smmu;
+	__u8 alloc_src_buf[2];
+	__u8 reserved; // 32 bit align padding for cross compiler safe
+	__u64 src_buf[2][3]; // [0] for 8 bit, [1] for 10 bit, [3] = {y dat, c dat, len}
 };
 
 /**
@@ -352,23 +499,51 @@ struct vdec_vsi {
 	struct ring_bs_list list_free_bs;
 	struct ring_fb_list list_free;
 	struct ring_fb_list list_disp;
+	struct mtk_dec_params dec_params;
 	struct vdec_dec_info dec;
 	struct vdec_pic_info pic;
 	struct mtk_color_desc color_desc;
 	struct v4l2_rect crop;
-	struct mtk_video_fmt video_formats[MTK_MAX_DEC_CODECS_SUPPORT];
-	struct mtk_codec_framesizes vdec_framesizes[MTK_MAX_DEC_CODECS_SUPPORT];
+	struct v4l2_fract time_per_frame;
 	__u32 aspect_ratio;
 	__u32 fix_buffers;
-	__u32 fix_buffers_svp;
 	__u32 interlacing;
 	__u32 codec_type;
-	__u8 crc_path[256];
-	__u8 golden_path[256];
 	__u8 input_driven;
-	__s32 general_buf_fd;
+	__u8 output_async;
+	__u8 low_pw_mode;
+	__u8 in_group;
+	__u8 cpu_hint;
+	__s8 crc_path[256];
+	__s8 golden_path[256];
 	__u64 general_buf_dma;
+	__s32 general_buf_fd;
 	__u32 general_buf_size;
+	__u64 meta_buf_dma;
+	__s32 meta_buf_fd;
+	__u32 meta_buf_size;
+	__u32 ipi_blocked;
+	__u32 interlacing_fieldseq;
+	struct hdr10plus_info hdr10plus_buf;
+	struct v4l2_vdec_hdr10_info hdr10_info;
+	__u8 hdr10_info_valid;
+	__u8 trick_mode;
+	__u8 flush_type;
+	__u32 ctx_id;
+	/* mmdvfs param from up */
+	__s32 op_rate;
+	__s32 op_rate_adaptive;
+	__s32 priority;
+	__u32 codec_fmt;
+	__s32 target_freq;
+	__u32 is_active;
+	struct vdec_resource_info res_info;
+	struct vdec_bandwidth_info bandwidth_info;
+};
+
+struct vdec_common_vsi {
+	struct mtk_tf_info tf_info;
+	struct vdec_vp_mode_buf_info vp_mode_info;
 };
 
 #endif

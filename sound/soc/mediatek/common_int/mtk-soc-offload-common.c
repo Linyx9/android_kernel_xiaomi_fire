@@ -42,9 +42,11 @@
 
 //#define DEBUG_VERBOSE
 
-/**************************************************
-  * Variable Definition
-  **************************************************/
+/*
+ *************************************************
+ * Variable Definition
+ *************************************************
+ */
 
 #define USE_PERIODS_MAX        8192
 #define OFFLOAD_SIZE_BYTES         (USE_PERIODS_MAX << 9) /* 4M */
@@ -107,7 +109,7 @@ static unsigned long long ringbufbridge_writebk;
 
 #ifdef use_wake_lock
 static DEFINE_SPINLOCK(offload_lock);
-struct wakeup_source* Offload_suspend_lock;
+struct wakeup_source *Offload_suspend_lock;
 #endif
 static struct mtk_base_dsp *dsp;
 static unsigned int offload_buffer_size;
@@ -223,8 +225,8 @@ static const struct snd_kcontrol_new Audio_snd_dloffload_controls[] = {
 
 
 /*
-  *                 O F F L O A D V 1   D R I V E R   O P E R A T I O N S
-  */
+ *  O F F L O A D V 1   D R I V E R   O P E R A T I O N S
+ */
 #ifdef use_wake_lock
 static void mtk_compr_offload_int_wakelock(bool enable)
 {
@@ -243,7 +245,6 @@ static void mtk_compr_offload_int_wakelock(bool enable)
 static int mtk_compr_offload_draindone(void)
 {
 	if (afe_offload_block.state == OFFLOAD_STATE_DRAIN) {
-		pr_info("%s\n", __func__);
 		/* gapless mode clear vars */
 		afe_offload_block.write_blocked_idx = 0;
 		afe_offload_block.drain_state       = AUDIO_DRAIN_ALL;
@@ -392,7 +393,6 @@ static int mtk_afe_dloffload_component_probe(struct snd_soc_component *component
 
 static int mtk_compr_offload_free(struct snd_compr_stream *stream)
 {
-	pr_debug("%s()\n", __func__);
 	offloadservice_setwriteblocked(false);
 	if (dsp)
 		mtk_adsp_genpool_free_sharemem_ring(&dsp->dsp_mem[ID], ID);
@@ -490,14 +490,12 @@ ERROR:
 static int mtk_compr_offload_get_params(struct snd_compr_stream *stream,
 					struct snd_codec *params)
 {
-	pr_debug("%s\n", __func__);
 	return 0;
 }
 
 static int mtk_compr_offload_get_caps(struct snd_compr_stream *stream,
 				      struct snd_compr_caps *caps)
 {
-	pr_debug("%s\n", __func__);
 	caps->num_codecs        = 2;
 	caps->codecs[0]         = SND_AUDIOCODEC_PCM;
 	caps->codecs[1]         = SND_AUDIOCODEC_MP3;
@@ -511,28 +509,24 @@ static int mtk_compr_offload_get_caps(struct snd_compr_stream *stream,
 static int mtk_compr_offload_get_codec_caps(struct snd_compr_stream *stream,
 					    struct snd_compr_codec_caps *codec)
 {
-	pr_debug("%s()\n", __func__);
 	return 0;
 }
 
 static int mtk_compr_offload_set_metadata(struct snd_compr_stream *stream,
 					  struct snd_compr_metadata *metadata)
 {
-	pr_debug("%s()\n", __func__);
 	return 0;
 }
 
 static int mtk_compr_offload_get_metadata(struct snd_compr_stream *stream,
 					  struct snd_compr_metadata *metadata)
 {
-	pr_debug("%s()\n", __func__);
 	return 0;
 }
 
 static int mtk_compr_offload_mmap(struct snd_compr_stream *stream,
 				  struct vm_area_struct *vma)
 {
-	pr_debug("%s()\n", __func__);
 	return 0;
 }
 
@@ -636,7 +630,6 @@ static void offloadservice_ipicmd_received(struct ipi_msg_t *ipi_msg)
 
 static void offloadservice_task_unloaded_handling(void)
 {
-	pr_debug("%s()\n", __func__);
 }
 
 static bool offloadservice_tswait(unsigned int id)
@@ -837,15 +830,16 @@ static int mtk_compr_offload_pointer(struct snd_compr_stream *stream,
 
 
 /*
-  *=======================================================================
-  *-----------------------------------------------------------------------
-  *||         O F F L O A D    TRIGGER   O P E R A T I O N S
-  *-----------------------------------------------------------------------
-  *=======================================================================
-  */
+ *=======================================================================
+ *-----------------------------------------------------------------------
+ *||         O F F L O A D    TRIGGER   O P E R A T I O N S
+ *-----------------------------------------------------------------------
+ *=======================================================================
+ */
 static int mtk_compr_offload_start(struct snd_compr_stream *stream)
 {
 	int ret = 0;
+
 	afe_offload_block.state = OFFLOAD_STATE_PREPARE;
 	offload_playback_pause = false;
 	afe_offload_block.drain_state = AUDIO_DRAIN_NONE;
@@ -947,9 +941,10 @@ static int mtk_compr_offload_stop(struct snd_compr_stream *stream)
 	return ret;
 }
 
-/*****************************************************************************
-  * mtk_compr_offload_trigger
-  ****************************************************************************/
+/***************************************************************************
+ * mtk_compr_offload_trigger
+ ***************************************************************************
+ */
 static int mtk_compr_offload_trigger(struct snd_compr_stream *stream, int cmd)
 {
 	pr_debug("%s cmd:%x\n", __func__, cmd);
@@ -973,13 +968,11 @@ static int mtk_compr_offload_trigger(struct snd_compr_stream *stream, int cmd)
 
 static int mtk_asoc_dloffload_new(struct snd_soc_pcm_runtime *rtd)
 {
-	pr_debug("%s\n", __func__);
 	return 0;
 }
 
 static int mtk_dloffload_remove(struct platform_device *pdev)
 {
-	pr_debug("%s\n", __func__);
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
@@ -1000,7 +993,7 @@ static struct snd_compr_ops mtk_offload_compr_ops = {
 	.get_codec_caps  = mtk_compr_offload_get_codec_caps,
 };
 
-static struct snd_soc_component_driver mtk_dloffload_soc_component = {
+static const struct snd_soc_component_driver mtk_dloffload_soc_component = {
 	.name = AFE_PCM_NAME,
 	.compr_ops        = &mtk_offload_compr_ops,
 	.pcm_new    = mtk_asoc_dloffload_new,
@@ -1030,7 +1023,7 @@ static int mtk_dloffload_probe(struct platform_device *pdev)
 					  0);
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_offload_common_of_ids[] = {
 	{ .compatible = "mediatek,mt_soc_offload_common", },
 	{}
@@ -1042,7 +1035,7 @@ static struct platform_driver mtk_offloadplayback_driver = {
 	.driver = {
 		.name = "mt_soc_offload_common",
 		.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 		.of_match_table = mt_soc_offload_common_of_ids,
 #endif
 	},
@@ -1057,7 +1050,6 @@ static int __init mtk_offloadplayback_soc_platform_init(void)
 {
 	int ret;
 
-	pr_debug("%s\n", __func__);
 #ifndef CONFIG_OF
 	soc_mtkdloffload_dev =
 		platform_device_alloc("mt_soc_offload_common", -1);
@@ -1081,7 +1073,6 @@ module_init(mtk_offloadplayback_soc_platform_init);
 
 static void __exit mtk_offloadplayback_soc_platform_exit(void)
 {
-	pr_debug("%s\n", __func__);
 	platform_driver_unregister(&mtk_offloadplayback_driver);
 #ifdef use_wake_lock
 	aud_wake_lock_destroy(Offload_suspend_lock);

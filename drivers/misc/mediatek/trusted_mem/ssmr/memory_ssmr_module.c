@@ -51,7 +51,7 @@ static u64 ssmr_upper_limit = UPPER_LIMIT64;
 static struct device *ssmr_dev;
 
 static const struct of_device_id ssmr_of_match_table[] = {
-	{ .compatible = "mediatek,trusted_mem"},
+	{.compatible = "mediatek,trusted_mem"},
 	{},
 };
 
@@ -67,7 +67,7 @@ const char *const ssmr_state_text[NR_STATES] = {
 
 static struct SSMR_Feature _ssmr_feats[__MAX_NR_SSMR_FEATURES] = {
 	[SSMR_FEAT_SVP] = {
-		.dt_prop_name = "svp-region-based-size",
+		.dt_prop_name = "svp-size",
 		.feat_name = "svp",
 		.cmd_online = "svp=on",
 		.cmd_offline = "svp=off",
@@ -187,9 +187,9 @@ static struct SSMR_Feature _ssmr_feats[__MAX_NR_SSMR_FEATURES] = {
 
 struct SSMR_HEAP_INFO _ssmr_heap_info[__MAX_NR_SSMR_FEATURES];
 
-#if IS_ENABLED(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT) ||\
-	IS_ENABLED(CONFIG_TRUSTONIC_TEE_SUPPORT) ||\
-	IS_ENABLED(CONFIG_MICROTRUST_TEE_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)                              \
+	|| IS_ENABLED(CONFIG_TRUSTONIC_TEE_SUPPORT)                            \
+	|| IS_ENABLED(CONFIG_MICROTRUST_TEE_SUPPORT)
 static int __init dedicate_svp_memory(struct reserved_mem *rmem)
 {
 	struct SSMR_Feature *feature;
@@ -205,8 +205,7 @@ static int __init dedicate_svp_memory(struct reserved_mem *rmem)
 
 	return 0;
 }
-RESERVEDMEM_OF_DECLARE(svp_memory, "mediatek,memory-svp",
-		       dedicate_svp_memory);
+RESERVEDMEM_OF_DECLARE(svp_memory, "mediatek,memory-svp", dedicate_svp_memory);
 
 static u64 dt_mem_read(int s, const __be32 **cellp)
 {
@@ -217,7 +216,6 @@ static u64 dt_mem_read(int s, const __be32 **cellp)
 	for (; s--; p++)
 		r = (r << 32) | be32_to_cpu(*p);
 	return r;
-
 }
 
 static int get_svp_memory_info(void)
@@ -238,8 +236,7 @@ static int get_svp_memory_info(void)
 	reg = of_get_property(node, "reg", NULL);
 	base = dt_mem_read(2, &reg);
 	size = dt_mem_read(2, &reg);
-	pr_info("%s, svp base : 0x%llx, size : 0x%llx", __func__,
-							base, size);
+	pr_info("%s, svp base : 0x%llx, size : 0x%llx", __func__, base, size);
 	feature->use_cache_memory = true;
 	feature->count = size / PAGE_SIZE;
 	feature->cache_page = phys_to_page(base);
@@ -283,7 +280,7 @@ int ssmr_query_heap_info(int heap_index, char *heap_name)
 	return -1;
 }
 
-static void  setup_feature_size(void)
+static void setup_feature_size(void)
 {
 
 	int i = 0;
@@ -292,8 +289,7 @@ static void  setup_feature_size(void)
 	dt_node = of_find_node_by_name(NULL, SSMR_FEATURES_DT_UNAME);
 
 	if (!dt_node)
-		pr_info("%s, failed to find the ssmr device tree\n",
-							__func__);
+		pr_info("%s, failed to find the ssmr device tree\n", __func__);
 
 	if (!strncmp(dt_node->name, SSMR_FEATURES_DT_UNAME,
 		     strlen(SSMR_FEATURES_DT_UNAME))) {
@@ -304,7 +300,6 @@ static void  setup_feature_size(void)
 					&_ssmr_feats[i].req_size);
 			}
 		}
-
 	}
 
 	for (i = 0; i < __MAX_NR_SSMR_FEATURES; i++) {
@@ -322,9 +317,9 @@ static void finalize_scenario_size(void)
 		int j = 0;
 
 		for (; j < __MAX_NR_SSMR_FEATURES; j++) {
-			if ((!strncmp(_ssmr_feats[j].enable, "on", 2)) &&
-				(_ssmr_feats[j].scheme_flag &
-				 _ssmrscheme[i].flags)) {
+			if ((!strncmp(_ssmr_feats[j].enable, "on", 2))
+			    && (_ssmr_feats[j].scheme_flag
+				& _ssmrscheme[i].flags)) {
 				total_size += _ssmr_feats[j].req_size;
 			}
 		}
@@ -334,9 +329,9 @@ static void finalize_scenario_size(void)
 	}
 }
 
-static int
-memory_ssmr_init_feature(char *name, u64 size, struct SSMR_Feature *feature,
-			const struct file_operations *entry_fops)
+static int memory_ssmr_init_feature(char *name, u64 size,
+				    struct SSMR_Feature *feature,
+				    const struct file_operations *entry_fops)
 {
 	if (size <= 0) {
 		feature->state = SSMR_STATE_DISABLED;
@@ -365,8 +360,8 @@ static void show_scheme_status(u64 size)
 	for (; i < __MAX_NR_SCHEME; i++) {
 		int j = 0;
 
-		pr_info("**** %s  (size: %pa)****\n",  _ssmrscheme[i].name,
-						&_ssmrscheme[i].usable_size);
+		pr_info("**** %s  (size: %pa)****\n", _ssmrscheme[i].name,
+			&_ssmrscheme[i].usable_size);
 		for (; j < __MAX_NR_SSMR_FEATURES; j++) {
 			if (_ssmr_feats[j].scheme_flag & _ssmrscheme[i].flags) {
 				pr_info("%s: size= %pa, state=%s\n",
@@ -422,7 +417,7 @@ static int memory_region_offline(struct SSMR_Feature *feature, phys_addr_t *pa,
 
 	if (feature->cache_page) {
 		alloc_size = (feature->count) << PAGE_SHIFT;
-		page =  feature->cache_page;
+		page = feature->cache_page;
 		if (pa)
 			*pa = page_to_phys(page);
 		if (size)
@@ -431,7 +426,7 @@ static int memory_region_offline(struct SSMR_Feature *feature, phys_addr_t *pa,
 		feature->phy_addr = page_to_phys(page);
 		feature->alloc_size = alloc_size;
 		pr_info("%s: [cache memory] pa %pa(%zx) is allocated\n",
-				__func__, &feature->phy_addr, alloc_size);
+			__func__, &feature->phy_addr, alloc_size);
 		return 0;
 	}
 
@@ -447,7 +442,7 @@ static int memory_region_offline(struct SSMR_Feature *feature, phys_addr_t *pa,
 
 	feature->alloc_size = alloc_size;
 
-	pr_info("%s[%d]: upper_limit: %llx, feature{ alloc_size : %lu",
+	pr_info("%s[%d]: upper_limit: %llx, feature{ alloc_size : 0x%lx",
 		__func__, __LINE__, upper_limit, alloc_size);
 
 	/*
@@ -455,13 +450,13 @@ static int memory_region_offline(struct SSMR_Feature *feature, phys_addr_t *pa,
 	 */
 	of_reserved_mem_device_init_by_idx(ssmr_dev, ssmr_dev->of_node, 0);
 	feature->virt_addr = dma_alloc_attrs(ssmr_dev, alloc_size,
-					&feature->phy_addr, GFP_KERNEL, 0);
+					     &feature->phy_addr, GFP_KERNEL, 0);
 
 	if (feature->phy_addr) {
 		pr_info("%s: pa=%pad is allocated\n", __func__,
-						&feature->phy_addr);
+			&feature->phy_addr);
 		pr_info("%s: virt 0x%lx\n", __func__,
-				(unsigned long)phys_to_virt(
+			(unsigned long)phys_to_virt(
 				dma_to_phys(ssmr_dev, feature->phy_addr)));
 	} else {
 		pr_info("%s: ssmr offline failed\n", __func__);
@@ -485,8 +480,7 @@ static int _ssmr_offline_internal(phys_addr_t *pa, unsigned long *size,
 	feature = &_ssmr_feats[feat];
 	pr_info("%s %d: >>>>>> feat: %s, state: %s, upper_limit:0x%llx\n",
 		__func__, __LINE__,
-		feat < __MAX_NR_SSMR_FEATURES ? feature->feat_name
-					      : "NULL",
+		feat < __MAX_NR_SSMR_FEATURES ? feature->feat_name : "NULL",
 		ssmr_state_text[feature->state], upper_limit);
 
 	if (feature->state != SSMR_STATE_ON) {
@@ -504,16 +498,14 @@ static int _ssmr_offline_internal(phys_addr_t *pa, unsigned long *size,
 	}
 	feature->state = SSMR_STATE_OFF;
 	pr_info("%s %d: [reserve done]: pa: %pad, size: 0x%lx\n", __func__,
-		__LINE__, &feature->phy_addr,
-		feature->alloc_size);
+		__LINE__, &feature->phy_addr, feature->alloc_size);
 
 out:
 	pr_info("%s %d: <<<<< request feat: %s, state: %s, retval: %d\n",
 		__func__, __LINE__,
-		feat < __MAX_NR_SSMR_FEATURES ?
-		_ssmr_feats[feat].feat_name : "NULL",
-		ssmr_state_text[feature->state],
-		retval);
+		feat < __MAX_NR_SSMR_FEATURES ? _ssmr_feats[feat].feat_name
+					      : "NULL",
+		ssmr_state_text[feature->state], retval);
 
 	if (retval < 0)
 		show_scheme_status(feature->req_size);
@@ -549,8 +541,8 @@ static int memory_region_online(struct SSMR_Feature *feature)
 	alloc_size = feature->alloc_size;
 
 	if (feature->phy_addr) {
-		dma_free_attrs(ssmr_dev, alloc_size,
-				feature->virt_addr, feature->phy_addr, 0);
+		dma_free_attrs(ssmr_dev, alloc_size, feature->virt_addr,
+			       feature->phy_addr, 0);
 		feature->alloc_size = 0;
 		feature->phy_addr = 0;
 	}
@@ -576,10 +568,9 @@ static int _ssmr_online_internal(unsigned int feat)
 	feature->state = SSMR_STATE_ON;
 
 out:
-	pr_info("%s %d: <<<<<< request feature: %s, ",
-		__func__, __LINE__,
-		feat < __MAX_NR_SSMR_FEATURES ?
-		_ssmr_feats[feat].feat_name : "NULL");
+	pr_info("%s %d: <<<<<< request feature: %s, ", __func__, __LINE__,
+		feat < __MAX_NR_SSMR_FEATURES ? _ssmr_feats[feat].feat_name
+					      : "NULL");
 	pr_info("leave state: %s, retval: %d\n",
 		ssmr_state_text[feature->state], retval);
 
@@ -597,7 +588,7 @@ EXPORT_SYMBOL(ssmr_online);
 
 #if IS_ENABLED(CONFIG_SYSFS)
 static ssize_t ssmr_show(struct kobject *kobj, struct kobj_attribute *attr,
-			char *buf)
+			 char *buf)
 {
 	int ret = 0;
 	int i = 0;
@@ -612,38 +603,35 @@ static ssize_t ssmr_show(struct kobject *kobj, struct kobj_attribute *attr,
 
 		region_pa = (unsigned long)page_to_phys(_ssmr_feats[i].page);
 
-		ret += sprintf(buf + ret, "%s base:0x%lx, size 0x%lx, ",
-			   _ssmr_feats[i].feat_name,
-			   _ssmr_feats[i].phy_addr == 0 ? 0 :
-			(unsigned long)dma_to_phys(ssmr_dev,
-				_ssmr_feats[i].phy_addr),
-				_ssmr_feats[i].alloc_size);
+		ret += sprintf(
+			buf + ret, "%s base:0x%lx, size 0x%lx, ",
+			_ssmr_feats[i].feat_name,
+			_ssmr_feats[i].phy_addr == 0
+				? 0
+				: (unsigned long)dma_to_phys(
+					  ssmr_dev, _ssmr_feats[i].phy_addr),
+			_ssmr_feats[i].alloc_size);
 		ret += sprintf(buf + ret, "alloc_pages %lu, state %s.%s\n",
-			   _ssmr_feats[i].alloc_size >> PAGE_SHIFT,
-			   ssmr_state_text[_ssmr_feats[i].state],
-			   _ssmr_feats[i].use_cache_memory ? " (cache memory)"
-							: "");
+			       _ssmr_feats[i].alloc_size >> PAGE_SHIFT,
+			       ssmr_state_text[_ssmr_feats[i].state],
+			       _ssmr_feats[i].use_cache_memory
+				       ? " (cache memory)"
+				       : "");
 	}
 
 	ret += sprintf(buf + ret, "[CONFIG]:\n");
 	ret += sprintf(buf + ret, "ssmr_upper_limit: 0x%llx\n",
-						 ssmr_upper_limit);
+		       ssmr_upper_limit);
 
 	return ret;
 }
 
-#ifdef CONFIG_MTK_ENG_BUILD
 static ssize_t ssmr_store(struct kobject *kobj, struct kobj_attribute *attr,
-				const char *cmd, size_t count)
+			  const char *cmd, size_t count)
 {
 	char buf[64];
 	int buf_size;
 	int feat = 0, ret;
-
-	if (count >= 64) {
-		pr_info("copy size too long.\n");
-		return -EINVAL;
-	}
 
 	ret = sscanf(cmd, "%s", buf);
 	if (ret) {
@@ -660,7 +648,7 @@ static ssize_t ssmr_store(struct kobject *kobj, struct kobj_attribute *attr,
 			if (!strncmp(buf, _ssmr_feats[feat].cmd_offline,
 				     strlen(buf))) {
 				ssmr_offline(NULL, NULL, ssmr_upper_limit,
-									feat);
+					     feat);
 				break;
 			} else if (!strncmp(buf, _ssmr_feats[feat].cmd_online,
 					    strlen(buf))) {
@@ -675,6 +663,7 @@ static ssize_t ssmr_store(struct kobject *kobj, struct kobj_attribute *attr,
 	return count;
 }
 
+/* clang-format off */
 static struct kobj_attribute ssmr_attribute = {
 	.attr = {
 		.name = "ssmr_state",
@@ -682,8 +671,8 @@ static struct kobj_attribute ssmr_attribute = {
 	},
 	.show = ssmr_show,
 	.store = ssmr_store,
-
 };
+/* clang-format on */
 
 static struct kobject *ssmr_kobject;
 
@@ -700,15 +689,13 @@ static int memory_ssmr_sysfs_init(void)
 			return -ENOMEM;
 		}
 	} else {
-		pr_err("SSMR: Cannot find module %s object\n",
-				KBUILD_MODNAME);
+		pr_err("SSMR: Cannot find module %s object\n", KBUILD_MODNAME);
 		return -EINVAL;
 	}
 
 	return 0;
 }
 #endif /* end of CONFIG_SYSFS */
-#endif
 
 int ssmr_probe(struct platform_device *pdev)
 {
@@ -725,38 +712,25 @@ int ssmr_probe(struct platform_device *pdev)
 	/* ssmr region init */
 	finalize_scenario_size();
 
+#if IS_ENABLED(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)                              \
+	|| IS_ENABLED(CONFIG_TRUSTONIC_TEE_SUPPORT)                            \
+	|| IS_ENABLED(CONFIG_MICROTRUST_TEE_SUPPORT)
 	/* check svp statis reserved status */
 	get_svp_memory_info();
+#endif
 
 	for (i = 0; i < __MAX_NR_SSMR_FEATURES; i++) {
-		memory_ssmr_init_feature(_ssmr_feats[i].feat_name,
-					_ssmr_feats[i].req_size,
-					&_ssmr_feats[i],
-					_ssmr_feats[i].proc_entry_fops);
+		memory_ssmr_init_feature(
+			_ssmr_feats[i].feat_name, _ssmr_feats[i].req_size,
+			&_ssmr_feats[i], _ssmr_feats[i].proc_entry_fops);
 	}
 
-	/* ssmr sys file init */
-#ifdef CONFIG_MTK_ENG_BUILD
+/* ssmr sys file init */
 #if IS_ENABLED(CONFIG_SYSFS)
 	memory_ssmr_sysfs_init();
-#endif
 #endif
 
 	get_reserved_cma_memory(&pdev->dev);
 
 	return 0;
 }
-
-static struct platform_driver ssmr_driver = {
-	.probe = ssmr_probe,
-	.driver = {
-		.name = "driver-ssmr",
-		.of_match_table = ssmr_of_match_table,
-	},
-};
-module_platform_driver(ssmr_driver);
-
-MODULE_AUTHOR("James Hsu <james.hsu@medaitek.com>");
-MODULE_DESCRIPTION("ssmr driver");
-MODULE_LICENSE("GPL v2");
-

@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -28,7 +27,7 @@
 #include "private/tmem_dev_desc.h"
 #include "tee_impl/tee_ops.h"
 #include "tee_impl/tee_gp_def.h"
-#if defined(CONFIG_MTK_GZ_KREE)
+#if IS_ENABLED(CONFIG_MTK_GZ_KREE)
 #include "mtee_impl/mtee_invoke.h"
 #endif
 #include "tee_client_api.h"
@@ -249,7 +248,7 @@ static int secmem_execute(u32 cmd, struct secmem_param *param)
 }
 
 #define SECMEM_ERROR_OUT_OF_MEMORY (0x8)
-int tee_alloc(u32 alignment, u32 size, u32 *refcount, u32 *sec_handle,
+int tee_alloc(u32 alignment, u32 size, u32 *refcount, u64 *sec_handle,
 	      u8 *owner, u32 id, u32 clean, void *tee_data, void *dev_desc)
 {
 	int ret;
@@ -288,7 +287,7 @@ int tee_alloc(u32 alignment, u32 size, u32 *refcount, u32 *sec_handle,
 	return TMEM_OK;
 }
 
-int tee_free(u32 sec_handle, u8 *owner, u32 id, void *tee_data, void *dev_desc)
+int tee_free(u64 sec_handle, u8 *owner, u32 id, void *tee_data, void *dev_desc)
 {
 	struct secmem_param param = {0};
 	struct tmem_device_description *tee_dev_desc =
@@ -301,7 +300,7 @@ int tee_free(u32 sec_handle, u8 *owner, u32 id, void *tee_data, void *dev_desc)
 	UNUSED(id);
 	UNUSED(dev_desc);
 
-	param.sec_handle = sec_handle;
+	param.sec_handle = (u32)sec_handle;
 
 	if (secmem_execute(tee_ta_cmd, &param))
 		return TMEM_TEE_FREE_CHUNK_FAILED;
@@ -331,13 +330,13 @@ int tee_mem_reg_add(u64 pa, u32 size, void *tee_data, void *dev_desc)
 			pa, size, tee_dev_desc->mtee_chunks_id);
 		if (ret != 0) {
 			pr_err("[%d] TEE notify reg mem add to MTEE failed:%d\n",
-			       tee_dev_desc->mtee_chunks_id, ret);
+			       tee_dev_desc->kern_tmem_type, ret);
 			return TMEM_TEE_NOTIFY_MEM_ADD_CFG_TO_MTEE_FAILED;
 		}
 	}
 
-	pr_debug("[%d] TEE append reg mem PASS: PA=0x%lx, size=0x%lx\n",
-		       tee_dev_desc->mtee_chunks_id, pa, size);
+	pr_info("[%d] TEE append reg mem PASS: PA=0x%llx, size=0x%x\n",
+				tee_dev_desc->kern_tmem_type, pa, size);
 
 	return TMEM_OK;
 }
@@ -429,6 +428,6 @@ static struct trusted_driver_operations tee_gp_peer_ops = {
 
 void get_tee_peer_ops(struct trusted_driver_operations **ops)
 {
-	pr_info("SECMEM_TEE_GP_OPS\n");
+	pr_info("TEE_OPS set\n");
 	*ops = &tee_gp_peer_ops;
 }

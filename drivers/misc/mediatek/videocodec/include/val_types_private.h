@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2020 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: PC Chen <pc.chen@mediatek.com>
+ *       Tiffany Lin <tiffany.lin@mediatek.com>
  */
-
 #ifndef _VAL_TYPES_PRIVATE_H_
 #define _VAL_TYPES_PRIVATE_H_
 

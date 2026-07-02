@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
+
 #ifndef __EEPROM_DRIVER_H
 #define __EEPROM_DRIVER_H
 
@@ -10,6 +11,7 @@
 #include <linux/mutex.h>
 
 #include "cam_cal_define.h"
+#include "eeprom_utils.h"
 
 // TODO: Move to Kconfig
 #define MAX_EEPROM_NUMBER 5

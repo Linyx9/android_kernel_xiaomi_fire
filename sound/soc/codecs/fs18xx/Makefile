@@ -2,6 +2,8 @@
 # Copyright (C) 2018 Fourier Semiconductor Inc. All rights reserved.
 #
 
+subdir-ccflags-y += -I$(DEVICE_MODULES_PATH)/sound/soc/mediatek/common
+
 #EXTRA_CFLAGS += -DDEBUG -DFSM_DEBUG -DFSM_DEBUG_I2C
 EXTRA_CFLAGS += -Wall -Werror
 # MODFLAGS = -fno-pic

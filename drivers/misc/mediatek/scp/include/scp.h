@@ -3,14 +3,13 @@
  * Copyright (c) 2020 MediaTek Inc.
  */
 
-#ifndef __SCP_H
-#define __SCP_H
+#ifndef __SCP_H__
+#define __SCP_H__
+
 
 #if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_CM4_SUPPORT)
 #include "scp_cm4.h"
-#elif IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_RV_SUPPORT)
+#else
 #include "scp_rv.h"
 #endif
-
 #endif
-

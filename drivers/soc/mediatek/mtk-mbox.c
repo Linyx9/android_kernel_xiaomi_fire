@@ -10,6 +10,10 @@
 #include <linux/slab.h>
 #include <linux/sched/clock.h>
 #include <linux/soc/mediatek/mtk-mbox.h>
+#include <linux/of.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/mbox.h>
 
 /*
  * memory copy to tiny
@@ -445,7 +449,7 @@ int mtk_mbox_polling(struct mtk_mbox_device *mbdev, unsigned int mbox,
 
 	spin_lock_irqsave(&mbdev->info_table[mbox].mbox_lock, flags);
 	/*check lock for */
-	if (pin_recv->lock == MBOX_PIN_BUSY) {
+	if (atomic_read(&pin_recv->polling_lock) == MBOX_PIN_BUSY) {
 		spin_unlock_irqrestore(
 			&mbdev->info_table[mbox].mbox_lock, flags);
 		minfo->record.busy_count++;
@@ -456,6 +460,7 @@ int mtk_mbox_polling(struct mtk_mbox_device *mbdev, unsigned int mbox,
 	irq_state = (reg & (0x1 << recv_pin_index));
 
 	if (irq_state > 0) {
+		trace_mtk_mbox_polling(mbdev->name, reg, recv_pin_index);
 		/*clear bit*/
 		ret = mtk_mbox_clr_irq(mbdev, mbox, irq_state);
 	} else {
@@ -496,7 +501,7 @@ static void mtk_mbox_set_lock(struct mtk_mbox_device *mbdev, unsigned int mbox,
 		pin_recv = &(mbdev->pin_recv_table[i]);
 		if (pin_recv->mbox != mbox)
 			continue;
-		pin_recv->lock = lock;
+		atomic_set(&pin_recv->polling_lock, lock);
 	}
 }
 
@@ -511,8 +516,8 @@ static irqreturn_t mtk_mbox_isr(int irq, void *dev_id)
 	struct mtk_mbox_device *mbdev = minfo->mbdev;
 	struct mtk_ipi_msg_hd *ipihead;
 	unsigned long flags;
-	const uint64_t timeout_time = 50 * 1000 * 1000; /* 50ms */
-	uint64_t start_time, end_time, cbtimediff;
+	const uint64_t timeout_time = 5 * 1000 * 1000;
+	uint64_t start_time = 0, end_time = 0, pre_cb_time = 0, post_cb_time = 0, cbtimediff = 0;
 	uint32_t execute_count = 0;
 	//void *user_data;
 	int ret;
@@ -527,13 +532,19 @@ static irqreturn_t mtk_mbox_isr(int irq, void *dev_id)
 	mtk_mbox_set_lock(mbdev, mbox, MBOX_PIN_BUSY);
 	/*get irq status*/
 	irq_status = mtk_mbox_read_recv_irq(mbdev, mbox);
+	if (!minfo->record.irq_record)
+		minfo->record.irq_record = (uint32_t)irq_status;
 	irq_temp = 0;
 	spin_unlock_irqrestore(&minfo->mbox_lock, flags);
+
+	trace_mtk_mbox_isr_entry(mbdev->name, irq_status);
 
 	if (mbdev->pre_cb && mbdev->pre_cb(mbdev->prdata)) {
 		ret = MBOX_PRE_CB_ERR;
 		goto skip;
 	}
+
+	pre_cb_time = cpu_clock(0);
 
 	/*execute all receive pin handler*/
 	for (i = 0; i < mbdev->recv_count; i++) {
@@ -575,10 +586,11 @@ static irqreturn_t mtk_mbox_isr(int irq, void *dev_id)
 					cbtimediff = pin_recv->recv_record.post_timestamp
 						- pin_recv->recv_record.pre_timestamp;
 					if (cbtimediff > timeout_time) {
-						pr_notice("[MBOX Error]dev=%s ipi_id=%d, timeout=%llu\n",
-							mbdev->name, pin_recv->chan_id, cbtimediff);
+						pr_notice("[MBOX Error]dev=%s ipi_id=%d, timeout=%llu\n"
+								, mbdev->name
+								, pin_recv->chan_id
+								, cbtimediff);
 					}
-
 				}
 			} else {
 				/*direct mode*/
@@ -603,8 +615,10 @@ static irqreturn_t mtk_mbox_isr(int irq, void *dev_id)
 					cbtimediff = pin_recv->recv_record.post_timestamp
 						- pin_recv->recv_record.pre_timestamp;
 					if (cbtimediff > timeout_time) {
-						pr_notice("[MBOX Error]dev=%s ipi_id=%d, timeout=%llu\n",
-							mbdev->name, pin_recv->chan_id, cbtimediff);
+						pr_notice("[MBOX Error]dev=%s ipi_id=%d, timeout=%llu\n"
+								, mbdev->name
+								, pin_recv->chan_id
+								, cbtimediff);
 					}
 				}
 			}
@@ -621,7 +635,11 @@ static irqreturn_t mtk_mbox_isr(int irq, void *dev_id)
 
 	if (mbdev->post_cb && mbdev->post_cb(mbdev->prdata))
 		ret = MBOX_POST_CB_ERR;
+
+	post_cb_time = cpu_clock(0);
 skip:
+	trace_mtk_mbox_isr_exit(mbdev->name, irq_status);
+
 	if (ret == MBOX_PRE_CB_ERR)
 		pr_notice("[MBOX ISR] pre_cb error, skip cb handle, dev=%s ret=%d",
 			mbdev->name, ret);
@@ -661,10 +679,11 @@ skip:
 	}
 	end_time = cpu_clock(0);
 	if (end_time - start_time > timeout_time) {
-		pr_notice("[MBOX Error]start=%llu, end=%llu diff=%llu, count=%u\n",
-			start_time, end_time, end_time - start_time, execute_count);
+		pr_notice("[MBOX Error]dev=%s ipi_id=%d, start=%llu, pre_cb_time=%llu, cb_pre_time=%llu\n",
+		mbdev->name, pin_recv->chan_id, start_time, pre_cb_time, pin_recv->recv_record.pre_timestamp);
+		pr_notice("[MBOX Error]cb_post_time=%llu, post_cb_time=%llu, end=%llu, diff=%llu, count=%u\n",
+		pin_recv->recv_record.post_timestamp, post_cb_time, end_time, end_time - start_time, execute_count);
 	}
-
 	return IRQ_HANDLED;
 }
 
@@ -702,7 +721,7 @@ int mtk_smem_init(struct platform_device *pdev, struct mtk_mbox_device *mbdev,
 	}
 
 	ret = request_irq(minfo->irq_num, mtk_mbox_isr,	IRQF_TRIGGER_NONE,
-		"MBOX_ISR", (void *) minfo);
+		mbdev->name, (void *) minfo);
 	if (ret) {
 		pr_err("MBOX %d request irq Failed\n", mbox);
 		goto smem_fail;
@@ -727,85 +746,57 @@ int mtk_mbox_probe(struct platform_device *pdev, struct mtk_mbox_device *mbdev,
 	int ret;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
-
+	unsigned int m_attri = 0xFFFFFFFF;
+	unsigned long mbox_flag = IRQF_NO_SUSPEND | IRQF_TRIGGER_NONE;
 	minfo = &(mbdev->info_table[mbox]);
 
 	if (pdev) {
 		snprintf(name, sizeof(name), "mbox%d_base", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		if (IS_ERR_OR_NULL(res)) {
-			pr_info("MBOX %s:get resource %s failed!\n",
-				__func__, name);
-		} else {
-			minfo->base = devm_ioremap_resource(dev, res);
+		minfo->base = devm_ioremap_resource(dev, res);
 
-			if (IS_ERR((void const *) minfo->base))
-				pr_info("MBOX %d can't remap base\n", mbox);
+		if (IS_ERR((void const *) minfo->base))
+			pr_err("MBOX %d can't remap base\n", mbox);
 
-			minfo->slot = (unsigned int)resource_size(res)/MBOX_SLOT_SIZE;
-		}
+		minfo->slot = (unsigned int)resource_size(res)/MBOX_SLOT_SIZE;
+
 		/*init reg*/
 		snprintf(name, sizeof(name), "mbox%d_init", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		if (IS_ERR_OR_NULL(res)) {
-			pr_info("MBOX %s:get resource %s failed!\n",
-				__func__, name);
-		} else {
-			minfo->init_base_reg = devm_ioremap_resource(dev, res);
-			if (IS_ERR((void const *) minfo->init_base_reg))
-				pr_info("MBOX %d can't find init reg\n", mbox);
-		}
+		minfo->init_base_reg = devm_ioremap_resource(dev, res);
+		if (IS_ERR((void const *) minfo->init_base_reg))
+			pr_err("MBOX %d can't find init reg\n", mbox);
 		/*set irq reg*/
 		snprintf(name, sizeof(name), "mbox%d_set", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		if (IS_ERR_OR_NULL(res)) {
-			pr_info("MBOX %s:get resource %s failed!\n",
-				__func__, name);
-		} else {
-			minfo->set_irq_reg = devm_ioremap_resource(dev, res);
-			if (IS_ERR((void const *) minfo->set_irq_reg)) {
-				pr_info("MBOX %d can't find set reg\n", mbox);
-				goto mtk_mbox_probe_fail;
-			}
+		minfo->set_irq_reg = devm_ioremap_resource(dev, res);
+		if (IS_ERR((void const *) minfo->set_irq_reg)) {
+			pr_err("MBOX %d can't find set reg\n", mbox);
+			goto mtk_mbox_probe_fail;
 		}
 		/*clear reg*/
 		snprintf(name, sizeof(name), "mbox%d_clr", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		if (IS_ERR_OR_NULL(res)) {
-			pr_info("MBOX %s:get resource %s failed!\n",
-				__func__, name);
-		} else {
-			minfo->clr_irq_reg = devm_ioremap_resource(dev, res);
-			if (IS_ERR((void const *) minfo->clr_irq_reg)) {
-				pr_info("MBOX %d can't find clr reg\n", mbox);
-				goto mtk_mbox_probe_fail;
-			}
+		minfo->clr_irq_reg = devm_ioremap_resource(dev, res);
+		if (IS_ERR((void const *) minfo->clr_irq_reg)) {
+			pr_err("MBOX %d can't find clr reg\n", mbox);
+			goto mtk_mbox_probe_fail;
 		}
 		/*send status reg*/
 		snprintf(name, sizeof(name), "mbox%d_send", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		if (IS_ERR_OR_NULL(res)) {
-			pr_info("MBOX %s:get resource %s failed!\n",
-				__func__, name);
-		} else {
-			minfo->send_status_reg = devm_ioremap_resource(dev, res);
-			if (IS_ERR((void const *) minfo->send_status_reg)) {
-				pr_notice("MBOX %d can't find send status reg\n", mbox);
-				minfo->send_status_reg = NULL;
-			}
+		minfo->send_status_reg = devm_ioremap_resource(dev, res);
+		if (IS_ERR((void const *) minfo->send_status_reg)) {
+			pr_notice("MBOX %d can't find send status reg\n", mbox);
+			minfo->send_status_reg = NULL;
 		}
 		/*recv status reg*/
 		snprintf(name, sizeof(name), "mbox%d_recv", mbox);
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-		if (IS_ERR_OR_NULL(res)) {
-			pr_info("MBOX %s:get resource %s failed!\n",
-				__func__, name);
-		} else {
-			minfo->recv_status_reg = devm_ioremap_resource(dev, res);
-			if (IS_ERR((void const *) minfo->recv_status_reg)) {
-				pr_notice("MBOX %d can't find recv status reg\n", mbox);
-				minfo->recv_status_reg = NULL;
-			}
+		minfo->recv_status_reg = devm_ioremap_resource(dev, res);
+		if (IS_ERR((void const *) minfo->recv_status_reg)) {
+			pr_notice("MBOX %d can't find recv status reg\n", mbox);
+			minfo->recv_status_reg = NULL;
 		}
 
 		snprintf(name, sizeof(name), "mbox%d", mbox);
@@ -815,13 +806,22 @@ int mtk_mbox_probe(struct platform_device *pdev, struct mtk_mbox_device *mbdev,
 			goto mtk_mbox_probe_fail;
 		}
 
+		ret = of_property_read_u32_index(pdev->dev.of_node,
+				"mbox-attr",
+				mbox,
+				&m_attri);
+		if (ret == 0) {
+			mbox_flag = (unsigned long)m_attri;
+			pr_notice("MBOX %d mbox-attri: 0x%lx\n", mbox, mbox_flag);
+		}
+
 		minfo->enable = true;
 		minfo->id = mbox;
 		minfo->mbdev = mbdev;
 		spin_lock_init(&minfo->mbox_lock);
 
 		ret = request_irq(minfo->irq_num, mtk_mbox_isr,
-				IRQF_TRIGGER_NONE, "MBOX_ISR", (void *) minfo);
+				mbox_flag, mbdev->name, (void *) minfo);
 		if (ret) {
 			pr_err("MBOX %d request irq Failed\n", mbox);
 			goto mtk_mbox_probe_fail;
@@ -834,6 +834,34 @@ mtk_mbox_probe_fail:
 	return MBOX_CONFIG_ERR;
 }
 EXPORT_SYMBOL_GPL(mtk_mbox_probe);
+
+void mtk_mbox_clr_index_record(struct mtk_mbox_device *mbdev, unsigned int mbox)
+{
+	struct mtk_mbox_info *minfo;
+
+	if (!mbdev)
+		return;
+	if (mbox >= mbdev->count)
+		return;
+
+	minfo = &(mbdev->info_table[mbox]);
+	minfo->record.irq_record = 0;
+}
+EXPORT_SYMBOL_GPL(mtk_mbox_clr_index_record);
+
+unsigned int mtk_mbox_get_index_record(struct mtk_mbox_device *mbdev, unsigned int mbox)
+{
+	struct mtk_mbox_info *minfo;
+
+	if (!mbdev)
+		return 0;
+	if (mbox >= mbdev->count)
+		return 0;
+
+	minfo = &(mbdev->info_table[mbox]);
+	return minfo->record.irq_record;
+}
+EXPORT_SYMBOL_GPL(mtk_mbox_get_index_record);
 
 /*
  *mbox print receive pin function

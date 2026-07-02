@@ -50,6 +50,8 @@
 #include "mtk-soc-pcm-common.h"
 #include "mtk-soc-pcm-platform.h"
 
+#define CODE_COMMENT
+
 static struct afe_mem_control_t *pdl1btMemControl;
 static struct snd_dma_buffer *dl1bt_Playback_dma_buf;
 static unsigned int mPlaybackDramState;
@@ -81,7 +83,6 @@ static int dl1bt_memif_select_get(struct snd_kcontrol *kcontrol,
 static int dl1bt_memif_select_set(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	if (ucontrol->value.enumerated.item[0] >
 		ARRAY_SIZE(dl1bt_memif_select_str))
 		return -EINVAL;
@@ -101,7 +102,8 @@ static const struct snd_kcontrol_new mtk_dl1bt_control[] = {
  */
 
 static int mtk_dl1bt_probe(struct platform_device *pdev);
-static int mtk_Dl1Bt_close(struct snd_pcm_substream *substream);
+static int mtk_Dl1Bt_close(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream);
 static int mtk_asoc_dl1bt_component_probe(struct snd_soc_component *component);
 
 static struct snd_pcm_hardware mtk_dl1bt_pcm_hardware = {
@@ -123,7 +125,6 @@ static struct snd_pcm_hardware mtk_dl1bt_pcm_hardware = {
 static int mtk_pcm_dl1Bt_stop(struct snd_pcm_substream *substream)
 {
 #if defined(AUD_DEBUG_LOG)
-	pr_debug("mtk_pcm_dl1Bt_stop\n");
 #endif
 	/* here to turn off digital part */
 	SetIntfConnection(Soc_Aud_InterCon_DisConnect, bt_dl_mem_blk_io,
@@ -144,18 +145,19 @@ static int mtk_pcm_dl1Bt_stop(struct snd_pcm_substream *substream)
 }
 
 static snd_pcm_uframes_t
-mtk_dl1bt_pcm_pointer(struct snd_pcm_substream *substream)
+mtk_dl1bt_pcm_pointer(struct snd_soc_component *component,
+		      struct snd_pcm_substream *substream)
 {
 	return get_mem_frame_index(substream, pdl1btMemControl, bt_dl_mem_blk);
 }
 
-static int mtk_pcm_dl1bt_hw_params(struct snd_pcm_substream *substream,
+static int mtk_pcm_dl1bt_hw_params(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream,
 				   struct snd_pcm_hw_params *hw_params)
 {
 	int ret = 0;
 
 #if defined(AUD_DEBUG_LOG)
-	pr_debug("mtk_pcm_dl1bt_hw_params\n");
 #endif
 	/* runtime->dma_bytes has to be set manually to allow mmap */
 	substream->runtime->dma_bytes = params_buffer_bytes(hw_params);
@@ -187,7 +189,8 @@ static int mtk_pcm_dl1bt_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_pcm_dl1bt_hw_free(struct snd_pcm_substream *substream)
+static int mtk_pcm_dl1bt_hw_free(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	pr_debug("%s substream = %p\n", __func__, substream);
 	if (mPlaybackDramState == true) {
@@ -204,7 +207,8 @@ static struct snd_pcm_hw_constraint_list constraints_dl1_sample_rates = {
 	.mask = 0,
 };
 
-static int mtk_dl1bt_pcm_open(struct snd_pcm_substream *substream)
+static int mtk_dl1bt_pcm_open(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -233,27 +237,28 @@ static int mtk_dl1bt_pcm_open(struct snd_pcm_substream *substream)
 
 	/* print for hw pcm information */
 	pr_debug(
-		"mtk_dl1bt_pcm_open runtime rate = %d channels = %d substream->pcm->device = %d\n",
-		runtime->rate, runtime->channels, substream->pcm->device);
+		"%s runtime rate = %d channels = %d substream->pcm->device = %d\n",
+		__func__, runtime->rate, runtime->channels, substream->pcm->device);
 
 	if (ret < 0) {
 #if defined(AUD_DEBUG_LOG)
 		pr_debug("mtk_Dl1Bt_close\n");
 #endif
-		mtk_Dl1Bt_close(substream);
+		mtk_Dl1Bt_close(component, substream);
 		return ret;
 	}
 	return 0;
 }
 
-static int mtk_Dl1Bt_close(struct snd_pcm_substream *substream)
+static int mtk_Dl1Bt_close(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 	AudDrv_Clk_Off();
 	return 0;
 }
 
-static int mtk_dl1bt_pcm_prepare(struct snd_pcm_substream *substream)
+static int mtk_dl1bt_pcm_prepare(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
 	return 0;
 }
@@ -264,7 +269,7 @@ static bool SetVoipDAIBTAttribute(int sample_rate)
 
 	memset_io((void *)&daibt_attribute, 0, sizeof(daibt_attribute));
 
-#if 0 /* temp for merge only support */
+#ifndef CODE_COMMENT /* temp for merge only support */
 	daibt_attribute.mUSE_MRGIF_INPUT = Soc_Aud_BT_DAI_INPUT_FROM_BT;
 #else
 	daibt_attribute.mUSE_MRGIF_INPUT = Soc_Aud_BT_DAI_INPUT_FROM_MGRIF;
@@ -332,9 +337,10 @@ static int mtk_pcm_dl1bt_start(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_pcm_trigger(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream, int cmd)
 {
-	pr_debug("mtk_pcm_trigger cmd = %d\n", cmd);
+	pr_debug("%s cmd = %d\n", __func__, cmd);
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
@@ -346,57 +352,43 @@ static int mtk_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	return -EINVAL;
 }
 
-static int mtk_pcm_dl1bt_copy(struct snd_pcm_substream *substream, int channel,
-			      unsigned long pos, void __user *dst,
+static int mtk_pcm_dl1bt_copy(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream, int channel,
+			      unsigned long pos, struct iov_iter *dst,
 			      unsigned long count)
 {
 	return mtk_memblk_copy(substream, channel, pos, dst, count,
 			       pdl1btMemControl, bt_dl_mem_blk);
 }
 
-static int mtk_pcm_dl1bt_silence(struct snd_pcm_substream *substream,
-				 int channel,
-				 unsigned long pos,
-				 unsigned long bytes)
-{
-#if defined(AUD_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
-#endif
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
-static struct page *mtk_pcm_page(struct snd_pcm_substream *substream,
+static struct page *mtk_pcm_page(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream,
 				 unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_d1lbt_ops = {
+static const struct snd_soc_component_driver mtk_soc_dl1bt_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_asoc_dl1bt_component_probe,
 	.open = mtk_dl1bt_pcm_open,
 	.close = mtk_Dl1Bt_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_pcm_dl1bt_hw_params,
 	.hw_free = mtk_pcm_dl1bt_hw_free,
 	.prepare = mtk_dl1bt_pcm_prepare,
 	.trigger = mtk_pcm_trigger,
 	.pointer = mtk_dl1bt_pcm_pointer,
-	.copy_user = mtk_pcm_dl1bt_copy,
-	.fill_silence = mtk_pcm_dl1bt_silence,
+	.copy = mtk_pcm_dl1bt_copy,
 	.page = mtk_pcm_page,
-};
 
-static struct snd_soc_component_driver mtk_soc_dl1bt_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_d1lbt_ops,
-	.probe = mtk_asoc_dl1bt_component_probe,
 };
 
 static int mtk_dl1bt_probe(struct platform_device *pdev)
 {
 #if defined(AUD_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (pdev->dev.dma_mask == NULL)
@@ -436,7 +428,7 @@ static int mtk_asoc_dl1bt_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_dl1_bt_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_dl1_bt",
@@ -449,7 +441,7 @@ static struct platform_driver mtk_dl1bt_driver = {
 
 			.name = MT_SOC_VOIP_BT_OUT,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_dl1_bt_of_ids,
 #endif
 		},
@@ -465,7 +457,6 @@ static int __init mtk_soc_dl1bt_platform_init(void)
 {
 	int ret;
 
-	pr_debug("%s\n", __func__);
 #ifndef CONFIG_OF
 	soc_mtk_dl1bt_dev = platform_device_alloc(MT_SOC_VOIP_BT_OUT, -1);
 	if (!soc_mtk_dl1bt_dev)

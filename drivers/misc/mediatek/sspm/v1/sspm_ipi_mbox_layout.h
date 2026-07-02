@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2016 MediaTek Inc.
  */
@@ -7,6 +7,7 @@
 #define __SSPM_IPI_MBOX_LAYOUT_H__
 
 #define IPI_MBOX_TOTAL  4
+#define IPI_MBOX0_USERS  5
 #define IPI_MBOX0_64D   0
 #define IPI_MBOX1_64D   0
 #define IPI_MBOX2_64D   0
@@ -22,15 +23,11 @@
 #define IPI_MBOX3_SLOTS ((IPI_MBOX3_64D+1)*32)
 #define IPI_MBOX4_SLOTS ((IPI_MBOX4_64D+1)*32)
 
-
+#if !IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_LEGACY)
 /* definition of slot size for send PINs */
 #define PINS_SIZE_PLATFORM       3  /* the following will use mbox 0 */
 #define PINS_SIZE_CPU_DVFS       4
-#if defined(CONFIG_MACH_MT6768) || defined(CONFIG_MACH_MT6771)
 #define PINS_SIZE_QOS            4
-#else
-#define PINS_SIZE_QOS            6
-#endif
 #define PINS_SIZE_TST1           4
 #define PINS_SIZE_FHCTL          9
 #define PINS_SIZE_SMI            3
@@ -69,15 +66,12 @@
 #error "MBOX1 cannot hold all pin definitions"
 #endif
 /* ============================================================ */
+#endif //CONFIG_MTK_TINYSYS_SSPM_LEGACY
 
 /* definition of slot size for received PINs */
 #define PINR_SIZE_PLATFORM       3  /* the following will use mbox 2 */
 #define PINR_SIZE_CPU_DVFS       4
-#if defined(CONFIG_MACH_MT6768) || defined(CONFIG_MACH_MT6771)
 #define PINR_SIZE_QOS            4
-#else
-#define PINR_SIZE_QOS            6
-#endif
 #define PINR_SIZE_TST1           4
 /* definition of slot offset for PINs */
 #define PINR_OFFSET_PLATFORM     0  /* the following will use mbox 2 */

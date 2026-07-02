@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2020 MediaTek Inc.
+ */
 
 #ifndef __MDP_DEF_EX_H__
 #define __MDP_DEF_EX_H__
@@ -26,6 +26,7 @@ enum CMDQ_META_OP {
 	CMDQ_MOP_WRITE_RDMA,
 	CMDQ_MOP_WRITE_FD_RDMA,
 	CMDQ_MOP_NOP,
+	CMDQ_MOP_WRITE_SEC_FD,
 };
 
 #define CMDQ_EVENT_WAIT 0x80008001

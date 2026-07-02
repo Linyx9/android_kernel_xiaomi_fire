@@ -9,6 +9,7 @@
 #define DFT_TAG "[CONNADP]"
 #include "connectivity_build_in_adapter.h"
 
+#include <linux/sched/cputime.h>
 #include <kernel/sched/sched.h>
 
 /*device tree mode*/
@@ -23,6 +24,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/trace_events.h>
+#include <linux/notifier.h>
 
 #include <linux/interrupt.h>
 #ifdef CONFIG_MTK_MT6306_GPIO_SUPPORT
@@ -33,19 +35,11 @@
 #include <mtk_clkbuf_ctl.h>
 #endif
 
-/* PMIC */
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6359)
-#include <mtk_pmic_api_buck.h>
-#endif
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6359P)
-#include <pmic_api_buck.h>
-#endif
-#include <upmu_common.h>
-
 /* MMC */
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include <sdio_ops.h>
+#include <asm/stacktrace.h>
 
 
 #ifdef CONFIG_ARCH_MT6570
@@ -69,13 +63,14 @@
 #define TASK_STATE_TO_CHAR_STR "RSDTtXZxKWPNn"
 #endif
 
+/* conninfra init/deinit notifier */
+static BLOCKING_NOTIFIER_HEAD(conn_state_notifier_list);
+static DEFINE_MUTEX(conn_state_notify_mutex);
+struct connsys_state_info g_connsys_state_info;
+
 void connectivity_export_show_stack(struct task_struct *tsk, unsigned long *sp)
 {
-#ifdef CFG_CONNADP_BUILD_IN
-	show_stack(tsk, sp);
-#else
-	pr_info("%s not support in connadp.ko\n", __func__);
-#endif
+	dump_backtrace(NULL, tsk, KERN_DEFAULT);
 }
 EXPORT_SYMBOL(connectivity_export_show_stack);
 
@@ -93,15 +88,128 @@ EXPORT_SYMBOL(connectivity_export_tracing_record_cmdline);
 
 void connectivity_export_conap_scp_init(unsigned int chip_info, phys_addr_t emi_phy_addr)
 {
+	pr_info("[%s] [%x][%pa] [%x][%pa]", __func__,
+				chip_info, &emi_phy_addr,
+				g_connsys_state_info.chip_info, &g_connsys_state_info.emi_phy_addr);
+
+	mutex_lock(&conn_state_notify_mutex);
+	g_connsys_state_info.chip_info = chip_info;
+	g_connsys_state_info.emi_phy_addr = emi_phy_addr;
+
+	blocking_notifier_call_chain(&conn_state_notifier_list, 1, &g_connsys_state_info);
+
+	mutex_unlock(&conn_state_notify_mutex);
 }
 EXPORT_SYMBOL(connectivity_export_conap_scp_init);
 
 
 void connectivity_export_conap_scp_deinit(void)
 {
+
+	mutex_lock(&conn_state_notify_mutex);
+	blocking_notifier_call_chain(&conn_state_notifier_list, 0, NULL);
+	mutex_unlock(&conn_state_notify_mutex);
 }
 EXPORT_SYMBOL(connectivity_export_conap_scp_deinit);
 
+void connectivity_export_conap_scp_state_change(enum conn_event_type type)
+{
+	pr_info("[%s] type=[%d]", __func__, type);
+	mutex_lock(&conn_state_notify_mutex);
+	blocking_notifier_call_chain(&conn_state_notifier_list, type, NULL);
+	mutex_unlock(&conn_state_notify_mutex);
+}
+EXPORT_SYMBOL(connectivity_export_conap_scp_state_change);
+
+/* DFD support */
+static int (*g_conap_scp_cmd_handler)(uint8_t drv_type, uint32_t cmd, uint32_t param);
+
+void connectivity_register_cmd_handler(int (*cmd_hdlr)(uint8_t drv_type, uint32_t cmd, uint32_t param))
+{
+	g_conap_scp_cmd_handler = cmd_hdlr;
+}
+EXPORT_SYMBOL(connectivity_register_cmd_handler);
+
+void connectivity_unregister_cmd_handler(void)
+{
+	g_conap_scp_cmd_handler = NULL;
+}
+EXPORT_SYMBOL(connectivity_unregister_cmd_handler);
+
+void connectivity_export_conap_scp_trigger_cmd(enum conn_hif_dbg_drv_type drv_type,
+						enum conn_hif_dbg_cmd cmd, int param)
+{
+#if 0
+	if (g_conap_scp_cmd_handler)
+		(*g_conap_scp_cmd_handler)(drv_type, cmd, param);
+#endif
+}
+EXPORT_SYMBOL(connectivity_export_conap_scp_trigger_cmd);
+
+
+/* ++ DFD support ++ */
+struct conap_dfd_handler g_conap_scp_dfd_handler;
+void connectivity_register_dfd_handler(struct conap_dfd_handler *hdlr)
+{
+	if (hdlr == NULL)
+		return;
+	memcpy(&g_conap_scp_dfd_handler, hdlr, sizeof(struct conap_dfd_handler));
+}
+EXPORT_SYMBOL(connectivity_register_dfd_handler);
+
+void connectivity_unregister_dfd_handler(void)
+{
+	memcpy(&g_conap_scp_dfd_handler, 0, sizeof(struct conap_dfd_handler));
+}
+EXPORT_SYMBOL(connectivity_unregister_dfd_handler);
+
+int connectivity_export_conap_scp_trigger_dfd_cmd(uint8_t drv_type,
+					uint32_t reserved_param0, uint32_t reserved_param1)
+{
+	if (g_conap_scp_dfd_handler.cmd_hdlr)
+		return (*g_conap_scp_dfd_handler.cmd_hdlr)(drv_type, reserved_param0, reserved_param1);
+	return 0;
+}
+EXPORT_SYMBOL(connectivity_export_conap_scp_trigger_dfd_cmd);
+
+int connectivity_export_conap_scp_clr_dfd_buffer(void)
+{
+	if (g_conap_scp_dfd_handler.clr_buf_hdlr)
+		return (*g_conap_scp_dfd_handler.clr_buf_hdlr)();
+	return 0;
+}
+EXPORT_SYMBOL(connectivity_export_conap_scp_clr_dfd_buffer);
+
+int connectivity_export_conap_get_dfd_value_info(phys_addr_t *addr, uint32_t *size)
+{
+	if (g_conap_scp_dfd_handler.clr_buf_hdlr)
+		return (*g_conap_scp_dfd_handler.clr_buf_hdlr)();
+	return 0;
+}
+EXPORT_SYMBOL(connectivity_export_conap_get_dfd_value_info);
+/* -- DFD support -- */
+
+void connectivity_register_state_notifier(struct notifier_block *nb)
+{
+	mutex_lock(&conn_state_notify_mutex);
+	blocking_notifier_chain_register(&conn_state_notifier_list, nb);
+
+	pr_debug("[CONNADP] register conn_state notify callback..chip=[%x]\n",
+				g_connsys_state_info.chip_info);
+
+	if (g_connsys_state_info.chip_info != 0)
+		nb->notifier_call(nb, 1, NULL);
+	mutex_unlock(&conn_state_notify_mutex);
+}
+EXPORT_SYMBOL(connectivity_register_state_notifier);
+
+void connectivity_unregister_state_notifier(struct notifier_block *nb)
+{
+	mutex_lock(&conn_state_notify_mutex);
+	blocking_notifier_chain_unregister(&conn_state_notifier_list, nb);
+	mutex_unlock(&conn_state_notify_mutex);
+}
+EXPORT_SYMBOL(connectivity_unregister_state_notifier);
 
 #ifdef CPU_BOOST
 bool connectivity_export_spm_resource_req(unsigned int user,
@@ -153,40 +261,6 @@ void connectivity_export_clk_buf_ctrl(enum clk_buf_id id, bool onoff)
 	clk_buf_ctrl(id, onoff);
 }
 EXPORT_SYMBOL(connectivity_export_clk_buf_ctrl);
-
-void connectivity_export_clk_buf_show_status_info(void)
-{
-#if defined(CONFIG_MACH_MT6768) || \
-	defined(CONFIG_MACH_MT6771) || \
-	defined(CONFIG_MACH_MT6739) || \
-	defined(CONFIG_MACH_MT6781) || \
-	defined(CONFIG_MACH_MT6785) || \
-	defined(CONFIG_MACH_MT6873) || \
-	defined(CONFIG_MACH_MT6885) || \
-	defined(CONFIG_MACH_MT6893) || \
-	defined(CONFIG_MACH_MT6877)
-#if defined(CONFIG_MTK_BASE_POWER)
-	clk_buf_show_status_info();
-#else
-	pr_info("[%s] not support now", __func__);
-#endif
-#endif
-}
-EXPORT_SYMBOL(connectivity_export_clk_buf_show_status_info);
-
-int connectivity_export_clk_buf_get_xo_en_sta(/*enum xo_id id*/ int id)
-{
-#if defined(CONFIG_MACH_MT6768) || \
-	defined(CONFIG_MACH_MT6781) || \
-	defined(CONFIG_MACH_MT6785) || \
-	defined(CONFIG_MACH_MT6771) || \
-	defined(CONFIG_MACH_MT6739)
-	return clk_buf_get_xo_en_sta(id);
-#else
-	return KERNEL_CLK_BUF_CHIP_NOT_SUPPORT;
-#endif
-}
-EXPORT_SYMBOL(connectivity_export_clk_buf_get_xo_en_sta);
 #endif
 
 /*******************************************************************************
@@ -206,108 +280,6 @@ void connectivity_export_mt6306_set_gpio_dir(unsigned long pin,
 	mt6306_set_gpio_dir(MT6306_GPIO_01, MT6306_GPIO_DIR_OUT);
 }
 EXPORT_SYMBOL(connectivity_export_mt6306_set_gpio_dir);
-#endif
-
-/*******************************************************************************
- * PMIC
- ******************************************************************************/
-void connectivity_export_pmic_config_interface(unsigned int RegNum,
-		unsigned int val, unsigned int MASK, unsigned int SHIFT)
-{
-#if !defined(CONFIG_MACH_MT6761) && !defined(CONFIG_MACH_MT6765) && !defined(CONFIG_MACH_MT6779)
-	pmic_config_interface(RegNum, val, MASK, SHIFT);
-#else
-	return;
-#endif
-}
-EXPORT_SYMBOL(connectivity_export_pmic_config_interface);
-
-void connectivity_export_pmic_read_interface(unsigned int RegNum,
-		unsigned int *val, unsigned int MASK, unsigned int SHIFT)
-{
-#if !defined(CONFIG_MACH_MT6761) && !defined(CONFIG_MACH_MT6765) && !defined(CONFIG_MACH_MT6779)
-	pmic_read_interface(RegNum, val, MASK, SHIFT);
-#else
-	return;
-#endif
-}
-EXPORT_SYMBOL(connectivity_export_pmic_read_interface);
-
-void connectivity_export_pmic_set_register_value(int flagname, unsigned int val)
-{
-#ifdef CONNADP_HAS_UPMU_VCN_CTRL
-	upmu_set_reg_value(flagname, val);
-#else
-#if !defined(CONFIG_MACH_MT6761) && !defined(CONFIG_MACH_MT6765) && !defined(CONFIG_MACH_MT6779)
-	pmic_set_register_value(flagname, val);
-#else
-	return;
-#endif
-#endif
-}
-EXPORT_SYMBOL(connectivity_export_pmic_set_register_value);
-
-unsigned short connectivity_export_pmic_get_register_value(int flagname)
-{
-#ifdef CONNADP_HAS_UPMU_VCN_CTRL
-	return upmu_get_reg_value(flagname);
-#else
-#if !defined(CONFIG_MACH_MT6761) && !defined(CONFIG_MACH_MT6765) && !defined(CONFIG_MACH_MT6779)
-	return pmic_get_register_value(flagname);
-#else
-	return 0;
-#endif
-#endif
-}
-EXPORT_SYMBOL(connectivity_export_pmic_get_register_value);
-
-void connectivity_export_upmu_set_reg_value(unsigned int reg,
-		unsigned int reg_val)
-{
-#if !defined(CONFIG_MACH_MT6761) && !defined(CONFIG_MACH_MT6765) && !defined(CONFIG_MACH_MT6779)
-	upmu_set_reg_value(reg, reg_val);
-#else
-	return;
-#endif
-}
-EXPORT_SYMBOL(connectivity_export_upmu_set_reg_value);
-
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6359) || \
-	defined(CONFIG_MTK_PMIC_CHIP_MT6359P)
-int connectivity_export_pmic_ldo_vcn13_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg)
-{
-	return pmic_ldo_vcn13_lp(user, op_mode, op_en, op_cfg);
-}
-EXPORT_SYMBOL(connectivity_export_pmic_ldo_vcn13_lp);
-
-int connectivity_export_pmic_ldo_vcn18_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg)
-{
-	return pmic_ldo_vcn18_lp(user, op_mode, op_en, op_cfg);
-}
-EXPORT_SYMBOL(connectivity_export_pmic_ldo_vcn18_lp);
-
-void connectivity_export_pmic_ldo_vfe28_lp(unsigned int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg)
-{
-	pmic_ldo_vfe28_lp(user, op_mode, op_en, op_cfg);
-}
-EXPORT_SYMBOL(connectivity_export_pmic_ldo_vfe28_lp);
-
-int connectivity_export_pmic_ldo_vcn33_1_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg)
-{
-	return pmic_ldo_vcn33_1_lp(user, op_mode, op_en, op_cfg);
-}
-EXPORT_SYMBOL(connectivity_export_pmic_ldo_vcn33_1_lp);
-
-int connectivity_export_pmic_ldo_vcn33_2_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg)
-{
-	return pmic_ldo_vcn33_2_lp(user, op_mode, op_en, op_cfg);
-}
-EXPORT_SYMBOL(connectivity_export_pmic_ldo_vcn33_2_lp);
 #endif
 
 /*******************************************************************************
@@ -342,7 +314,6 @@ EXPORT_SYMBOL(connectivity_export_dump_gpio_info);
 
 void connectivity_export_dump_thread_state(const char *name)
 {
-#ifdef CFG_CONNADP_BUILD_IN
 	static const char stat_nam[] = TASK_STATE_TO_CHAR_STR;
 	struct task_struct *p;
 	int cpu;
@@ -363,7 +334,7 @@ void connectivity_export_dump_thread_state(const char *name)
 
 		if (strncmp(p->comm, name, strlen(name)) != 0)
 			continue;
-		state = p->state;
+		state = p->__state;
 		cpu = task_cpu(p);
 		rq = cpu_rq(cpu);
 		curr = rq->curr;
@@ -373,20 +344,19 @@ void connectivity_export_dump_thread_state(const char *name)
 		pr_info("%d:%-15.15s %c", p->pid, p->comm,
 			state < sizeof(stat_nam) - 1 ? stat_nam[state] : '?');
 		pr_info("cpu=%d on_cpu=%d ", cpu, p->on_cpu);
-		show_stack(p, NULL);
+		dump_backtrace(NULL, p, KERN_DEFAULT);
+#if IS_ENABLED(CONFIG_ARM64)
+		pr_info("CPU%d curr=%d:%-15.15s preempt_count=0x%llx", cpu,
+#else
 		pr_info("CPU%d curr=%d:%-15.15s preempt_count=0x%x", cpu,
+#endif
 			curr->pid, curr->comm, ti->preempt_count);
-
 		if (state == TASK_RUNNING && curr != p)
-			show_stack(curr, NULL);
+			dump_backtrace(NULL, curr, KERN_DEFAULT);
 
 		break;
 	}
 	rcu_read_unlock();
-
-#else
-	pr_info("%s not support in connadp.ko\n", __func__);
-#endif
 }
 EXPORT_SYMBOL(connectivity_export_dump_thread_state);
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef __DRV_CLK_MT6768_PG_H
 #define __DRV_CLK_MT6768_PG_H
@@ -49,9 +49,10 @@ extern void mm_clk_restore(void);
 extern void mfg_sts_check(void);
 extern void ven_clk_check(void);
 extern unsigned int mt_get_ckgen_freq(unsigned int ID);
+extern struct provider_clk *get_all_provider_clks(void);
 /*extern void aee_sram_printk(const char *fmt, ...);*/
 /*ram console api*/
-#ifdef CONFIG_MTK_RAM_CONSOLE
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 extern void aee_rr_rec_clk(int id, u32 val);
 #endif
 

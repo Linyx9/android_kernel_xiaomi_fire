@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
+ * Copyright (C) 2023 MediaTek Inc.
  */
 
 #ifndef TPD_FAT_TOUCH

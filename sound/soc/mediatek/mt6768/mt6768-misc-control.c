@@ -13,7 +13,7 @@
 
 #include "../common/mtk-afe-fe-dai.h"
 #include "../common/mtk-afe-platform-driver.h"
-#if defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 #include "../scp_vow/mtk-scp-vow-common.h"
 #endif
 
@@ -1144,7 +1144,7 @@ static int speech_property_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-#if defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 /* VOW barge in control */
 static int mt6768_afe_vow_bargein_get(struct snd_kcontrol *kcontrol,
 				      struct snd_ctl_elem_value *ucontrol)
@@ -1249,7 +1249,7 @@ int mt6768_add_misc_control(struct snd_soc_component *platform)
 	snd_soc_add_component_controls(platform,
 				      mt6768_afe_speech_controls,
 				      ARRAY_SIZE(mt6768_afe_speech_controls));
-#if defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 	snd_soc_add_component_controls(platform,
 				      mt6768_afe_bargein_controls,
 				      ARRAY_SIZE(mt6768_afe_bargein_controls));

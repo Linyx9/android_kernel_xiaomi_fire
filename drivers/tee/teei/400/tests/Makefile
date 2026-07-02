@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2020, MICROTRUST Incorporated
+# Copyright (c) 2015-2019, MICROTRUST Incorporated
 # All Rights Reserved.
 #
 # This program is free software; you can redistribute it and/or
@@ -11,7 +11,6 @@
 # GNU General Public License for more details.
 
 ccflags-y += -I$(src)
-ccflags-y += -Wno-error
 
 obj-y += xtest_isee_3000.o
 obj-y += xtest_isee_1000.o

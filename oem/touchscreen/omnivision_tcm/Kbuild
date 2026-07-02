@@ -1,0 +1,15 @@
+ifdef CONFIG_OEM_LAMU_TOUCHSCREEN
+	TP_OBJS += omnivision_tcm_core.o
+	TP_OBJS += omnivision_tcm_touch.o
+	TP_OBJS += omnivision_tcm_spi.o
+	TP_OBJS += omnivision_tcm_zeroflash.o
+	TP_OBJS += omnivision_tcm_reflash.o
+	TP_OBJS += omnivision_tcm_device.o
+	TP_OBJS += omnivision_tcm_testing.o
+	TP_OBJS += omnivision_tcm_recovery.o
+	TP_OBJS += omnivision_tcm_diagnostics.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_TOUCHSCREEN) += omnivision_tcm.o
+omnivision_tcm-y := $(TP_OBJS)
+

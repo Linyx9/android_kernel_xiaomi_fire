@@ -97,10 +97,13 @@ static uint8_t *core_write_cpu_note(int cpu, struct elf32_phdr *nhdr,
 {
 	struct memelfnote notes;
 	struct elf32_prstatus prstatus;
-	char cpustr[16];
+	char cpustr[16] = {0};
+	int ret = 0;
 
 	memset(&prstatus, 0, sizeof(struct elf32_prstatus));
-	snprintf(cpustr, sizeof(cpustr), "CPU%d", cpu);
+	ret = snprintf(cpustr, sizeof(cpustr), "CPU%d", cpu);
+	if (ret < 0)
+		pr_info("[SCP] cpu = %d\n", cpu);
 	/* set up the process status */
 	notes.name = cpustr;
 	notes.type = NT_PRSTATUS;
@@ -362,14 +365,14 @@ static unsigned int scp_crash_dump(struct MemoryDump *pMemoryDump,
 	unsigned int scp_dump_size;
 	unsigned int scp_awake_fail_flag;
 #if SCP_RECOVERY_SUPPORT
-	uint32_t dram_start = 0;
+	uint32_t dram_start __maybe_unused = 0;
 #endif
 	uint32_t dram_size = 0;
 
 	/*flag use to indicate scp awake success or not*/
 	scp_awake_fail_flag = 0;
 	/*check SRAM lock ,awake scp*/
-	if (scp_awake_lock(id) == -1) {
+	if (scp_awake_lock((void *)id) == -1) {
 		pr_err("[SCP] %s: awake scp fail, scp id=%u\n", __func__, id);
 		scp_awake_fail_flag = 1;
 	}
@@ -430,7 +433,7 @@ static unsigned int scp_crash_dump(struct MemoryDump *pMemoryDump,
 	dsb(SY);
 	/*check SRAM unlock*/
 	if (scp_awake_fail_flag != 1) {
-		if (scp_awake_unlock(id) == -1)
+		if (scp_awake_unlock((void *)id) == -1)
 			pr_debug("[SCP]%s awake unlock fail, scp id=%u\n",
 				__func__, id);
 	}
@@ -565,7 +568,7 @@ static void scp_prepare_aed_dump(char *aed_str,
  */
 void scp_aed(enum scp_excep_id type, enum scp_core_id id)
 {
-	struct scp_aed_cfg aed;
+	struct scp_aed_cfg aed = {0};
 	char *scp_aed_title;
 
 	mutex_lock(&scp_excep_mutex);
@@ -749,7 +752,6 @@ int scp_excep_init(void)
 		CRASH_MEMORY_LENGTH + roundup(dram_size, 4));
 	if (!scp_A_dump_buffer)
 		goto _err;
-	
 	scp_A_dump_buffer_last = vmalloc(sizeof(struct MemoryDump) +
 		CRASH_MEMORY_LENGTH + roundup(dram_size, 4));
 	if (!scp_A_dump_buffer_last)

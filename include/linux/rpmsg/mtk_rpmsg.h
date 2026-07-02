@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
-* Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright 2019 Google LLC.
+ */
 
 #ifndef __LINUX_RPMSG_MTK_RPMSG_H
 #define __LINUX_RPMSG_MTK_RPMSG_H

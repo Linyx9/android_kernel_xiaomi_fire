@@ -25,7 +25,10 @@ struct devinfo_tag {
 	unsigned int data[0];
 };
 
-static int devinfo_parse_dt(struct mtk_devinfo_priv *priv, struct device *dev)
+static int __used mtk_devinfo_probe(struct platform_device *pdev);
+static int __used devinfo_parse_dt(struct mtk_devinfo_priv *priv, struct device *dev);
+
+static int __used devinfo_parse_dt(struct mtk_devinfo_priv *priv, struct device *dev)
 {
 	struct device_node *chosen_node;
 	struct devinfo_tag *tags;
@@ -52,7 +55,7 @@ static int devinfo_parse_dt(struct mtk_devinfo_priv *priv, struct device *dev)
 		if (!priv->devinfo_data)
 			return -ENOMEM;
 
-		WARN_ON(size > 300); /* for size integer too big protection */
+		WARN_ON(size > 400); /* for size integer too big protection */
 
 		memcpy(priv->devinfo_data, tags->data,
 				(size * sizeof(unsigned int)));
@@ -71,6 +74,9 @@ static int mtk_reg_read(void *context,
 	unsigned int *val = _val;
 	int i = 0, words = bytes / 4;
 
+	if (!context || !_val)
+		return 0;
+
 	while (words--) {
 		*val++ = priv->devinfo_data[i + (reg / 4)];
 		i++;
@@ -78,7 +84,7 @@ static int mtk_reg_read(void *context,
 	return 0;
 }
 
-static int mtk_devinfo_probe(struct platform_device *pdev)
+static int __used mtk_devinfo_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct nvmem_device *nvmem;
@@ -104,6 +110,7 @@ static int mtk_devinfo_probe(struct platform_device *pdev)
 	econfig.reg_read = mtk_reg_read;
 	econfig.priv = priv;
 	econfig.dev = dev;
+	econfig.add_legacy_fixed_of_cells = true;
 	nvmem = devm_nvmem_register(dev, &econfig);
 
 	return PTR_ERR_OR_ZERO(nvmem);

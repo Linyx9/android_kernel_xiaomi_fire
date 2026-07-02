@@ -12,8 +12,10 @@
 #
 
 ccflags-y += \
-    -I$(srctree)/drivers/misc/mediatek/performance/fpsgo_v3_topology/ \
-    -I$(srctree)/drivers/misc/mediatek/performance/fpsgo_v3_topology/mt-plat/ \
-    -I$(srctree)/drivers/misc/mediatek/performance/fpsgo_v3_topology/fstb/
+    -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/performance/fpsgo_v3/ \
+    -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/performance/fpsgo_v3/mt-plat/ \
+    -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/performance/fpsgo_v3/fstb/ \
+    -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/performance/fpsgo_v3/fbt/include/ \
+    -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/performance/fpsgo_v3/base/include/
 
 obj-$(CONFIG_MTK_FRS) += frs.o

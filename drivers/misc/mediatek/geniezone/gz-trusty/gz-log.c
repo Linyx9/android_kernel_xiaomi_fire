@@ -31,10 +31,14 @@
 #include <linux/sched.h>
 #include <linux/sched/signal.h> /* Linux kernel 4.14 */
 #include <linux/wait.h>
+#include <linux/panic_notifier.h>
 #include <linux/poll.h>
 #include <linux/spinlock.h>
 #include <linux/proc_fs.h>
 #include <linux/delay.h>
+#if !IS_ENABLED(CONFIG_PHYS_ADDR_T_64BIT)
+#include <asm/arch_timer.h>
+#endif
 #include <asm/page.h>
 #include "gz-log.h"
 #include <linux/of.h>
@@ -46,7 +50,7 @@
 #include <linux/of_reserved_mem.h>
 #include <linux/debugfs.h>
 #include <linux/sched/clock.h>
-#include <asm/arch_timer.h>
+#include <linux/math64.h>
 
 #if ENABLE_GZ_TRACE_DUMP
 #if IS_BUILTIN(CONFIG_MTK_GZ_LOG)
@@ -77,6 +81,7 @@ struct gz_log_state {
 	struct device *dev;
 	struct device *trusty_dev;
 	struct proc_dir_entry *proc;
+	struct proc_dir_entry *proc_full;
 
 	/*
 	 * This lock is here to ensure only one consumer will read
@@ -127,30 +132,6 @@ static struct gz_log_context glctx = {
 	.flag = DYNAMIC,
 };
 
-#if IS_BUILTIN(CONFIG_MTK_GZ_LOG)
-static int __init gz_log_context_init(struct reserved_mem *rmem)
-{
-	unsigned long node;
-
-	if (!rmem) {
-		pr_info("[%s] ERROR: invalid reserved memory\n", __func__);
-		return -EFAULT;
-	}
-	glctx.paddr = rmem->base;
-	glctx.size = rmem->size;
-
-	node = rmem->fdt_node;
-	if (!of_get_flat_dt_prop(node, "no-map", NULL))
-		glctx.flag = STATIC_MAP;
-	else
-		glctx.flag = STATIC_NOMAP;
-
-	pr_info("[%s] rmem:%s base(0x%llx) size(0x%zx) flag(%u)\n",
-		__func__, rmem->name, glctx.paddr, glctx.size, glctx.flag);
-	return 0;
-}
-RESERVEDMEM_OF_DECLARE(gz_log, "mediatek,gz-log", gz_log_context_init);
-#else
 static void gz_log_find_mblock(void)
 {
 	struct device_node *mblock_root = NULL, *gz_node = NULL;
@@ -181,19 +162,25 @@ static void gz_log_find_mblock(void)
 	else
 		glctx.flag = STATIC_NOMAP;
 
+	/* Linux does not map highmem. Treat as STATIC_NOMAP if happened */
+	if (PageHighMem(phys_to_page(glctx.paddr)))
+		glctx.flag = STATIC_NOMAP;
+
+#if IS_ENABLED(CONFIG_PHYS_ADDR_T_64BIT)
 	pr_info("[%s] rmem:%s base(0x%llx) size(0x%zx) flag(%u)\n",
 		__func__, gz_node->name, glctx.paddr, glctx.size, glctx.flag);
-}
+#else
+	pr_info("[%s] rmem:%s base(0x%x) size(0x%zx) flag(%u)\n",
+                __func__, rmem->name, glctx.paddr, glctx.size, glctx.flag);
 #endif
+}
 
 static int gz_log_page_init(void)
 {
 	if (glctx.virt)
 		return 0;
 
-#if IS_MODULE(CONFIG_MTK_GZ_LOG)
 	gz_log_find_mblock();
-#endif
 
 	if (glctx.flag >= STATIC_MAP) {
 		if (glctx.flag == STATIC_MAP)
@@ -219,26 +206,16 @@ static int gz_log_page_init(void)
 		glctx.flag == STATIC_MAP ? "static_map" : "dynamic",
 		glctx.virt, glctx.size);
 
+
 	return 0;
 }
 
+/* get_gz_log_buffer is deprecated after GKI */
 /* get_gz_log_buffer was called in arch_initcall */
 void get_gz_log_buffer(unsigned long *addr, unsigned long *paddr,
 		       unsigned long *size, unsigned long *start)
 {
-	gz_log_page_init();
-
-	if (!glctx.virt) {
-		*addr = *paddr = *size = *start = 0;
-		pr_info("[%s] ERR gz_log init failed\n", __func__);
-		return;
-	}
-	*addr = (unsigned long)glctx.virt;
-	*paddr = (unsigned long)glctx.paddr;
-	pr_info("[%s] virtual address:0x%lx, paddr:0x%lx\n",
-		__func__, (unsigned long)*addr, *paddr);
-	*size = glctx.size;
-	*start = 0;
+	*addr = *paddr = *size = *start = 0;
 }
 EXPORT_SYMBOL(get_gz_log_buffer);
 
@@ -357,10 +334,10 @@ static int is_buf_empty(struct gz_log_state *gls)
 }
 
 static int do_gz_log_read(struct gz_log_state *gls,
-			  char __user *buf, size_t size)
+			  char __user *buf, size_t size, uint32_t get)
 {
 	struct log_rb *log = gls->log;
-	uint32_t get, put, alloc, read_chars = 0, copy_chars = 0;
+	uint32_t put, alloc, read_chars = 0, copy_chars = 0;
 	int ret = 0;
 
 	if (!is_power_of_2(log->sz))
@@ -373,7 +350,6 @@ static int do_gz_log_read(struct gz_log_state *gls,
 	 * that the above condition is maintained. A read barrier is needed
 	 * to make sure the hardware and compiler keep the reads ordered.
 	 */
-	get = gls->get_proc;
 	put = log->put;
 	/* make sure the hardware and compiler reads the correct put & alloc*/
 	rmb();
@@ -386,9 +362,6 @@ static int do_gz_log_read(struct gz_log_state *gls,
 
 	if (get > put)
 		return -EFAULT;
-
-	if (is_buf_empty(gls))
-		return 0;
 
 	while (get != put) {
 		read_chars = log_read_line(gls, put, get);
@@ -415,7 +388,7 @@ static int do_gz_log_read(struct gz_log_state *gls,
 static ssize_t gz_log_read(struct file *file, char __user *buf, size_t size,
 			   loff_t *ppos)
 {
-	struct gz_log_state *gls = PDE_DATA(file_inode(file));
+	struct gz_log_state *gls = pde_data(file_inode(file));
 	int ret = 0;
 
 	/* sanity check */
@@ -423,16 +396,39 @@ static ssize_t gz_log_read(struct file *file, char __user *buf, size_t size,
 		return -EINVAL;
 
 	if (atomic_xchg(&gls->readable, 0)) {
-		ret = do_gz_log_read(gls, buf, size);
+		ret = is_buf_empty(gls) ? 0 :
+		      do_gz_log_read(gls, buf, size, gls->get_proc);
 		gls->poll_event = atomic_read(&gls->gz_log_event_count);
 		atomic_set(&gls->readable, 1);
 	}
 	return ret;
 }
 
+static ssize_t gz_log_full_read(struct file *file, char __user *buf, size_t size,
+				loff_t *ppos)
+{
+	struct gz_log_state *gls = pde_data(file_inode(file));
+	int ret = 0;
+
+	/* sanity check */
+	if (!buf)
+		return -EINVAL;
+
+	if (atomic_xchg(&gls->readable, 0)) {
+		ret = do_gz_log_read(gls, buf, size,
+				(gls->log->put <= gls->log->sz) ? (uint32_t)*ppos :
+					gls->log->put - gls->log->sz + *ppos);
+		gls->poll_event = atomic_read(&gls->gz_log_event_count);
+		atomic_set(&gls->readable, 1);
+	}
+	*ppos += ret;
+
+	return ret;
+}
+
 static int gz_log_open(struct inode *inode, struct file *file)
 {
-	struct gz_log_state *gls = PDE_DATA(inode);
+	struct gz_log_state *gls = pde_data(inode);
 	int ret;
 
 	ret = nonseekable_open(inode, file);
@@ -449,7 +445,7 @@ static int gz_log_release(struct inode *inode, struct file *file)
 
 static unsigned int gz_log_poll(struct file *file, poll_table *wait)
 {
-	struct gz_log_state *gls = PDE_DATA(file_inode(file));
+	struct gz_log_state *gls = pde_data(file_inode(file));
 	int mask = 0;
 
 	if (!is_buf_empty(gls))
@@ -738,25 +734,31 @@ static const struct file_operations gz_trace_on_fops = {
 };
 #endif /* ENABLE_GZ_TRACE_DUMP */
 
-static const struct file_operations proc_gz_log_fops = {
-	.owner = THIS_MODULE,
-	.open = gz_log_open,
-	.read = gz_log_read,
-	.release = gz_log_release,
-	.poll = gz_log_poll,
+static const struct proc_ops proc_gz_log_fops = {
+	.proc_open = gz_log_open,
+	.proc_read = gz_log_read,
+	.proc_release = gz_log_release,
+	.proc_poll = gz_log_poll,
+};
+
+static const struct proc_ops proc_gz_log_full_fops = {
+	.proc_open = gz_log_open,
+	.proc_read = gz_log_full_read,
+	.proc_release = gz_log_release,
 };
 
 static int trusty_gz_send_ktime(struct platform_device *pdev)
 {
-	uint64_t current_ktime = 0;
-	uint64_t current_cnt = 0;
+	uint64_t current_ktime;
+	uint64_t current_cnt;
 	uint64_t diff_all;
 	uint32_t diff_msb;
 	uint32_t diff_lsb;
 
 	current_ktime = sched_clock();
-	current_cnt = arch_counter_get_cntvct();
-	diff_all = current_cnt - div64_u64((13 * current_ktime), 1000);
+	current_cnt = __arch_counter_get_cntvct();
+
+	diff_all = current_cnt - div_u64(13 * current_ktime, 1000);
 	diff_msb = (diff_all >> 32);
 	diff_lsb = (diff_all & U32_MAX);
 
@@ -882,6 +884,7 @@ static int trusty_gz_log_probe(struct platform_device *pdev)
 	}
 #endif
 
+	init_waitqueue_head(&gls->gz_log_wq);
 	gls->call_notifier.notifier_call = trusty_log_call_notify;
 	ret = trusty_call_notifier_register(gls->trusty_dev,
 					       &gls->call_notifier);
@@ -898,7 +901,6 @@ static int trusty_gz_log_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "failed to register panic notifier\n");
 		goto error_panic_notifier;
 	}
-	init_waitqueue_head(&gls->gz_log_wq);
 	atomic_set(&gls->gz_log_event_count, 0);
 	atomic_set(&gls->readable, 1);
 	platform_set_drvdata(pdev, gls);
@@ -908,6 +910,14 @@ static int trusty_gz_log_probe(struct platform_device *pdev)
 				     gls);
 	if (!gls->proc) {
 		dev_info(&pdev->dev, "gz_log proc_create failed!\n");
+		return -ENOMEM;
+	}
+
+	/* create /proc/gz_log_full */
+	gls->proc_full = proc_create_data("gz_log_full", 0440, NULL,
+					   &proc_gz_log_full_fops, gls);
+	if (!gls->proc_full) {
+		dev_info(&pdev->dev, "gz_log_full proc_create failed!\n");
 		return -ENOMEM;
 	}
 
@@ -958,6 +968,7 @@ static int trusty_gz_log_remove(struct platform_device *pdev)
 	dev_info(&pdev->dev, "%s\n", __func__);
 
 	proc_remove(gls->proc);
+	proc_remove(gls->proc_full);
 	atomic_notifier_chain_unregister(&panic_notifier_list,
 					 &gls->panic_notifier);
 	trusty_call_notifier_unregister(gls->trusty_dev, &gls->call_notifier);

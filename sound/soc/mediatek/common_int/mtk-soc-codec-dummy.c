@@ -76,7 +76,7 @@ static int dummy_codec_trigger(struct snd_pcm_substream *substream, int command,
 	return 0;
 }
 
-static const struct snd_soc_dai_ops dummy_aif1_dai_ops = {
+static const struct snd_soc_dai_ops dummy_aif1_dai_ops __maybe_unused = {
 	.startup = dummy_codec_startup,
 	.prepare = dummy_codec_prepare,
 	.trigger = dummy_codec_trigger,
@@ -282,7 +282,7 @@ static struct snd_soc_dai_driver dummy_6323_dai_codecs[] = {
 					    SNDRV_PCM_FMTBIT_S32_BE),
 			},
 	},
-#ifdef CONFIG_MTK_HDMI_TDM
+#if IS_ENABLED(CONFIG_MTK_HDMI_TDM)
 	{
 		.name = MT_SOC_CODEC_HDMI_DUMMY_DAI_NAME,
 		.playback = {
@@ -481,12 +481,11 @@ static int mtk_dummy_codec_dev_probe(struct platform_device *pdev)
 
 static int mtk_dummy_codec_dev_remove(struct platform_device *pdev)
 {
-	pr_debug("%s:\n", __func__);
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_codec_dummy_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_codec_dummy",
@@ -499,7 +498,7 @@ static struct platform_driver mtk_codec_dummy_driver = {
 
 			.name = MT_SOC_CODEC_DUMMY_NAME,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_codec_dummy_of_ids,
 #endif
 		},
@@ -513,7 +512,6 @@ static struct platform_device *soc_mtk_codec_dummy_dev;
 
 static int __init mtk_dummy_codec_init(void)
 {
-	pr_debug("%s:\n", __func__);
 #ifndef CONFIG_OF
 	int ret = 0;
 
@@ -535,12 +533,10 @@ module_init(mtk_dummy_codec_init);
 
 static void __exit mtk_codec_dummy_exit(void)
 {
-	pr_debug("%s:\n", __func__);
-
 	platform_driver_unregister(&mtk_codec_dummy_driver);
 }
 module_exit(mtk_codec_dummy_exit);
 
 /* Module information */
 MODULE_DESCRIPTION("MTK  dummy codec driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

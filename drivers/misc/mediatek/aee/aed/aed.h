@@ -250,7 +250,6 @@ struct aee_siginfo {
 #define AEEIOCTL_SET_FORECE_RED_SCREEN _IOR('p', 0x0B, int)
 #define AEEIOCTL_SET_SF_STATE _IOR('p', 0x0C, long long)
 #define AEEIOCTL_GET_SF_STATE _IOW('p', 0x0D, long long)
-#define AEEIOCTL_USER_IOCTL_TO_KERNEL_WANING _IOR('p', 0x0E, int)
 #define AEEIOCTL_SET_AEE_FORCE_EXP _IOR('p', 0x0F, int)
 #define AEEIOCTL_GET_AEE_SIGINFO _IOW('p', 0x10, struct aee_siginfo)
 #define AEEIOCTL_SET_HANG_FLAG _IOW('p', 0x11, int)
@@ -260,14 +259,14 @@ struct aee_siginfo {
 
 
 #define AED_FILE_OPS(entry) \
-	static const struct file_operations proc_##entry##_fops = { \
-		.read = proc_##entry##_read, \
-		.write = proc_##entry##_write, \
+	static const struct proc_ops proc_##entry##_fops = { \
+		.proc_read = proc_##entry##_read, \
+		.proc_write = proc_##entry##_write, \
 	}
 
 #define AED_FILE_OPS_RO(entry) \
-	static const struct file_operations proc_##entry##_fops = { \
-		.read = proc_##entry##_read, \
+	static const struct proc_ops proc_##entry##_fops = { \
+		.proc_read = proc_##entry##_read, \
 	}
 
 #define  AED_PROC_ENTRY(name, entry, mode)\
@@ -285,12 +284,11 @@ void aee_rr_proc_init(struct proc_dir_entry *aed_proc_dir);
 void aee_rr_proc_done(struct proc_dir_entry *aed_proc_dir);
 
 extern struct atomic_notifier_head panic_notifier_list;
-extern int ksysfs_bootinfo_init(void);
-extern void ksysfs_bootinfo_exit(void);
 extern int aee_dump_ccci_debug_info(int md_id, void **addr, int *size);
 extern int aee_get_mode(void);
-extern void aee_kernel_RT_Monitor_api(int lParam);
-extern void show_task_mem(void);
-void show_native_bt_by_pid(int task_pid);
 void aee_register_api(struct aee_kernel_api *aee_api);
+extern void slog(const char *fmt, ...);
+extern int mtk_slog_init(void);
+extern void mtk_slog_exit(void);
+
 #endif

@@ -1,14 +1,29 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ /*
+  * Goodix Touchscreen Driver
+  * Core layer of touchdriver architecture.
+  *
+  * Copyright (C) 2015 - 2016 Goodix, Inc.
+  * Authors:  Yulong Cai <caiyulong@goodix.com>
+  *
+  * This program is free software; you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License as published by
+  * the Free Software Foundation; either version 2 of the License, or
+  * (at your option) any later version.
+  *
+  * This program is distributed in the hope that it will be a reference
+  * to you, when you are integrating the GOODiX's CTP IC into your system,
+  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  * General Public License for more details.
+  *
+  */
 #include <linux/of_platform.h>
 #include <uapi/linux/sched/types.h>
-#ifdef CONFIG_DRM_MEDIATEK
-#include "mtk_panel_ext.h"
-#endif
 #define TAG_CORE ""
 #include "goodix_ts_core.h"
+#include <linux/pinctrl/consumer.h>
+#include <linux/gpio.h>
+
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 38)
 #include <linux/input/mt.h>
@@ -18,7 +33,7 @@
 #define GOOIDX_INPUT_PHYS	"goodix_ts/input0"
 
 struct goodix_ts_core *resume_core_data;
-#ifdef CONFIG_TRUSTONIC_TRUSTED_UI
+#if IS_ENABLED(CONFIG_TRUSTONIC_TRUSTED_UI)
 EXPORT_SYMBOL(resume_core_data);
 #endif
 
@@ -1106,10 +1121,16 @@ static int goodix_ts_event_polling(void *arg)
 {
 	struct goodix_ts_event *ts_event = &resume_core_data->ts_event;
 	struct goodix_ts_device *ts_dev =  resume_core_data->ts_dev;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 8, 0)
 	struct sched_param param = { .sched_priority = 4 };
+#endif
 	int ret;
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 8, 0)
 	sched_setscheduler(current, SCHED_RR, &param);
+#else
+	sched_set_normal(current, 19);
+#endif
 	do {
 		usleep_range(30000, 35100);
 		/* read touch data from touch device */
@@ -1143,7 +1164,7 @@ static int goodix_ts_power_init(struct goodix_ts_core *core_data)
 	ts_bdata = board_data(core_data);
 
 	if (ts_bdata->avdd_name) {
-		ts_err("avdd name is %s!\n", ts_bdata->avdd_name);
+		ts_info("avdd name is %s!\n", ts_bdata->avdd_name);
 		core_data->avdd = devm_regulator_get(dev,
 				 ts_bdata->avdd_name);
 		if (IS_ERR_OR_NULL(core_data->avdd)) {
@@ -1352,7 +1373,7 @@ err_resume_pinctrl:
  *	reset_gpio and irq_gpio number are obtained from goodix_ts_device
  *  which created in hardware layer driver. e.g.goodix_xx_i2c.c
  *	A goodix_ts_device should set those two fileds to right value
- *	before registed to touch core driver.
+ *	before registered to touch core driver.
  * @core_data: pointer to touch core data
  * return: 0 ok, <0 failed
  */
@@ -1407,10 +1428,21 @@ static void goodix_ts_set_input_params(struct input_dev *input_dev,
 	if (ts_bdata->swap_axis)
 		swap(ts_bdata->input_max_x, ts_bdata->input_max_y);
 
-	input_set_abs_params(input_dev, ABS_MT_POSITION_X,
-			0, ts_bdata->input_max_x, 0, 0);
-	input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
-			0, ts_bdata->input_max_y, 0, 0);
+	if (ts_bdata->fake_status == 1) {
+		if (ts_bdata->swap_axis)
+			swap(ts_bdata->input_max_x, ts_bdata->input_max_y);
+		input_set_abs_params(input_dev, ABS_MT_POSITION_X,
+					 0, ts_bdata->input_max_x, 0, 0);
+		input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
+					 0, ts_bdata->input_max_y, 0, 0);
+	} else {
+		if (ts_bdata->swap_axis)
+			swap(ts_bdata->panel_max_x, ts_bdata->panel_max_y);
+		input_set_abs_params(input_dev, ABS_MT_POSITION_X,
+					 0, ts_bdata->panel_max_x, 0, 0);
+		input_set_abs_params(input_dev, ABS_MT_POSITION_Y,
+					 0, ts_bdata->panel_max_y, 0, 0);
+	}
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR,
 			0, ts_bdata->panel_max_w, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_PRESSURE,
@@ -1704,7 +1736,7 @@ int goodix_ts_esd_init(struct goodix_ts_core *core)
 	}
 	return 0;
 }
-#ifdef CONFIG_DRM_MEDIATEK
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
 static int goodix_ts_power_on_reinit(void)
 {
 	struct goodix_ts_core *core_data = resume_core_data;
@@ -1912,90 +1944,51 @@ static void resume_workqueue_callback(struct work_struct *work)
 	goodix_ts_resume(resume_core_data);
 }
 
-#ifdef CONFIG_FB
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
 /**
- * goodix_ts_fb_notifier_callback - Framebuffer notifier callback
+ * goodix_ts_disp_notifier_callback - Framebuffer notifier callback
  * Called by kernel during framebuffer blanck/unblank phrase
  */
-int goodix_ts_fb_notifier_callback(struct notifier_block *self,
-	unsigned long event, void *data)
+int goodix_ts_disp_notifier_callback(struct notifier_block *nb,
+		unsigned long value, void *v)
 {
 	struct goodix_ts_core *core_data =
-		container_of(self, struct goodix_ts_core, fb_notifier);
-	struct fb_event *fb_event = data;
-	int err = 0;
+		container_of(nb, struct goodix_ts_core, disp_notifier);
+	int *data = (int *)v;
 
-	if (fb_event && fb_event->data && core_data) {
-		if (event == FB_EARLY_EVENT_BLANK) {
-			/* before fb blank */
-		} else if (event == FB_EVENT_BLANK) {
-			int *blank = fb_event->data;
-
-			if (*blank == FB_BLANK_UNBLANK) {
-				if (touch_suspend_flag
-#ifdef CONFIG_TRUSTONIC_TRUSTED_UI
-				&& !atomic_read(&gt9886_tui_flag)
+	if (core_data && v) {
+		if (value == MTK_DISP_EVENT_BLANK) {
+//resume: touch power on after display to avoid display disturb
+			ts_info("%s IN", __func__);
+			if (*data == MTK_DISP_BLANK_UNBLANK) {
+#if IS_ENABLED(CONFIG_TRUSTONIC_TRUSTED_UI)
+				if (!atomic_read(&gt9886_tui_flag))
 #endif
-				) {
-					err = queue_work(touch_resume_workqueue,
-						&touch_resume_work);
-					if (!err) {
-						ts_err("start resume_workqueue failed\n");
-						return err;
-					}
-					touch_suspend_flag = 0;
-				}
-			} else if (*blank == FB_BLANK_POWERDOWN) {
-				if (!touch_suspend_flag
-#ifdef CONFIG_TRUSTONIC_TRUSTED_UI
-				&& !atomic_read(&gt9886_tui_flag)
-#endif
-				) {
-					err = cancel_work_sync(
-						&touch_resume_work);
-					if (!err)
-						ts_err("cancel resume_workqueue failed\n");
-					goodix_ts_suspend(core_data);
-				}
-				touch_suspend_flag = 1;
+					goodix_ts_resume(core_data);
 			}
+			ts_info("%s OUT", __func__);
+		} else if (value == MTK_DISP_EARLY_EVENT_BLANK) {
+//suspend: touch power off before displayto avoid touch report event
+//after screen is off
+			ts_info("%s IN", __func__);
+			if (*data == MTK_DISP_BLANK_POWERDOWN) {
+#if IS_ENABLED(CONFIG_TRUSTONIC_TRUSTED_UI)
+				if (!atomic_read(&gt9886_tui_flag))
+#endif
+					goodix_ts_suspend(core_data);
+			}
+			ts_info("%s OUT", __func__);
 		}
+	} else {
+		ts_info("gt9886 touch IC can not suspend or resume");
+		return -1;
 	}
-
-
 	return 0;
 }
 #endif
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-/**
- * goodix_ts_earlysuspend - Early suspend function
- * Called by kernel during system suspend phrase
- */
-static void goodix_ts_earlysuspend(struct early_suspend *h)
-{
-	struct goodix_ts_core *core_data =
-		container_of(h, struct goodix_ts_core,
-			 early_suspend);
-
-	goodix_ts_suspend(core_data);
-}
-/**
- * goodix_ts_lateresume - Late resume function
- * Called by kernel during system wakeup
- */
-static void goodix_ts_lateresume(struct early_suspend *h)
-{
-	struct goodix_ts_core *core_data =
-		container_of(h, struct goodix_ts_core,
-			 early_suspend);
-
-	goodix_ts_resume(core_data);
-}
-#endif
-
 #ifdef CONFIG_PM
-#if !defined(CONFIG_FB) && !defined(CONFIG_HAS_EARLYSUSPEND)
+#if !IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
 /**
  * goodix_ts_pm_suspend - PM suspend function
  * Called by kernel during system suspend phrase
@@ -2056,6 +2049,19 @@ exit:
 
 }
 
+static int goodix_ts_start_fwupdate_module(struct goodix_ts_core *core)
+{
+	struct task_struct *init_thrd;
+	/* create and run update thread */
+	init_thrd = kthread_run(goodix_fwu_module_init,
+				core, "gt9886_init_thread");
+	if (IS_ERR_OR_NULL(init_thrd)) {
+		ts_err("Failed to create update thread:%ld",
+		       PTR_ERR(init_thrd));
+		return -EFAULT;
+	}
+	return 0;
+}
 
 /**
  * goodix_ts_probe - called by kernel when a Goodix touch
@@ -2067,7 +2073,7 @@ static int goodix_ts_probe(struct platform_device *pdev)
 	struct goodix_ts_device *ts_device;
 	struct goodix_ts_board_data *ts_bdata;
 	int r;
-#ifdef CONFIG_DRM_MEDIATEK
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
 	void **ret = NULL;
 #endif
 	ts_info("%s IN", __func__);
@@ -2156,13 +2162,27 @@ static int goodix_ts_probe(struct platform_device *pdev)
 	if (r)
 		ts_err("tpd_misc_device register failed! ret = %d!\n", r);
 
-#ifdef CONFIG_DRM_MEDIATEK
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
+	ts_info("TP power_on reset!\n");
 	if (mtk_panel_tch_handle_init()) {
 		ret = mtk_panel_tch_handle_init();
 		*ret = (void *)goodix_ts_power_on_reinit;
 	}
 #endif
+
+	r = goodix_ts_start_fwupdate_module(core_data);
+	if (!r)
+		ts_info("fw_module thread failed!");
+
 	ts_info("%s OUT, r:%d", __func__, r);
+
+#if (IS_ENABLED(CONFIG_TRUSTONIC_TRUSTED_UI) && IS_ENABLED(CONFIG_TOUCHSCREEN_MTK_TUI_COMMON_API))
+	if (r >= 0) {
+		ts_info("%s set tui function, r:%d", __func__, r);
+		register_tpd_tui_request(gt9886_tpd_enter_tui, gt9886_tpd_exit_tui);
+	}
+#endif
+
 	return r;
 
 err:
@@ -2192,7 +2212,7 @@ static int goodix_ts_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_PM
 static const struct dev_pm_ops dev_pm_ops = {
-#if !defined(CONFIG_FB) && !defined(CONFIG_HAS_EARLYSUSPEND)
+#if !IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
 	.suspend = goodix_ts_pm_suspend,
 	.resume = goodix_ts_pm_resume,
 #endif
@@ -2239,4 +2259,3 @@ void goodix_ts_core_exit(void)
 	ts_info("Core layer exit");
 	platform_driver_unregister(&goodix_ts_driver);
 }
-

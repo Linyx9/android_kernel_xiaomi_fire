@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_LAMU_PANEL
+	PANEL_BOE_ICNL9922C_OBJS += dsi-panel-boe-icnl9922c-672-1080x2400-vdo-60hz.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_PANEL) += dsi_panel_boe_icnl9922c_672_1080x2400_vdo_60hz.o
+dsi_panel_boe_icnl9922c_672_1080x2400_vdo_60hz-y := $(PANEL_BOE_ICNL9922C_OBJS)
+

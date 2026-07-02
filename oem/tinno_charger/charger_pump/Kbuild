@@ -1,0 +1,15 @@
+ifdef CONFIG_OEM_CHARGER_PUMP_SC8541
+	obj-y += sc8541/
+endif
+
+ifdef CONFIG_OEM_CHARGER_PUMP_NU2115
+	obj-y += nu2115/
+endif
+
+ifdef CONFIG_OEM_CHARGER_PUMP_CPS2011S
+	obj-y += cps2011s/
+endif
+
+ifdef CONFIG_OEM_CHARGER_PUMP_SGM41600S
+	obj-y += sgm41600s/
+endif

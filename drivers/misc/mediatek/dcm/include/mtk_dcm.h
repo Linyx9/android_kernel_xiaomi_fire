@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2022 MediaTek Inc.
  */
 
 #ifndef __MTK_DCM_H__
@@ -10,8 +10,9 @@
 void mt_dcm_array_register(struct DCM *array, struct DCM_OPS *ops);
 int mt_dcm_common_init(void);
 bool is_dcm_initialized(void);
-void mt_dcm_disable(void);
+void mt_dcm_force_disable(void);
 void mt_dcm_restore(void);
+void dcm_dump_state(int type);
+int mtk_dcm_get_chipid(void);
 
 #endif /* #ifndef __MTK_DCM_H__ */
-

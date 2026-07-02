@@ -1,12 +1,13 @@
-# Goodix Touchscreen Makefile
-# This Makefile is only for tempory compiling use
-# Use xxxproject/Makefile-release when release driver
 #
-# core layer
-ccflags-$(CONFIG_DRM_MEDIATEK) += -I$(srctree)/drivers/gpu/drm/mediatek/
+# Makefile for the Goodix GT9886 touchscreen driver.
+#
 
-obj-y += goodix_ts_i2c.o
-obj-y += goodix_ts_core.o
-obj-y += goodix_cfg_bin.o
-obj-y += goodix_gtx8_update.o
-obj-n += goodix_ts_tui.o
+#For display ESD recovery
+ccflags-$(CONFIG_DRM_MEDIATEK_V2) += -I$(DEVICE_MODULES_PATH)/drivers/gpu/drm/mediatek/mediatek_v2/
+
+obj-m += gt9886.o
+gt9886-y += goodix_ts_i2c.o
+gt9886-y += goodix_ts_core.o
+gt9886-y += goodix_cfg_bin.o
+gt9886-y += goodix_gtx8_update.o
+gt9886-y += goodix_ts_tui.o

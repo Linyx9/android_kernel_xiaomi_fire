@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_PANEL
+	PANEL_BOE_ILI9883C_OBJS += panel-boe-ili9883c-vdo.o
+endif
+
+obj-$(CONFIG_OEM_PANEL) += panel_boe_ili9883c_vdo.o
+panel_boe_ili9883c_vdo-y := $(PANEL_BOE_ILI9883C_OBJS)
+

@@ -17,6 +17,7 @@
 #include <linux/cpu_pm.h>
 #include <linux/cpumask.h>
 #include <linux/spinlock.h>
+#include <mt-plat/mtk_thermal_platform.h>
 /*
  * mtk_thermal_timer.c is an interface to collect all thermal timer functions
  * It exports two common functions for Suspend, SODI, Deep idle scenarios
@@ -98,7 +99,7 @@ const char *name, void (*start_timer) (void), void (*cancel_timer) (void))
 
 	if (name) {
 		if (strlen(name) >= NAME_LEN) {
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtkTTimer_register",
 					"Name is too long");
@@ -107,7 +108,7 @@ const char *name, void (*start_timer) (void), void (*cancel_timer) (void))
 			return -1;
 		}
 	} else {
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtkTTimer_register",
 					"No name");
@@ -117,7 +118,7 @@ const char *name, void (*start_timer) (void), void (*cancel_timer) (void))
 	}
 
 	if (tTimerArray.count == MAX_NUM) {
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtkTTimer_register",
 					"Array is full");
@@ -128,7 +129,7 @@ const char *name, void (*start_timer) (void), void (*cancel_timer) (void))
 
 	index = mtkTTimer_getIndex(name);
 	if (index != -1) {
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtkTTimer_register",
 					"%s registered already", name);
@@ -165,7 +166,7 @@ int mtkTTimer_unregister(const char *name)
 
 	if (name) {
 		if (strlen(name) >= NAME_LEN) {
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtkTTimer_unregister",
 					"Name is too long");
@@ -174,7 +175,7 @@ int mtkTTimer_unregister(const char *name)
 			return -1;
 		}
 	} else {
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 					"mtkTTimer_unregister", "No name");
 #endif
@@ -220,6 +221,7 @@ void mtkTTimer_cancel_timer(void)
 	}
 	spin_unlock(&tTimer_lock);
 }
+EXPORT_SYMBOL(mtkTTimer_cancel_timer);
 
 void mtkTTimer_start_timer(void)
 {
@@ -233,7 +235,7 @@ void mtkTTimer_start_timer(void)
 	}
 	spin_unlock(&tTimer_lock);
 }
-
+EXPORT_SYMBOL(mtkTTimer_start_timer);
 #if defined(LVTS_CPU_PM_NTFY_CALLBACK)
 static struct cpumask mt_cpu_pdn_mask;
 static DEFINE_SPINLOCK(mt_thermal_timer_locker);
@@ -291,12 +293,12 @@ struct notifier_block mtk_thermal_pm = {
 };
 
 
-static void __exit mtk_thermal_pm_exit(void)
+void  mtk_thermal_pm_exit(void)
 {
 	cpu_pm_unregister_notifier(&mtk_thermal_pm);
 }
 
-static int __init mtk_thermal_pm_init(void)
+int  mtk_thermal_pm_init(void)
 {
 	int ret = 0;
 
@@ -308,8 +310,8 @@ static int __init mtk_thermal_pm_init(void)
 	return 0;
 }
 
-module_init(mtk_thermal_pm_init);
-module_exit(mtk_thermal_pm_exit);
+//module_init(mtk_thermal_pm_init);
+//module_exit(mtk_thermal_pm_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Low Power FileSystem");

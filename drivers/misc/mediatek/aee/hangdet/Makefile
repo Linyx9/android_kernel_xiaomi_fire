@@ -10,9 +10,12 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See http://www.gnu.org/licenses/gpl-2.0.html for more details.
 #
-subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/aee/mrdump
+subdir-ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/aee/mrdump
 subdir-ccflags-y += -I$(srctree)/include/
 subdir-ccflags-y += -I$(srctree)/kernel/
+
+ccflags-y += \
+	-Wno-frame-address \
 
 ifeq ($(CONFIG_MTK_GCOV_KERNEL),y)
 GCOV_PROFILE := y
@@ -20,3 +23,7 @@ endif
 
 obj-$(CONFIG_MTK_AEE_HANGDET)	+= aee_hangdet.o
 
+aee_hangdet-y := \
+	hangdet.o \
+	sched_debug.o \
+	timer_list_debug.o

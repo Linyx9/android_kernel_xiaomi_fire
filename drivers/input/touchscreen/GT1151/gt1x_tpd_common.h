@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2014 Goodix Technology.
+ * Copyright (C) 2019 MediaTek Inc.
  */
 
 #ifndef GT1X_TPD_COMMON_H__
@@ -285,6 +285,11 @@ extern void gt1x_power_switch(s32 state);
 extern void gt1x_irq_enable(void);
 extern void gt1x_irq_disable(void);
 extern int gt1x_debug_proc(u8 *buf, int count);
+#if IS_ENABLED(CONFIG_TRUSTONIC_TRUSTED_UI)
+extern int gt1151_tpd_enter_tui(void);
+extern int gt1151_tpd_exit_tui(void);
+extern void register_tpd_tui_request(int (*enter_func)(void), int (*exit_func)(void));
+#endif
 
 struct fw_update_info {
 	int update_type;
@@ -297,7 +302,7 @@ struct fw_update_info {
 	/* file update */
 	char *fw_name;
 	u8 *buffer;
-	mm_segment_t old_fs;
+	//mm_segment_t old_fs;
 	struct file *fw_file;
 
 	/* header update */

@@ -13,7 +13,9 @@
 #include <linux/sched/clock.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
-#include <mtk-clkbuf-bridge.h>
+#include <linux/sched/debug.h>
+//#include <mtk-clkbuf-bridge.h>
+#include <linux/notifier.h>
 
 /*******************************************************************************
  * Clock Buffer Control
@@ -47,37 +49,20 @@
 	defined(CONFIG_MACH_MT6797) || \
 	defined(CONFIG_MACH_MT6799) || \
 	defined(CONFIG_MACH_MT6580) || \
-	defined(CONFIG_MACH_MT6761) || \
 	defined(CONFIG_MACH_MT6765) || \
-	defined(CONFIG_MACH_MT6781) || \
+	defined(CONFIG_MACH_MT6761) || \
 	defined(CONFIG_MACH_MT3967) || \
 	defined(CONFIG_MACH_MT6771) || \
-	defined(CONFIG_MACH_MT6768) || \
-	defined(CONFIG_MACH_MT6785) || \
 	defined(CONFIG_MACH_KIBOPLUS) || \
-	defined(CONFIG_MACH_MT6885) || \
-	defined(CONFIG_MACH_MT6853) || \
-	defined(CONFIG_MACH_MT6873) || \
-	defined(CONFIG_MACH_ELBRUS) || \
-	defined(CONFIG_MACH_MT6893) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_ELBRUS)
 #define CONNADP_HAS_CLOCK_BUF_CTRL
-#define KERNEL_CLK_BUF_CHIP_NOT_SUPPORT -7788
 #define KERNEL_clk_buf_ctrl connectivity_export_clk_buf_ctrl
-#define KERNEL_clk_buf_show_status_info \
-		connectivity_export_clk_buf_show_status_info
-#define KERNEL_clk_buf_get_xo_en_sta \
-		connectivity_export_clk_buf_get_xo_en_sta
-enum clk_buf_id;
 void connectivity_export_clk_buf_ctrl(enum clk_buf_id id, bool onoff);
-void connectivity_export_clk_buf_show_status_info(void);
-int connectivity_export_clk_buf_get_xo_en_sta(/*enum xo_id id*/ int id);
 #endif
 
 /*******************************************************************************
  * PMIC
  * Caller please be sure to #include:
- *	drivers/misc/mediatek/pmic/include/mt6359/mtk_pmic_api_buck.h
  *	drivers/misc/mediatek/include/mt-plat/upmu_common.h
  ******************************************************************************/
 #define KERNEL_pmic_config_interface \
@@ -90,19 +75,7 @@ int connectivity_export_clk_buf_get_xo_en_sta(/*enum xo_id id*/ int id);
 	connectivity_export_pmic_get_register_value
 #define KERNEL_upmu_set_reg_value \
 	connectivity_export_upmu_set_reg_value
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6359) || \
-	defined(CONFIG_MTK_PMIC_CHIP_MT6359P)
-#define KERNEL_pmic_ldo_vcn13_lp \
-	connectivity_export_pmic_ldo_vcn13_lp
-#define KERNEL_pmic_ldo_vcn18_lp \
-	connectivity_export_pmic_ldo_vcn18_lp
-#define KERNEL_pmic_ldo_vfe28_lp \
-	connectivity_export_pmic_ldo_vfe28_lp
-#define KERNEL_pmic_ldo_vcn33_1_lp \
-	connectivity_export_pmic_ldo_vcn33_1_lp
-#define KERNEL_pmic_ldo_vcn33_2_lp \
-	connectivity_export_pmic_ldo_vcn33_2_lp
-#endif
+
 void connectivity_export_pmic_config_interface(unsigned int RegNum,
 						unsigned int val,
 						unsigned int MASK,
@@ -116,19 +89,6 @@ void connectivity_export_pmic_set_register_value(int flagname,
 unsigned short connectivity_export_pmic_get_register_value(int flagname);
 void connectivity_export_upmu_set_reg_value(unsigned int reg,
 						unsigned int reg_val);
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6359) || \
-	defined(CONFIG_MTK_PMIC_CHIP_MT6359P)
-int connectivity_export_pmic_ldo_vcn13_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg);
-int connectivity_export_pmic_ldo_vcn18_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg);
-void connectivity_export_pmic_ldo_vfe28_lp(unsigned int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg);
-int connectivity_export_pmic_ldo_vcn33_1_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg);
-int connectivity_export_pmic_ldo_vcn33_2_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg);
-#endif
 
 /*******************************************************************************
  * MMC
@@ -203,7 +163,6 @@ void connectivity_export_mt6306_set_gpio_dir(unsigned long pin,
 #define KERNEL_spm_resource_req
 #endif
 extern void tracing_record_cmdline(struct task_struct *tsk);
-extern void show_stack(struct task_struct *tsk, unsigned long *sp);
 #ifdef CPU_BOOST
 extern void mt_ppm_sysboost_freq(enum ppm_sysboost_user user,
 				 unsigned int freq);
@@ -233,10 +192,54 @@ struct connsys_state_info {
 	unsigned int chip_info;
 	phys_addr_t emi_phy_addr;
 };
+enum conn_event_type {
+	conn_pwr_off = 0,
+	conn_pwr_on = 1,
+	conn_wifi_on = 2,
+	conn_wifi_off = 3,
+	conn_bt_on = 4,
+	conn_bt_off = 5,
+};
 void connectivity_export_conap_scp_init(unsigned int chip_info, phys_addr_t emi_phy_addr);
 void connectivity_export_conap_scp_deinit(void);
+
 void connectivity_register_state_notifier(struct notifier_block *nb);
 void connectivity_unregister_state_notifier(struct notifier_block *nb);
+void connectivity_export_conap_scp_state_change(enum conn_event_type type);
+
+/* HIF debug */
+void connectivity_register_cmd_handler(int (*cmd_hdlr)(uint8_t drv_type, uint32_t cmd, uint32_t param));
+void connectivity_unregister_cmd_handler(void);
+
+enum conn_hif_dbg_drv_type {
+	CONN_HIF_DBG_WF = 0,
+	CONN_HIF_DBG_BT = 1,
+};
+enum conn_hif_dbg_cmd {
+	CONN_HIF_DBG_CMD_PCLOG = 0,
+	CONN_HIF_DBG_CMD_PCIE = 1,
+	CONN_HIF_DBG_CMD_UART = 2,
+};
+void connectivity_export_conap_scp_trigger_cmd(enum conn_hif_dbg_drv_type drv_type,
+						enum conn_hif_dbg_cmd cmd, int param);
+
+/* ++ DFD support ++ */
+struct conap_dfd_handler {
+	int (*cmd_hdlr) (uint8_t drv_type, uint32_t cmd, uint32_t param);
+	int (*clr_buf_hdlr) (void);
+	int (*get_dfd_value_info) (phys_addr_t *addr, uint32_t *size);
+};
+void connectivity_register_dfd_handler(struct conap_dfd_handler *hdlr);
+void connectivity_unregister_dfd_handler(void);
+#define CONAP_SCP_DFD_DRV_WF	0x1
+#define CONAP_SCP_DFD_DRV_BT	0x2
+
+int connectivity_export_conap_scp_trigger_dfd_cmd(uint8_t drv_type,
+					uint32_t reserved_param0, uint32_t reserved_param1);
+
+int connectivity_export_conap_scp_clr_dfd_buffer(void);
+int connectivity_export_conap_get_dfd_value_info(phys_addr_t *addr, uint32_t *size);
+/* -- DFD support -- */
 
 #ifdef CPU_BOOST
 void connectivity_export_mt_ppm_sysboost_freq(enum ppm_sysboost_user user,
@@ -268,8 +271,8 @@ do {                                                              \
 	__trace_printk_check_format(fmt, ##args);                 \
 	KERNEL_tracing_record_cmdline(current);                   \
 	if (__builtin_constant_p(fmt)) {                          \
-		static const char *trace_printk_fmt               \
-		__attribute__((section("__trace_printk_fmt"))) =  \
+		static const char *trace_printk_fmt __used        \
+		__section("__trace_printk_fmt") =                   \
 		__builtin_constant_p(fmt) ? fmt : NULL;           \
 		__trace_bprintk(ip, trace_printk_fmt, ##args);    \
 	} else                                                    \

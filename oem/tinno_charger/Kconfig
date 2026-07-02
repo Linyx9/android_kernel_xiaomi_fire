@@ -1,0 +1,206 @@
+config NO_THERMAL_BUILD
+	bool "oem project no thermal build"
+	default n
+	help
+	  config oem project no thermal build.
+
+config OEM_TINNO_CHARGER
+	tristate "oem tinno charger"
+	default n
+	help
+	  support oem_tinno_charger
+
+config OEM_SWITCH_CHARGER
+	tristate "oem third party switch charger support"
+	default n
+	help
+	  support oem_switch_charger
+
+config OEM_CHARGER_PUMP
+	tristate "oem third party charger pump support"
+	default n
+	help
+	  support oem_charger_pump
+
+config OEM_TCPC
+	tristate "oem third party cc logic support"
+	default n
+	help
+	  support oem_tcpc
+
+config OEM_QC_LOGIC
+	tristate "oem third party qc logic support"
+	default n
+	help
+	  support oem_qc_logic
+
+config OEM_FUEL_GAUGE
+	tristate "oem third party fuel gauge support"
+	default n
+	help
+	  support oem_fuel_gauge
+
+config OEM_BATTERY_SWITCH
+	tristate "oem third party battery switch support"
+	default n
+	help
+	  support oem_battery_switch
+
+config OEM_SWITCH_CHARGER_SC89890H
+	tristate "oem switch charger sc89890h"
+	depends on OEM_SWITCH_CHARGER
+	default n
+	help
+	  support oem_switch_charger_sc89890h
+
+config OEM_SWITCH_CHARGER_SGM41542
+	tristate "oem switch charger sgm41542"
+	depends on OEM_SWITCH_CHARGER
+	default n
+	help
+	  support oem_switch_charger_sgm41542
+
+config OEM_SWITCH_CHARGER_CX2589X
+	tristate "oem switch charger cx2589x"
+	depends on OEM_SWITCH_CHARGER
+	default n
+	help
+	  support oem_switch_charger_cx2589x
+
+config OEM_SWITCH_CHARGER_CX25601D
+	tristate "oem switch charger cx25601d"
+	depends on OEM_SWITCH_CHARGER
+	default n
+	help
+	  support oem_switch_charger_cx25601d
+
+config OEM_SWITCH_CHARGER_ETA6937
+	tristate "oem switch charger eta6937"
+	depends on OEM_SWITCH_CHARGER
+	default n
+	help
+	  support oem_switch_charger_eta6937
+
+config OEM_CHARGER_PUMP_SC8541
+	tristate "oem charger pump sc8541"
+	depends on OEM_CHARGER_PUMP
+	default n
+	help
+	  support oem_charger_pump_sc8541
+
+config OEM_CHARGER_PUMP_NU2115
+	tristate "oem charger pump nu2115"
+	depends on OEM_CHARGER_PUMP
+	default n
+	help
+	  support oem_charger_pump_nu2115
+
+config OEM_CHARGER_PUMP_CPS2011S
+	tristate "oem charger pump cps2011s"
+	depends on OEM_CHARGER_PUMP
+	default n
+	help
+	  support oem_charger_pump_cps2011s
+
+config OEM_CHARGER_PUMP_SGM41600S
+	tristate "oem charger pump sgm41600s"
+	depends on OEM_CHARGER_PUMP
+	default n
+	help
+	  support oem_charger_pump_41600s
+
+config OEM_TCPC_AW35616
+	tristate "oem tcpc aw35616"
+	depends on OEM_TCPC
+	default n
+	help
+	  support oem_tcpc_aw35616
+
+config OEM_TCPC_HUSB320
+	tristate "oem tcpc husb320"
+	depends on OEM_TCPC
+	default n
+	help
+	  support oem_tcpc_husb320
+
+config OEM_TCPC_SGM7220
+	tristate "oem tcpc sgm7220"
+	depends on OEM_TCPC
+	default n
+	help
+	  support oem_tcpc_sgm7220
+
+config OEM_TCPC_PD_SC2150
+	tristate "oem tcpc pd sc2150"
+	depends on OEM_TCPC
+	default n
+	help
+	  support oem_tcpc_pd_sc2150
+
+config OEM_TCPC_PD_CPS8851
+	tristate "oem tcpc pd cps8851"
+	depends on OEM_TCPC
+	default n
+	help
+	  support oem_tcpc_pd_cps8851
+
+config OEM_TCPC_PD_AW35615
+	tristate "oem tcpc pd aw35615"
+	depends on OEM_TCPC
+	default n
+	help
+	  support oem_tcpc_pd_aw35615
+
+config OEM_TURBO_CHARGER
+	tristate "oem turbo charger"
+	default n
+	help
+	  support oem_turbo_charger
+
+config OEM_QC_LOGIC_Z350
+	tristate "oem qc logic z350"
+	depends on OEM_QC_LOGIC
+	default n
+	help
+	  support oem_qc_logic_z350
+
+config OEM_QC_LOGIC_WT6670F
+	tristate "oem qc logic wt6670f"
+	depends on OEM_QC_LOGIC
+	default n
+	help
+	  support oem_qc_logic_wt6670f
+
+config OEM_FUEL_GAUGE_SM5602
+	tristate "oem fuel gauge sm5602"
+	depends on OEM_FUEL_GAUGE
+	default n
+	help
+	  support oem_fuel_gauge_sm5602
+
+config OEM_BATTERY_SWITCH_UPM2388
+	tristate "oem battery switch upm2388"
+	depends on OEM_BATTERY_SWITCH
+	default n
+	help
+	  support oem_battery_switch_upm2388
+
+config OEM_HVDCP_ALGO
+	tristate "oem hvdcp algo"
+	depends on OEM_TINNO_CHARGER
+	default n
+	help
+	  support oem_hvdcp_algo
+
+config OEM_PDC_ALGO
+	tristate "oem pdc algo"
+	depends on OEM_TINNO_CHARGER
+	default n
+	help
+	  support oem_pdc_algo
+
+config OEM_TINNO_CHARGE_MISC
+	tristate "oem tinno charge misc"
+	default n
+	help
+	  support oem_tinno_charge_misc

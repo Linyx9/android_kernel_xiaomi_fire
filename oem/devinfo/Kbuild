@@ -1,0 +1,6 @@
+ifdef CONFIG_OEM_DEVINFO
+	DEVINFO_OBJS += dev_info.o
+endif
+
+obj-$(CONFIG_OEM_DEVINFO) += oem_devinfo.o
+oem_devinfo-y := $(DEVINFO_OBJS)

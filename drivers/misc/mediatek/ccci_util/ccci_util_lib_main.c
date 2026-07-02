@@ -20,7 +20,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/of.h>
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 #include <linux/of_fdt.h>
 #endif
 #include <asm/setup.h>
@@ -31,9 +31,13 @@
 static int __init ccci_util_init(void)
 {
 	ccci_log_init();
+	mtk_ccci_args_key_val_init();
 	ccci_util_fo_init();
+	mtk_ccci_compatible_md_chk_hdr_parsing();
+#ifdef CCCI_KMODULE_ENABLE
+	mtk_ccci_dump_args_info();
+#endif
 	ccci_common_sysfs_init();
-	ccci_timer_for_md_init();
 	ccci_util_broadcast_init();
 	ccci_sib_init();
 	ccci_util_pin_broadcast_init();

@@ -11,60 +11,22 @@
 # GNU General Public License for more details.
 #
 
-obj-y := cameraisp_dummy.o
-
-ifeq ($(CONFIG_MACH_MT6739),y)
-  obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-endif
-
-ifeq ($(CONFIG_MACH_MT6761),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_CAMERA_SUPPORT) += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-endif
-
-ifeq ($(CONFIG_MACH_MT6779),y)
-  obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-# obj-y += fdvt/
-endif
-
-ifeq ($(CONFIG_MACH_MT6765),y)
-  obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-#  obj-y += fdvt/
-endif
-
-ifeq ($(CONFIG_MACH_MT6768),y)
-  obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-#  obj-y += fdvt/
-endif
-
-ifeq ($(CONFIG_MACH_MT6785),y)
-  obj-y += mt6785/
-endif
-
-ifeq ($(CONFIG_MACH_MT6885),y)
-  obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-endif
-
-ifeq ($(CONFIG_MACH_MT6893),y)
-  obj-y += mt6885/
-endif
-
-ifeq ($(CONFIG_MACH_MT6873),y)
-  obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-endif
-
-ifeq (y, $(filter y, $(CONFIG_MACH_MT6833) $(CONFIG_MACH_MT6853) $(CONFIG_MACH_MT6877)))
-obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-endif
-
-ifeq (y, $(filter y, $(CONFIG_MACH_MT6833) $(CONFIG_MACH_MT6853) $(CONFIG_MACH_MT6781)))
-  subdir-ccflags-y += -DDISABLE_SV_TOP0
-endif
-
-ifeq ($(CONFIG_MACH_MT6781),y)
-  obj-y += mt6853/
-  subdir-ccflags-y += -DDISABLE_CCU
-endif
-
-ifeq ($(CONFIG_MACH_MT6771),y)
-  obj-y += isp_50/
+ifeq ($(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT), m)
+	ifeq ($(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP4_T), m)
+		obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP4_T) += isp_4/
+	else ifeq ($(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP4_C), m)
+		obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP4_C) += isp_4/
+	else ifeq ($(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP3_M), m)
+		obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP3_M) += isp_3/
+	else ifeq ($(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP3_Z), m)
+		obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP3_Z) += isp_3/
+	else
+		obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT) += isp_6s/
+	endif
+else ifeq ($(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT), y)
+# No isp6s driver is built-in.
+	obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP4_T) += isp_4/
+	obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP4_C) += isp_4/
+	obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP3_M) += isp_3/
+	obj-$(CONFIG_MTK_CAMERA_ISP_RAW_SUPPORT_ISP3_Z) += isp_3/
 endif

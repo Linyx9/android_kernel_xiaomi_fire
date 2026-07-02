@@ -688,7 +688,7 @@ fs_alg_set_frame_record_st_data(unsigned int idx, struct frame_record_st data[])
 		fs_inst[idx].predicted_fl_lc[1]);
 
 
-// #ifndef REDUCE_FS_ALGO_LOG
+#ifndef REDUCE_FS_ALGO_LOG
 	LOG_INF(
 		"[%u] ID:%#x(sidx:%u), tg:%u, frecs: (0:%u/%u), (1:%u/%u), (2:%u/%u) (fl_lc/shut_lc), pred_fl(curr:%u(%u), next:%u(%u))(%u), margin_lc:%u, fdelay:%u\n",
 		idx,
@@ -708,7 +708,7 @@ fs_alg_set_frame_record_st_data(unsigned int idx, struct frame_record_st data[])
 		fs_inst[idx].lineTimeInNs,
 		fs_inst[idx].margin_lc,
 		fs_inst[idx].fl_active_delay);
-// #endif
+#endif
 }
 /******************************************************************************/
 
@@ -817,8 +817,9 @@ static void do_fps_sync(unsigned int solveIdxs[], unsigned int len)
 		LOG_PR_ERR("ERROR: log_buf allocate memory failed\n");
 
 		return;
-	} else
-		log_buf[0] = '\0';
+	}
+
+	log_buf[0] = '\0';
 
 
 	/* 1. calc each fl_us for each sensor, take max fl_us as target_fl_us */

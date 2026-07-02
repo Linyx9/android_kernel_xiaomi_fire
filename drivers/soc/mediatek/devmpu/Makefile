@@ -1,26 +1,21 @@
-#
-# Copyright (C) 2018 MediaTek Inc.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 2 as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
+# SPDX-License-Identifier: GPL-2.0
 
 ifeq ($(CONFIG_MTK_GCOV_KERNEL),y)
 	GCOV_PROFILE := y
 endif
 
-PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/include/soc/mediatek/
 
-ccflags-y += \
-	-I$(srctree)/drivers/misc/mediatek/emi/$(PLATFORM) \
-	-I$(srctree)/drivers/misc/mediatek/emi/submodule \
-	-I$(srctree)/include/memory/mediatek
+NEED_TO_BE_REPORT :=
 
-obj-$(CONFIG_MTK_DEVMPU) += devmpu.o
-obj-$(CONFIG_MTK_DEVMPU_EMI) += devmpu_emi.o
+ifeq ($(CONFIG_MTK_DEVMPU_EMI),m)
+NEED_TO_BE_REPORT := devmpu_emi working fine
+else
+NEED_TO_BE_REPORT := $(CONFIG_MTK_DEVMPU_EMI)
+endif
+all:
+	@echo "devmpu_emi ="
+	@echo $(NEED_TO_BE_REPORT)
+
+obj-m += devmpu.o

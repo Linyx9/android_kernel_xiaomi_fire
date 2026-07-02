@@ -29,7 +29,7 @@
 #include <linux/timer.h>
 #include <linux/workqueue.h>
 #include <linux/hrtimer.h>
-#include <linux/aw87519_audio.h>
+#include "aw87519_audio.h"
 
 /*******************************************************************************
  * aw87519 marco
@@ -260,6 +260,7 @@ unsigned char aw87519_amp_lch_on(void)
 
 	return 0;
 }
+EXPORT_SYMBOL(aw87519_amp_lch_on);
 
 unsigned char aw87519_amp_lch_off(void)
 {
@@ -275,6 +276,7 @@ unsigned char aw87519_amp_lch_off(void)
 
 	return 0;
 }
+EXPORT_SYMBOL(aw87519_amp_lch_off);
 
 /*******************************************************************************
  * aw87519 firmware cfg update
@@ -609,8 +611,8 @@ static int aw87519_read_chipid(struct aw87519 *aw87519)
 		aw87519_i2c_write(aw87519, 0x64, 0x2C);
 		ret = aw87519_i2c_read(aw87519, REG_CHIPID, &reg_val);
 		if (reg_val != AW87519_CHIPID)
-			pr_info("%s: aw87519 chipid=0x%x error\n",
-				__func__, reg_val);
+			pr_info("%s: aw87519 chipid=0x%x error,ret=%d\n",
+				__func__, reg_val, ret);
 		else {
 			pr_info("%s This Chip is  AW87519 chipid=0x%x\n",
 				__func__, reg_val);
@@ -627,7 +629,7 @@ static int aw87519_read_chipid(struct aw87519 *aw87519)
  * aw87519 i2c driver
  ******************************************************************************/
 static int
-aw87519_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+aw87519_i2c_probe(struct i2c_client *client)
 {
 	struct device_node *np = client->dev.of_node;
 	int ret = -1;
@@ -701,7 +703,6 @@ aw87519_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	return 0;
 
 exit_i2c_check_id_failed:
-	devm_gpio_free(&client->dev, aw87519->reset_gpio);
 exit_gpio_request_failed:
 exit_gpio_get_failed:
 	devm_kfree(&client->dev, aw87519);
@@ -711,14 +712,9 @@ exit_check_functionality_failed:
 	return ret;
 }
 
-static int aw87519_i2c_remove(struct i2c_client *client)
+static void aw87519_i2c_remove(struct i2c_client *client)
 {
-	struct aw87519 *aw87519 = i2c_get_clientdata(client);
-
-	if (gpio_is_valid(aw87519->reset_gpio))
-		devm_gpio_free(&client->dev, aw87519->reset_gpio);
-
-	return 0;
+	pr_info("%s enter\n", __func__);
 }
 
 static const struct i2c_device_id aw87519_i2c_id[] = {

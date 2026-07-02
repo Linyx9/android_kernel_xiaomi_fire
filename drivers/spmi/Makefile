@@ -1,7 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Makefile for kernel SPMI framework.
 #
-obj-$(CONFIG_SPMI)	+= spmi.o
 
-obj-$(CONFIG_SPMI_MSM_PMIC_ARB)	+= spmi-pmic-arb.o
-obj-$(CONFIG_MTK_PMIF)	+= mtk-pmif.o mtk-dbg.o
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/
+obj-$(CONFIG_DEVICE_MODULES_SPMI_MTK_PMIF)	+= spmi-mtk-pmif.o spmi-mtk-mpu.o
+spmi-mtk-pmif-objs := spmi-mtk-pmif-core.o spmi-mtk-debug.o

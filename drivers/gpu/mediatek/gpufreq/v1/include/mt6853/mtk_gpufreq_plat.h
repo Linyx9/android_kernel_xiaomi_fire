@@ -1,6 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2021 MediaTek Inc.
+ * Copyright (c) 2019 MediaTek Inc.
  */
 
 #ifndef ___MT_GPUFREQ_PLAT_H___
@@ -8,27 +8,20 @@
 
 #include <linux/module.h>
 #include <linux/clk.h>
-//#include "mtk_ram_console.h"
 
 #define MT_GPUFREQ_BRINGUP                      0
-#ifdef CONFIG_MTK_PBM
-#define MT_GPUFREQ_KICKER_PBM_READY             1
-#else
 #define MT_GPUFREQ_KICKER_PBM_READY             0
-#endif
-
-#define MT_GPUFREQ_STATIC_PWR_READY2USE         1
-#define MT_GPUFREQ_DYNAMIC_POWER_TABLE_UPDATE   1
+#define MT_GPUFREQ_STATIC_PWR_READY2USE         0
+#define MT_GPUFREQ_DYNAMIC_POWER_TABLE_UPDATE   0
 
 #define GPUFERQ_TAG	"[GPU/DVFS] "
 #define gpufreq_pr_info(fmt, args...)	pr_info(GPUFERQ_TAG fmt, ##args)
 #define gpufreq_pr_debug(fmt, args...)	pr_debug(GPUFERQ_TAG fmt, ##args)
 
-#ifdef CONFIG_MTK_GPU_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_GPU_SUPPORT)
 #define gpufreq_pr_logbuf(fmt, args...)			\
 do {							\
 	gpufreq_pr_debug(fmt, ##args);			\
-	ged_log_buf_print2(gpufreq_ged_log, GED_LOG_ATTR_TIME, fmt, ##args); \
 } while (0)
 #else
 #define gpufreq_pr_logbuf(fmt, args...)	gpufreq_pr_debug(fmt, ##args)
@@ -156,6 +149,10 @@ extern void mt_gpufreq_dump_infra_status(void);
 extern int mt_gpufreq_is_dfd_force_dump(void);
 extern void mt_gpufreq_software_trigger_dfd(void);
 extern void mt_gpufreq_wdt_reset(void);
+extern int mt_gpufreq_get_opp_idx_by_freq(unsigned int freq);
+extern unsigned int mt_gpufreq_get_dyn_power(unsigned int freq_khz, unsigned int volt);
+extern unsigned int mt_gpufreq_get_min_power(void);
+extern unsigned int mt_gpufreq_get_power_by_idx(int idx);
 
 /**
  * power limit notification

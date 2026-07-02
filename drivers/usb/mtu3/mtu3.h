@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * mtu3.h - MediaTek USB3 DRD header
  *
@@ -10,11 +10,13 @@
 #ifndef __MTU3_H__
 #define __MTU3_H__
 
+#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/dmapool.h>
 #include <linux/extcon.h>
 #include <linux/interrupt.h>
 #include <linux/list.h>
+#include <linux/of.h>
 #include <linux/phy/phy.h>
 #include <linux/regulator/consumer.h>
 #include <linux/usb.h>
@@ -29,15 +31,6 @@ struct mtu3_request;
 
 #include "mtu3_hw_regs.h"
 #include "mtu3_qmu.h"
-
-#if defined MTU3_USE_SPM_API
-#include "mtk_spm_resource_req.h"
-
-#else
-#include <linux/arm-smccc.h>
-#include <linux/soc/mediatek/mtk_sip_svc.h>
-
-#endif
 
 #define	MU3D_EP_TXCR0(epnum)	(U3D_TX1CSR0 + (((epnum) - 1) * 0x10))
 #define	MU3D_EP_TXCR1(epnum)	(U3D_TX1CSR1 + (((epnum) - 1) * 0x10))
@@ -72,9 +65,11 @@ struct mtu3_request;
 #define MTU3_U3_IP_SLOT_DEFAULT 2
 #define MTU3_U3_IP_SLOT_MAX 4
 #define MTU3_U2_IP_SLOT_DEFAULT 1
+#define MTU3_U2_IP_SLOT_MAX 2
 
-#define MTU3_SW_ID_GROUND	BIT(0)
-#define MTU3_SW_VBUS_VALID	BIT(1)
+#define DP_SWITCH_MSK 1
+
+#define U2_LPM_LOCK_TIMEOUT 500
 
 /**
  * IP TRUNK version
@@ -102,6 +97,8 @@ struct mtu3_request;
  */
 #define EP0_RESPONSE_BUF  6
 
+#define BULK_CLKS_CNT	6
+
 /* device operated link and speed got from DEVICE_CONF register */
 enum mtu3_speed {
 	MTU3_SPEED_INACTIVE = 0,
@@ -118,24 +115,16 @@ enum mtu3_speed {
  * @MU3D_EP0_STATE_RX: OUT data stage
  * @MU3D_EP0_STATE_TX_END: the last IN data is transferred, and
  *		waits for its completion interrupt
- * @MU3D_EP0_STATE_TX_ENDED: will go back to waiting for data after
- *		giving back the request is done
  * @MU3D_EP0_STATE_STALL: ep0 is in stall status, will be auto-cleared
  *		after receives a SETUP.
- * @MU3D_EP0_STATE_RX_END: the last OUT data is transferred, and
- *      waits for gadget driver to send ACK
- * @MU3D_EP0_STATE_DELAYING: delaying status stage until gadget driver
- *  	is ready to send ack
  */
 enum mtu3_g_ep0_state {
 	MU3D_EP0_STATE_SETUP = 1,
 	MU3D_EP0_STATE_TX,
 	MU3D_EP0_STATE_RX,
+	MU3D_EP0_STATE_RX_WAIT,
 	MU3D_EP0_STATE_TX_END,
 	MU3D_EP0_STATE_STALL,
-	MU3D_EP0_STATE_RX_END,
-	MU3D_EP0_STATE_TX_ENDED,
-	MU3D_EP0_STATE_DELAYING,
 };
 
 /**
@@ -152,36 +141,58 @@ enum mtu3_dr_force_mode {
 };
 
 /**
- * MTU3_DR_OPERATION_NONE: force to tun off usb
- * MTU3_DR_OPERATION_NORMAL: automatically switch host and
+ * MTU3_DR_OPERATION_OFF: force to turn off usb
+ * MTU3_DR_OPERATION_DUAL: automatically switch host and
  *      periperal mode by usb role switch.
  * MTU3_DR_OPERATION_HOST: force to enter host mode.
  * MTU3_DR_OPERATION_DEVICE: force to enter peripheral mode.
  */
 enum mtu3_dr_operation_mode {
-	MTU3_DR_OPERATION_NONE = 0,
-	MTU3_DR_OPERATION_NORMAL,
+	MTU3_DR_OPERATION_OFF = 0,
+	MTU3_DR_OPERATION_DUAL,
 	MTU3_DR_OPERATION_HOST,
 	MTU3_DR_OPERATION_DEVICE,
-};
-
-enum mtu3_power_resource_mode {
-	MTU3_RESOURCE_NONE = 0,
-	MTU3_RESOURCE_ALL,
-	MTU3_RESOURCE_SUSPEND,
-	MTU3_RESOURCE_RESUME,
-};
-
-enum MTK_USB_SMC_CALL {
-	MTK_USB_SMC_INFRA_REQUEST = 0,
-	MTK_USB_SMC_INFRA_RELEASE,
-	MTK_USB_SMC_NUM
 };
 
 enum mtu3_ep_slot_mode {
 	MTU3_EP_SLOT_DEFAULT = 0,
 	MTU3_EP_SLOT_MIN,
 	MTU3_EP_SLOT_MAX,
+};
+
+enum mtu3_power_state {
+	MTU3_STATE_POWER_OFF = 0,
+	MTU3_STATE_POWER_ON,
+	MTU3_STATE_SUSPEND,
+	MTU3_STATE_RESUME,
+	MTU3_STATE_OFFLOAD,
+};
+
+enum mtu3_u2_lpm_mode {
+	MTU3_U2_LPM_DEFAULT = 0,
+	MTU3_U2_LPM_REJECT,
+	MTU3_U2_LPM_ACCEPT,
+};
+
+enum mtu3_plat_type {
+	PLAT_ASIC = 0,
+	PLAT_FPGA = 1,
+};
+
+enum mtu3_fpga_phy {
+	GENERIC_USB_PHY = 0,
+	A60930_USB_PHY = 1,
+	A60979_USB_PHY = 2,
+	A60931_USB_PHY = 3,
+	A60862_USB_PHY = 4,
+};
+
+enum ssusb_offload_mode {
+	SSUSB_OFFLOAD_MODE_NONE = 0,
+	SSUSB_OFFLOAD_MODE_D,    /* full-speed or high speed D mode */
+	SSUSB_OFFLOAD_MODE_S,    /* full-speed or high speed S mode */
+	SSUSB_OFFLOAD_MODE_D_SS, /* super-speed or super-speed-plus D mode */
+	SSUSB_OFFLOAD_MODE_S_SS, /* super-speed or super-speed-plus S mode */
 };
 
 /**
@@ -248,13 +259,10 @@ struct mtu3_gpd_ring {
 /**
 * @vbus: vbus 5V used by host mode
 * @edev: external connector used to detect vbus and iddig changes
-* @vbus_nb: notifier for vbus detection
-* @vbus_work : work of vbus detection notifier, used to avoid sleep in
-*		notifier callback which is atomic context
-* @vbus_event : event of vbus detecion notifier
 * @id_nb : notifier for iddig(idpin) detection
-* @id_work : work of iddig detection notifier
-* @id_event : event of iddig detecion notifier
+* @dr_work : work for drd mode switch, used to avoid sleep in atomic context
+* @desired_role : role desired to switch
+* @default_role : default mode while usb role is USB_ROLE_NONE
 * @role_sw : use USB Role Switch to support dual-role switch, can't use
 *		extcon at the same time, and extcon is deprecated.
 * @role_sw_used : true when the USB Role Switch is used.
@@ -262,21 +270,25 @@ struct mtu3_gpd_ring {
 * @manual_drd_enabled: it's true when supports dual-role device by debugfs
 *		to switch host/device modes depending on user input.
 */
+struct dr_work_data_mtk {
+	struct otg_switch_mtk *otg_sx;
+	struct work_struct dr_work;
+	enum usb_role desired_role;
+};
+
 struct otg_switch_mtk {
 	struct regulator *vbus;
 	struct extcon_dev *edev;
-	struct notifier_block vbus_nb;
-	struct work_struct vbus_work;
-	unsigned long vbus_event;
 	struct notifier_block id_nb;
-	struct work_struct id_work;
-	unsigned long id_event;
+	struct workqueue_struct *wq;
+
+	enum usb_role default_role;
 	struct usb_role_switch *role_sw;
 	bool role_sw_used;
 	bool is_u3_drd;
 	bool manual_drd_enabled;
-	u32 sw_state;
 	enum usb_role latest_role;
+	enum usb_role current_role;
 	enum mtu3_dr_operation_mode op_mode;
 };
 
@@ -284,14 +296,13 @@ struct otg_switch_mtk {
  * @mac_base: register base address of device MAC, exclude xHCI's
  * @ippc_base: register base address of IP Power and Clock interface (IPPC)
  * @vusb33: usb3.3V shared by device/host IP
- * @sys_clk: system clock of mtu3, shared by device/host IP
- * @ref_clk: reference clock
- * @mcu_clk: mcu_bus_ck clock for AHB bus etc
- * @dma_clk: dma_bus_ck clock for AXI bus etc
  * @dr_mode: works in which mode:
  *		host only, device only or dual-role mode
  * @u2_ports: number of usb2.0 host ports
  * @u3_ports: number of usb3.0 host ports
+ * @u2p_dis_msk: mask of disabling usb2 ports, e.g. bit0==1 to
+ *		disable u2port0, bit1==1 to disable u2port1,... etc,
+ *		but when use dual-role mode, can't disable u2port0
  * @u3p_dis_msk: mask of disabling usb3 ports, for example, bit0==1 to
  *		disable u3port0, bit1==1 to disable u3port1,... etc
  * @dbgfs_root: only used when supports manual dual-role switch via debugfs
@@ -306,35 +317,77 @@ struct ssusb_mtk {
 	struct mtu3 *u3d;
 	void __iomem *mac_base;
 	void __iomem *ippc_base;
+	void __iomem *host_base;
 	struct phy **phys;
 	int num_phys;
+	int wakeup_irq;
+	/* vbus gpio */
+	struct gpio_desc *vbus_gpio;
+	struct work_struct vbus_work;
+	int vbus_irq;
+	bool toggle_vbus;
 	/* common power & clock */
 	struct regulator *vusb33;
-	struct clk *sys_clk;
-	struct clk *ref_clk;
-	struct clk *mcu_clk;
-	struct clk *dma_clk;
-	struct clk *host_clk;
+	struct clk_bulk_data clks[BULK_CLKS_CNT];
 	/* otg */
 	struct otg_switch_mtk otg_switch;
 	enum usb_dr_mode dr_mode;
 	bool is_host;
 	int u2_ports;
 	int u3_ports;
+	int u2p_dis_msk;
 	int u3p_dis_msk;
 	struct dentry *dbgfs_root;
 	bool force_vbus;
-	bool noise_still_tr;
+	bool keep_ao;
 	/* usb wakeup for host mode */
 	bool uwk_en;
 	struct regmap *uwk;
 	u32 uwk_reg_base;
 	u32 uwk_vers;
-	bool clk_on;
 	bool clk_mgr;
-	bool spm_mgr;
+	bool noise_still_tr;
+	bool gen1_txdeemph;
+	/* fpga */
+	enum mtu3_plat_type plat_type;
+	enum mtu3_fpga_phy fpga_phy;
+	/* xhci */
+	struct platform_driver *xhci_pdrv;
 	/* u2 cdp */
 	struct work_struct dp_work;
+	u32 hwrscs_vers;
+	/* pmic vs voter */
+	struct regmap *vsv;
+	u32 vsv_reg;
+	u32 vsv_mask;
+	u32 vsv_vers;
+	/* offload */
+	bool offload_support;
+	int offload_mode;
+	struct ssusb_offload *offload;
+	/* dp switch */
+	struct regmap *dp_switch;
+	u32 dp_switch_oft;
+	/* clkgate */
+	struct regmap *clkgate;
+	u32 clkgate_oft;
+	/* usb power domain */
+	struct device *genpd_u2;
+	struct device *genpd_u3;
+	struct device_link *genpd_dl_u2;
+	struct device_link *genpd_dl_u3;
+	bool use_multi_genpd;
+	u32 eusb2_cm_l1;
+	u32 ux_exit_lfps;
+	u32 ux_exit_lfps_gen2;
+	u32 polling_scdlfps_time;
+	u32 utmi_width;
+	bool smc_req;
+	bool host_dev;
+	bool is_suspended;
+	bool ls_slp_quirk;
+	bool ldm_resp_delay;
+	int ls_slp_bypass;
 };
 
 /**
@@ -383,10 +436,12 @@ static inline struct ssusb_mtk *dev_to_ssusb(struct device *dev)
  *		MTU3_U3_IP_SLOT_DEFAULT for U3 IP
  * @may_wakeup: means device's remote wakeup is enabled
  * @is_self_powered: is reported in device status and the config descriptor
+ * @delayed_status: true when function drivers ask for delayed status
  * @gen2cp: compatible with USB3 Gen2 IP
  * @ep0_req: dummy request used while handling standard USB requests
  *		for GET_STATUS and SET_SEL
  * @setup_buf: ep0 response buffer for GET_STATUS and SET_SEL requests
+ * @u3_capable: is capable of supporting USB3
  */
 struct mtu3 {
 	spinlock_t lock;
@@ -414,6 +469,7 @@ struct mtu3 {
 	struct mtu3_request ep0_req;
 	u8 setup_buf[EP0_RESPONSE_BUF];
 	enum usb_device_speed max_speed;
+	enum usb_device_speed max_speed_host;
 	enum usb_device_speed speed;
 
 	unsigned is_active:1;
@@ -423,16 +479,40 @@ struct mtu3 {
 	unsigned softconnect:1;
 	unsigned u1_enable:1;
 	unsigned u2_enable:1;
-	unsigned is_u3_ip:1;
+	unsigned u3_capable:1;
+	unsigned delayed_status:1;
 	unsigned gen2cp:1;
-	unsigned async_callbacks:1;
+	unsigned connected:1;
 
 	u8 address;
 	u8 test_mode_nr;
 	u32 hw_version;
 
 	unsigned is_gadget_ready:1;
+	unsigned async_callbacks:1;
+	unsigned separate_fifo:1;
 	int ep_slot_mode;
+
+	unsigned u3_lpm:1;
+	unsigned u3_u1gou2:1;
+	enum mtu3_u2_lpm_mode u2_lpm_reject;
+	struct timer_list lpm_timer;
+
+	const char *usb_psy_name;
+	struct power_supply *usb_psy;
+	struct work_struct draw_work;
+	unsigned int vbus_draw;
+
+	const char *typec_name;
+	const char *typec_port_name;
+	struct typec_port *typec_port;
+};
+
+/* struct ssusb_offload */
+struct ssusb_offload {
+	struct device *dev;
+	struct ssusb_mtk *ssusb;
+	int	(*get_mode)(struct device *dev);
 };
 
 static inline struct mtu3 *gadget_to_mtu3(struct usb_gadget *g)
@@ -483,14 +563,26 @@ static inline void mtu3_clrbits(void __iomem *base, u32 offset, u32 bits)
 }
 
 int ssusb_check_clocks(struct ssusb_mtk *ssusb, u32 ex_clks);
+void ssusb_toggle_vbus(struct ssusb_mtk *ssusb);
 void ssusb_set_force_vbus(struct ssusb_mtk *ssusb, bool vbus_on);
 int ssusb_phy_power_on(struct ssusb_mtk *ssusb);
 void ssusb_phy_power_off(struct ssusb_mtk *ssusb);
+void ssusb_reset(struct ssusb_mtk *ssusb);
+void ssusb_phy_set_mode(struct ssusb_mtk *ssusb, enum phy_mode mode);
 void ssusb_phy_dp_pullup(struct ssusb_mtk *ssusb);
 int ssusb_clks_enable(struct ssusb_mtk *ssusb);
 void ssusb_clks_disable(struct ssusb_mtk *ssusb);
 void ssusb_ip_sw_reset(struct ssusb_mtk *ssusb);
+void ssusb_set_power_state(struct ssusb_mtk *ssusb, enum mtu3_power_state);
+void ssusb_set_ux_exit_lfps(struct ssusb_mtk *ssusb);
+void ssusb_set_polling_scdlfps_time(struct ssusb_mtk *ssusb);
+void ssusb_set_txdeemph(struct ssusb_mtk *ssusb);
 void ssusb_set_noise_still_tr(struct ssusb_mtk *ssusb);
+void ssusb_set_ldm_resp_delay(struct ssusb_mtk *ssusb);
+void ssusb_vsvoter_set(struct ssusb_mtk *ssusb);
+void ssusb_vsvoter_clr(struct ssusb_mtk *ssusb);
+void ssusb_set_host_low_speed_bypass(struct ssusb_mtk *ssusb);
+void ssusb_clear_host_low_speed_bypass(struct ssusb_mtk *ssusb);
 struct usb_request *mtu3_alloc_request(struct usb_ep *ep, gfp_t gfp_flags);
 void mtu3_free_request(struct usb_ep *ep, struct usb_request *req);
 void mtu3_req_complete(struct mtu3_ep *mep,
@@ -503,7 +595,8 @@ void mtu3_ep_stall_set(struct mtu3_ep *mep, bool set);
 void mtu3_start(struct mtu3 *mtu);
 void mtu3_stop(struct mtu3 *mtu);
 void mtu3_dev_on_off(struct mtu3 *mtu, int is_on);
-void mtu3_nuke_all_ep(struct mtu3 *mtu);
+void mtu3_set_speed(struct mtu3 *mtu, enum usb_device_speed speed);
+void mtu3_check_params(struct mtu3 *mtu);
 
 int mtu3_gadget_setup(struct mtu3 *mtu);
 void mtu3_gadget_cleanup(struct mtu3 *mtu);
@@ -512,11 +605,17 @@ void mtu3_gadget_suspend(struct mtu3 *mtu);
 void mtu3_gadget_resume(struct mtu3 *mtu);
 void mtu3_gadget_disconnect(struct mtu3 *mtu);
 
+int mtu3_gadget_vbus_draw(struct usb_gadget *g, unsigned int mA);
+int mtu3_is_usb_pd(struct mtu3 *mtu);
+void mtu3_gadget_u2_lpm_lock(struct mtu3 *mtu, unsigned int timeout_ms);
+
 int mtu3_device_enable(struct mtu3 *mtu);
 void mtu3_device_disable(struct mtu3 *mtu);
 
-int ssusb_set_power_resource(struct ssusb_mtk *ssusb, int mode);
 irqreturn_t mtu3_ep0_isr(struct mtu3 *mtu);
 extern const struct usb_ep_ops mtu3_ep0_ops;
+
+int get_dp_switch_status(struct ssusb_mtk *ssusb);
+void ssusb_parse_toggle_vbus(struct ssusb_mtk *ssusb, struct device_node *nd);
 
 #endif

@@ -1,0 +1,16 @@
+/*[TN.NJDC] all modules overlay files.start*/
+
+#include "lamu-overlay-charger.dtsi"
+#include "lamu-overlay-display.dtsi"
+#include "lamu-overlay-fingerprint.dtsi"
+#include "lamu-overlay-led.dtsi"
+#include "lamu-overlay-nfc.dtsi"
+#include "lamu-overlay-sensor.dtsi"
+#include "lamu-overlay-touch.dtsi"
+#include "lamu-overlay-vibrator.dtsi"
+#include "lamu-overlay-key.dtsi"
+#include "lamu-overlay-card.dtsi"
+#include "lamu-overlay-audio.dtsi"
+#include "lamu-overlay-ntc.dtsi"
+
+/*[TN.NJDC] all modules overlay files.end*/

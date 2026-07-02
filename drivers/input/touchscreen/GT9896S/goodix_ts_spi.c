@@ -1,8 +1,11 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
- * Copyright (C) 2016 MediaTek Inc.
- */
 
+ /*
+  * Goodix Touchscreen Driver
+  *
+  * Copyright (C) 2019 - 2020 Goodix, Inc.
+  * License terms: GNU General Public License (GPL) version 2
+  *
+  */
 
 #include <linux/spi/spi.h>
 #include "goodix_ts_core.h"
@@ -73,20 +76,6 @@
 #define BYTES_PER_COORD				8
 #define TS_CFG_BAG_NUM_INDEX		2
 
-/* this struct used for get lcm width and heigh. We have reached a consensus
- * with display owner and the members of tag_videolfb in front of lcm_width
- * are fixed. If you want to change tag_videolfb, please contect display owner
- * in advance.
- */
-struct tag_videolfb {
-	u64 fb_base;
-	u32 islcmfound;
-	u32 fps;
-	u32 vram;
-	char lcmname[1];
-	u32 lcm_width;
-	u32 lcm_heigh;
-};
 /*struction & enum*/
 enum TS_SEND_CFG_REPLY {
 	TS_CFG_REPLY_PKGS_ERR   = 0x01,
@@ -98,52 +87,80 @@ enum TS_SEND_CFG_REPLY {
 /*for config & firmware*/
 const char *gt9896s_firmware_buf;
 const char *gt9896s_config_buf;
+const char *gt9896s_lcm_buf;
+int gt9896s_find_touch_node;
+int gt9896s_cfg_flag;
+char panel_firmware_buf[128];
+char panel_config_buf[128];
 
 static struct platform_device *gt9896s_pdev;
+static int gt9896s_spi_probe(struct spi_device *spi);
 
 #ifdef CONFIG_OF
-#define GET_L16(data) (data & 0xffff)
-#define GET_H16(data) ((data >> 16) & 0xffff)
-static void mtk_drm_lcm_info_get(struct gt9896s_ts_board_data *board_data)
+static int gt9896s_parse_dt_display(struct gt9896s_ts_board_data *board_data)
 {
-	struct device_node *chosen_node;
-	struct tag_videolfb *videolfb_tag = NULL;
-	unsigned long size = 0;
-	unsigned int offset = 0;
-	u32 lcm_width;
-	u32 lcm_heigh;
-	u32 lcm_name_len;
+	int r;
+	struct device_node *node = NULL;
 
-	chosen_node = of_find_node_by_path("/chosen");
-	if (chosen_node) {
-		videolfb_tag = (struct tag_videolfb *)of_get_property(
-			chosen_node, "atag,videolfb", (int *)&size);
-
-		if (videolfb_tag) {
-			lcm_name_len = strlen((char *)(videolfb_tag->lcmname));
-			offset = 2 + 3 + ((lcm_name_len + 1 + 4) >> 2);
-			lcm_width = *((unsigned int *)videolfb_tag + offset);
-			lcm_heigh = *((unsigned int *)videolfb_tag + offset + 1);
-
-			if ((lcm_heigh == 0) || (lcm_width == 0))
-				return;
-
-			if ((lcm_name_len == GET_H16(lcm_width))
-				&& (lcm_name_len == GET_H16(lcm_heigh))) {
-				board_data->lcm_max_x = GET_L16(lcm_width);
-				board_data->lcm_max_y = GET_L16(lcm_heigh);
-			} else {
-				ts_err("heigh_h[%d], heigh_l[%d], width_h[%d], width_l[%d]",
-					GET_H16(lcm_heigh), GET_L16(lcm_heigh),
-					GET_H16(lcm_width), GET_H16(lcm_width));
-			}
-		} else {
-			ts_err("videolfb_tag not found");
+	node = of_find_compatible_node(NULL, NULL, "mediatek,touch-panel");
+	if (node) {
+		r = of_property_read_u32(node, "lcm-is-fake",
+					 &board_data->fake_status);
+		if (r) {
+			ts_info("no lcm-is-fake, not find touch panel node!");
+			gt9896s_find_touch_node = 0;
+			return 0;
 		}
-	} else {
-		ts_err("of_chosen not found");
-	}
+		ts_info("find touch panel node!");
+		gt9896s_cfg_flag = 0;
+		r = of_property_read_u32(node, "lcm-width",
+				 &board_data->panel_max_x);
+		if (r)
+			ts_info("parse lcm-width from dt fail!");
 
+		r = of_property_read_u32(node, "lcm-height",
+					 &board_data->panel_max_y);
+		if (r)
+			ts_info("parse lcm-height from dt fail!");
+
+		r = of_property_read_u32(node, "lcm-fake-width",
+				 &board_data->input_max_x);
+		if (r)
+			ts_info("parse lcm-fake-width from dt fail!");
+
+		r = of_property_read_u32(node, "lcm-fake-height",
+					 &board_data->input_max_y);
+		if (r)
+			ts_info("parse lcm-fake-height from dt fail!");
+
+		r = of_property_read_string(node, "lcm-name",
+				&gt9896s_lcm_buf);
+		if (r < 0)
+			ts_info("read lcm-name failed!");
+		//check if the lcm-name is supported
+		if ((strcmp("nt36672e_fhdp_dphy_vdo_jdi_120hz",
+			gt9896s_lcm_buf) != 0) &&
+			(strcmp("nt36672e_fhdp_cphy_vdo_jdi_120hz",
+			gt9896s_lcm_buf) != 0) &&
+			(strcmp("nt36672e_fhdp_dphy_vdo_jdi_144hz",
+			gt9896s_lcm_buf) != 0) &&
+			(strcmp("nt36672e_fhdp_dphy_vdo_jdi_60hz",
+			gt9896s_lcm_buf) != 0) &&
+			(strcmp("td4330_fhdp_dphy_vdo_truly",
+			gt9896s_lcm_buf) != 0) &&
+			(strcmp("td4330_fhdp_dphy_cmd_truly",
+			gt9896s_lcm_buf) != 0) &&
+			(strcmp("ft8756_fhdp_dphy_vdo_truly",
+			gt9896s_lcm_buf) != 0)) {
+			ts_info("lcm-name is not supported by gt9896s!");
+			return -EINVAL;
+		}
+		gt9896s_find_touch_node = 1;
+	} else {
+		ts_info("not find touch panel node!");
+		gt9896s_find_touch_node = 0;
+	}
+	return 0;
 }
 /**
  * gt9896s_parse_dt_resolution - parse resolution from dt
@@ -154,33 +171,39 @@ static void mtk_drm_lcm_info_get(struct gt9896s_ts_board_data *board_data)
 static int gt9896s_parse_dt_resolution(struct device_node *node,
 		struct gt9896s_ts_board_data *board_data)
 {
-	int r, err;
+	int r;
 
-	r = of_property_read_u32(node, "goodix,panel-max-x",
-				 &board_data->panel_max_x);
-	if (r)
-		err = -ENOENT;
+	if (gt9896s_find_touch_node != 1) {
+		r = of_property_read_u32(node, "goodix,panel-max-x",
+					 &board_data->panel_max_x);
+		if (r) {
+			ts_err("failed get panel-max-x");
+			return -ENOENT;
+		}
 
-	r = of_property_read_u32(node, "goodix,panel-max-y",
-				 &board_data->panel_max_y);
-	if (r)
-		err = -ENOENT;
+		r = of_property_read_u32(node, "goodix,panel-max-y",
+					 &board_data->panel_max_y);
+		if (r) {
+			ts_err("failed get panel-max-y");
+			return -ENOENT;
+		}
+
+		/* For unreal lcm test */
+		r = of_property_read_u32(node, "goodix,input-max-x",
+					 &board_data->input_max_x);
+		if (r)
+			ts_err("failed get input-max-x");
+
+		r = of_property_read_u32(node, "goodix,input-max-y",
+					&board_data->input_max_y);
+		if (r)
+			ts_err("failed get input-max-y");
+	}
 
 	r = of_property_read_u32(node, "goodix,panel-max-w",
 				 &board_data->panel_max_w);
 	if (r)
-		err = -ENOENT;
-
-	/* For unreal lcm test */
-	r = of_property_read_u32(node, "goodix,input-max-x",
-				 &board_data->input_max_x);
-	if (r)
-		err = -ENOENT;
-
-	r = of_property_read_u32(node, "goodix,input-max-y",
-				&board_data->input_max_y);
-	if (r)
-		err = -ENOENT;
+		ts_err("failed get panel-max-w");
 
 	board_data->swap_axis = of_property_read_bool(node,
 			"goodix,swap-axis");
@@ -206,6 +229,9 @@ static int gt9896s_parse_dt(struct device_node *node,
 	struct property *prop;
 	const char *name_tmp;
 	int r;
+#ifdef GT9896S_TZ
+	struct gt9896s_ts_bdata_tz *ts_tz = &board_data->ts_bdata_tz;
+#endif
 
 	if (!board_data) {
 		ts_err("invalid board data");
@@ -237,16 +263,17 @@ static int gt9896s_parse_dt(struct device_node *node,
 		return -EINVAL;
 	}
 
-	r = of_property_read_string(node, "goodix,firmware-version",
-			&gt9896s_firmware_buf);
-	if (r < 0)
-		ts_err("Invalid firmware version in dts : %d", r);
-
-	r = of_property_read_string(node, "goodix,config-version",
-			&gt9896s_config_buf);
-	if (r < 0) {
-		ts_err("Invalid config version in dts : %d", r);
-		return -EINVAL;
+	if (gt9896s_find_touch_node != 1) {
+		r = of_property_read_string(node, "goodix,firmware-version",
+				&gt9896s_firmware_buf);
+		if (r < 0)
+			ts_err("Invalid firmware version in dts : %d", r);
+		r = of_property_read_string(node, "goodix,config-version",
+				&gt9896s_config_buf);
+		if (r < 0) {
+			ts_err("Invalid config version in dts : %d", r);
+			return -EINVAL;
+		}
 	}
 
 	/* get power property*/
@@ -261,6 +288,12 @@ static int gt9896s_parse_dt(struct device_node *node,
 			ts_info("invalied avdd name length: %ld > %ld",
 				strlen(name_tmp),
 				sizeof(board_data->avdd_name));
+	}
+	r = of_property_read_u32(node, "gt9896s,power-voltage",
+		&board_data->power_voltage);
+	if (r) {
+		ts_err("invalid power-voltage using default voltage");
+		board_data->power_voltage = 3000000;
 	}
 
 	r = of_property_read_u32(node, "goodix,power-on-delay-us",
@@ -282,9 +315,6 @@ static int gt9896s_parse_dt(struct device_node *node,
 			board_data->power_off_delay_us = 0;
 		}
 	}
-
-	/* get lcm info */
-	mtk_drm_lcm_info_get(board_data);
 
 	/* get xyz resolutions */
 	r = gt9896s_parse_dt_resolution(node, board_data);
@@ -326,6 +356,47 @@ static int gt9896s_parse_dt(struct device_node *node,
 	ts_debug("[DT]x:%d, y:%d, w:%d, p:%d", board_data->panel_max_x,
 		 board_data->panel_max_y, board_data->panel_max_w,
 		 board_data->panel_max_p);
+
+#ifdef GT9896S_TZ
+	ts_tz->tz_enable = of_property_read_bool(node, "goodix,tz-enable");
+	if (ts_tz->tz_enable) {
+		ts_info("tz enabled");
+		ts_tz->tz_dev = NULL;
+
+		r = of_property_read_string(node, "goodix,tz-name", &name_tmp);
+		if (!r && (strlen(name_tmp) < sizeof(ts_tz->tz_name))) {
+			strscpy(ts_tz->tz_name, name_tmp, sizeof(ts_tz->tz_name));
+			ts_info("thermal zone name from dt: %s", ts_tz->tz_name);
+		} else{
+			strscpy(ts_tz->tz_name, TS_DEFAULT_THERMAL_ZONE, sizeof(ts_tz->tz_name));
+			ts_info("can't find thermal zone name, use default: %s", ts_tz->tz_name);
+		}
+
+		r = of_property_read_u32(node, "goodix,temperature-difference",
+				&ts_tz->temperature_difference);
+		if (r) {
+			ts_tz->temperature_difference = GOODIX_DEFAULT_TEMPERATURE_DIFFERENCE;
+			ts_info("can't find temperature-difference value, use default: %d",
+				ts_tz->temperature_difference);
+		} else {
+			ts_info("temperature-difference value from dt: %d",
+				ts_tz->temperature_difference);
+		}
+
+		r = of_property_read_u32(node, "goodix,temperature-threshold",
+				&ts_tz->temperature_threshold);
+		if (r) {
+			ts_tz->temperature_threshold = GOODIX_DEFAULT_TEMPERATURE_THRESHOLD;
+			ts_info("can't find temperature-threshold value, use default: %d",
+				ts_tz->temperature_threshold);
+		} else {
+			ts_info("temperature-threshold value from dt: %d",
+				ts_tz->temperature_threshold);
+		}
+	} else {
+		ts_info("tz not enabled");
+	}
+#endif
 
 	return 0;
 }
@@ -369,6 +440,7 @@ int gt9896s_spi_read(struct gt9896s_ts_device *dev, unsigned int addr,
 		ts_err("Spi transfer error:%d\n", ret);
 		return ret;
 	}
+
 	memcpy(data, &rx_buf[5], len);
 
 	return ret;
@@ -440,7 +512,7 @@ int gt9896s_reset_ic_init(struct gt9896s_ts_device *ts_dev)
 			ts_err("spi read spi tranfer args failed, ret %d", ret);
 			goto exit;
 		}
-
+		ts_info("spi write data: %d, read data: %d!", reg_val, ack_val);
 		if (ack_val == reg_val) {
 			ts_info("set spi tranfer args success!");
 			break;
@@ -469,7 +541,7 @@ int gt9896s_reset_ic_init(struct gt9896s_ts_device *ts_dev)
 			ts_err("spi read to remove GIO force to hold CPU failed");
 			goto exit;
 		}
-
+		ts_info("spi write data: %d, read data: %d!", reg_val, ack_val);
 		if (ack_val == reg_val) {
 			ts_info("remove GIO force to hold CPU success");
 			break;
@@ -587,7 +659,7 @@ static int gt9896s_read_version(struct gt9896s_ts_device *dev,
 	}
 
 	/*check checksum*/
-	if (dev->reg.version_base && dev->reg.version_len < sizeof(temp_buf)) {
+	if (dev->reg.version_base) {
 		r = gt9896s_spi_read(dev, dev->reg.version_base,
 				temp_buf, dev->reg.version_len);
 		if (r < 0) {
@@ -1076,17 +1148,10 @@ static void gt9896s_swap_coords(struct gt9896s_ts_device *dev,
 		*coor_y = temp;
 	}
 
-	if (bdata->lcm_max_x && bdata->lcm_max_y) {
-		if (!bdata->x2x)
-			*coor_x = bdata->lcm_max_x - *coor_x;
-		if (!bdata->y2y)
-			*coor_y = bdata->lcm_max_y - *coor_y;
-	} else {
-		if (!bdata->x2x)
-			*coor_x = bdata->panel_max_x - *coor_x;
-		if (!bdata->y2y)
-			*coor_y = bdata->panel_max_y - *coor_y;
-	}
+	if (!bdata->x2x)
+		*coor_x = bdata->panel_max_x - *coor_x;
+	if (!bdata->y2y)
+		*coor_y = bdata->panel_max_y - *coor_y;
 }
 
 static void gt9896s_parse_finger_ys(struct gt9896s_ts_device *dev,
@@ -1232,7 +1297,7 @@ static int gt9896s_event_handler(struct gt9896s_ts_device *dev,
 	/* read coor head */
 	r = gt9896s_spi_read(dev, dev->reg.coor, pre_buf, pre_read_len);
 	if (unlikely(r < 0)) {
-		ts_debug("spi read coor head failed, addr 0x%X, len %d, r %d",
+		ts_debug("spi read coor head failed, addr 0x%x, len %d, r %d",
 				dev->reg.coor, pre_read_len, r);
 		return r;
 	}
@@ -1352,6 +1417,52 @@ static void gt9896s_pdev_release(struct device *dev)
 #define BOOT_UPDATE_FIRMWARE_NAME novatek_firmware
 char novatek_firmware[25];
 
+static void gt9896s_spi_remove(struct spi_device *spi)
+{
+	if (gt9896s_pdev) {
+		platform_device_unregister(gt9896s_pdev);
+		gt9896s_pdev = NULL;
+	ts_info("GT9896S SPI remove");
+	}
+
+	ts_info("GT9896S SPI");
+}
+
+
+#ifdef CONFIG_OF
+static const struct of_device_id spi_matches[] = {
+	{.compatible = TS_DT_COMPATIBLE,},
+	{},
+};
+#endif
+
+static const struct spi_device_id spi_id_table[] = {
+	{TS_DRIVER_NAME, 0},
+	{},
+};
+
+static struct spi_driver gt9896s_spi_driver = {
+	.driver = {
+		.name = TS_DRIVER_NAME,
+		.owner = THIS_MODULE,
+		.bus = &spi_bus_type,
+		.of_match_table = spi_matches,
+	},
+	.id_table = spi_id_table,
+	.probe = gt9896s_spi_probe,
+	.remove = gt9896s_spi_remove,
+};
+
+/* release manully when prob failed */
+void gt9896s_ts_dev_release(void)
+{
+	if (gt9896s_pdev) {
+		platform_device_unregister(gt9896s_pdev);
+		gt9896s_pdev = NULL;
+	}
+	spi_unregister_driver(&gt9896s_spi_driver);
+}
+
 static int gt9896s_spi_probe(struct spi_device *spi)
 {
 	struct gt9896s_ts_device *ts_device = NULL;
@@ -1363,6 +1474,12 @@ static int gt9896s_spi_probe(struct spi_device *spi)
 	spi->mode            = SPI_MODE_0;
 	spi->bits_per_word   = 8;
 	spi->max_speed_hz    = 6 * 1000 * 1000;
+	spi->cs_setup.value = 1;
+	spi->cs_setup.unit = 0;
+	spi->cs_hold.value = 1;
+	spi->cs_hold.unit = 0;
+	spi->cs_inactive.value = 1;
+	spi->cs_inactive.unit = 0;
 
 	/* init ts device data */
 	ts_device = devm_kzalloc(&spi->dev,
@@ -1385,12 +1502,72 @@ static int gt9896s_spi_probe(struct spi_device *spi)
 
 	/* parse devicetree property */
 	if (IS_ENABLED(CONFIG_OF) && spi->dev.of_node) {
+		r = gt9896s_parse_dt_display(&ts_device->board_data);
+		if (r < 0) {
+			ts_info("%s OUT, lcm not support", __func__);
+			return r;
+		}
 		r = gt9896s_parse_dt(spi->dev.of_node,
 				    &ts_device->board_data);
 		if (r < 0) {
 			ts_err("failed parse device info form dts, %d", r);
 			r = -EINVAL;
 			goto err_spi_buf;
+		}
+		if (gt9896s_find_touch_node == 1) {
+			if (strcmp("ft8756_fhdp_dphy_vdo_truly", gt9896s_lcm_buf) == 0) {
+				if (ts_device->board_data.panel_max_x == 1080
+					&& ts_device->board_data.panel_max_y == 2300) {
+					strscpy(panel_config_buf,
+						"gt9896s_cfg_6893v02", 20);
+					strscpy(panel_firmware_buf,
+						"gt9896s_firmware_6893v02", 25);
+				} else if (ts_device->board_data.panel_max_x == 1080
+					&& ts_device->board_data.panel_max_y == 2280) {
+					strscpy(panel_config_buf,
+						"gt9896s_cfg_6893v01", 20);
+					strscpy(panel_firmware_buf,
+						"gt9896s_firmware_6893v01", 25);
+				} else {
+					ts_info("%s, fault firmware!", gt9896s_lcm_buf);
+				}
+			} else if ((strcmp("td4330_fhdp_dphy_vdo_truly",
+					gt9896s_lcm_buf) == 0) ||
+					(strcmp("td4330_fhdp_dphy_cmd_truly",
+					gt9896s_lcm_buf) == 0)) {
+				if (ts_device->board_data.panel_max_x == 1080
+					&& ts_device->board_data.panel_max_y == 2280) {
+					strscpy(panel_config_buf,
+						"gt9896s_cfg_6893v05", 20);
+					strscpy(panel_firmware_buf,
+						"gt9896s_firmware_6893v05", 25);
+				} else if (ts_device->board_data.panel_max_x == 1080
+					&& ts_device->board_data.panel_max_y == 2300) {
+					strscpy(panel_config_buf,
+						"gt9896s_cfg_6893v02", 20);
+					strscpy(panel_firmware_buf,
+						"gt9896s_firmware_6893v02", 25);
+				} else {
+					ts_info("%s, fault firmware!", gt9896s_lcm_buf);
+				}
+			} else if ((strcmp("nt36672e_fhdp_dphy_vdo_jdi_120hz",
+					gt9896s_lcm_buf) == 0) ||
+					(strcmp("nt36672e_fhdp_cphy_vdo_jdi_120hz",
+					gt9896s_lcm_buf) == 0) ||
+					(strcmp("nt36672e_fhdp_dphy_vdo_jdi_144hz",
+					gt9896s_lcm_buf) == 0) ||
+					(strcmp("nt36672e_fhdp_dphy_vdo_jdi_60hz",
+					gt9896s_lcm_buf) == 0)) {
+				if (ts_device->board_data.panel_max_x == 1080
+					&& ts_device->board_data.panel_max_y == 2400) {
+					strscpy(panel_config_buf,
+						"gt9896s_cfg_6893v04", 20);
+					strscpy(panel_firmware_buf,
+						"gt9896s_firmware_6893v04", 25);
+				} else {
+					ts_info("%s, fault firmware!", gt9896s_lcm_buf);
+				}
+			}
 		}
 	} else {
 		ts_err("no valid device tree node found");
@@ -1454,52 +1631,6 @@ err_spi_buf:
 	}
 	ts_info("%s OUT, %d", __func__, r);
 	return r;
-}
-
-static int gt9896s_spi_remove(struct spi_device *spi)
-{
-	if (gt9896s_pdev) {
-		platform_device_unregister(gt9896s_pdev);
-		kfree(gt9896s_pdev);
-		gt9896s_pdev = NULL;
-	}
-
-	return 0;
-}
-
-#ifdef CONFIG_OF
-static const struct of_device_id spi_matchs[] = {
-	{.compatible = TS_DT_COMPATIBLE,},
-	{},
-};
-#endif
-
-static const struct spi_device_id spi_id_table[] = {
-	{TS_DRIVER_NAME, 0},
-	{},
-};
-
-static struct spi_driver gt9896s_spi_driver = {
-	.driver = {
-		.name = TS_DRIVER_NAME,
-		.owner = THIS_MODULE,
-		.bus = &spi_bus_type,
-		.of_match_table = spi_matchs,
-	},
-	.id_table = spi_id_table,
-	.probe = gt9896s_spi_probe,
-	.remove = gt9896s_spi_remove,
-};
-
-/* release manully when prob failed */
-void gt9896s_ts_dev_release(void)
-{
-	if (gt9896s_pdev) {
-		platform_device_unregister(gt9896s_pdev);
-		kfree(gt9896s_pdev);
-		gt9896s_pdev = NULL;
-	}
-	spi_unregister_driver(&gt9896s_spi_driver);
 }
 
 static int __init gt9896s_spi_init(void)

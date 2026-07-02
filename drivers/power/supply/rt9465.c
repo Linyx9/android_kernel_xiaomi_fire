@@ -126,85 +126,85 @@ struct rt9465_info {
 static int rt9465_kick_wdt(struct charger_device *chg_dev);
 static int rt9465_reserved_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 reserved handler\n");
 	return 0;
 }
 
 static int rt9465_chg_treg_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465_chg treg handler\n");
 	return 0;
 }
 
 static int rt9465_chg_mivr_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg mivr handler\n");
 	return 0;
 }
 
 static int rt9465_pwr_rdy_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 pwr rdy handler\n");
 	return 0;
 }
 
 static int rt9465_chg_vbatsuv_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg vbatsuv handler\n");
 	return 0;
 }
 
 static int rt9465_chg_vbatov_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg vbatov handler\n");
 	return 0;
 }
 
 static int rt9465_chg_vbusov_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg vbusov handler\n");
 	return 0;
 }
 
 static int rt9465_chg_faulti_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg faulti handler\n");
 	return 0;
 }
 
 static int rt9465_chg_statci_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg statci handler\n");
 	return 0;
 }
 
 static int rt9465_temp_l_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 temp l handler\n");
 	return 0;
 }
 
 static int rt9465_temp_h_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 temp h handler\n");
 	return 0;
 }
 
 static int rt9465_chg_tmri_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg tmri handler\n");
 	return 0;
 }
 
 static int rt9465_chg_adpbadi_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg adpbadi handler\n");
 	return 0;
 }
 
 static int rt9465_chg_otpi_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg otpi handler\n");
 	return 0;
 }
 
@@ -212,7 +212,7 @@ static int rt9465_wdtmri_handler(struct rt9465_info *info)
 {
 	int ret = 0;
 
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 wdtmri handler\n");
 	ret = rt9465_kick_wdt(info->chg_dev);
 	if (ret < 0)
 		dev_notice(info->dev, "%s: kick wdt fail\n", __func__);
@@ -222,19 +222,19 @@ static int rt9465_wdtmri_handler(struct rt9465_info *info)
 
 static int rt9465_ssfinishi_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 ssfinishi handler\n");
 	return 0;
 }
 
 static int rt9465_chg_termi_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg termi handler\n");
 	return 0;
 }
 
 static int rt9465_chg_ieoci_handler(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 chg ieoci handler\n");
 	return 0;
 }
 
@@ -414,7 +414,7 @@ static int rt9465_register_rt_regmap(struct rt9465_info *info)
 	struct i2c_client *i2c = info->i2c;
 	struct rt_regmap_properties *prop = NULL;
 
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 register rt_regmap\n");
 
 	prop = devm_kzalloc(&i2c->dev, sizeof(struct rt_regmap_properties),
 		GFP_KERNEL);
@@ -766,7 +766,7 @@ static int rt9465_sw_workaround(struct rt9465_info *info)
 {
 	int ret = 0;
 
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 sw workaround\n");
 
 	/* Enter hidden mode */
 	rt9465_enable_hidden_mode(info, true);
@@ -796,7 +796,7 @@ static irqreturn_t rt9465_irq_handler(int irq, void *data)
 	u8 stat[RT9465_IRQSTAT_MAX] = {0};
 	struct rt9465_info *info = (struct rt9465_info *)data;
 
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 irq handler\n");
 
 	/* read event */
 	ret = rt9465_i2c_block_read(info, RT9465_REG_CHG_STATC, ARRAY_SIZE(evt),
@@ -879,14 +879,14 @@ err:
 
 static int rt9465_maskall_irq(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 maskall irq\n");
 	return rt9465_i2c_block_write(info, RT9465_REG_CHG_STATC_MASK,
 		ARRAY_SIZE(rt9465_irq_maskall), rt9465_irq_maskall);
 }
 
 static int rt9465_init_irq(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 init irq\n");
 	return rt9465_i2c_block_write(info, RT9465_REG_CHG_STATC,
 		ARRAY_SIZE(rt9465_irqmask), rt9465_irqmask);
 }
@@ -933,7 +933,7 @@ static inline int rt9465_enable_wdt(struct rt9465_info *info, bool en)
 
 static inline int rt9465_reset_chip(struct rt9465_info *info)
 {
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 reset chip\n");
 	return rt9465_i2c_write_byte(info, RT9465_REG_CHG_CTRL0, 0x80);
 }
 
@@ -1042,7 +1042,7 @@ static int rt9465_parse_dt(struct rt9465_info *info, struct device *dev)
 	int len = 0;
 	char *en_name = NULL;
 
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 parse dt\n");
 
 	if (!np) {
 		dev_notice(info->dev, "%s: no device node\n", __func__);
@@ -1235,7 +1235,7 @@ static int rt9465_init_setting(struct rt9465_info *info)
 	u8 evt[RT9465_IRQIDX_MAX] = {0};
 	struct rt9465_desc *desc = info->desc;
 
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 init setting\n");
 
 	ret = rt9465_maskall_irq(info);
 	if (ret < 0) {
@@ -1563,8 +1563,7 @@ static struct charger_ops rt9465_chg_ops = {
 /* I2C driver function       */
 /* ========================= */
 
-static int rt9465_probe(struct i2c_client *i2c,
-	const struct i2c_device_id *dev_id)
+static int rt9465_probe(struct i2c_client *i2c)
 {
 	int ret = 0;
 	struct rt9465_info *info = NULL;
@@ -1631,12 +1630,11 @@ err_parse_dt:
 	return ret;
 }
 
-static int rt9465_remove(struct i2c_client *i2c)
+static void rt9465_remove(struct i2c_client *i2c)
 {
-	int ret = 0;
 	struct rt9465_info *info = i2c_get_clientdata(i2c);
 
-	pr_info("%s\n", __func__);
+	pr_info("rt9465 remove\n");
 
 	if (info) {
 		if (info->chg_dev)
@@ -1650,7 +1648,6 @@ static int rt9465_remove(struct i2c_client *i2c)
 		mutex_destroy(&info->irq_access_lock);
 		mutex_destroy(&info->hidden_mode_lock);
 	}
-	return ret;
 }
 
 static void rt9465_shutdown(struct i2c_client *i2c)
@@ -1658,7 +1655,7 @@ static void rt9465_shutdown(struct i2c_client *i2c)
 	int ret = 0;
 	struct rt9465_info *info = i2c_get_clientdata(i2c);
 
-	pr_info("%s\n", __func__);
+	pr_info("rt9465 shutdown\n");
 
 	if (info) {
 		ret = rt9465_reset_chip(info);
@@ -1672,7 +1669,7 @@ static int rt9465_suspend(struct device *dev)
 {
 	struct rt9465_info *info = dev_get_drvdata(dev);
 
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 suspend\n");
 	if (device_may_wakeup(dev))
 		enable_irq_wake(info->irq);
 
@@ -1683,7 +1680,7 @@ static int rt9465_resume(struct device *dev)
 {
 	struct rt9465_info *info = dev_get_drvdata(dev);
 
-	dev_info(info->dev, "%s\n", __func__);
+	dev_info(info->dev, "rt9465 resume\n");
 	if (device_may_wakeup(dev))
 		disable_irq_wake(info->irq);
 

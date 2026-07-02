@@ -1,0 +1,41 @@
+/*[TN.NJDC] sensor overlay file.start*/
+&i2c3 {
+	status = "okay";
+	awinic_sar@12 {
+		compatible = "awinic,aw96305";
+		reg = <0x12>;
+		sar-num = < 0 >;
+		interrupt-parent = < &pio >;
+		interrupts = <19 0>;
+		irq-gpio = <&pio 19 0>;
+		//vcc0-supply = <&pm660l_l4>;
+		channel_use_flag = <0x1F>;
+		aw_sar,update_fw;
+		aw_sar,use_plug_cail;
+		/* private node belongs to aw963xx */
+		start-mode = < 1 >; // 0: start in rom  1: start in ram
+		irq-mux = < 2 >; // set csx as irq pin. config this field when connect to aw96308/aw96310
+		status = "okay";
+	};
+
+	sar_hx9031as@28 {
+		compatible = "tyhx,hx9031as";
+		reg = <0x28>;
+		i2c_num = <3>;
+		i2c_addr = <0x28 0 0 0>;
+		interrupt-parent = <&pio>;
+		interrupts = <19 IRQ_TYPE_EDGE_FALLING>;
+		irq-gpio = <&pio 19 0>;
+		tyhx,channel-flag = <0x1F>;     //必要，每个channel对应一个input设备，每个bit对应一个channel（channel）。如0xF代表开启0，1，2，3通道
+		//tyhx,power-supply-type =<1>;  //可选，如何供电，如果有的话，客户自行移植
+		status = "okay";
+    };
+};
+&odm {
+    ant_det: ant_det {
+		status = "okay";
+		compatible = "tinno,ant_det";
+		tinno,ant-det-gpio = <&pio 65 0>;
+	};
+};
+/*[TN.NJDC] sensor overlay file.end*/

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2023 MediaTek Inc.
  */
 
 #include "tpd.h"
@@ -278,12 +278,9 @@ static long tpd_unlocked_ioctl(struct file *file,
 
 	long err = 0;
 
-	if (_IOC_DIR(cmd) & _IOC_READ)
-		err = !access_ok(VERIFY_WRITE,
-			(void __user *)arg, _IOC_SIZE(cmd));
-	else if (_IOC_DIR(cmd) & _IOC_WRITE)
-		err = !access_ok(VERIFY_READ,
-			(void __user *)arg, _IOC_SIZE(cmd));
+	if ((_IOC_DIR(cmd) & _IOC_READ) || (_IOC_DIR(cmd) & _IOC_WRITE))
+		err = !access_ok((void __user *)arg, _IOC_SIZE(cmd));
+
 	if (err) {
 		pr_info("tpd: access error: %08X, (%2d, %2d)\n",
 			cmd, _IOC_DIR(cmd), _IOC_SIZE(cmd));
@@ -371,8 +368,6 @@ static struct miscdevice tpd_misc_device = {
 
 
 /* function definitions */
-static int __init tpd_device_init(void);
-static void __exit tpd_device_exit(void);
 static int tpd_probe(struct platform_device *pdev);
 static int tpd_remove(struct platform_device *pdev);
 static struct work_struct tpd_init_work;
@@ -419,8 +414,6 @@ static int tpd_fb_notifier_callback(
 	struct fb_event *evdata = NULL;
 	int blank;
 	int err = 0;
-
-	TPD_DEBUG("%s\n", __func__);
 
 	evdata = data;
 	/* If we aren't interested in this event, skip it immediately ... */
@@ -604,14 +597,14 @@ static int tpd_probe(struct platform_device *pdev)
 		TPD_RES_X = 2048;
 	if (1600 == TPD_RES_Y)
 		TPD_RES_Y = 1536;
-	pr_debug("mtk_tpd: TPD_RES_X = %lu, TPD_RES_Y = %lu\n",
+	TPD_DMESG("mtk_tpd: TPD_RES_X = %lu, TPD_RES_Y = %lu\n",
 		TPD_RES_X, TPD_RES_Y);
 
 	tpd_mode = TPD_MODE_NORMAL;
 	tpd_mode_axis = 0;
 	tpd_mode_min = TPD_RES_Y / 2;
 	tpd_mode_max = TPD_RES_Y;
-	tpd_mode_keypad_tolerance = TPD_RES_X * TPD_RES_X / 1600;
+	tpd_mode_keypad_tolerance = TPD_RES_X * TPD_RES_X / 4320;
 	/* struct input_dev dev initialization and registration */
 	tpd->dev->name = TPD_DEVICE;
 	set_bit(EV_ABS, tpd->dev->evbit);
@@ -724,7 +717,7 @@ static void tpd_init_work_callback(struct work_struct *work)
 	if (platform_driver_register(&tpd_driver) != 0)
 		TPD_DMESG("unable to register touch panel driver.\n");
 }
-static int __init tpd_device_init(void)
+int tpd_device_init(void)
 {
 	int res = 0;
 
@@ -736,16 +729,18 @@ static int __init tpd_device_init(void)
 		pr_info("tpd : touch device init failed res:%d\n", res);
 	return 0;
 }
+EXPORT_SYMBOL(tpd_device_init);
 /* should never be called */
-static void __exit tpd_device_exit(void)
+void tpd_device_exit(void)
 {
 	TPD_DMESG("MediaTek touch panel driver exit\n");
 	/* input_unregister_device(tpd->dev); */
 	platform_driver_unregister(&tpd_driver);
 }
+EXPORT_SYMBOL(tpd_device_exit);
 
-late_initcall(tpd_device_init);
-module_exit(tpd_device_exit);
+//late_initcall(tpd_device_init);
+//module_exit(tpd_device_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MediaTek touch panel driver");

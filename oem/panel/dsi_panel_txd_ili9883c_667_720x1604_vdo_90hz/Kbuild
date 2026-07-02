@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_LAMU_PANEL
+	PANEL_TXD_ILI9883C_OBJS += dsi-panel-txd-ili9883c-667-720x1604-vdo-90hz.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_PANEL) += dsi_panel_txd_ili9883c_667_720x1604_vdo_90hz.o
+dsi_panel_txd_ili9883c_667_720x1604_vdo_90hz-y := $(PANEL_TXD_ILI9883C_OBJS)
+

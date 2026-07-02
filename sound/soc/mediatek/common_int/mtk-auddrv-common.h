@@ -170,5 +170,19 @@ struct aud_reg_string {
 	unsigned int address;
 };
 
+int mtk_i2s0_soc_platform_init(void);
+void mtk_i2s0_soc_platform_exit(void);
+int mtk_dl2_soc_platform_init(void);
+void mtk_dl2_soc_platform_exit(void);
+int mtk_soc_voice_md2_bt_platform_init(void);
+void mtk_soc_voice_md2_bt_platform_exit(void);
+int mtk_soc_voice_md2_platform_init(void);
+void mtk_soc_voice_md2_platform_exit(void);
+int mtk_soc_voice_platform_init(void);
+void mtk_soc_voice_platform_exit(void);
+int mtk_soc_voice_bt_platform_init(void);
+void mtk_soc_voice_bt_platform_exit(void);
+int mtk_voice_usb_driver_init(void);
+void mtk_voice_usb_driver_exit(void);
 
 #endif

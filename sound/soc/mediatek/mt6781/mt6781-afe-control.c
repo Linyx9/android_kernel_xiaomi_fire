@@ -9,7 +9,6 @@
 #include "mt6781-afe-common.h"
 #include <linux/pm_runtime.h>
 
-#include "../common/mtk-sp-afe-external.h"
 #include "../common/mtk-sram-manager.h"
 
 /* don't use this directly if not necessary */
@@ -20,39 +19,6 @@ int mt6781_set_local_afe(struct mtk_base_afe *afe)
 	local_afe = afe;
 	return 0;
 }
-
-enum {
-	MTK_AFE_RATE_8K = 0,
-	MTK_AFE_RATE_11K = 1,
-	MTK_AFE_RATE_12K = 2,
-	MTK_AFE_RATE_384K = 3,
-	MTK_AFE_RATE_16K = 4,
-	MTK_AFE_RATE_22K = 5,
-	MTK_AFE_RATE_24K = 6,
-	MTK_AFE_RATE_352K = 7,
-	MTK_AFE_RATE_32K = 8,
-	MTK_AFE_RATE_44K = 9,
-	MTK_AFE_RATE_48K = 10,
-	MTK_AFE_RATE_88K = 11,
-	MTK_AFE_RATE_96K = 12,
-	MTK_AFE_RATE_176K = 13,
-	MTK_AFE_RATE_192K = 14,
-	MTK_AFE_RATE_260K = 15,
-};
-
-enum {
-	MTK_AFE_DAI_MEMIF_RATE_8K = 0,
-	MTK_AFE_DAI_MEMIF_RATE_16K = 1,
-	MTK_AFE_DAI_MEMIF_RATE_32K = 2,
-	MTK_AFE_DAI_MEMIF_RATE_48K = 3,
-};
-
-enum {
-	MTK_AFE_PCM_RATE_8K = 0,
-	MTK_AFE_PCM_RATE_16K = 1,
-	MTK_AFE_PCM_RATE_32K = 2,
-	MTK_AFE_PCM_RATE_48K = 3,
-};
 
 unsigned int mt6781_general_rate_transform(struct device *dev,
 					   unsigned int rate)
@@ -91,7 +57,7 @@ unsigned int mt6781_general_rate_transform(struct device *dev,
 	case 384000:
 		return MTK_AFE_RATE_384K;
 	default:
-		dev_warn(dev, "%s(), rate %u invalid, use %d!!!\n",
+		dev_info(dev, "%s(), rate %u invalid, use %d!!!\n",
 			 __func__,
 			 rate, MTK_AFE_RATE_48K);
 		return MTK_AFE_RATE_48K;
@@ -111,7 +77,7 @@ static unsigned int dai_memif_rate_transform(struct device *dev,
 	case 48000:
 		return MTK_AFE_DAI_MEMIF_RATE_48K;
 	default:
-		dev_warn(dev, "%s(), rate %u invalid, use %d!!!\n",
+		dev_info(dev, "%s(), rate %u invalid, use %d!!!\n",
 			 __func__,
 			 rate, MTK_AFE_DAI_MEMIF_RATE_16K);
 		return MTK_AFE_DAI_MEMIF_RATE_16K;
@@ -131,7 +97,7 @@ static unsigned int pcm_rate_transform(struct device *dev,
 	case 48000:
 		return MTK_AFE_PCM_RATE_48K;
 	default:
-		dev_warn(dev, "%s(), rate %u invalid, use %d!!!\n",
+		dev_info(dev, "%s(), rate %u invalid, use %d!!!\n",
 			 __func__,
 			 rate, MTK_AFE_PCM_RATE_32K);
 		return MTK_AFE_PCM_RATE_32K;
@@ -159,7 +125,7 @@ int mt6781_enable_dc_compensation(bool enable)
 		return -EPERM;
 
 	if (pm_runtime_status_suspended(local_afe->dev))
-		dev_warn(local_afe->dev, "%s(), status suspended\n", __func__);
+		dev_info(local_afe->dev, "%s(), status suspended\n", __func__);
 
 	pm_runtime_get_sync(local_afe->dev);
 	regmap_update_bits(local_afe->regmap,
@@ -169,6 +135,7 @@ int mt6781_enable_dc_compensation(bool enable)
 	pm_runtime_put(local_afe->dev);
 	return 0;
 }
+EXPORT_SYMBOL(mt6781_enable_dc_compensation);
 
 int mt6781_set_lch_dc_compensation(int value)
 {
@@ -176,7 +143,7 @@ int mt6781_set_lch_dc_compensation(int value)
 		return -EPERM;
 
 	if (pm_runtime_status_suspended(local_afe->dev))
-		dev_warn(local_afe->dev, "%s(), status suspended\n", __func__);
+		dev_info(local_afe->dev, "%s(), status suspended\n", __func__);
 
 	pm_runtime_get_sync(local_afe->dev);
 	regmap_write(local_afe->regmap,
@@ -185,6 +152,7 @@ int mt6781_set_lch_dc_compensation(int value)
 	pm_runtime_put(local_afe->dev);
 	return 0;
 }
+EXPORT_SYMBOL(mt6781_set_lch_dc_compensation);
 
 int mt6781_set_rch_dc_compensation(int value)
 {
@@ -192,7 +160,7 @@ int mt6781_set_rch_dc_compensation(int value)
 		return -EPERM;
 
 	if (pm_runtime_status_suspended(local_afe->dev))
-		dev_warn(local_afe->dev, "%s(), status suspended\n", __func__);
+		dev_info(local_afe->dev, "%s(), status suspended\n", __func__);
 
 	pm_runtime_get_sync(local_afe->dev);
 	regmap_write(local_afe->regmap,
@@ -201,6 +169,7 @@ int mt6781_set_rch_dc_compensation(int value)
 	pm_runtime_put(local_afe->dev);
 	return 0;
 }
+EXPORT_SYMBOL(mt6781_set_rch_dc_compensation);
 
 int mt6781_adda_dl_gain_control(bool mute)
 {
@@ -210,7 +179,7 @@ int mt6781_adda_dl_gain_control(bool mute)
 		return -EPERM;
 
 	if (pm_runtime_status_suspended(local_afe->dev))
-		dev_warn(local_afe->dev, "%s(), status suspended\n", __func__);
+		dev_info(local_afe->dev, "%s(), status suspended\n", __func__);
 
 	pm_runtime_get_sync(local_afe->dev);
 
@@ -230,6 +199,7 @@ int mt6781_adda_dl_gain_control(bool mute)
 	pm_runtime_put(local_afe->dev);
 	return 0;
 }
+EXPORT_SYMBOL(mt6781_adda_dl_gain_control);
 
 int mt6781_dai_set_priv(struct mtk_base_afe *afe, int id,
 			int priv_size, const void *priv_data)
@@ -267,9 +237,9 @@ int mtk_audio_request_sram(dma_addr_t *phys_addr,
 
 	ret = mtk_audio_sram_allocate(local_afe->sram, phys_addr, virt_addr,
 					  length, user,
-					  SNDRV_PCM_FORMAT_S16_LE, true);
+					  SNDRV_PCM_FORMAT_S16_LE, true, false);
 	if (ret) {
-		dev_warn(local_afe->dev, "%s(), allocate sram fail, ret %d\n",
+		dev_info(local_afe->dev, "%s(), allocate sram fail, ret %d\n",
 			 __func__, ret);
 		pm_runtime_put(local_afe->dev);
 		return ret;

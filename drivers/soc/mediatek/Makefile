@@ -1,25 +1,83 @@
-obj-$(CONFIG_MTK_PMQOS) += mtk-pm-qos.o
+# SPDX-License-Identifier: GPL-2.0-only
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/clk/mediatek/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/cmdq/mailbox
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/vcp/include/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/vcp/rv/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mmdvfs/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mmdebug/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/iommu/arm/arm-smmu-v3/
+ccflags-y += -I$(srctree)/drivers/soc/mediatek/
 obj-$(CONFIG_MTK_CMDQ) += mtk-cmdq-helper.o
-
-ccflags-$(CONFIG_MTK_CMDQ_MBOX_EXT) += -I$(srctree)/drivers/misc/mediatek/cmdq/mailbox
-
-obj-$(CONFIG_MTK_INFRACFG) += mtk-infracfg.o mtk-scpsys-ext.o
-obj-$(CONFIG_MTK_DVFSRC) += mtk-dvfsrc.o
-ifneq (,$(filter $(CONFIG_MTK_PLATFORM), "mt6768" "mt6739" "mt6785" "mt6853" "mt6771" "mt6873" "mt6885"))
-obj-$(CONFIG_MTK_PMIC_WRAP) += mtk-pmic-wrap_v1.o
-else
-obj-$(CONFIG_MTK_PMIC_WRAP) += mtk-pmic-wrap.o
-endif
-obj-$(CONFIG_MTK_SCPSYS) += mtk-scpsys.o
-obj-$(CONFIG_MTK_SCPSYS_BRINGUP) += mtk-scpsys-bringup.o
-obj-$(CONFIG_MTK_DEVAPC) += devapc/
-obj-$(CONFIG_MTK_DEVMPU) += devmpu/
-obj-$(CONFIG_MTK_CMDQ_MBOX) += mtk-cmdq-helper.o
-obj-$(CONFIG_MTK_MBOX) += mtk-mbox.o
-obj-$(CONFIG_MTK_MMDVFS) += mtk-mmdvfs.o
-obj-$(CONFIG_MTK_LPM) += mtk-lpm.o
-obj-$(CONFIG_MTK_SOCINFO) += mtk-socinfo.o
-obj-$(CONFIG_MTK_MBOX) += mtk-mbox.o
+obj-$(CONFIG_MTK_DVFSRC) += mtk-dvfsrc.o mtk-dvfsrc-start.o
 obj-$(CONFIG_MTK_IPI) += mtk_tinysys_ipi.o
-
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
+obj-$(CONFIG_MTK_MBOX) += mtk-mbox.o
+obj-$(CONFIG_DEVICE_MODULES_MTK_PMIC_WRAP) += mtk-pmic-wrap.o
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys.o mtk-pm-domain-disable-unused.o
+ifneq ($(filter m,$(CONFIG_DEVICE_MODULES_MTK_SCPSYS)),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += scpsys-dummy.o
+scpsys-dummy-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-dummy.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6768.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6768.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6761.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6761.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6765.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6765.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6781.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6781.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6833.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6833.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6853.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6853.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6877.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6877.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6886.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6886.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6893.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6893.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6897.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6897.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6899.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6899.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6983.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6983.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6985.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6985.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6989.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6989.o mtk-scpsys-bringup.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6991-spm.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6991-spm.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6991-mmpc.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS) += mtk-scpsys-mt6991-mmpc.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mtk-scpsys-mt6991-ivi.c),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS_IVI) += mtk-scpsys-mt6991-ivi.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/mt8188-pm-domains.h),)
+obj-$(CONFIG_DEVICE_MODULES_MTK_SCPSYS_PM_DOMAINS) += mtk-pm-domains.o
+endif
+obj-$(CONFIG_DEVICE_MODULES_MTK_MMSYS) += mtk-mmsys.o
+obj-$(CONFIG_DEVICE_MODULES_MTK_DEVAPC) += devapc/
+obj-$(CONFIG_MTK_DEVMPU) += devmpu/
+obj-$(CONFIG_MTK_MMDVFS) += mtk-mmdvfs.o
+ifneq ($(filter y m,$(CONFIG_MTK_TINYSYS_VCP_SUPPORT)),)
+obj-$(CONFIG_MTK_MMDVFS) += mtk-mmdvfs-v3.o
+endif
+obj-$(CONFIG_DEVICE_MODULES_MTK_MMSYS) += mtk-mutex.o
+obj-$(CONFIG_MTK_SOCINFO) += mtk-socinfo.o

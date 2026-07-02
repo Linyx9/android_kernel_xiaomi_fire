@@ -75,11 +75,11 @@ static int mtktspmic_get_temp(struct thermal_zone_device *thermal, int *t)
 	*t = mtktspmic_get_hw_temp_1();
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -255,7 +255,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 
 	}
 	return 0;
@@ -371,7 +371,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		mtktspmic_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtktspmic_write",
 					"Bad argument");
@@ -455,7 +455,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 	}
 
 	mtktspmic_dprintk("[%s] bad argument\n", __func__);
-    #ifdef CONFIG_MTK_AEE_FEATURE
+    #if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 							"mtktspmic_write",
 							"Bad argument");
@@ -670,3 +670,5 @@ static void __exit mtktspmic_exit(void)
 }
 late_initcall(mtktspmic_init);
 module_exit(mtktspmic_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

@@ -7,6 +7,9 @@
 #define __CCCI_MODEM_H__
 
 #include "mt-plat/mtk_ccci_common.h"
+#include "fsm/ap_md_mem.h"
+
+#define HIRES_TIME_VER 1
 
 enum MD_FORCE_ASSERT_TYPE {
 	MD_FORCE_ASSERT_RESERVE = 0x000,
@@ -16,6 +19,8 @@ enum MD_FORCE_ASSERT_TYPE {
 	MD_FORCE_ASSERT_BY_USER_TRIGGER		= 0x400,
 	MD_FORCE_ASSERT_BY_MD_WDT			= 0x500,
 	MD_FORCE_ASSERT_BY_AP_MPU			= 0x600,
+	MD_FORCE_ASSERT_BY_SPMI_TRIGGER		= 0x700,
+	MD_FORCE_ASSERT_BY_PMIF_TRIGGER		= 0x800,
 };
 
 enum MODEM_DUMP_FLAG {
@@ -24,12 +29,11 @@ enum MODEM_DUMP_FLAG {
 	DUMP_FLAG_CLDMA = (1 << 1),
 	DUMP_FLAG_REG = (1 << 2), /* dump modem reg. */
 	DUMP_FLAG_SMEM_EXP = (1 << 3),
-	DUMP_FLAG_IMAGE = (1 << 4),
 	DUMP_FLAG_LAYOUT = (1 << 5),
 	DUMP_FLAG_QUEUE_0 = (1 << 6),
 	DUMP_FLAG_QUEUE_0_1 = (1 << 7),
 	DUMP_FLAG_CCIF_REG = (1 << 8), /* dump ccif reg. */
-	DUMP_FLAG_SMEM_MDSLP = (1 << 9),
+	DUMP_FLAG_SMEM_MDSLP = (1 << 9), /* can be phase-out */
 	DUMP_FLAG_MD_WDT = (1 << 10),
 	DUMP_FLAG_SMEM_CCISM = (1<<11),
 	DUMP_MD_BOOTUP_STATUS = (1<<12),
@@ -37,6 +41,7 @@ enum MODEM_DUMP_FLAG {
 	DUMP_FLAG_SMEM_CCB_CTRL = (1<<14),
 	DUMP_FLAG_SMEM_CCB_DATA = (1<<15),
 	DUMP_FLAG_PCCIF_REG = (1 << 16),
+	DUMP_FLAG_TOGGLE_NET_SPD = (1 << 17),
 	DUMP_FLAG_GET_TRAFFIC = (1 << 18),
 };
 
@@ -94,44 +99,6 @@ enum {
 	AP_MD_HS_V2 = 2,
 };
 
-enum {
-	SMF_CLR_RESET = (1 << 0), /* clear when reset modem */
-	SMF_NCLR_FIRST = (1 << 1), /* do not clear even in MD first boot up */
-	SMF_MD3_RELATED = (1 << 2), /* MD3 related share memory */
-};
-
-struct ccci_mem_region {
-	phys_addr_t base_md_view_phy;
-	phys_addr_t base_ap_view_phy;
-	void __iomem *base_ap_view_vir;
-	unsigned int size;
-};
-
-struct ccci_smem_region {
-	/* pre-defined */
-	unsigned int id;
-	unsigned int offset; /* in bank4 */
-	unsigned int size;
-	unsigned int flag;
-	/* runtime calculated */
-	phys_addr_t base_md_view_phy;
-	phys_addr_t base_ap_view_phy;
-	void __iomem *base_ap_view_vir;
-};
-
-struct ccci_mem_layout {
-	/* MD RO and RW (bank0) */
-	struct ccci_mem_region md_bank0;
-
-	/* share memory (bank4) */
-	struct ccci_mem_region md_bank4_noncacheable_total;
-	struct ccci_mem_region md_bank4_cacheable_total;
-
-	/* share memory detail */
-	struct ccci_smem_region *md_bank4_noncacheable;
-	struct ccci_smem_region *md_bank4_cacheable;
-};
-
 enum{
 	CCCI_FEATURE_NOT_EXIST = 0,
 	CCCI_FEATURE_NOT_SUPPORT = 1,
@@ -180,6 +147,10 @@ enum{
 	NVRAM_CACHE_SHARE_MEMORY = 36,
 	SECURITY_SHARE_MEMORY = 37,
 	MD_MEM_AP_VIEW_INF = 38,
+	AMMS_DRDI_COPY = 45,
+	SPM_MD_PARA = 54,
+	LOW_POWER_SHARE_MEMORY = 56,
+	DBM_SHARE_MEMORY = 57,
 	MD_RUNTIME_FEATURE_ID_MAX,
 }; /* MD_CCCI_RUNTIME_FEATURE_ID; */
 
@@ -222,9 +193,7 @@ struct md_query_ap_feature {
 	u32 head_pattern;
 	struct ccci_feature_support feature_set[FEATURE_COUNT];
 	u32 tail_pattern;
-#if (MD_GENERATION >= 6293)
 	u8  reserved[CCCI_MD_RUNTIME_RESERVED_SIZE];
-#endif
 };
 
 struct ap_query_md_feature {
@@ -238,9 +207,7 @@ struct ap_query_md_feature {
 	u32 set_md_mpu_start_addr;
 	u32 set_md_mpu_total_size;
 	u32 tail_pattern;
-#if (MD_GENERATION >= 6293)
 	u8  reserved[CCCI_AP_RUNTIME_RESERVED_SIZE];
-#endif
 };
 
 struct ap_query_md_feature_v2_1 {
@@ -266,6 +233,7 @@ enum HIF_EX_STAGE {
 	HIF_EX_CLEARQ_DONE, /* interrupt */
 	HIF_EX_CLEARQ_ACK, /* AP->MD */
 	HIF_EX_ALLQ_RESET, /* polling */
+	HIF_EX_STOP_EE_NOTIFY,
 };
 
 enum {
@@ -338,7 +306,7 @@ struct ccci_runtime_feature {
 	struct ccci_feature_support support_info;
 	u8 reserved[2];
 	u32 data_len;
-	u8 data[0];
+	u8 data[];
 };
 
 struct ccci_runtime_boot_info {
@@ -357,6 +325,10 @@ struct ccci_misc_info_element {
 	u32 feature[4];
 };
 
+struct ccci_clib_time_info_element {
+	u32 feature[8];
+};
+
 struct ccci_runtime_md_mem_ap_addr {
 	u32 md_view_phy;
 	u32 size;
@@ -370,28 +342,9 @@ enum {
 	MD_FLIGHT_MODE_LEAVE = 2
 };/* FLIGHT_STAGE */
 
-struct ccci_mem_layout *ccci_md_get_mem(int md_id);
-struct ccci_smem_region *ccci_md_get_smem_by_user_id(int md_id,
-	enum SMEM_USER_ID user_id);
-void ccci_md_clear_smem(int md_id, int first_boot);
-int ccci_md_start(unsigned char md_id);
-int ccci_md_soft_start(unsigned char md_id, unsigned int sim_mode);
-int ccci_md_send_runtime_data(unsigned char md_id);
-int ccci_md_reset_pccif(unsigned char md_id);
-void ccci_md_dump_info(unsigned char md_id, enum MODEM_DUMP_FLAG flag,
-	void *buff, int length);
-int ccci_md_pre_stop(unsigned char md_id, unsigned int stop_type);
-int ccci_md_stop(unsigned char md_id, unsigned int stop_type);
-int ccci_md_soft_stop(unsigned char md_id, unsigned int sim_mode);
-int ccci_md_force_assert(unsigned char md_id, enum MD_FORCE_ASSERT_TYPE type,
+int ccci_md_force_assert(enum MD_FORCE_ASSERT_TYPE type,
 	char *param, int len);
-int ccci_md_prepare_runtime_data(unsigned char md_id, unsigned char *data,
-	int length);
-void ccci_md_exception_handshake(unsigned char md_id, int timeout);
-int ccci_md_send_ccb_tx_notify(unsigned char md_id, int core_id);
-int ccci_md_set_boot_data(unsigned char md_id, unsigned int data[], int len);
-int ccci_md_pre_start(unsigned char md_id);
-int ccci_md_post_start(unsigned char md_id);
+//int ccci_md_send_ccb_tx_notify(int core_id);
 
 struct ccci_modem_cfg {
 	unsigned int load_type;
@@ -409,39 +362,34 @@ struct ccci_sim_setting {
 struct ccci_per_md {
 	unsigned int md_capability;
 	unsigned int md_dbg_dump_flag;
-	enum MD_BOOT_MODE md_boot_mode;
-	char img_post_fix[IMG_POSTFIX_LEN];
-	struct ccci_image_info img_info[IMG_NUM];
+	enum MD_BOOT_MODE md_boot_mode; //maybe: can be moved to fsm_ioctl.c, or ccci_per_md to fsm.
+	char img_post_fix[IMG_POSTFIX_LEN]; //maybe: removed after md memory module cleaning
+	struct ccci_image_info img_info[IMG_NUM]; //maybe: removed after md memory module cleaning
 	unsigned int md_boot_data[16];
 	unsigned int sim_type;
 	struct ccci_modem_cfg config;
-	unsigned int md_img_exist[MAX_IMG_NUM];
+	unsigned int md_img_exist[MAX_IMG_NUM]; //maybe: removed after md memory module cleaning
 	unsigned int md_img_type_is_set;
 	struct ccci_sim_setting sim_setting;
-	int data_usb_bypass;
-	int dtr_state; /* only for usb bypass */
+	int data_usb_bypass; //maybe: can be moved to usb bypass
+	int dtr_state; /* only for usb bypass */ //maybe: can be moved to usb bypass
 	unsigned int is_in_ee_dump;
 
 #ifdef CCCI_SKB_TRACE
 	unsigned long long netif_rx_profile[8];
 #endif
 };
-struct ccci_per_md *ccci_get_per_md_data(unsigned char md_id);
+struct ccci_per_md *ccci_get_per_md_data(void);
 
-static inline int ccci_md_get_cap_by_id(int md_id)
+static inline int ccci_md_get_cap_by_id(void)
 {
-	struct ccci_per_md *per_md_data = ccci_get_per_md_data(md_id);
+	struct ccci_per_md *per_md_data = ccci_get_per_md_data();
 
 	if (per_md_data == NULL)
 		return -CCCI_ERR_MD_INDEX_NOT_FOUND;
 	return per_md_data->md_capability;
 }
 
-struct ccci_runtime_feature *ccci_md_get_rt_feature_by_id(unsigned char md_id,
-	u8 feature_id, u8 ap_query_md);
-
-int ccci_md_parse_rt_feature(unsigned char md_id,
-	struct ccci_runtime_feature *rt_feature, void *data, u32 data_len);
-extern int ccci_register_dev_node(const char *name, int major_id, int minor);
+//extern int ccci_register_dev_node(const char *name, int major_id, int minor);
 
 #endif

@@ -36,7 +36,7 @@
 #include "sspm_reservedmem_define.h"
 #define MEMORY_TBL_ELEM_NUM (2)
 
-#ifdef CONFIG_OF_RESERVED_MEM
+#if IS_ENABLED(CONFIG_OF_RESERVED_MEM)
 #include <linux/of_reserved_mem.h>
 
 #define SSPM_MEM_RESERVED_KEY "mediatek,reserve-memory-sspm_share"
@@ -46,14 +46,29 @@ static phys_addr_t sspm_mem_base_phys;
 static phys_addr_t sspm_mem_base_virt;
 static phys_addr_t sspm_mem_size;
 
-#ifdef CONFIG_OF_RESERVED_MEM
-static int __init sspm_reserve_mem_of_init(struct reserved_mem *rmem)
+static void sspm_reserve_memory_ioremap(struct platform_device *pdev)
 {
 	unsigned int id;
 	phys_addr_t accumlate_memory_size = 0;
 
-	sspm_mem_base_phys = (phys_addr_t) rmem->base;
-	sspm_mem_size = (phys_addr_t) rmem->size;
+	struct device_node *rmem_node;
+	struct reserved_mem *rmem;
+
+	/* Get reserved memory */
+	rmem_node = of_find_compatible_node(NULL, NULL, SSPM_MEM_RESERVED_KEY);
+	if (!rmem_node) {
+		pr_err("[SSPM] no node for reserved memory\n");
+		return;
+	}
+
+	rmem = of_reserved_mem_lookup(rmem_node);
+	if (!rmem) {
+		pr_err("[SSPM] cannot lookup reserved memory\n");
+		return;
+	}
+
+	sspm_mem_base_phys = rmem->base;
+	sspm_mem_size = rmem->size;
 
 	pr_debug("[SSPM] phys:0x%llx - 0x%llx (0x%llx)\n",
 		(unsigned long long)rmem->base,
@@ -72,12 +87,7 @@ static int __init sspm_reserve_mem_of_init(struct reserved_mem *rmem)
 				sspm_reserve_mblock[id].size,
 			sspm_reserve_mblock[id].size);
 	}
-	return 0;
 }
-
-RESERVEDMEM_OF_DECLARE(sspm_reservedmem, SSPM_MEM_RESERVED_KEY,
-	sspm_reserve_mem_of_init);
-#endif
 
 phys_addr_t sspm_reserve_mem_get_phys(unsigned int id)
 {
@@ -139,6 +149,8 @@ int sspm_reserve_memory_init(struct platform_device *pdev)
 	if (NUMS_MEM_ID == 0)
 		return 0;
 
+	sspm_reserve_memory_ioremap(sspm_pdev);
+
 	if (sspm_mem_base_phys == 0)
 		return -1;
 	/* Get reserved memory */
@@ -199,7 +211,7 @@ int sspm_reserve_memory_init(struct platform_device *pdev)
 	 * or sspm_reserve_mblock does not match dts
 	 */
 
-	BUG_ON(accumlate_memory_size > sspm_mem_size);
+	WARN_ON(accumlate_memory_size > sspm_mem_size);
 #ifdef DEBUG
 	for (id = 0; id < NUMS_MEM_ID; id++) {
 		pr_debug("[SSPM][mem_reserve-%d] ", id);

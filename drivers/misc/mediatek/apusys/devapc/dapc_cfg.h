@@ -1,8 +1,7 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2020 MediaTek Inc.
  */
-
 #ifndef __APUSYS_DAPC_CFG_H__
 #define __APUSYS_DAPC_CFG_H__
 

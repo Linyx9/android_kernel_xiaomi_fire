@@ -445,7 +445,6 @@ static struct SET_PD_BLOCK_INFO_T imgsensor_pd_info =
  * };
  */
 
-
 static kal_uint16 read_cmos_sensor(kal_uint32 addr)
 {
 	kal_uint16 get_byte = 0;
@@ -457,35 +456,6 @@ static kal_uint16 read_cmos_sensor(kal_uint32 addr)
 	return get_byte;
 }
 
-#if 0
-static void write_cmos_sensor_burst(
-				kal_uint32 addr, u8 *reg_buf, kal_uint32 size)
-{
-	struct imx386_write_buffer buf;
-	int i;
-	int ret;
-
-	for (i = 0; i < size; i += MAX_READ_WRITE_SIZE) {
-		buf.addr[0] = (u8) (addr >> 8);
-		buf.addr[1] = (u8) (addr & 0xFF);
-		if ((i + MAX_READ_WRITE_SIZE) > size) {
-			memcpy(buf.data, (reg_buf + i), (size - i));
-			ret =
-	    iBurstWriteReg((u8 *) &buf, (size - i + 2), imgsensor.i2c_write_id);
-
-		} else {
-			memcpy(buf.data, (reg_buf + i), MAX_READ_WRITE_SIZE);
-		    ret = iBurstWriteReg((u8 *) &buf, (MAX_READ_WRITE_SIZE + 2),
-			  imgsensor.i2c_write_id);
-		}
-
-		if (ret < 0)
-			pr_info("write burst reg into sensor failed!\n");
-
-		addr += MAX_READ_WRITE_SIZE;
-	}
-}
-#endif
 static int imx386_read_otp(u16 addr, u8 *buf)
 {
 	int ret = 0;
@@ -575,7 +545,6 @@ static void imx386_set_pdaf_reg_setting(MUINT32 regNum, kal_uint16 *regDa)
 
 static void load_imx386_spc_data(void)
 {
-#if 1
 	unsigned int start_reg = SENSOR_SPC_START_ADDR;
 	char puSendCmd[SPC_DATA_SIZE + 2];
 	kal_uint32 tosend;
@@ -593,27 +562,6 @@ static void load_imx386_spc_data(void)
 
 	iBurstWriteReg_multi(puSendCmd, tosend,
 		imgsensor.i2c_write_id, tosend, imgsensor_info.i2c_speed);
-
-#else
-
-	for (i = 0; i < SPC_DATA_SIZE; i++) {
-		write_cmos_sensor(
-	0x7D4C + i, imx386_primax_otp_buf[spc_start_addr - OTP_START_ADDR + i]);
-
-		pr_info("SPC_Data[0x%x] = 0x%x\n",
-			0x7D4C + i, read_cmos_sensor(0x7D4C + i));
-
-		pr_info("OTP[0x%x] = 0x%x\n", spc_start_addr + i,
-		    imx386_primax_otp_buf[spc_start_addr - OTP_START_ADDR + i]);
-	}
-#endif
-
-#if 0
-	for (i = 0; i < OTP_DATA_SIZE; i++) {
-		pr_info("========imx386_otp idx:0x%4x val:0x%x======\n", i,
-			*(imx386_primax_otp_buf + i));
-	}
-#endif
 }
 
 static void set_dummy(void)
@@ -1168,16 +1116,6 @@ kal_uint16 IMX386MIPI_sensorGainMapping[IMX386MIPI_MaxGainIndex][2] = {
 	{1024, 480},
 };
 
-#if 0
-static kal_uint16 gain2reg(const kal_uint16 gain)
-{
-	kal_uint16 reg_gain = 0x0000;
-	/* gain = 64 = 1x real gain */
-	reg_gain = 512 - (512 * 64 / gain);
-	return (kal_uint16) reg_gain;
-}
-#else
-
 static kal_uint16 gain2reg(const kal_uint16 gain)
 {
 	kal_uint8 iI = 0;
@@ -1189,7 +1127,7 @@ static kal_uint16 gain2reg(const kal_uint16 gain)
 	pr_info("exit IMX386MIPI_sensorGainMapping function\n");
 	return IMX386MIPI_sensorGainMapping[iI-1][1];
 }
-#endif
+
 
 /*************************************************************************
  * FUNCTION
@@ -1304,45 +1242,6 @@ static void ihdr_write_shutter_gain(
 		le, se, gain, read_cmos_sensor(0x0350));
 }
 
-
-#if 0
-static void set_mirror_flip(kal_uint8 image_mirror)
-{
-	pr_info("image_mirror = %d\n", image_mirror);
-
-	/********************************************************
-	 *
-	 *   0x3820[2] ISP Vertical flip
-	 *   0x3820[1] Sensor Vertical flip
-	 *
-	 *   0x3821[2] ISP Horizontal mirror
-	 *   0x3821[1] Sensor Horizontal mirror
-	 *
-	 *   ISP and Sensor flip or mirror register bit should be the same!!
-	 *
-	 ********************************************************/
-	spin_lock(&imgsensor_drv_lock);
-	imgsensor.mirror = image_mirror;
-	spin_unlock(&imgsensor_drv_lock);
-	switch (image_mirror) {
-	case IMAGE_NORMAL:
-		write_cmos_sensor(0x0101, 0X00);	/* GR */
-		break;
-	case IMAGE_H_MIRROR:
-		write_cmos_sensor(0x0101, 0X01);	/* R */
-		break;
-	case IMAGE_V_MIRROR:
-		write_cmos_sensor(0x0101, 0X02);	/* B */
-		break;
-	case IMAGE_HV_MIRROR:
-		write_cmos_sensor(0x0101, 0X03);	/* GB */
-		break;
-	default:
-		pr_info("Error image_mirror setting\n");
-	}
-
-}
-#endif
 /*************************************************************************
  * FUNCTION
  *	night_mode
@@ -2392,13 +2291,6 @@ otp_read:
 	/*Get AF infinity and macro position value */
 /* AF_Inf_pos   = (imx386_primax_otp_buf[67]<<8)|imx386_primax_otp_buf[68]; */
 /* AF_Macro_pos = (imx386_primax_otp_buf[71]<<8)|imx386_primax_otp_buf[72]; */
-
-#if 0
-	for (i = 0; i < OTP_DATA_SIZE; i++) {
-		pr_info("========imx386_otp idx:0x%4x val:0x%x======\n", i,
-			*(imx386_primax_otp_buf + i));
-	}
-#endif
 
 	return ERROR_NONE;
 }

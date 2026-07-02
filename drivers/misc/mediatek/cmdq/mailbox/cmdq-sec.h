@@ -7,9 +7,22 @@
 #define __CMDQ_SEC_H__
 
 #include <linux/kernel.h>
-#include <linux/soc/mediatek/mtk-cmdq.h>
+#include <linux/soc/mediatek/mtk-cmdq-ext.h>
 
 #include "cmdq-sec-iwc-common.h"
+
+typedef s32 (*sec_insert_backup_cookie)(struct cmdq_pkt *pkt);
+typedef int (*sec_pkt_wait_complete)(struct cmdq_pkt *pkt);
+typedef void (*sec_pkt_free_data)(struct cmdq_pkt *pkt);
+typedef void (*sec_err_dump)(struct cmdq_pkt *pkt,
+	struct cmdq_client *client, u64 **inst, const char **dispatch);
+struct cmdq_sec_helper_fp {
+	sec_insert_backup_cookie sec_insert_backup_cookie_fp;
+	sec_pkt_wait_complete sec_pkt_wait_complete_fp;
+	sec_pkt_free_data sec_pkt_free_data_fp;
+	sec_err_dump sec_err_dump_fp;
+};
+void cmdq_sec_helper_set_fp(struct cmdq_sec_helper_fp *cust_cmdq_sec);
 
 enum CMDQ_SEC_SCENARIO {
 	CMDQ_SEC_PRIMARY_DISP = 1,
@@ -120,7 +133,10 @@ s32 cmdq_sec_pkt_set_payload(struct cmdq_pkt *pkt, u8 idx,
 	const u32 meta_size, u32 *meta);
 s32 cmdq_sec_pkt_write_reg(struct cmdq_pkt *pkt, u32 addr, u64 base,
 	const enum CMDQ_IWC_ADDR_METADATA_TYPE type,
-	const u32 offset, const u32 size, const u32 port, uint32_t sec_id);
+	const u32 offset, const u32 size, const u32 port);
+s32 cmdq_sec_pkt_write_reg_disp(struct cmdq_pkt *pkt, u32 addr, u64 base,
+	const enum CMDQ_IWC_ADDR_METADATA_TYPE type,
+	const u32 offset, const u32 size, const u32 port, u32 sec_id);
 s32 cmdq_sec_pkt_assign_metadata(struct cmdq_pkt *pkt,
 	u32 count, void *meta_array);
 void cmdq_sec_dump_secure_data(struct cmdq_pkt *pkt);
@@ -129,9 +145,14 @@ void cmdq_sec_err_dump(struct cmdq_pkt *pkt, struct cmdq_client *client,
 	u64 **inst, const char **dispatch);
 
 /* MTEE */
-void cmdq_sec_pkt_set_mtee(struct cmdq_pkt *pkt, const bool enable, const int32_t sec_id);
+void cmdq_sec_pkt_set_mtee(struct cmdq_pkt *pkt, const bool enable);
+
+/* iommu_sec_id */
+void cmdq_sec_pkt_set_secid(struct cmdq_pkt *pkt, int32_t sec_id);
 
 /* implementation in cmdq-sec-mailbox.c */
-void cmdq_sec_mbox_switch_normal(struct cmdq_client *cl, const bool mtee);
+void cmdq_sec_mbox_switch_normal(struct cmdq_client *cl);
 void cmdq_sec_mbox_stop(struct cmdq_client *cl);
+void cmdq_sec_mbox_enable(void *chan);
+void cmdq_sec_mbox_disable(void *chan);
 #endif

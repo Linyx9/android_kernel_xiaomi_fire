@@ -1,10 +1,12 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
-battery0_profile_t0_num = <100>;
-battery0_profile_t0_col = <3>;
-battery0_profile_t0 =
+ * Copyright (c) 2022 MediaTek Inc.
+ *
+ */
+
+battery0-profile-t0-num = <100>;
+battery0-profile-t0-col = <3>;
+battery0-profile-t0 =
 <
 0       43280   975
 301     43170   975
@@ -107,9 +109,9 @@ battery0_profile_t0 =
 29459   33091   1536
 29760   29420   8600
 >;
-battery0_profile_t1_num = <100>;
-battery0_profile_t1_col = <3>;
-battery0_profile_t1 =
+battery0-profile-t1-num = <100>;
+battery0-profile-t1-col = <3>;
+battery0-profile-t1 =
 <
 0       43200   1050
 301     43080   1300
@@ -212,9 +214,9 @@ battery0_profile_t1 =
 29459   28212   5733
 29760   28180   5625
 >;
-battery0_profile_t2_num = <100>;
-battery0_profile_t2_col = <3>;
-battery0_profile_t2 =
+battery0-profile-t2-num = <100>;
+battery0-profile-t2-col = <3>;
+battery0-profile-t2 =
 <
 0       43030   1900
 301     42880   2100
@@ -317,9 +319,9 @@ battery0_profile_t2 =
 29459   30540   11925
 29760   30540   11925
 >;
-battery0_profile_t3_num = <100>;
-battery0_profile_t3_col = <3>;
-battery0_profile_t3 =
+battery0-profile-t3-num = <100>;
+battery0-profile-t3-col = <3>;
+battery0-profile-t3 =
 <
 0       42730   2575
 301     42550   3300
@@ -422,9 +424,9 @@ battery0_profile_t3 =
 29459   29540   9925
 29760   29540   9925
 >;
-battery0_profile_t4_num = <100>;
-battery0_profile_t4_col = <3>;
-battery0_profile_t4 =
+battery0-profile-t4-num = <100>;
+battery0-profile-t4-col = <3>;
+battery0-profile-t4 =
 <
 0       42540   3510
 301     42340   4471
@@ -527,9 +529,9 @@ battery0_profile_t4 =
 29459   30380   9100
 29760   30380   9100
 >;
-battery0_profile_t5_num = <100>;
-battery0_profile_t5_col = <3>;
-battery0_profile_t5 =
+battery0-profile-t5-num = <100>;
+battery0-profile-t5-col = <3>;
+battery0-profile-t5 =
 <
 0       42420   9500
 301     42210   5801

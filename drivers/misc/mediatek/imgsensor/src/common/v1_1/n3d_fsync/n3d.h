@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #ifndef __N3D_H__
@@ -14,6 +14,8 @@
 #include "frame-sync/frame_sync.h"
 
 #define N3D_DEV_NAME "seninf_n3d"
+
+#define SENINF_N3D_USE_RPM
 
 struct SENINF_N3D {
 	dev_t dev_no;
@@ -33,6 +35,11 @@ struct SENINF_N3D {
 	int sync_state;
 	struct FrameSync *fsync_mgr;
 	int irq_id;
+
+#ifdef SENINF_N3D_USE_RPM
+	int pm_domain_cnt;
+	struct device **pm_domain_devs;
+#endif
 };
 
 #endif

@@ -3,6 +3,7 @@
  * Copyright (c) 2019 MediaTek Inc.
  */
 
+
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
 #include <linux/file.h>
@@ -17,22 +18,17 @@
 
 #include <linux/uaccess.h>
 
-#include "mmprofile_internal.h"
-#include "mmprofile_function.h"
-#include "mmprofile_static_event.h"
-
+#include <mmprofile_internal.h>
 /* #pragma GCC optimize ("O0") */
 #define MMP_DEVNAME "mmp"
 
 void mmprofile_start(int start)
 {
 }
-EXPORT_SYMBOL(mmprofile_start);
 
 void mmprofile_enable(int enable)
 {
 }
-EXPORT_SYMBOL(mmprofile_enable);
 
 /* Exposed APIs begin */
 mmp_event mmprofile_register_event(mmp_event parent, const char *name)
@@ -119,6 +115,11 @@ EXPORT_SYMBOL(mmprofile_log_meta_yuv_bitmap);
 /* Exposed APIs end */
 
 /* Driver specific begin */
+#ifdef MMP_USE
+static dev_t mmprofile_devno;
+static struct cdev *mmprofile_cdev;
+static struct class *mmprofile_class;
+#endif
 static int mmprofile_release(struct inode *inode, struct file *file)
 {
 	return 0;

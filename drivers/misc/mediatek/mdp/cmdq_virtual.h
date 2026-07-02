@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
 #ifndef __CMDQ_VIRTUAL_H__
 #define __CMDQ_VIRTUAL_H__
 
 #include "mdp_def.h"
-#include "mdp_cmdq_helper_ext.h"
+#include "cmdq_helper_ext.h"
 
 /* get subsys LSB in arg_a */
 typedef u32(*CmdqGetSubsysLSBArgA) (void);
@@ -42,21 +42,8 @@ typedef bool(*cmdq_force_loop_irq) (enum CMDQ_SCENARIO_ENUM scenario);
 /*  is disp loop */
 typedef bool(*cmdq_is_disp_loop) (enum CMDQ_SCENARIO_ENUM scenario);
 
-/* get register index from hwflag */
-typedef void(*CmdqGetRegID) (u64 hwflag,
-	enum cmdq_gpr_reg *valueRegId,
-	enum cmdq_gpr_reg *destRegId,
-	enum cmdq_event *regAccessToken);
-
-/*  module from event index */
-typedef const char *(*CmdqModuleFromEvent) (const s32 event,
-	struct CmdqCBkStruct *groupCallback, u64 engineFlag);
-
 /* parse module from register addr */
 typedef const char *(*CmdqParseModule) (u32 reg_addr);
-
-/* can module entry suspend */
-typedef s32(*CmdqModuleEntrySuspend) (struct EngineStruct *engineList);
 
 /* print status clock */
 typedef ssize_t(*CmdqPrintStatusClock) (char *buf);
@@ -107,10 +94,7 @@ struct cmdqCoreFuncStruct {
 	CmdqGetThreadID getThreadID;
 	CmdqPriority priority;
 	cmdq_is_disp_loop is_disp_loop;
-	CmdqGetRegID getRegID;
-	CmdqModuleFromEvent moduleFromEvent;
 	CmdqParseModule parseModule;
-	CmdqModuleEntrySuspend moduleEntrySuspend;
 	CmdqPrintStatusClock printStatusClock;
 	CmdqPrintStatusSeqClock printStatusSeqClock;
 	CmdqEnableGCEClockLocked enableGCEClockLocked;

@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #ifndef __N3D_CLK_H__
 #define __N3D_CLK_H__
 
 #include <linux/device.h>
-#ifdef CONFIG_PM_SLEEP
+#if IS_ENABLED(CONFIG_PM_SLEEP)
 #include <linux/pm_wakeup.h>
 #endif
 
@@ -19,7 +19,9 @@ enum SENINF_CLK_IDX_SYS {
 	SENINF_CLK_IDX_SYS_SCP_SYS_MDP = N3D_CLK_IDX_SYS_MIN_NUM,
 	SENINF_CLK_IDX_SYS_SCP_SYS_CAM,
 	N3D_CLK_IDX_SYS_CAMSYS_SENINF_CGPDN,
+	N3D_CLK_IDX_SYS_CAMSYS_CAM_CGPDN,
 	N3D_CLK_IDX_SYS_CAMSYS_CAMTG_CGPDN,
+	N3D_CLK_IDX_SYS_CAMSYS_CAMTM_SEL,
 	N3D_CLK_IDX_SYS_MAX_NUM
 };
 
@@ -33,7 +35,7 @@ struct SENINF_N3D_CLK {
 	atomic_t enable_cnt[N3D_CLK_IDX_SYS_MAX_NUM];
 	atomic_t wakelock_cnt;
 
-#ifdef CONFIG_PM_SLEEP
+#if IS_ENABLED(CONFIG_PM_SLEEP)
 	struct wakeup_source *n3d_wake_lock;
 #endif
 };

@@ -58,6 +58,9 @@
 #define R_CORE1_WDT_CFG		(scpreg.cfg_core1 + 0x0034)
 	#define V_INSTANT_WDT	0x80000000
 
+#define R_CORE0_WDT_CUR_VAL	(scpreg.cfg_core0 + 0x003c)
+#define R_CORE1_WDT_CUR_VAL	(scpreg.cfg_core1 + 0x003c)
+
 #define R_CORE0_STATUS			(scpreg.cfg_core0 + 0x0070)
 	#define B_CORE_GATED		(1 << 0)
 	#define B_CORE_HALT		(1 << 1)
@@ -247,12 +250,16 @@
 #define R_CORE1_CACHE_RAM		(scpreg.l1cctrl + 0x20000)
 
 /* INFRA_IRQ (always on register) */
+#define INFRA_IRQ_STA			(scpreg.scpsys + 0x0B10)
+	#define INFRA_IRQ_STA_OFS	(0x0B10)
 #define INFRA_IRQ_SET			(scpreg.scpsys + 0x0B14)
+	#define INFRA_IRQ_SET_OFS	(0x0B14)
 	#define AP_AWAKE_LOCK		(0)
 	#define AP_AWAKE_UNLOCK		(1)
 	#define CONNSYS_AWAKE_LOCK	(2)
 	#define CONNSYS_AWAKE_UNLOCK	(3)
 #define INFRA_IRQ_CLEAR			(scpreg.scpsys + 0x0B18)
+	#define INFRA_IRQ_CLEAR_OFS	(0x0B18)
 #define SCP_SYS_INFRA_MON		(scpreg.scpsys + 0x0D50)
 
 #endif

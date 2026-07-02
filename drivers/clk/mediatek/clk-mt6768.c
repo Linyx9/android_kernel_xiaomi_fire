@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/delay.h>
 #include <linux/of.h>
@@ -19,7 +19,6 @@
 #include "clk-mtk.h"
 #include "clk-gate.h"
 #include "clk-mux.h"
-#include "clk-mt6768-pg.h"
 
 #include <dt-bindings/clock/mt6768-clk.h>
 
@@ -617,7 +616,7 @@ static const struct mtk_fixed_factor top_divs[] = {
 	FACTOR(CLK_TOP_CAM, "cam_ck", "cam_sel", 1, 1),
 
 	FACTOR(CLK_TOP_F_BIST2FPC, "f_bist2fpc_ck", "univpll2_d2", 1, 1),
-	FACTOR(CLK_TOP_CLK13M, "clk13m", "clk_26m_ck", 1, 2),
+	FACTOR(CLK_TOP_CLK13M, "clk_13m_ck", "clk_26m_ck", 1, 2),
 	/* MT6768: remove this  temporarily */
 	/*
 	 * FACTOR(CLK_TOP_ARMPLL_DIVIDER_PLL0, "arm_div_pll0",
@@ -868,9 +867,9 @@ static const struct mtk_mux top_muxes[] = {
 	MUX_GATE_CLR_SET_UPD(CLK_TOP_MEM_SEL, "mem_sel", mem_parents,
 		CLK_CFG_0, CLK_CFG_0_SET, CLK_CFG_0_CLR, 8, 2,
 		INVALID_MUX_GATE, INVALID_UPDATE_REG, INVALID_UPDATE_SHIFT),
-	MUX_GATE_CLR_SET_UPD(CLK_TOP_MM_SEL, "mm_sel", mm_parents, CLK_CFG_0,
+	MUX_GATE_CLR_SET_UPD_FLAGS(CLK_TOP_MM_SEL, "mm_sel", mm_parents, CLK_CFG_0,
 		CLK_CFG_0_SET, CLK_CFG_0_CLR, 16, 3, INVALID_MUX_GATE,
-		INVALID_UPDATE_REG, INVALID_UPDATE_SHIFT),
+		INVALID_UPDATE_REG, INVALID_UPDATE_SHIFT, QUICK_SWITCH_CHK),
 	MUX_GATE_CLR_SET_UPD(CLK_TOP_SCP_SEL, "scp_sel", scp_parents, CLK_CFG_0,
 		CLK_CFG_0_SET, CLK_CFG_0_CLR, 24, 3, INVALID_MUX_GATE,
 		INVALID_UPDATE_REG, INVALID_UPDATE_SHIFT),
@@ -994,8 +993,8 @@ static const struct mtk_mux top_muxes[] = {
 	MUX_GATE_CLR_SET_UPD_FLAGS(CLK_TOP_MEM_SEL, "mem_sel", mem_parents,
 		CLK_CFG_0, CLK_CFG_0_SET, CLK_CFG_0_CLR, 8, 2, 15,
 		CLK_CFG_UPDATE, 1, CLK_IS_CRITICAL),
-	MUX_GATE_CLR_SET_UPD(CLK_TOP_MM_SEL, "mm_sel", mm_parents, CLK_CFG_0,
-		CLK_CFG_0_SET, CLK_CFG_0_CLR, 16, 3, 23, CLK_CFG_UPDATE, 2),
+	MUX_GATE_CLR_SET_UPD_FLAGS(CLK_TOP_MM_SEL, "mm_sel", mm_parents, CLK_CFG_0,
+		CLK_CFG_0_SET, CLK_CFG_0_CLR, 16, 3, 23, CLK_CFG_UPDATE, 2, QUICK_SWITCH_CHK),
 	MUX_GATE_CLR_SET_UPD(CLK_TOP_SCP_SEL, "scp_sel", scp_parents, CLK_CFG_0,
 		CLK_CFG_0_SET, CLK_CFG_0_CLR, 24, 3, 31, CLK_CFG_UPDATE, 3),
 	/* CLK_CFG_1 */
@@ -1085,148 +1084,6 @@ static const struct mtk_mux top_muxes[] = {
 
 #endif
 };
-
-int __attribute__((weak)) get_sw_req_vcore_opp(void)
-{
-	return -1;
-}
-
-/* for debug dummy functions. */
-/*
-static int mtk_cg_bit_is_cleared(struct clk_hw *hw)
-{
-	struct mtk_clk_gate *cg = to_mtk_clk_gate(hw);
-	u32 val;
-
-	if (mtk_is_cg_enable()) {
-		regmap_read(cg->regmap, cg->sta_ofs, &val);
-
-		val &= BIT(cg->bit);
-
-		return val == 0;
-	}
-
-	return 1;
-}
-
-static int mtk_cg_bit_is_set(struct clk_hw *hw)
-{
-	struct mtk_clk_gate *cg = to_mtk_clk_gate(hw);
-	u32 val;
-
-	if (mtk_is_cg_enable()) {
-		regmap_read(cg->regmap, cg->sta_ofs, &val);
-
-		val &= BIT(cg->bit);
-
-		return val != 0;
-	}
-
-	return 0;
-}
-
-static void mtk_cg_set_bit(struct clk_hw *hw)
-{
-	struct mtk_clk_gate *cg = to_mtk_clk_gate(hw);
-
-	if (mtk_is_cg_enable())
-		regmap_write(cg->regmap, cg->set_ofs, BIT(cg->bit));
-}
-
-static void mtk_cg_clr_bit(struct clk_hw *hw)
-{
-	struct mtk_clk_gate *cg = to_mtk_clk_gate(hw);
-
-	if (mtk_is_cg_enable())
-		regmap_write(cg->regmap, cg->clr_ofs, BIT(cg->bit));
-}
-
-static void mtk_cg_set_bit_no_setclr(struct clk_hw *hw)
-{
-	struct mtk_clk_gate *cg = to_mtk_clk_gate(hw);
-	u32 cgbit = BIT(cg->bit);
-
-	if (mtk_is_cg_enable())
-		regmap_update_bits(cg->regmap, cg->sta_ofs, cgbit, cgbit);
-}
-
-static void mtk_cg_clr_bit_no_setclr(struct clk_hw *hw)
-{
-	struct mtk_clk_gate *cg = to_mtk_clk_gate(hw);
-	u32 cgbit = BIT(cg->bit);
-
-	if (mtk_is_cg_enable())
-		regmap_update_bits(cg->regmap, cg->sta_ofs, cgbit, 0);
-}
-
-static int mtk_cg_enable(struct clk_hw *hw)
-{
-	mtk_cg_clr_bit(hw);
-
-	return 0;
-}
-
-static int mtk_cg_enable_inv(struct clk_hw *hw)
-{
-	mtk_cg_set_bit(hw);
-
-	return 0;
-}
-
-
-static int mtk_cg_enable_no_setclr(struct clk_hw *hw)
-{
-	mtk_cg_clr_bit_no_setclr(hw);
-
-	return 0;
-}
-
-static int mtk_cg_enable_inv_no_setclr(struct clk_hw *hw)
-{
-	mtk_cg_set_bit_no_setclr(hw);
-
-	return 0;
-}
-disable dummy functions 
-static void mtk_cg_disable_dummy(struct clk_hw *hw)
-{
-}
-const struct clk_ops mtk_clk_gate_ops_setclr_dummy = {
-	.is_enabled	= mtk_cg_bit_is_cleared,
-	.enable		= mtk_cg_enable,
-	.disable	= mtk_cg_disable_dummy,
-};
-
-static void mtk_cg_disable_inv_dummy(struct clk_hw *hw)
-{
-}
-const struct clk_ops mtk_clk_gate_ops_setclr_inv_dummy = {
-	.is_enabled	= mtk_cg_bit_is_set,
-	.enable		= mtk_cg_enable_inv,
-	.disable	= mtk_cg_disable_inv_dummy,
-};
-
-static void mtk_cg_disable_no_setclr_dummy(struct clk_hw *hw)
-{
-}
-const struct clk_ops mtk_clk_gate_ops_no_setclr_dummy = {
-	.is_enabled	= mtk_cg_bit_is_cleared,
-	.enable		= mtk_cg_enable_no_setclr,
-	.disable	= mtk_cg_disable_no_setclr_dummy,
-};
-
-static void mtk_cg_disable_inv_no_setclr_dummy(struct clk_hw *hw)
-{
-}
-const struct clk_ops mtk_clk_gate_ops_no_setclr_inv_dummy = {
-	.is_enabled	= mtk_cg_bit_is_set,
-	.enable		= mtk_cg_enable_inv_no_setclr,
-	.disable	= mtk_cg_disable_inv_no_setclr_dummy,
-};*/
-/* for dummy */
-
-
-
 
 static const struct mtk_gate_regs top0_cg_regs = {
 	.set_ofs = 0x0,
@@ -2239,7 +2096,7 @@ static int  mtk_apmixedsys_init(struct platform_device *pdev)
 	void __iomem *base;
 	struct device_node *node = pdev->dev.of_node;
 	int r;
-	
+
 	base = of_iomap(node, 0);
 	if (!base) {
 		pr_notice("%s(): ioremap failed\n", __func__);
@@ -2276,22 +2133,6 @@ static int  mtk_apmixedsys_init(struct platform_device *pdev)
 
 /* TODO: why disable critical */
 static struct clk_onecell_data *mt6768_top_clk_data;
-#if 0
-static bool timer_ready;
-static struct clk_onecell_data *pll_data;
-
-static void mtk_clk_enable_critical(void)
-{
-	if (!timer_ready || !top_data || !pll_data)
-		return;
-#if 0
-	clk_prepare_enable(top_data->clks[CLK_TOP_AXI_SEL]);
-	clk_prepare_enable(top_data->clks[CLK_TOP_MEM_SEL]);
-	clk_prepare_enable(top_data->clks[CLK_TOP_DDRPHYCFG_SEL]);
-	clk_prepare_enable(top_data->clks[CLK_TOP_RTC_SEL]);
-#endif
-}
-#endif
 
 #if CHECK_VCORE_FREQ
 void warn_vcore(int opp, const char *clk_name, int rate, int id)
@@ -2299,7 +2140,7 @@ void warn_vcore(int opp, const char *clk_name, int rate, int id)
 	if ((opp >= 0) && (id >= 0) && ((rate/1000) > (vf_table[id][opp]))) {
 		pr_notice("%s Choose %d FAIL!!!![MAX(%d/%d): %d]\r\n",
 			clk_name, rate/1000, id, opp, vf_table[id][opp]);
-			BUG_ON(1);
+			WARN_ON(1); //need to do
 	}
 }
 static int mtk_mux2id(const char **mux_name)
@@ -2321,7 +2162,12 @@ static int mtk_clk_rate_change(struct notifier_block *nb,
 	struct clk_hw *hw = __clk_get_hw(ndata->clk);
 	const char *clk_name = __clk_get_name(hw->clk);
 
-	int vcore_opp = get_sw_req_vcore_opp();
+	int vcore_opp = VCORE_NULL;
+	#if IS_ENABLED(CONFIG_MTK_DVFSRC_HELPER) && CHECK_VCORE_FREQ
+		vcore_opp = get_sw_req_vcore_opp();
+	#endif
+	if (vcore_opp == VCORE_NULL)
+		return -EINVAL;
 
 	if (flags == PRE_RATE_CHANGE) {
 		warn_vcore(vcore_opp, clk_name,
@@ -2569,7 +2415,7 @@ static int mtk_camsys_init(struct platform_device *pdev)
 	void __iomem *base;
 	int r;
 	struct device_node *node = pdev->dev.of_node;
-	
+
 	base = of_iomap(node, 0);
 	if (!base) {
 		pr_notice("%s(): ioremap failed\n", __func__);
@@ -2677,7 +2523,7 @@ static int  mtk_mmsys_config_init(struct platform_device *pdev)
 	void __iomem *base;
 	int r;
 	struct device_node *node = pdev->dev.of_node;
-	
+
 	base = of_iomap(node, 0);
 	if (!base) {
 		pr_notice("%s(): ioremap failed\n", __func__);
@@ -2712,7 +2558,7 @@ static int mtk_mfgcfg_init(struct platform_device *pdev)
 	void __iomem *base;
 	int r;
 	struct device_node *node = pdev->dev.of_node;
-	
+
 	base = of_iomap(node, 0);
 	if (!base) {
 		pr_notice("%s(): ioremap failed\n", __func__);
@@ -2864,7 +2710,7 @@ static int mtk_mipi0b_init(struct platform_device *pdev)
 	void __iomem *base;
 	int r;
 	struct device_node *node = pdev->dev.of_node;
-	
+
 	base = of_iomap(node, 0);
 	if (!base) {
 		pr_notice("%s(): ioremap failed\n", __func__);
@@ -3047,89 +2893,6 @@ static int mtk_mipi2b_init(struct platform_device *pdev)
 }
 
 
-unsigned int mt_get_ckgen_freq(unsigned int ID)
-{
-	int output = 0, i = 0;
-	unsigned int temp, clk26cali_0, clk_dbg_cfg;
-	unsigned int clk_misc_cfg_0, clk26cali_1;
-
-	clk_dbg_cfg = clk_readl(CLK_DBG_CFG);
-	/*sel ckgen_cksw[22] and enable freq meter
-	 * sel ckgen[21:16], 01:hd_faxi_ck
-	 */
-	clk_writel(CLK_DBG_CFG, (clk_dbg_cfg & 0xFFFFC0FC)|(ID << 8)|(0x1));
-
-	clk_misc_cfg_0 = clk_readl(CLK_MISC_CFG_0);
-	/* select divider?dvt set zero */
-	clk_writel(CLK_MISC_CFG_0, (clk_misc_cfg_0 & 0x00FFFFFF));
-	clk26cali_0 = clk_readl(CLK26CALI_0);
-	clk26cali_1 = clk_readl(CLK26CALI_1);
-	clk_writel(CLK26CALI_0, 0x1000);
-	clk_writel(CLK26CALI_0, 0x1010);
-
-	/* wait frequency meter finish */
-	while (clk_readl(CLK26CALI_0) & 0x10) {
-		udelay(10);
-		i++;
-		if (i > 10000)
-			break;
-	}
-
-	temp = clk_readl(CLK26CALI_1) & 0xFFFF;
-
-	output = (temp * 26000) / 1024; /* Khz */
-
-	clk_writel(CLK_DBG_CFG, clk_dbg_cfg);
-	clk_writel(CLK_MISC_CFG_0, clk_misc_cfg_0);
-
-	clk_writel(CLK26CALI_0, 0x0);
-	/* print("ckgen meter[%d] = %d Khz\n", ID, output); */
-	if (i > 10000)
-		return 0;
-	else
-		return output;
-
-}
-
-unsigned int mt_get_abist_freq(unsigned int ID)
-{
-	int output = 0, i = 0;
-	unsigned int temp, clk26cali_0, clk_dbg_cfg;
-	unsigned int clk_misc_cfg_0, clk26cali_1;
-
-	clk_dbg_cfg = clk_readl(CLK_DBG_CFG);
-	/* sel abist_cksw and enable freq meter sel abist */
-	clk_writel(CLK_DBG_CFG, (clk_dbg_cfg & 0xFFC0FFFC)|(ID << 16));
-	clk_misc_cfg_0 = clk_readl(CLK_MISC_CFG_0);
-	/* select divider, WAIT CONFIRM */
-	clk_writel(CLK_MISC_CFG_0, (clk_misc_cfg_0 & 0x00FFFFFF) | (0x3 << 24));
-	clk26cali_0 = clk_readl(CLK26CALI_0);
-	clk26cali_1 = clk_readl(CLK26CALI_1);
-	clk_writel(CLK26CALI_0, 0x1000);
-	clk_writel(CLK26CALI_0, 0x1010);
-
-	/* wait frequency meter finish */
-	while (clk_readl(CLK26CALI_0) & 0x10) {
-		udelay(10);
-		i++;
-		if (i > 10000)
-			break;
-	}
-
-	temp = clk_readl(CLK26CALI_1) & 0xFFFF;
-	output = (temp * 26000) / 1024; /* Khz */
-
-	clk_writel(CLK_DBG_CFG, clk_dbg_cfg);
-	clk_writel(CLK_MISC_CFG_0, clk_misc_cfg_0);
-
-	clk_writel(CLK26CALI_0, 0x0);
-	/*pr_debug("%s = %d Khz\n", abist_array[ID-1], output);*/
-	if (i > 10000)
-		return 0;
-	else
-		return output * 4;
-}
-
 /* Not used anymore in MT6768(armv8.2). Just keep for reference. */
 void mp_enter_suspend(int id, int suspend)
 {
@@ -3220,19 +2983,8 @@ void pll_if_on(void)
 		pr_notice("suspend warning: APLL1 is on!!!\n");
 	if (clk_readl(UNIVPLL_CON0) & 0x1)
 		pr_notice("suspend warning: UNIVPLL is on!!!\n");
-#if 0
-	if (clk_readl(ARMPLL_CON0) & 0x1)
-		pr_notice("suspend warning: ARMPLL is on!!!\n");
-	if (clk_readl(ARMPLL_L_CON0) & 0x1)
-		pr_notice("suspend warning: ARMPLL_L is on!!!\n");
-	if (clk_readl(CCIPLL_CON0) & 0x1)
-		pr_notice("suspend warning: CCIPLL is on!!!\n");
-	if (clk_readl(MAINPLL_CON0) & 0x1)
-		pr_notice("suspend warning: MAINPLL is on!!!\n");
-	if (clk_readl(MPLL_CON0) & 0x1)
-		pr_notice("suspend warning: MPLL is on!!!\n");
-#endif
 }
+EXPORT_SYMBOL(pll_if_on);
 
 void clock_force_on(void)
 {
@@ -3319,7 +3071,7 @@ void mmsys_cg_check(void)
 	pr_notice("[MMSYS_CG_CON0]=0x%08x\n", clk_readl(MMSYS_CG_CON0));
 }
 
-#if 1
+
 void mfgsys_clk_check(void)
 {
 	pr_notice("CLK_CFG_1 = 0x%08x\n", clk_readl(CLK_CFG_1));
@@ -3332,7 +3084,7 @@ void mfgsys_cg_check(void)
 {
 	pr_notice("MFG_CG_CON = 0x%08x\n", clk_readl(MFG_CG_CON));
 }
-#endif
+
 
 void pll_force_off(void)
 {
@@ -3341,11 +3093,7 @@ void pll_force_off(void)
 	clk_setl(MFGPLL_CON3, PLL_ISO_EN);
 	clk_clrl(MFGPLL_CON3, PLL_PWR_ON);
 /*MPLL Control by dram*/
-#if 0
-	clk_clrl(MPLL_CON0, PLL_EN);
-	clk_setl(MPLL_CON3, PLL_ISO_EN);
-	clk_clrl(MPLL_CON3, PLL_PWR_ON);
-#endif
+
 /*UNIVPLL*/
 	clk_clrl(UNIVPLL_CON0, PLL_EN);
 	clk_setl(UNIVPLL_CON3, PLL_ISO_EN);
@@ -3423,12 +3171,11 @@ int mtk_is_mtcmos_enable(void)
 
 void aud_intbus_mux_sel(unsigned int aud_idx)
 {
-#if 1
 	clk_writel(cksys_base + CLK_CFG_4_CLR, 0x00000003);/*[1:0]*/
 	clk_writel(cksys_base + CLK_CFG_4_SET, aud_idx << 0);
 	clk_writel(cksys_base + CLK_CFG_UPDATE, 0x00010000);/*[16]*/
-#endif
 }
+EXPORT_SYMBOL(aud_intbus_mux_sel);
 
 static const struct of_device_id of_match_clk_mt6768[] = {
 	{
@@ -3443,48 +3190,50 @@ static const struct of_device_id of_match_clk_mt6768[] = {
 	}, {
 		.compatible = "mediatek,pericfg",
 		.data = mtk_pericfg_init,
-	},{
+	}, {
 		.compatible = "mediatek,audio",
 		.data = mtk_audio_init,
-	},{
+	}, {
 		.compatible = "mediatek,mt6768-camsys",
 		.data = mtk_camsys_init,
-	},{
+	}, {
 		.compatible = "mediatek,mt6768-imgsys",
 		.data = mtk_imgsys_init,
-	},{
-		.compatible = "mediatek,gce",
+	}, {
+		.compatible = "mediatek,mt6768-gceclk",
 		.data = mtk_gce_init,
-	},{
+	}, {
 		.compatible = "mediatek,mmsys_config",
 		.data = mtk_mmsys_config_init,
-	},{
+	}, {
 		.compatible = "mediatek,mfgcfg",
 		.data = mtk_mfgcfg_init,
-	},{
+	}, {
 		.compatible = "mediatek,venc_gcon",
 		.data = mtk_venc_global_con_init,
-	},{
+	}, {
 		.compatible =  "mediatek,vdec_gcon",
 		.data = mtk_vdec_global_con_init,
-	},{
+	}, {
 		.compatible = "mediatek,mipi_rx_ana_csi0a",
 		.data = mtk_mipi0a_init,
-	},{
+	}, {
 		.compatible = "mediatek,mipi_rx_ana_csi0b",
 		.data = mtk_mipi0b_init,
-	},{
+	}, {
 		.compatible = "mediatek,mipi_rx_ana_csi1a",
 		.data = mtk_mipi1a_init,
-	},{
+	}, {
 		.compatible = "mediatek,mipi_rx_ana_csi1b",
 		.data = mtk_mipi1b_init,
-	},{
+	}, {
 		.compatible = "mediatek,mipi_rx_ana_csi2a",
 		.data = mtk_mipi2a_init,
-	},{
+	}, {
 		.compatible = "mediatek,mipi_rx_ana_csi2b",
 		.data = mtk_mipi2b_init,
+	}, {
+		/* sentinel */
 	}
 };
 

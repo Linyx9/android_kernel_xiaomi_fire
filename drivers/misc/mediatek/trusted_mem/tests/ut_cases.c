@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -24,6 +23,7 @@
 #include <linux/delay.h>
 #include <linux/time.h>
 #include <linux/slab.h>
+#include <linux/sizes.h>
 
 #include "private/tmem_error.h"
 #include "private/tmem_device.h"
@@ -39,10 +39,8 @@
 #include "tee_impl/tee_invoke.h"
 #include "tee_impl/tee_regions.h"
 
-#ifdef CONFIG_MTK_ENG_BUILD
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
 #define UT_SATURATION_STRESS_ROUNDS (1)
-#else
-#define UT_SATURATION_STRESS_ROUNDS (5)
 #endif
 
 struct test_case {
@@ -92,6 +90,35 @@ static enum UT_RET_STATE tmem_alloc_simple_test(struct ut_params *params,
 		return UT_STATE_FAIL;
 
 	ASSERT_EQ(0, mem_alloc_simple_test(mem_type, NULL, reg_final_state,
+					   un_order_size_cfg),
+		  test_desc);
+	return UT_STATE_PASS;
+}
+
+static enum UT_RET_STATE tmem_memory_order_free_test(struct ut_params *params,
+						char *test_desc)
+{
+	mem_order_free_test();
+
+	return UT_STATE_PASS;
+}
+
+static enum UT_RET_STATE tmem_memory_fragmentation_test(struct ut_params *params,
+						char *test_desc)
+{
+	mem_fragmentation_test();
+
+	return UT_STATE_PASS;
+}
+
+static enum UT_RET_STATE tmem_alloc_page_test(struct ut_params *params,
+						char *test_desc)
+{
+	enum TRUSTED_MEM_TYPE mem_type = params->param1;
+	int reg_final_state = params->param2;
+	int un_order_size_cfg = params->param3;
+
+	ASSERT_EQ(0, mem_alloc_page_test(mem_type, NULL, reg_final_state,
 					   un_order_size_cfg),
 		  test_desc);
 	return UT_STATE_PASS;
@@ -207,7 +234,7 @@ static enum UT_RET_STATE tmem_alloc_multithread_test(struct ut_params *params,
 	return UT_STATE_PASS;
 }
 
-#ifdef CONFIG_MTK_PROT_MEM_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_PROT_MEM_SUPPORT)
 static enum UT_RET_STATE tmem_alloc_mixed_size(struct ut_params *params,
 					       char *test_desc)
 {
@@ -314,13 +341,13 @@ static enum UT_RET_STATE mld_check_test(struct ut_params *params,
 		  "mld initial check");
 
 	start_size = mld_stamp();
-	mem_ptr = mld_kmalloc(SIZE_512B, GFP_KERNEL);
+	mem_ptr = mld_kmalloc(SZ_512, GFP_KERNEL);
 	ASSERT_NOTNULL(mem_ptr, "mld kmalloc ptr check");
 	ASSERT_EQ(MLD_CHECK_FAIL, mld_stamp_check(start_size),
 		  "mld malloc check");
 	check_size = mld_stamp();
 	diff_size = (u32)(check_size - start_size);
-	ASSERT_EQ(SIZE_512B, diff_size, "mld malloc diff size check");
+	ASSERT_EQ(SZ_512, diff_size, "mld malloc diff size check");
 
 	mld_kfree(mem_ptr);
 	ASSERT_EQ(MLD_CHECK_PASS, mld_stamp_check(start_size),
@@ -356,14 +383,13 @@ static enum UT_RET_STATE profile_dump_all(struct ut_params *params,
 }
 #endif
 
-#if defined(CONFIG_MTK_SECURE_MEM_SUPPORT)                                     \
-	&& defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)	\
-	&& !defined(CONFIG_MTK_SVP_ON_MTEE_SUPPORT)
+#if IS_ENABLED(CONFIG_TRUSTONIC_TEE_SUPPORT) || \
+	IS_ENABLED(CONFIG_MICROTRUST_TEE_SUPPORT)
 #define PROT_TEST_PA_ADDR64_START (0x180000000ULL)
 #define PROT_TEST_PA_ADDR64_ZERO (0x0ULL)
-#define PROT_TEST_POOL_SIZE_NORMAL SIZE_256M
-#define PROT_TEST_POOL_SIZE_INVALID SIZE_32K
-#define PROT_TEST_POOL_SIZE_MINIMAL_ALLOW SIZE_64K
+#define PROT_TEST_POOL_SIZE_NORMAL SZ_256M
+#define PROT_TEST_POOL_SIZE_INVALID SZ_32K
+#define PROT_TEST_POOL_SIZE_MINIMAL_ALLOW SZ_64K
 #define PROT_TEST_POOL_SIZE_ZERO (0x0)
 static enum UT_RET_STATE config_tee_prot_region_test(struct ut_params *params,
 						     char *test_desc)
@@ -423,8 +449,8 @@ static enum UT_RET_STATE multiple_ssmr_region_request(struct ut_params *params,
 	if (ut_is_halt())
 		return UT_STATE_FAIL;
 
-	if (tmem_core_is_device_registered(TRUSTED_MEM_PROT))
-		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_PROT),
+	if (tmem_core_is_device_registered(TRUSTED_MEM_PROT_REGION))
+		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_PROT_REGION),
 			  "pmem ssmr allocate check");
 	if (tmem_core_is_device_registered(TRUSTED_MEM_2D_FR)) {
 		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_2D_FR),
@@ -432,32 +458,32 @@ static enum UT_RET_STATE multiple_ssmr_region_request(struct ut_params *params,
 		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_2D_FR),
 			  "FR ssmr release check");
 	}
-	if (tmem_core_is_device_registered(TRUSTED_MEM_PROT))
-		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_PROT),
+	if (tmem_core_is_device_registered(TRUSTED_MEM_PROT_REGION))
+		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_PROT_REGION),
 			  "pmem ssmr release check");
 
-	if (tmem_core_is_device_registered(TRUSTED_MEM_SVP))
-		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_SVP),
+	if (tmem_core_is_device_registered(TRUSTED_MEM_SVP_REGION))
+		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_SVP_REGION),
 			  "svp ssmr allocate check");
-	if (tmem_core_is_device_registered(TRUSTED_MEM_WFD)) {
-		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_WFD),
+	if (tmem_core_is_device_registered(TRUSTED_MEM_WFD_REGION)) {
+		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_WFD_REGION),
 			  "wfd ssmr allocate check");
-		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_WFD),
+		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_WFD_REGION),
 			  "wfd ssmr release check");
 	}
-	if (tmem_core_is_device_registered(TRUSTED_MEM_SVP))
-		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_SVP),
+	if (tmem_core_is_device_registered(TRUSTED_MEM_SVP_REGION))
+		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_SVP_REGION),
 			  "svp ssmr release check");
 
-	if (tmem_core_is_device_registered(TRUSTED_MEM_SVP))
-		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_SVP),
+	if (tmem_core_is_device_registered(TRUSTED_MEM_SVP_REGION))
+		ASSERT_EQ(0, tmem_core_ssmr_allocate(TRUSTED_MEM_SVP_REGION),
 			  "svp ssmr allocate check");
 	if (tmem_core_is_device_registered(TRUSTED_MEM_2D_FR)) {
 		ASSERT_NE(0, tmem_core_ssmr_allocate(TRUSTED_MEM_2D_FR),
 			  "FR ssmr allocate check");
 	}
-	if (tmem_core_is_device_registered(TRUSTED_MEM_SVP))
-		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_SVP),
+	if (tmem_core_is_device_registered(TRUSTED_MEM_SVP_REGION))
+		ASSERT_EQ(0, tmem_core_ssmr_release(TRUSTED_MEM_SVP_REGION),
 			  "svp ssmr release check");
 
 	return UT_STATE_PASS;
@@ -490,106 +516,148 @@ mtee_mchunks_multiple_thread_alloc(struct ut_params *params, char *test_desc)
 #endif
 
 static struct test_case test_cases[] = {
-#ifdef CONFIG_MTK_SECURE_MEM_SUPPORT
-	CASE(SECMEM_UT_PROC_BASIC, "SVP Basic", TRUSTED_MEM_SVP,
+#if IS_ENABLED(CONFIG_MTK_SECURE_MEM_SUPPORT)
+	CASE(SECMEM_UT_PROC_BASIC, "SVP Basic", TRUSTED_MEM_SVP_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_basic_test),
-	CASE(SECMEM_UT_PROC_SIMPLE_ALLOC, "SVP Alloc Simple", TRUSTED_MEM_SVP,
-	     REGMGR_REGION_FINAL_STATE_OFF, MEM_UNORDER_SIZE_TEST_CFG_DISABLE,
-	     tmem_alloc_simple_test),
+	CASE(SECMEM_UT_PROC_REGION_SIMPLE_ALLOC, "SVP-region-based Alloc Simple",
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF,
+	     MEM_UNORDER_SIZE_TEST_CFG_DISABLE, tmem_alloc_simple_test),
 	CASE(SECMEM_UT_PROC_UNORDERED_SIZE, "SVP Alloc Un-ordered Size",
-	     TRUSTED_MEM_SVP, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     MEM_UNORDER_SIZE_TEST_CFG_ENABLE, tmem_alloc_simple_test),
-	CASE(SECMEM_UT_PROC_ALIGNMENT, "SVP Alloc Alignment", TRUSTED_MEM_SVP,
+	CASE(SECMEM_UT_PROC_ALIGNMENT, "SVP Alloc Alignment", TRUSTED_MEM_SVP_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_alloc_alignment_test),
-	CASE(SECMEM_UT_PROC_SATURATION, "SVP Saturation", TRUSTED_MEM_SVP,
+	CASE(SECMEM_UT_PROC_SATURATION, "SVP Saturation", TRUSTED_MEM_SVP_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 1, tmem_alloc_saturation_test),
 	CASE(SECMEM_UT_PROC_SATURATION_STRESS, "SVP Saturation Stress",
-	     TRUSTED_MEM_SVP, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     UT_SATURATION_STRESS_ROUNDS, tmem_alloc_saturation_test),
 	CASE(SECMEM_UT_PROC_REGION_DEFER, "SVP Region Defer Off",
-	     TRUSTED_MEM_SVP, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_regmgr_region_defer_off_test),
 	CASE(SECMEM_UT_PROC_REGION_ONLINE_CNT, "SVP Region Online Count",
-	     TRUSTED_MEM_SVP, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_regmgr_region_online_count_test),
 	CASE(SECMEM_UT_PROC_REGION_STRESS, "SVP Region On/Off Stress",
-	     TRUSTED_MEM_SVP, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     MEM_REGION_ON_OFF_STREE_ROUND, tmem_region_on_off_stress_test),
 	CASE(SECMEM_UT_PROC_ALLOC_MULTITHREAD, "SVP Alloc Multi-thread",
-	     TRUSTED_MEM_SVP, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_alloc_multithread_test),
-	CASE(SECMEM_UT_PROC_ALL, "SVP Run ALL", TRUSTED_MEM_SVP,
-	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_regmgr_run_all),
+	CASE(SECMEM_UT_PROC_ALL, "SVP region-based Run ALL",
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     tmem_regmgr_run_all),
 #endif
 
-#ifdef CONFIG_MTK_PROT_MEM_SUPPORT
-	CASE(PMEM_UT_PROC_BASIC, "PROT Basic", TRUSTED_MEM_PROT,
+#if IS_ENABLED(CONFIG_MTK_SECURE_MEM_SUPPORT)
+	CASE(SECMEM_UT_PROC_PAGE_SIMPLE_ALLOC, "SVP-page-based Alloc Simple",
+	     TRUSTED_MEM_SVP_REGION, REGMGR_REGION_FINAL_STATE_OFF,
+	     MEM_UNORDER_SIZE_TEST_CFG_DISABLE, tmem_alloc_page_test),
+#endif
+
+#if IS_ENABLED(CONFIG_MTK_PROT_MEM_SUPPORT)
+	CASE(PMEM_UT_PROC_BASIC, "PROT Basic", TRUSTED_MEM_PROT_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_basic_test),
-	CASE(PMEM_UT_PROC_SIMPLE_ALLOC, "PROT Alloc Simple", TRUSTED_MEM_PROT,
+	CASE(PMEM_UT_PROC_SIMPLE_ALLOC, "PROT Alloc Simple", TRUSTED_MEM_PROT_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, MEM_UNORDER_SIZE_TEST_CFG_DISABLE,
 	     tmem_alloc_simple_test),
 	CASE(PMEM_UT_PROC_UNORDERED_SIZE, "PROT Alloc Un-ordered Size",
-	     TRUSTED_MEM_PROT, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_PROT_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     MEM_UNORDER_SIZE_TEST_CFG_ENABLE, tmem_alloc_simple_test),
-	CASE(PMEM_UT_PROC_ALIGNMENT, "PROT Alloc Alignment", TRUSTED_MEM_PROT,
+	CASE(PMEM_UT_PROC_ALIGNMENT, "PROT Alloc Alignment", TRUSTED_MEM_PROT_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_alloc_alignment_test),
-	CASE(PMEM_UT_PROC_SATURATION, "PROT Saturation", TRUSTED_MEM_PROT,
+	CASE(PMEM_UT_PROC_SATURATION, "PROT Saturation", TRUSTED_MEM_PROT_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 1, tmem_alloc_saturation_test),
 	CASE(PMEM_UT_PROC_SATURATION_STRESS, "PROT Saturation Stress",
-	     TRUSTED_MEM_PROT, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_PROT_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     UT_SATURATION_STRESS_ROUNDS, tmem_alloc_saturation_test),
 	CASE(PMEM_UT_PROC_REGION_DEFER, "PROT Region Defer Off",
-	     TRUSTED_MEM_PROT, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_PROT_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_regmgr_region_defer_off_test),
 	CASE(PMEM_UT_PROC_REGION_ONLINE_CNT, "PROT Region Online Count",
-	     TRUSTED_MEM_PROT, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_PROT_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_regmgr_region_online_count_test),
 	CASE(PMEM_UT_PROC_REGION_STRESS, "PROT Region On/Off Stress",
-	     TRUSTED_MEM_PROT, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_PROT_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     MEM_REGION_ON_OFF_STREE_ROUND, tmem_region_on_off_stress_test),
 	CASE(PMEM_UT_PROC_ALLOC_MULTITHREAD, "PROT Alloc Multi-thread",
-	     TRUSTED_MEM_PROT, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_PROT_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_alloc_multithread_test),
 	CASE(PMEM_UT_PROC_ALLOC_MIXED_SIZE, "PROT Alloc Diff Size",
-	     TRUSTED_MEM_PROT, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_PROT_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_alloc_mixed_size),
-	CASE(PMEM_UT_PROC_ALL, "PROT Run ALL", TRUSTED_MEM_PROT,
+	CASE(PMEM_UT_PROC_ALL, "PROT Run ALL", TRUSTED_MEM_PROT_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_regmgr_run_all),
 #endif
 
-#ifdef CONFIG_MTK_WFD_SMEM_SUPPORT
-	CASE(WFD_SMEM_UT_PROC_BASIC, "WFD Basic", TRUSTED_MEM_WFD,
+#if IS_ENABLED(CONFIG_MTK_WFD_SMEM_SUPPORT)
+	CASE(WFD_SMEM_UT_PROC_BASIC, "WFD Basic", TRUSTED_MEM_WFD_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_basic_test),
-	CASE(WFD_SMEM_UT_PROC_SIMPLE_ALLOC, "WFD Alloc Simple", TRUSTED_MEM_WFD,
+	CASE(WFD_SMEM_UT_PROC_SIMPLE_ALLOC, "WFD Alloc Simple", TRUSTED_MEM_WFD_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, MEM_UNORDER_SIZE_TEST_CFG_DISABLE,
 	     tmem_alloc_simple_test),
 	CASE(WFD_SMEM_UT_PROC_UNORDERED_SIZE, "WFD Alloc Un-ordered Size",
-	     TRUSTED_MEM_WFD, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_WFD_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     MEM_UNORDER_SIZE_TEST_CFG_ENABLE, tmem_alloc_simple_test),
-	CASE(WFD_SMEM_UT_PROC_ALIGNMENT, "WFD Alloc Alignment", TRUSTED_MEM_WFD,
+	CASE(WFD_SMEM_UT_PROC_ALIGNMENT, "WFD Alloc Alignment", TRUSTED_MEM_WFD_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_alloc_alignment_test),
-	CASE(WFD_SMEM_UT_PROC_SATURATION, "WFD Saturation", TRUSTED_MEM_WFD,
+	CASE(WFD_SMEM_UT_PROC_SATURATION, "WFD Saturation", TRUSTED_MEM_WFD_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 1, tmem_alloc_saturation_test),
 	CASE(WFD_SMEM_UT_PROC_SATURATION_STRESS, "WFD Saturation Stress",
-	     TRUSTED_MEM_WFD, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_WFD_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     UT_SATURATION_STRESS_ROUNDS, tmem_alloc_saturation_test),
 	CASE(WFD_SMEM_UT_PROC_REGION_DEFER, "WFD Region Defer Off",
-	     TRUSTED_MEM_WFD, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_WFD_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_regmgr_region_defer_off_test),
 	CASE(WFD_SMEM_UT_PROC_REGION_ONLINE_CNT, "WFD Region Online Count",
-	     TRUSTED_MEM_WFD, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_WFD_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_regmgr_region_online_count_test),
 	CASE(WFD_SMEM_UT_PROC_REGION_STRESS, "WFD Region On/Off Stress",
-	     TRUSTED_MEM_WFD, REGMGR_REGION_FINAL_STATE_OFF,
+	     TRUSTED_MEM_WFD_REGION, REGMGR_REGION_FINAL_STATE_OFF,
 	     MEM_REGION_ON_OFF_STREE_ROUND, tmem_region_on_off_stress_test),
 	CASE(WFD_SMEM_UT_PROC_ALLOC_MULTITHREAD, "WFD Alloc Multi-thread",
-	     TRUSTED_MEM_WFD, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     TRUSTED_MEM_WFD_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_alloc_multithread_test),
-	CASE(WFD_SMEM_UT_PROC_ALL, "WFD Run ALL", TRUSTED_MEM_WFD,
+	CASE(WFD_SMEM_UT_PROC_ALL, "WFD Run ALL", TRUSTED_MEM_WFD_REGION,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_regmgr_run_all),
 #endif
 
-#ifdef CONFIG_MTK_HAPP_MEM_SUPPORT
+	CASE(AP_MD_SHM_SMEM_UT_PROC_BASIC, "AP_MD_SHM Basic",
+	     TRUSTED_MEM_AP_MD_SHM, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     tmem_basic_test),
+	CASE(AP_MD_SHM_SMEM_UT_PROC_SIMPLE_ALLOC, "AP_MD_SHM Alloc Simple",
+	     TRUSTED_MEM_AP_MD_SHM, REGMGR_REGION_FINAL_STATE_OFF,
+	     MEM_UNORDER_SIZE_TEST_CFG_DISABLE, tmem_alloc_simple_test),
+
+	CASE(AP_SCP_SHM_SMEM_UT_PROC_BASIC, "AP_SCP_SHM Basic",
+	     TRUSTED_MEM_AP_SCP_SHM, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     tmem_basic_test),
+	CASE(AP_SCP_SHM_SMEM_UT_PROC_SIMPLE_ALLOC, "AP_SCP_SHM Alloc Simple",
+	     TRUSTED_MEM_AP_SCP_SHM, REGMGR_REGION_FINAL_STATE_OFF,
+	     MEM_UNORDER_SIZE_TEST_CFG_DISABLE, tmem_alloc_simple_test),
+
+	CASE(AP_TUI_UT_PROC_BASIC, "TUI Basic",
+	     TRUSTED_MEM_TUI_REGION, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     tmem_basic_test),
+	CASE(AP_TUI_UT_PROC_SIMPLE_ALLOC, "TUI Alloc Simple",
+	     TRUSTED_MEM_TUI_REGION, REGMGR_REGION_FINAL_STATE_OFF,
+	     MEM_UNORDER_SIZE_TEST_CFG_DISABLE, tmem_alloc_simple_test),
+
+	CASE(AP_SAPU_DATA_SHM_UT_PROC_BASIC, "SAPU_DATA_SHM Basic",
+	     TRUSTED_MEM_SAPU_DATA_SHM, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     tmem_basic_test),
+	CASE(AP_SAPU_DATA_SHM_UT_PROC_SIMPLE_ALLOC, "SAPU_DATA_SHM Alloc Simple",
+	     TRUSTED_MEM_SAPU_DATA_SHM, REGMGR_REGION_FINAL_STATE_OFF,
+	     MEM_UNORDER_SIZE_TEST_CFG_DISABLE, tmem_alloc_simple_test),
+
+	CASE(AP_SAPU_ENGINE_SHM_UT_PROC_BASIC, "SAPU_ENGINE_SHM Basic",
+	     TRUSTED_MEM_SAPU_ENGINE_SHM, REGMGR_REGION_FINAL_STATE_OFF, 0,
+	     tmem_basic_test),
+	CASE(AP_SAPU_ENGINE_SHM_UT_PROC_SIMPLE_ALLOC, "SAPU_ENGINE_SHM Alloc Simple",
+	     TRUSTED_MEM_SAPU_ENGINE_SHM, REGMGR_REGION_FINAL_STATE_OFF,
+	     MEM_UNORDER_SIZE_TEST_CFG_DISABLE, tmem_alloc_simple_test),
+
+#if IS_ENABLED(CONFIG_MTK_HAPP_MEM_SUPPORT)
 	CASE(HAPP_UT_PROC_BASIC, "HAPP Basic", TRUSTED_MEM_HAPP,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_basic_test),
 	CASE(HAPP_UT_PROC_SIMPLE_ALLOC, "HAPP Alloc Simple", TRUSTED_MEM_HAPP,
@@ -659,7 +727,7 @@ static struct test_case test_cases[] = {
 	     tmem_regmgr_run_all),
 #endif
 
-#ifdef CONFIG_MTK_SDSP_MEM_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_SDSP_MEM_SUPPORT)
 	CASE(SDSP_UT_PROC_BASIC, "SDSP Basic", TRUSTED_MEM_SDSP,
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_basic_test),
 	CASE(SDSP_UT_PROC_SIMPLE_ALLOC, "SDSP Alloc Simple", TRUSTED_MEM_SDSP,
@@ -691,7 +759,7 @@ static struct test_case test_cases[] = {
 	     REGMGR_REGION_FINAL_STATE_OFF, 0, tmem_regmgr_run_all),
 #endif
 
-#ifdef CONFIG_MTK_SDSP_SHARED_MEM_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_SDSP_SHARED_MEM_SUPPORT)
 	CASE(SDSP_SHARED_UT_PROC_BASIC, "SDSP Shared Basic",
 	     TRUSTED_MEM_SDSP_SHARED, REGMGR_REGION_FINAL_STATE_OFF, 0,
 	     tmem_basic_test),
@@ -747,9 +815,8 @@ static struct test_case test_cases[] = {
 	     mtee_mchunks_multiple_thread_alloc),
 #endif
 
-#if defined(CONFIG_MTK_SECURE_MEM_SUPPORT)                                     \
-	&& defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)	\
-	&& !defined(CONFIG_MTK_SVP_ON_MTEE_SUPPORT)
+#if IS_ENABLED(CONFIG_TRUSTONIC_TEE_SUPPORT) || \
+	IS_ENABLED(CONFIG_MICROTRUST_TEE_SUPPORT)
 	CASE(FR_UT_PROC_CONFIG_PROT_REGION, "Set TEE Protect Region Test", 0, 0,
 	     0, config_tee_prot_region_test),
 #endif
@@ -763,6 +830,10 @@ static struct test_case test_cases[] = {
 	CASE(TMEM_PROFILE_DUMP, "Profiling Dump Test", 0, 0, 0,
 	     profile_dump_all),
 #endif
+	CASE(TMEM_MEMORY_FRAGMENTATION, "Memory Fragmentation Test", 0, 0, 0,
+	     tmem_memory_fragmentation_test),
+	CASE(TMEM_MEMORY_ORDER_FREE, "Memory All Order Free Test", 0, 0, 0,
+	     tmem_memory_order_free_test),
 };
 
 #define TEST_CASE_COUNT ARRAY_SIZE(test_cases)
@@ -772,8 +843,6 @@ int tmem_ut_cases_init(void)
 	int idx;
 
 	pr_info("%s:%d\n", __func__, __LINE__);
-	UNUSED(tmem_region_on_off_stress_test);
-	UNUSED(tmem_regmgr_run_all);
 
 	for (idx = 0; idx < TEST_CASE_COUNT; idx++) {
 		register_ut_test_case(
@@ -790,3 +859,8 @@ void tmem_ut_cases_exit(void)
 {
 }
 
+void tmem_ut_cases(void)
+{
+	tmem_region_on_off_stress_test(NULL, NULL);
+	tmem_regmgr_run_all(NULL, NULL);
+}

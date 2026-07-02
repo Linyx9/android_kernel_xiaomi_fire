@@ -24,6 +24,8 @@
 #include <mt-plat/aee.h>
 #include <mt-plat/mtk_thermal_platform.h>
 #include <tscpu_settings.h>
+#include <gpufreq_v2_legacy.h>
+
 /* ************************************ */
 /* Definition */
 /* ************************************ */
@@ -37,26 +39,11 @@
 unsigned long (*mtk_thermal_get_gpu_loading_fp)(void) = NULL;
 EXPORT_SYMBOL(mtk_thermal_get_gpu_loading_fp);
 
-bool __attribute__ ((weak))
-mtk_get_gpu_loading(unsigned int *pLoading)
-{
-#ifdef CONFIG_MTK_GPU_SUPPORT
-	pr_notice("E_WF: %s doesn't exist\n", __func__);
-#endif
-	return 0;
-}
-
 int __attribute__ ((weak))
 force_get_tbat(void)
 {
 	pr_notice("E_WF: %s doesn't exist\n", __func__);
 	return 30;
-}
-
-unsigned int __attribute__ ((weak))
-mt_gpufreq_get_cur_freq(void)
-{
-	return 0;
 }
 
 /* ************************************ */
@@ -124,7 +111,7 @@ do { \
 } while (0)
 
 
-#define TRIMz_ex(tz, x)   (tz = (unsigned long long)(x))
+#define TRIMz_ex(tz, x)   ((tz = (unsigned long long)(x)) < 0 ? 0 : tz)
 
 /* ********************************************* */
 /* CPU Index */
@@ -141,7 +128,7 @@ static cputime64_t get_idle_time(int cpu)
 {
 	cputime64_t idle;
 
-	idle = kcpustat_cpu(cpu).cpustat[CPUTIME_IDLE];
+	idle = kcs->cpustat[CPUTIME_IDLE];
 	if (cpu_online(cpu) && !nr_iowait_cpu(cpu))
 		idle += arch_idle_time(cpu);
 	return idle;
@@ -151,42 +138,42 @@ static cputime64_t get_iowait_time(int cpu)
 {
 	cputime64_t iowait;
 
-	iowait = kcpustat_cpu(cpu).cpustat[CPUTIME_IOWAIT];
+	iowait = kcs->cpustat[CPUTIME_IOWAIT];
 	if (cpu_online(cpu) && nr_iowait_cpu(cpu))
 		iowait += arch_idle_time(cpu);
 	return iowait;
 }
 
 #else
-
-static u64 get_idle_time(int cpu)
+#if !IS_BUILTIN(CONFIG_MTK_LEGACY_THERMAL)
+u64 get_idle_time(struct kernel_cpustat *kcs, int cpu)
 {
-	u64 idle, idle_time = -1ULL;
+	u64 idle, idle_usecs = -1ULL;
 
 	if (cpu_online(cpu))
-		idle_time = get_cpu_idle_time_us(cpu, NULL);
+		idle_usecs = get_cpu_idle_time_us(cpu, NULL);
 
-	if (idle_time == -1ULL)
+	if (idle_usecs == -1ULL)
 		/* !NO_HZ or cpu offline so we can rely on cpustat.idle */
-		idle = kcpustat_cpu(cpu).cpustat[CPUTIME_IDLE];
+		idle = kcs->cpustat[CPUTIME_IDLE];
 	else
-		idle = idle_time * NSEC_PER_USEC;
+		idle = idle_usecs * NSEC_PER_USEC;
 
 	return idle;
 }
-
-static u64 get_iowait_time(int cpu)
+#endif
+static u64 get_iowait_time(struct kernel_cpustat *kcs, int cpu)
 {
-	u64 iowait, iowait_time = -1ULL;
+	u64 iowait, iowait_usecs = -1ULL;
 
 	if (cpu_online(cpu))
-		iowait_time = get_cpu_iowait_time_us(cpu, NULL);
+		iowait_usecs = get_cpu_iowait_time_us(cpu, NULL);
 
-	if (iowait_time == -1ULL)
+	if (iowait_usecs == -1ULL)
 		/* !NO_HZ or cpu offline so we can rely on cpustat.iowait */
-		iowait = kcpustat_cpu(cpu).cpustat[CPUTIME_IOWAIT];
+		iowait = kcs->cpustat[CPUTIME_IOWAIT];
 	else
-		iowait = iowait_time * NSEC_PER_USEC;
+		iowait = iowait_usecs * NSEC_PER_USEC;
 
 	return iowait;
 }
@@ -201,8 +188,12 @@ static int get_sys_cpu_usage_info_ex(void)
 		cpuloadings[i] = 0;
 
 	for_each_online_cpu(nCoreIndex) {
+		struct kernel_cpustat kcs;
+
+		kcpustat_cpu_fetch(&kcs, nCoreIndex);
+
 		if (nCoreIndex >= NO_CPU_CORES) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning("thermal",
 				"nCoreIndex %d over NO_CPU_CORES %d\n",
 				nCoreIndex, NO_CPU_CORES);
@@ -220,10 +211,10 @@ static int get_sys_cpu_usage_info_ex(void)
 		    kcpustat_cpu(nCoreIndex).cpustat[CPUTIME_SYSTEM];
 
 		cpu_index_list[nCoreIndex].i[CPU_USAGE_CURRENT_FIELD] =
-						get_idle_time(nCoreIndex);
+						get_idle_time(&kcs, nCoreIndex);
 
 		cpu_index_list[nCoreIndex].w[CPU_USAGE_CURRENT_FIELD] =
-						get_iowait_time(nCoreIndex);
+						get_iowait_time(&kcs, nCoreIndex);
 
 		cpu_index_list[nCoreIndex].q[CPU_USAGE_CURRENT_FIELD] =
 		    kcpustat_cpu(nCoreIndex).cpustat[CPUTIME_IRQ];
@@ -343,7 +334,7 @@ static int get_sys_all_cpu_freq_info(void)
 					mtktscpu_limited_dmips);
 
 			if (dmips_limit_warned == false) {
-				#ifdef CONFIG_MTK_AEE_FEATURE
+				#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 				aee_kernel_warning("thermal",
 						"cpu %d over limit %d\n",
 						cpu_total_dmips,
@@ -395,18 +386,17 @@ static int mtk_thermal_validation_open(struct inode *inode, struct file *file)
 	return single_open(file, mtk_thermal_validation_rd, NULL);
 }
 
-static const struct file_operations mtk_thermal_validation_fops = {
-	.owner = THIS_MODULE,
-	.open = mtk_thermal_validation_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtk_thermal_validation_wr,
-	.release = single_release,
+static const struct proc_ops mtk_thermal_validation_fops = {
+	.proc_open = mtk_thermal_validation_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtk_thermal_validation_wr,
+	.proc_release = single_release,
 };
 
 
 /* Init */
-static int __init mtk_thermal_platform_init(void)
+int  mtk_thermal_platform_init(void)
 {
 	int err = 0;
 	struct proc_dir_entry *entry;
@@ -423,7 +413,7 @@ static int __init mtk_thermal_platform_init(void)
 }
 
 /* Exit */
-static void __exit mtk_thermal_platform_exit(void)
+void  mtk_thermal_platform_exit(void)
 {
 
 }
@@ -470,7 +460,7 @@ int mtk_thermal_get_gpu_info(int *nocores, int **gpufreq, int **gpuloading)
 		*nocores = NO_GPU_CORES;
 
 	if (gpufreq) {
-		gpufreqs[0] = mt_gpufreq_get_cur_freq() / 1000;	/* MHz */
+		gpufreqs[0] = gpufreq_get_cur_freq(TARGET_DEFAULT) / 1000;	/* MHz */
 		*gpufreq = gpufreqs;
 	}
 
@@ -541,6 +531,7 @@ unsigned int mtk_thermal_clear_user_scenarios(unsigned int mask)
 	return _thermal_scen;
 }
 EXPORT_SYMBOL(mtk_thermal_clear_user_scenarios);
-
-module_init(mtk_thermal_platform_init);
-module_exit(mtk_thermal_platform_exit);
+//module_init(mtk_thermal_platform_init);
+//module_exit(mtk_thermal_platform_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

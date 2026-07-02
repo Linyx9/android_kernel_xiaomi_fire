@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
 #ifndef __CMDQ_MMP_H__
 #define __CMDQ_MMP_H__
 
-#include "mdp_cmdq_helper_ext.h"
+#include "cmdq_helper_ext.h"
 #if IS_ENABLED(CONFIG_MMPROFILE)
 #include "mmprofile.h"
 #endif

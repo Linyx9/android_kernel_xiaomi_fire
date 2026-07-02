@@ -27,6 +27,9 @@ static struct device *g_fsm_pdev;
 #include "fsm_misc.c"
 #include "fsm_codec.c"
 
+/* MTK platform header file. */
+#include <mtk-sp-spk-amp.h>
+
 void fsm_mutex_lock(void)
 {
 	mutex_lock(&g_fsm_mutex);
@@ -414,14 +417,13 @@ static const struct of_device_id fsm_match_tbl[] = {
 };
 #endif
 
-int fsm_i2c_probe(struct i2c_client *i2c,
-			const struct i2c_device_id *id)
+int fsm_i2c_probe(struct i2c_client *i2c)
 {
 	fsm_config_t *cfg = fsm_get_config();
 	fsm_dev_t *fsm_dev;
 	int ret;
 
-	pr_debug("enter");
+	pr_info("fsm_i2c_probe enter hhhhhhh");
 	if (!i2c_check_functionality(i2c->adapter, I2C_FUNC_I2C)) {
 		pr_info("check I2C_FUNC_I2C failed");
 		return -EIO;
@@ -489,19 +491,20 @@ int fsm_i2c_probe(struct i2c_client *i2c,
 		fsm_codec_register(&i2c->dev, fsm_dev->id);
 	}
 
+    mtk_spk_set_type(MTK_SPK_FOURSEMI_FS16XX);
+
 	dev_info(&i2c->dev, "i2c probe completed");
 
 	return 0;
 }
 
-int fsm_i2c_remove(struct i2c_client *i2c)
+void fsm_i2c_remove(struct i2c_client *i2c)
 {
 	fsm_dev_t *fsm_dev = i2c_get_clientdata(i2c);
 
 	pr_debug("enter");
 	if (fsm_dev == NULL) {
 		pr_info("bad parameter");
-		return -EINVAL;
 	}
 	if (fsm_dev->fsm_wq) {
 		cancel_delayed_work_sync(&fsm_dev->interrupt_work);
@@ -521,15 +524,13 @@ int fsm_i2c_remove(struct i2c_client *i2c)
 	fsm_remove(fsm_dev);
 	fsm_vddd_off();
 	if (gpio_is_valid(fsm_dev->irq_gpio)) {
-		devm_gpio_free(&i2c->dev, fsm_dev->irq_gpio);
+		gpio_free(fsm_dev->irq_gpio);
 	}
 	if (gpio_is_valid(fsm_dev->rst_gpio)) {
-		devm_gpio_free(&i2c->dev, fsm_dev->rst_gpio);
+		gpio_free(fsm_dev->rst_gpio);
 	}
 	devm_kfree(&i2c->dev, fsm_dev);
 	dev_info(&i2c->dev, "i2c removed");
-
-	return 0;
 }
 
 
@@ -592,14 +593,13 @@ static struct i2c_driver fsm_i2c_driver = {
 	.id_table = fsm_i2c_id,
 };
 
-int exfsm_i2c_probe(struct i2c_client *i2c,
-			const struct i2c_device_id *id)
+int exfsm_i2c_probe(struct i2c_client *i2c)
 {
-	return fsm_i2c_probe(i2c, id);
+	return fsm_i2c_probe(i2c);
 }
 EXPORT_SYMBOL(exfsm_i2c_probe);
 
-int exfsm_i2c_remove(struct i2c_client *i2c)
+void exfsm_i2c_remove(struct i2c_client *i2c)
 {
 	return fsm_i2c_remove(i2c);
 }

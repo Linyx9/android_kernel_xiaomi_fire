@@ -57,7 +57,7 @@ void mddp_u_get_data_stats(void *buf, uint32_t *buf_len)
 	uint32_t                                sm_len = 0;
 
 	*buf_len = 0;
-	md_stats = get_smem_start_addr(MD_SYS1, SMEM_USER_RAW_NETD, &sm_len);
+	md_stats = get_smem_start_addr(SMEM_USER_RAW_NETD, &sm_len);
 	if (md_stats) {
 		md_stats += wan_id;
 
@@ -108,7 +108,7 @@ int32_t mddp_u_set_data_limit(uint8_t *buf, uint32_t buf_len)
 		return -EINVAL;
 	}
 
-	md_status = exec_ccci_kern_func_by_md_id(0, ID_GET_MD_STATE, NULL, 0);
+	md_status = exec_ccci_kern_func(ID_GET_MD_STATE, NULL, 0);
 
 	if (md_status != MD_STATE_READY) {
 		MDDP_U_LOG(MDDP_LL_NOTICE,
@@ -117,7 +117,7 @@ int32_t mddp_u_set_data_limit(uint8_t *buf, uint32_t buf_len)
 		return -ENODEV;
 	}
 
-	md_msg = kzalloc(sizeof(struct mddp_md_msg_t) + sizeof(limit),
+	md_msg = kzalloc(sizeof(struct mddp_md_msg_t),
 			GFP_ATOMIC);
 	if (unlikely(!md_msg)) {
 		return -EAGAIN;
@@ -145,7 +145,7 @@ int32_t mddp_u_set_data_limit(uint8_t *buf, uint32_t buf_len)
 
 	md_msg->msg_id = IPC_MSG_ID_DPFM_DATA_USAGE_CMD;
 	md_msg->data_len = sizeof(limit);
-	memcpy(md_msg->data, &limit, sizeof(limit));
+	memcpy(&md_msg->data, &limit, sizeof(limit));
 	app = mddp_get_app_inst(MDDP_APP_TYPE_WH);
 	mddp_ipc_send_md(app, md_msg, MDFPM_USER_ID_DPFM);
 
@@ -168,7 +168,7 @@ int32_t mddp_u_set_warning_and_data_limit(uint8_t *buf, uint32_t buf_len)
 		return -EINVAL;
 	}
 
-	md_status = exec_ccci_kern_func_by_md_id(0, ID_GET_MD_STATE, NULL, 0);
+	md_status = exec_ccci_kern_func(ID_GET_MD_STATE, NULL, 0);
 
 	if (md_status != MD_STATE_READY) {
 		MDDP_U_LOG(MDDP_LL_NOTICE,
@@ -177,11 +177,10 @@ int32_t mddp_u_set_warning_and_data_limit(uint8_t *buf, uint32_t buf_len)
 		return -ENODEV;
 	}
 
-	md_msg = kzalloc(sizeof(struct mddp_md_msg_t) + sizeof(limit),
+	md_msg = kzalloc(sizeof(struct mddp_md_msg_t),
 			GFP_ATOMIC);
-	if (unlikely(!md_msg)) {
+	if (unlikely(!md_msg))
 		return -EAGAIN;
-	}
 
 	in_req = (struct mddp_dev_req_set_warning_and_data_limit_t *)buf;
 	id = mddp_f_data_usage_wan_dev_name_to_id(in_req->ul_dev_name);
@@ -206,7 +205,7 @@ int32_t mddp_u_set_warning_and_data_limit(uint8_t *buf, uint32_t buf_len)
 
 	md_msg->msg_id = IPC_MSG_ID_DPFM_DATA_USAGE_CMD;
 	md_msg->data_len = sizeof(limit);
-	memcpy(md_msg->data, &limit, sizeof(limit));
+	memcpy(&md_msg->data, &limit, sizeof(limit));
 	app = mddp_get_app_inst(MDDP_APP_TYPE_WH);
 	mddp_ipc_send_md(app, md_msg, MDFPM_USER_ID_DPFM);
 

@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */  
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
+ * vow_assert.h  --  VoW assertion definition
+ *
  * Copyright (c) 2020 MediaTek Inc.
+ * Author: Michael Hsiao <michael.hsiao@mediatek.com>
  */
 
 #ifndef VOW_ASSERT_H

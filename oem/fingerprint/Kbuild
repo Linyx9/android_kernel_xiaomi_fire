@@ -1,0 +1,4 @@
+ifdef CONFIG_OEM_LAMU_FINGERPRINT
+	obj-y += fpc1560/
+	obj-y += goodix/
+endif

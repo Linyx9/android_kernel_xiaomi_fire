@@ -1,6 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (c) 2019 MediaTek Inc.
  */
 
 
@@ -18,7 +18,7 @@
 #include "clk-mtk.h"
 #include "clk-gate.h"
 #include "clk-mux.h"
-#include "clk-mt6781-pg.h"
+
 
 #include <dt-bindings/clock/mt6781-clk.h>
 
@@ -1228,13 +1228,6 @@ const struct clk_ops mtk_clk_gate_ops_inv_dummy = {
 	.enable		= mtk_cg_enable_inv,
 	.disable	= mtk_cg_disable_inv_dummy,
 };
-/*
-const struct clk_ops mtk_clk_gate_ops_setclr_inv_dummy = {
-	.is_enabled	= mtk_cg_bit_is_set,
-	.enable		= mtk_cg_enable_inv,
-	.disable	= mtk_cg_disable_inv_dummy,
-};
-*/
 
 static const struct mtk_gate_regs infra0_cg_regs = {
 	.set_ofs = 0x80,
@@ -2008,21 +2001,12 @@ static const struct mtk_gate_regs ipe_cg_regs = {
 		.ops = &mtk_clk_gate_ops_setclr,	\
 	}
 
-#define GATE_IPE_DUMMY(_id, _name, _parent, _shift) {	\
-		.id = _id,				\
-		.name = _name,				\
-		.parent_name = _parent,			\
-		.regs = &ipe_cg_regs,			\
-		.shift = _shift,			\
-		.ops = &mtk_clk_gate_ops_dummy,	\
-	}
-
 static const struct mtk_gate ipe_clks[] = {
-	GATE_IPE_DUMMY(CLK_IPE_LARB19, "ipe_larb19",
+	GATE_IPE(CLK_IPE_LARB19, "ipe_larb19",
 			"ipe_sel"/* parent */, 0),
-	GATE_IPE_DUMMY(CLK_IPE_LARB20, "ipe_larb20",
+	GATE_IPE(CLK_IPE_LARB20, "ipe_larb20",
 			"ipe_sel"/* parent */, 1),
-	GATE_IPE_DUMMY(CLK_IPE_SMI_SUBCOM, "ipe_smi_subcom",
+	GATE_IPE(CLK_IPE_SMI_SUBCOM, "ipe_smi_subcom",
 			"ipe_sel"/* parent */, 2),
 	GATE_IPE(CLK_IPE_FD, "ipe_fd",
 			"ipe_sel"/* parent */, 3),
@@ -2032,7 +2016,7 @@ static const struct mtk_gate ipe_clks[] = {
 			"ipe_sel"/* parent */, 5),
 	GATE_IPE(CLK_IPE_DPE, "ipe_dpe",
 			"ipe_sel"/* parent */, 6),
-	GATE_IPE_DUMMY(CLK_IPE_GALS, "ipe_gals",
+	GATE_IPE(CLK_IPE_GALS, "ipe_gals",
 			"img1_sel"/* parent */, 8),
 };
 
@@ -2109,7 +2093,7 @@ static const struct mtk_gate mm_clks[] = {
 			"disp_sel"/* parent */, 9),
 	GATE_MM0(CLK_MM_DISP_COLOR0, "mm_disp_color0",
 			"disp_sel"/* parent */, 10),
-	GATE_MM0_DUMMY(CLK_MM_SMI_INFRA, "mm_smi_infra",
+	GATE_MM0(CLK_MM_SMI_INFRA, "mm_smi_infra",
 			"disp_sel"/* parent */, 11),
 	GATE_MM0(CLK_MM_DISP_DSC_WRAP, "mm_disp_dsc_wrap",
 			"disp_sel"/* parent */, 12),
@@ -2121,7 +2105,7 @@ static const struct mtk_gate mm_clks[] = {
 			"disp_sel"/* parent */, 15),
 	GATE_MM0(CLK_MM_DISP_DITHER0, "mm_disp_dither0",
 			"disp_sel"/* parent */, 16),
-	GATE_MM0_DUMMY(CLK_MM_SMI_COMMON, "mm_smi_common",
+	GATE_MM0(CLK_MM_SMI_COMMON, "mm_smi_common",
 			"disp_sel"/* parent */, 17),
 	GATE_MM0(CLK_MM_DISP_CM0, "mm_disp_cm0",
 			"disp_sel"/* parent */, 18),
@@ -2131,9 +2115,9 @@ static const struct mtk_gate mm_clks[] = {
 			"disp_sel"/* parent */, 20),
 	GATE_MM0(CLK_MM_DISP_FAKE_ENG1, "mm_disp_fake_eng1",
 			"disp_sel"/* parent */, 21),
-	GATE_MM0_DUMMY(CLK_MM_SMI_GALS, "mm_smi_gals",
+	GATE_MM0(CLK_MM_SMI_GALS, "mm_smi_gals",
 			"disp_sel"/* parent */, 22),
-	GATE_MM0_DUMMY(CLK_MM_SMI_IOMMU, "mm_smi_iommu",
+	GATE_MM0(CLK_MM_SMI_IOMMU, "mm_smi_iommu",
 			"disp_sel"/* parent */, 24),
 	/* MM1 */
 	GATE_MM1(CLK_MM_DSI0_DSI_CK_DOMAIN, "mm_dsi0_dsi_domain",
@@ -2195,7 +2179,7 @@ static const struct mtk_gate mdp_clks[] = {
 			"mdp_sel"/* parent */, 4),
 	GATE_MDP0(CLK_MDP_TDSHP1, "mdp_tdshp1",
 			"mdp_sel"/* parent */, 5),
-	GATE_MDP0_DUMMY(CLK_MDP_SMI0, "mdp_smi0",
+	GATE_MDP0(CLK_MDP_SMI0, "mdp_smi0",
 			"mdp_sel"/* parent */, 6),
 	GATE_MDP0(CLK_MDP_APB_BUS, "mdp_apb_bus",
 			"mdp_sel"/* parent */, 7),
@@ -2299,21 +2283,12 @@ static const struct mtk_gate_regs vdec2_cg_regs = {
 	}
 
 static const struct mtk_gate vdec_clks[] = {
-#if 1//MT_CCF_BRINGUP
 	/* VDEC0 */
 	GATE_VDEC0_I_DUMMY(VDEC_VDEC, "vdec_cken", "vdec_sel", 0),
 	/* VDEC1 */
 	GATE_VDEC1_I_DUMMY(VDEC_LARB1, "vdec_larb1_cken", "vdec_sel", 0),
 	/* VDEC2 */
 	GATE_VDEC2_I_DUMMY(VDEC_LAT, "vdec_lat_cken", "vdec_sel", 0),
-#else
-	/* VDEC0 */
-	GATE_VDEC0_I(VDEC_VDEC, "vdec_cken", "vdec_sel", 0),
-	/* VDEC1 */
-	GATE_VDEC1_I(VDEC_LARB1, "vdec_larb1_cken", "vdec_sel", 0),
-	/* VDEC2 */
-	GATE_VDEC2_I(VDEC_LAT, "vdec_lat_cken", "vdec_sel", 0),
-#endif
 };
 
 static const struct mtk_gate_regs venc_global_con_cg_regs = {
@@ -2341,7 +2316,6 @@ static const struct mtk_gate_regs venc_global_con_cg_regs = {
 	}
 
 static const struct mtk_gate venc_global_con_clks[] = {
-#if 1//MT_CCF_BRINGUP
 	GATE_VENC_GLOBAL_CON_DUMMY(VENC_GCON_LARB, "venc_larb",
 		"venc_sel", 0),
 	GATE_VENC_GLOBAL_CON_DUMMY(VENC_GCON_VENC, "venc_venc",
@@ -2350,16 +2324,6 @@ static const struct mtk_gate venc_global_con_clks[] = {
 		"venc_sel", 8),
 	GATE_VENC_GLOBAL_CON_DUMMY(VENC_GCON_GALS, "venc_gals",
 		"venc_sel", 28),
-#else
-	GATE_VENC_GLOBAL_CON_DUMMY(VENC_GCON_LARB, "venc_larb",
-		"venc_sel", 0),
-	GATE_VENC_GLOBAL_CON_DUMMY(VENC_GCON_VENC, "venc_venc",
-		"venc_sel", 4),
-	GATE_VENC_GLOBAL_CON_DUMMY(VENC_GCON_JPGENC, "venc_jpgenc",
-		"venc_sel", 8),
-	GATE_VENC_GLOBAL_CON_DUMMY(VENC_GCON_GALS, "venc_gals",
-		"venc_sel", 28),
-#endif
 };
 
 static const struct mtk_gate_regs imp_cg_regs = {
@@ -2446,47 +2410,6 @@ static int mtk_topckgen_init(struct platform_device *pdev)
 	/* Need Confirm */
 	clk_writel(CLK_SCP_CFG_0, clk_readl(CLK_SCP_CFG_0) | 0x3FF);
 	clk_writel(CLK_SCP_CFG_1, clk_readl(CLK_SCP_CFG_1) | 0x11);
-
-#if 0
-	clk_writel(cksys_base + CK_CFG_0_CLR, 0x80000000);
-	clk_writel(cksys_base + CK_CFG_0_SET, 0x80000000);
-
-	clk_writel(cksys_base + CK_CFG_1_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_1_SET, 0x80808080);
-
-	clk_writel(cksys_base + CK_CFG_2_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_2_SET, 0x80808080);
-
-	clk_writel(cksys_base + CK_CFG_3_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_3_SET, 0x80808080);
-
-	clk_writel(cksys_base + CK_CFG_4_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_4_SET, 0x80808080);
-
-	clk_writel(cksys_base + CK_CFG_5_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_5_SET, 0x80808080);
-
-	clk_writel(cksys_base + CK_CFG_6_CLR, 0x00808080);/*pwrap_ulposc*/
-	clk_writel(cksys_base + CK_CFG_6_SET, 0x00808080);
-
-	clk_writel(cksys_base + CK_CFG_7_CLR, 0x80800080);/*sspm*/
-	clk_writel(cksys_base + CK_CFG_7_SET, 0x80800080);
-
-	clk_writel(cksys_base + CK_CFG_8_CLR, 0x00808080);/*spm*/
-	clk_writel(cksys_base + CK_CFG_8_SET, 0x00808080);
-
-	clk_writel(cksys_base + CK_CFG_9_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_9_SET, 0x80808080);
-
-	clk_writel(cksys_base + CK_CFG_10_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_10_SET, 0x80808000);/*dxcc*/
-
-	clk_writel(cksys_base + CK_CFG_11_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_11_SET, 0x80808080);
-
-	clk_writel(cksys_base + CK_CFG_12_CLR, 0x80808080);
-	clk_writel(cksys_base + CK_CFG_12_SET, 0x80808080);
-#endif
 	return r;
 }
 
@@ -2518,20 +2441,11 @@ static int  mtk_infracfg_ao_init(struct platform_device *pdev)
 		kfree(clk_data);
 	}
 	infracfg_base = base;
-	#if 1
 	/* Need Confirm */
 	clk_writel(INFRA_TOPAXI_SI0_CTL, clk_readl(INFRA_TOPAXI_SI0_CTL) | 0x2);
 	pr_notice("%s: infra mfg debug: %08x\n",
 			__func__, clk_readl(INFRA_TOPAXI_SI0_CTL));
-	#endif
 	/*mtk_clk_enable_critical();*/
-#if MT_CCF_BRINGUP
-#else
-	//clk_writel(INFRA_PDN_SET0, INFRA_CG0);
-	//clk_writel(INFRA_PDN_SET1, INFRA_CG1);
-	//clk_writel(INFRA_PDN_SET2, INFRA_CG2);
-	//clk_writel(INFRA_PDN_SET3, INFRA_CG3);
-#endif
 	return 0;
 }
 
@@ -2736,10 +2650,6 @@ static int  mtk_apmixedsys_init(struct platform_device *pdev)
 	clk_writel(AP_PLL_CON4, 0xFFFAA007);
 	/* [17] = 0 */
 	clk_writel(AP_PLL_CON6, clk_readl(AP_PLL_CON6) & 0xfffdffff);
-	#if 0 /* race condition access */
-	/*[4]SSUSB26M, [11][6]MIPIC camera, [8] mm26m*/
-	clk_writel(AP_PLL_CON8, clk_readl(AP_PLL_CON8) & 0xfffff6af);
-	#endif
 
 /*APLL1*/
 	clk_clrl(APLL1_CON0, PLL_EN);
@@ -2755,26 +2665,6 @@ static int  mtk_apmixedsys_init(struct platform_device *pdev)
 	clk_setl(ADSPPLL_PWR_CON0, PLL_ISO_EN);
 	clk_clrl(ADSPPLL_PWR_CON0, PLL_PWR_ON);
 	clk_clrl(ADSPPLL_CON0, ADSPPLL_DIV_RSTB);/*move to front*/
-#if 0 /* note srt_bar should do before disable */
-/*MMPLL*/
-	/* clk_clrl(MMPLL_CON0, MMPLL_DIV_RSTB); */
-	clk_clrl(MMPLL_CON0, PLL_EN);
-	clk_setl(MMPLL_PWR_CON0, PLL_ISO_EN);
-	clk_clrl(MMPLL_PWR_CON0, PLL_PWR_ON);
-/*MFGPLL*/
-	clk_clrl(MFGPLL_CON0, PLL_EN);
-	clk_setl(MFGPLL_PWR_CON0, PLL_ISO_EN);
-	clk_clrl(MFGPLL_PWR_CON0, PLL_PWR_ON);
-/*UNIVPLL*/
-	/* clk_clrl(UNIVPLL_CON0, MMPLL_DIV_RSTB); */
-	clk_clrl(UNIVPLL_CON0, PLL_EN);
-	clk_setl(UNIVPLL_PWR_CON0, PLL_ISO_EN);
-	clk_clrl(UNIVPLL_PWR_CON0, PLL_PWR_ON);
-/*MSDCPLL*/
-	clk_clrl(MSDCPLL_CON0, PLL_EN);
-	clk_setl(MSDCPLL_PWR_CON0, PLL_ISO_EN);
-	clk_clrl(MSDCPLL_PWR_CON0, PLL_PWR_ON);
-#endif
 	return r;
 }
 
@@ -3014,7 +2904,6 @@ static int mtk_mfg_cfg_init(struct platform_device *pdev)
 		kfree(clk_data);
 	}
 	mfgcfg_base = base;
-
 #if MT_CCF_BRINGUP
 	/*clk_writel(MFG_CG_CLR, MFG_CG);*/
 #endif
@@ -3183,17 +3072,6 @@ void check_seninf_ck(void)
 	pr_notice("%s: AP_PLL_CON2 = 0x%08x\r\n", __func__,
 		clk_readl(AP_PLL_CON2));
 }
-#if 0
-void mipic_26m_en(int en)
-{
-	/* [6] MIPIC0 26M */
-	/* [11] MIPIC1 26M */
-	if (en)
-		clk_writel(AP_PLL_CON8, clk_readl(AP_PLL_CON8) | 0x00000840);
-	else
-		clk_writel(AP_PLL_CON8, clk_readl(AP_PLL_CON8) & 0xfffff7bf);
-}
-#endif
 /*
  * module_idx mapping
  * display  ->    0
@@ -3228,124 +3106,6 @@ void mipi_26m_en(unsigned int module_idx, int en)
 	apmixed_mipi_unlock(flags);
 }
 
-#if 0
-unsigned int mt_get_ckgen_freq(unsigned int ID)
-{
-	int output = 0, i = 0;
-	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 = 0;
-
-	clk_dbg_cfg = clk_readl(CLK_DBG_CFG);
-	clk_writel(CLK_DBG_CFG, (clk_dbg_cfg & 0xFFFFC0FC)|(ID << 8)|(0x1));
-
-	clk_misc_cfg_0 = clk_readl(CLK_MISC_CFG_0);
-	clk_writel(CLK_MISC_CFG_0, (clk_misc_cfg_0 & 0x00FFFFFF) | (3 << 24));
-
-	clk26cali_1 = clk_readl(CLK26CALI_1);
-	clk_writel(CLK26CALI_0, 0x1000);
-	clk_writel(CLK26CALI_0, 0x1010);
-
-	/* wait frequency meter finish */
-	while (clk_readl(CLK26CALI_0) & 0x10) {
-		udelay(10);
-		i++;
-		if (i > 30)
-			break;
-	}
-	/* illegal pass */
-	if (i == 0) {
-		clk_writel(CLK26CALI_0, 0x0000);
-		//re-trigger
-		clk_writel(CLK26CALI_0, 0x1000);
-		clk_writel(CLK26CALI_0, 0x1010);
-		while (clk_readl(CLK26CALI_0) & 0x10) {
-			udelay(10);
-			i++;
-			if (i > 30)
-				break;
-		}
-	}
-
-	temp = clk_readl(CLK26CALI_1) & 0xFFFF;
-
-	output = (temp * 26000) / 1024;
-
-	clk_writel(CLK_DBG_CFG, clk_dbg_cfg);
-	clk_writel(CLK_MISC_CFG_0, clk_misc_cfg_0);
-	clk_writel(CLK26CALI_0, 0x0000);
-
-	/*print("ckgen meter[%d] = %d Khz\n", ID, output);*/
-	if (i > 30)
-		return 0;
-	if ((output * 4) < 25000) {
-		pr_notice("%s: CLK_DBG_CFG = 0x%x, CLK_MISC_CFG_0 = 0x%x, CLK26CALI_0 = 0x%x, CLK26CALI_1 = 0x%x\n",
-			__func__,
-			clk_readl(CLK_DBG_CFG),
-			clk_readl(CLK_MISC_CFG_0),
-			clk_readl(CLK26CALI_0),
-			clk_readl(CLK26CALI_1));
-	}
-	return (output * 4);
-}
-
-unsigned int mt_get_abist_freq(unsigned int ID)
-{
-	int output = 0, i = 0;
-	unsigned long flags;
-	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 = 0;
-
-	clk_dbg_cfg = clk_readl(CLK_DBG_CFG);
-	clk_writel(CLK_DBG_CFG, (clk_dbg_cfg & 0xFFC0FFFC)|(ID << 16));
-
-	clk_misc_cfg_0 = clk_readl(CLK_MISC_CFG_0);
-	clk_writel(CLK_MISC_CFG_0, (clk_misc_cfg_0 & 0x00FFFFFF) | (3 << 24));
-
-	clk26cali_1 = clk_readl(CLK26CALI_1);
-
-	clk_writel(CLK26CALI_0, 0x1000);
-	clk_writel(CLK26CALI_0, 0x1010);
-
-	/* wait frequency meter finish */
-	while (clk_readl(CLK26CALI_0) & 0x10) {
-		udelay(10);
-		i++;
-		if (i > 30)
-			break;
-	}
-	/* illegal pass */
-	if (i == 0) {
-		clk_writel(CLK26CALI_0, 0x0000);
-		//re-trigger
-		clk_writel(CLK26CALI_0, 0x1000);
-		clk_writel(CLK26CALI_0, 0x1010);
-		while (clk_readl(CLK26CALI_0) & 0x10) {
-			udelay(10);
-			i++;
-			if (i > 30)
-				break;
-		}
-	}
-	temp = clk_readl(CLK26CALI_1) & 0xFFFF;
-
-	output = (temp * 26000) / 1024;
-
-	clk_writel(CLK_DBG_CFG, clk_dbg_cfg);
-	clk_writel(CLK_MISC_CFG_0, clk_misc_cfg_0);
-	clk_writel(CLK26CALI_0, 0x0000);
-
-	if (i > 30)
-		return 0;
-	if ((output * 4) < 25000) {
-		pr_notice("%s: CLK_DBG_CFG = 0x%x, CLK_MISC_CFG_0 = 0x%x, CLK26CALI_0 = 0x%x, CLK26CALI_1 = 0x%x\n",
-			__func__,
-			clk_readl(CLK_DBG_CFG),
-			clk_readl(CLK_MISC_CFG_0),
-			clk_readl(CLK26CALI_0),
-			clk_readl(CLK26CALI_1));
-	}
-	return (output * 4);
-}
-#endif
-
 #define ARMPLL_LL_SEL            ((0x1 << 19) \
 					  |(0x1 << 20) \
 					  |(0x1 << 21) \
@@ -3365,7 +3125,6 @@ unsigned int mt_get_abist_freq(unsigned int ID)
 #define ARMPLL_BB_SEL1            ((0x1 << 17))
 
 
-#if 1
 void mp_enter_suspend(int id, int suspend)
 {
 	/* mp0*/
@@ -3413,7 +3172,6 @@ void mp_enter_suspend(int id, int suspend)
 		}
 	}
 }
-#endif
 
 #define UNIV_192M            ((0x1 << 29) \
 					  |(0x1 << 30) \
@@ -3448,20 +3206,6 @@ void pll_if_on(void)//check need to add bug_on
 	if (clk_readl(APLL2_CON0) & 0x1)
 		pr_notice("suspend warning: APLL2 is on!!!\n");
 
-#if 0
-	pr_notice("%s: AP_PLL_CON3 = 0x%08x\r\n", __func__,
-		clk_readl(AP_PLL_CON3));
-	pr_notice("%s: AP_PLL_CON4 = 0x%08x\r\n", __func__,
-		clk_readl(AP_PLL_CON4));
-	pr_notice("%s: ARMPLL_LL = %dHZ\r\n", __func__, mt_get_abist_freq(22));
-	pr_notice("%s: ARMPLL_L = %dHZ\r\n", __func__, mt_get_abist_freq(20));
-	pr_notice("%s: UNIVPLL = %dHZ\r\n", __func__, mt_get_abist_freq(24));
-	pr_notice("%s: MFGPLL = %dHZ\r\n", __func__, mt_get_abist_freq(25));
-	pr_notice("%s: MMPLL = %dHZ\r\n", __func__, mt_get_abist_freq(27));
-	pr_notice("%s: MSDCPLL = %dHZ\r\n", __func__, mt_get_abist_freq(26));
-	pr_notice("%s: APLL1 = %dHZ\r\n", __func__, mt_get_abist_freq(28));
-	pr_notice("%s: APLL2 = %dHZ\r\n", __func__, mt_get_abist_freq(29));
-#endif
 }
 
 void pll_force_off(void)
@@ -3567,53 +3311,55 @@ void armpll_control(int id, int on)
 
 static const struct of_device_id of_match_clk_mt6781[] = {
 	{
-		.compatible = "mediatek,topckgen",
+		.compatible = "mediatek,mt6781-topckgen",
 		.data = mtk_topckgen_init,
 	}, {
-		.compatible = "mediatek,infracfg_ao",
+		.compatible = "mediatek,mt6781-infracfg_ao",
 		.data = mtk_infracfg_ao_init,
 	}, {
-		.compatible = "mediatek,apmixed",
+		.compatible = "mediatek,mt6781-apmixed",
 		.data = mtk_apmixedsys_init,
 	}, {
-		.compatible = "mediatek,audio",
+		.compatible = "mediatek,mt6781-audio",
 		.data = mtk_audio_init,
 	},{
 		.compatible = "mediatek,camsys",
 		.data = mtk_camsys_init,
 	},{
 		.compatible = "mediatek,camsys_rawa",
-		.data = mtk_camsys_rawa_init,	
+		.data = mtk_camsys_rawa_init,
 	},{
 		.compatible = "mediatek,camsys_rawb",
 		.data = mtk_camsys_rawb_init,
 	},{
-		.compatible = "mediatek,imgsys1",
+		.compatible = "mediatek,mt6781-imgsys1",
 		.data = mtk_imgsys1_init,
 	},{
-		.compatible = "mediatek,imgsys2",
+		.compatible = "mediatek,mt6781-imgsys2",
 		.data = mtk_imgsys2_init,
 	},{
-		.compatible = "mediatek,ipesys",
+		.compatible = "mediatek,mt6781-ipesys",
 		.data = mtk_ipesys_init,
 	},{
-		.compatible = "mediatek,mfgcfg",
+		.compatible = "mediatek,mt6781-mfgcfg",
 		.data = mtk_mfg_cfg_init,
 	},{
-		.compatible = "mediatek,mmsys_config",
+		.compatible = "mediatek,mt6781-mmsys_config",
 		.data = mtk_mmsys_config_init,
 	},{
 		.compatible = "mediatek,mt6781-mdpsys",
 		.data = mtk_mdpsys_config_init,
 	},{
-		.compatible = "mediatek,vdec_gcon",
+		.compatible = "mediatek,mt6781-vdec_gcon",
 		.data = mtk_vdec_top_global_con_init,
 	},{
-		 .compatible = "mediatek,venc_gcon",
+		 .compatible = "mediatek,mt6781-venc_gcon",
 		 .data = mtk_venc_global_con_init,
 	},{
-		.compatible = "mediatek,imp_iic_wrap",
+		.compatible = "mediatek,mt6781-imp_iic_wrap",
 		.data = mtk_imp_iic_wrap_init,
+	}, {
+		/* sentinel */
 	}
 };
 
@@ -3661,6 +3407,3 @@ module_exit(clk_mt6781_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("MTK");
 MODULE_DESCRIPTION("MTK CCF  Driver V1.0");
-
-
-

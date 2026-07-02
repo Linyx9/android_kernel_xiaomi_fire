@@ -1,32 +1,15 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # MediaTek SoC drivers
 #
 menu "MediaTek SoC drivers"
 	depends on ARCH_MEDIATEK || COMPILE_TEST
 
-config MTK_CMDQ
-	bool "MediaTek CMDQ Support"
-	depends on ARCH_MEDIATEK || COMPILE_TEST
-	select MAILBOX
-	select MTK_CMDQ_MBOX
-	select MTK_INFRACFG
-	help
-	  Say yes here to add support for the MediaTek Command Queue (CMDQ)
-	  driver. The CMDQ is used to help read/write registers with critical
-	  time limitation, such as updating display configuration during the
-	  vblank.
-
-config MTK_INFRACFG
-	bool "MediaTek INFRACFG Support"
-	select REGMAP
-	help
-	  Say yes here to add support for the MediaTek INFRACFG controller. The
-	  INFRACFG controller contains various infrastructure registers not
-	  directly associated to any device.
-
 config MTK_DVFSRC
 	tristate "MediaTek DVFSRC Support"
 	depends on ARCH_MEDIATEK
+	select PM_GENERIC_DOMAINS if PM
+	depends on DEVICE_MODULES_MTK_SCPSYS
 	help
 	  Say yes here to add support for the MediaTek DVFSRC (dynamic voltage
 	  and frequency scaling resource collector) found
@@ -35,38 +18,67 @@ config MTK_DVFSRC
 	  system and turn into the decision of minimum Vcore voltage
 	  and minimum DRAM frequency to fulfill those requests.
 
-config MTK_PMIC_WRAP
+config DEVICE_MODULES_MTK_DEVAPC
+	tristate "Mediatek Device APC Support"
+	help
+	  Say yes here to enable support for Mediatek Device APC driver.
+	  This driver is mainly used to handle the violation which catches
+	  unexpected transaction.
+	  The violation information is logged for further analysis or
+	  countermeasures.
+
+config DEVICE_MODULES_MTK_PMIC_WRAP
 	tristate "MediaTek PMIC Wrapper Support"
-	select RESET_CONTROLLER
+	depends on RESET_CONTROLLER
 	select REGMAP
 	help
 	  Say yes here to add support for MediaTek PMIC Wrapper found
 	  on different MediaTek SoCs. The PMIC wrapper is a proprietary
 	  hardware to connect the PMIC.
 
-config MTK_SCPSYS
-	bool "MediaTek SCPSYS Support"
+config DEVICE_MODULES_MTK_SCPSYS
+	tristate "MediaTek SCPSYS Support"
 	default ARCH_MEDIATEK
 	select REGMAP
-	select MTK_INFRACFG
 	select PM_GENERIC_DOMAINS if PM
 	help
 	  Say yes here to add support for the MediaTek SCPSYS power domain
 	  driver.
 
-config MTK_SCPSYS_BRINGUP
-	bool "MediaTek SCPSYS bring Up Support"
-	depends on MTK_SCPSYS
+config DEVICE_MODULES_MTK_SCPSYS_IVI
+	tristate "MediaTek SCPSYS IVI Support"
+	depends on DEVICE_MODULES_MTK_SCPSYS
 	help
-	  Say yes here to support for MediaTek SCPSYS power domain power on
-	  for chip bring up early stage.
-	  This driver is used to turn on the specific power domain for chip
-	  bringing up stage.
+	  Say yes here to add support for the MediaTek SCPSYS IVI power domain
+	  driver.
+	  In order to meet high auto project power control,
+	  the DEVICE_MODULES_MTK_SCPSYS_IVI is used to set auto project
+	  related power domain.
+
+config DEVICE_MODULES_MTK_SCPSYS_PM_DOMAINS
+	tristate "MediaTek SCPSYS generic power domain"
+	default ARCH_MEDIATEK
+	depends on PM
+	select PM_GENERIC_DOMAINS
+	select REGMAP
+	help
+	  Say y here to enable power domain support.
+	  In order to meet high performance and low power requirements, the System
+	  Control Processor System (SCPSYS) has several power management related
+	  tasks in the system.
+
+config DEVICE_MODULES_MTK_MMSYS
+	tristate "MediaTek MMSYS Support"
+	default ARCH_MEDIATEK
+	depends on HAS_IOMEM
+	help
+	  Say yes here to add support for the MediaTek Multimedia
+	  Subsystem (MMSYS).
 
 config MTK_MMDVFS
 	tristate "MediaTek MMDVFS Support"
 	depends on ARCH_MEDIATEK || COMPILE_TEST
-	depends on REGULATOR_MTK_DVFSRC
+	depends on DEVICE_MODULES_REGULATOR_MTK_DVFSRC
 	help
 	  Say yes here to add support for the MediaTek Multimedia DVFS (MMDVFS)
 	  driver. The MMDVFS is used to set clk for Mediatek multimedia hardwares
@@ -91,28 +103,10 @@ config MTK_MBOX
 	  or 256 bytes SRAM and 32 bit irq. The driver does read/write
 	  SRAM and IRQ handling.
 
-config MTK_LPM
-	bool "MediaTek Low Power Manager"
-	depends on ARCH_MEDIATEK
-	help
-	  Say yes here to add support for the MediaTek Low Power Manager
-	  driver. The mtk-lpm will handle the mtk low power module then
-	  platform could enter deeper sleep mode when cpu preparing to
-	  power down if it have sufficient time between warmboot.
-
-config MTK_PMQOS
-	tristate "MediaTek PMQOS Framework support"
-	depends on ARCH_MEDIATEK
-	help
-	  Say yes here to support for the MediaTek PMQOS framework
-	  driver. Driver can register the Qos class notify and receive
-	  from the devices request to adjust qos policy for power
-	  and performance.
-
 menu "Security"
 
-source "drivers/soc/mediatek/devapc/Kconfig"
-source "drivers/soc/mediatek/devmpu/Kconfig"
+source "$(KCONFIG_EXT_PREFIX)drivers/soc/mediatek/devapc/Kconfig"
+source "$(KCONFIG_EXT_PREFIX)drivers/soc/mediatek/devmpu/Kconfig"
 
 endmenu # Security
 
@@ -120,9 +114,8 @@ config MTK_SOCINFO
 	tristate "MediaTek SoCInfo Driver"
 	select SOC_BUS
 	help
-	  Say yes here to support the MediaTek SoCInfo driver, providing
-	  information about the SoC to user space. From Android, Google
-	  export Soc information by unified Android property for APP
-	  vendor, instead of sysfs which maintained by each SoC vendor.
+	  Include support for the SoC bus socinfo for the MediaTek SoC
+	  platforms to provide information about the SoC family and
+	  variant to user space.
 
 endmenu

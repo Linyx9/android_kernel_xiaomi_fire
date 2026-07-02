@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * mt6877-reg.h  --  Mediatek 6833 audio driver reg definition
+ * mt6877-reg.h  --  Mediatek 6877 audio driver reg definition
  *
  * Copyright (c) 2020 MediaTek Inc.
  * Author: Eason Yen <eason.yen@mediatek.com>
@@ -2374,15 +2374,26 @@ enum {
 #define AFE_DL_SDM_DITHER_GAIN_MASK_SFT                (0xff << 0)
 
 /* AFE_ADDA_DL_SDM_AUTO_RESET_CON */
-#define SDM_AUTO_RESET_TEST_ON_SFT                     31
-#define SDM_AUTO_RESET_TEST_ON_MASK                    0x1
-#define SDM_AUTO_RESET_TEST_ON_MASK_SFT                (0x1 << 31)
-#define AFE_DL_USE_NEW_2ND_SDM_SFT                     28
-#define AFE_DL_USE_NEW_2ND_SDM_MASK                    0x1
-#define AFE_DL_USE_NEW_2ND_SDM_MASK_SFT                (0x1 << 28)
-#define SDM_AUTO_RESET_COUNT_TH_SFT                    0
-#define SDM_AUTO_RESET_COUNT_TH_MASK                   0xffffff
-#define SDM_AUTO_RESET_COUNT_TH_MASK_SFT               (0xffffff << 0)
+#define ADDA_SDM_AUTO_RESET_ONOFF_SFT                         31
+#define ADDA_SDM_AUTO_RESET_ONOFF_MASK                        0x1
+#define ADDA_SDM_AUTO_RESET_ONOFF_MASK_SFT                    (0x1 << 31)
+#define ADDA_USE_NEW_2ND_SDM_SFT                              28
+#define ADDA_USE_NEW_2ND_SDM_MASK                             0x1
+#define ADDA_USE_NEW_2ND_SDM_MASK_SFT                         (0x1 << 28)
+#define ADDA_SDM_AUTO_RESET_COUNT_TH_SFT                      0
+#define ADDA_SDM_AUTO_RESET_COUNT_TH_MASK                     0xffffff
+#define ADDA_SDM_AUTO_RESET_COUNT_TH_MASK_SFT                 (0xffffff << 0)
+
+/* AFE_ADDA_3RD_DAC_DL_SDM_AUTO_RESET_CON */
+#define ADDA_3RD_DAC_SDM_AUTO_RESET_ONOFF_SFT                 31
+#define ADDA_3RD_DAC_SDM_AUTO_RESET_ONOFF_MASK                0x1
+#define ADDA_3RD_DAC_SDM_AUTO_RESET_ONOFF_MASK_SFT            (0x1 << 31)
+#define ADDA_3RD_DAC_USE_NEW_2ND_SDM_SFT                      28
+#define ADDA_3RD_DAC_USE_NEW_2ND_SDM_MASK                     0x1
+#define ADDA_3RD_DAC_USE_NEW_2ND_SDM_MASK_SFT                 (0x1 << 28)
+#define ADDA_3RD_DAC_SDM_AUTO_RESET_COUNT_TH_SFT              0
+#define ADDA_3RD_DAC_SDM_AUTO_RESET_COUNT_TH_MASK             0xffffff
+#define ADDA_3RD_DAC_SDM_AUTO_RESET_COUNT_TH_MASK_SFT         (0xffffff << 0)
 
 /* AFE_ASRC_2CH_CON0 */
 #define CON0_CHSET_STR_CLR_SFT                         4
@@ -3049,8 +3060,5 @@ enum {
 #define AFE_IRQ_STATUS_BITS     0x87FFFFFF
 #define AFE_IRQ_CNT_SHIFT       0
 #define AFE_IRQ_CNT_MASK        0x3ffff
-
-/* extern register strings */
-extern const char * const mt6877_reg_str[];
 
 #endif

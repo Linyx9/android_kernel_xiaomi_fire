@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
-
 /*****************************************************************************
  *
  * Filename:
@@ -45,6 +44,8 @@
 kal_uint16 _i2c_data[_I2C_BUF_SIZE];
 unsigned int _size_to_write;
 bool _is_seamless;
+#define SEAMLESS_ 1
+#define SEAMLESS_NO_USE 0
 
 #define LOG_INF(format, args...)    \
 	pr_debug(PFX "[%s] " format, __func__, ##args)
@@ -317,7 +318,7 @@ static struct SET_PD_BLOCK_INFO_T imgsensor_pd_info = {
 #endif
 
 #if MULTI_WRITE
-#define I2C_BUFFER_LEN 255	/*trans# max is 255, each 3 bytes*/
+#define I2C_BUFFER_LEN 765	/*trans# max is 255, each 3 bytes*/
 #else
 #define I2C_BUFFER_LEN 3
 #endif
@@ -342,7 +343,7 @@ static kal_uint16 ov48b2q_table_write_cmos_sensor(
 			IDX += 2;
 			addr_last = addr;
 		}
-#if 1
+#if SEAMLESS_
 		if ((I2C_BUFFER_LEN - tosend) < 3 ||
 			len == IDX ||
 			addr != addr_last) {
@@ -480,7 +481,7 @@ static kal_uint32 streaming_control(kal_bool enable)
 }
 static void write_shutter(kal_uint32 shutter)
 {
-#if 1
+#if SEAMLESS_
 	kal_uint16 realtime_fps = 0;
 	// OV Recommend Solution
 	// if shutter bigger than frame_length, should extend frame length first
@@ -515,7 +516,7 @@ static void write_shutter(kal_uint32 shutter)
 			realtime_fps = 146;
 			set_max_framerate(realtime_fps, 0);
 		} else {
-#if 0
+#if SEAMLESS_NO_USE
 
 			if (!_is_seamless) {
 				//imgsensor.frame_length = (imgsensor.frame_length  >> 1) << 1;
@@ -538,8 +539,8 @@ static void write_shutter(kal_uint32 shutter)
 #endif
 		}
 	}
-#if 0
-	else{
+#if SEAMLESS_NO_USE
+	else {
 		//imgsensor.frame_length = (imgsensor.frame_length  >> 1) << 1;
 		if (!_is_seamless) {
 
@@ -550,7 +551,7 @@ static void write_shutter(kal_uint32 shutter)
 			//write_cmos_sensor(0x3208, 0x10);
 			//write_cmos_sensor(0x3208, 0xa0);
 		}
-#if 0
+#if SEAMLESS_NO_USE
 		else {
 			//_i2c_data[_size_to_write++] = 0x3840;
 			//_i2c_data[_size_to_write++] = imgsensor.frame_length >> 16;
@@ -631,7 +632,7 @@ static kal_uint16 set_gain(kal_uint16 gain)
 	spin_unlock_irqrestore(&imgsensor_drv_lock, flags);
 
 	pr_debug("gain = %d , reg_gain = 0x%x\n ", gain, reg_gain);
-#if 1
+#if SEAMLESS_
 	if (!_is_seamless) {
 		write_cmos_sensor(0x03508, (reg_gain >> 8));
 		write_cmos_sensor(0x03509, (reg_gain&0xff));
@@ -1010,18 +1011,19 @@ static kal_uint32 get_imgsensor_id(UINT32 *sensor_id)
 		spin_lock(&imgsensor_drv_lock);
 		imgsensor.i2c_write_id = imgsensor_info.i2c_addr_table[i];
 		spin_unlock(&imgsensor_drv_lock);
-	do {
-		*sensor_id = return_sensor_id();
-	if (*sensor_id == imgsensor_info.sensor_id) {
-		pr_debug("i2c write id: 0x%x, sensor id: 0x%x\n",
-			imgsensor.i2c_write_id, *sensor_id);
-			read_sensor_Cali();
-		return ERROR_NONE;
-	}
-		retry--;
-	} while (retry > 0);
-	i++;
-	retry = 1;
+		do {
+			*sensor_id = return_sensor_id();
+			if (*sensor_id == imgsensor_info.sensor_id) {
+				pr_info("[%s] i2c write id: 0x%x, sensor id: 0x%x\n",
+					__func__, imgsensor.i2c_write_id, *sensor_id);
+				read_sensor_Cali();
+
+				return ERROR_NONE;
+			}
+			retry--;
+		} while (retry > 0);
+		i++;
+		retry = 1;
 	}
 	if (*sensor_id != imgsensor_info.sensor_id) {
 		LOG_INF("%s: 0x%x fail\n", __func__, *sensor_id);
@@ -1042,19 +1044,19 @@ static kal_uint32 open(void)
 		spin_lock(&imgsensor_drv_lock);
 		imgsensor.i2c_write_id = imgsensor_info.i2c_addr_table[i];
 		spin_unlock(&imgsensor_drv_lock);
-	do {
-		sensor_id = return_sensor_id();
-	if (sensor_id == imgsensor_info.sensor_id) {
-		pr_debug("i2c write id: 0x%x, sensor id: 0x%x\n",
-			imgsensor.i2c_write_id, sensor_id);
-		break;
-	}
-		retry--;
-	} while (retry > 0);
-	i++;
-	if (sensor_id == imgsensor_info.sensor_id)
-		break;
-	retry = 2;
+		do {
+			sensor_id = return_sensor_id();
+			if (sensor_id == imgsensor_info.sensor_id) {
+				pr_debug("i2c write id: 0x%x, sensor id: 0x%x\n",
+					imgsensor.i2c_write_id, sensor_id);
+				break;
+			}
+			retry--;
+		} while (retry > 0);
+		i++;
+		if (sensor_id == imgsensor_info.sensor_id)
+			break;
+		retry = 2;
 	}
 	if (imgsensor_info.sensor_id != sensor_id) {
 		pr_debug("Open sensor id: 0x%x fail\n", sensor_id);
@@ -1269,7 +1271,7 @@ static kal_uint32 Custom5(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 /* ITD: Modify Dualcam By Jesse 190924 End */
 
 static kal_uint32 get_resolution(
-		MSDK_SENSOR_RESOLUTION_INFO_STRUCT * sensor_resolution)
+		MSDK_SENSOR_RESOLUTION_INFO_STRUCT *sensor_resolution)
 {
 	sensor_resolution->SensorFullWidth =
 		imgsensor_info.cap.grabwindow_width;
@@ -1854,14 +1856,14 @@ static kal_uint32 seamless_switch(enum MSDK_SCENARIO_ID_ENUM scenario_id,
 	kal_uint32 shutter_2ndframe, kal_uint32 gain_2ndframe)
 {
 	int _length = 0;
-#if 0
+#if SEAMLESS_NO_USE
 	int k = 0;
 #endif
 	_is_seamless = true;
 	memset(_i2c_data, 0x0, sizeof(_i2c_data));
 	_size_to_write = 0;
 
-	pr_debug("%s %d, %d, %d, %d, %d sizeof(_i2c_data) %d\n", __func__,
+	pr_debug("%s %d, %d, %d, %d, %d sizeof(_i2c_data) %lu\n", __func__,
 		scenario_id, shutter, gain, shutter_2ndframe, gain_2ndframe, sizeof(_i2c_data));
 
 	_length = sizeof(addr_data_pair_seamless_switch_step1_ov48b2q) / sizeof(kal_uint16);
@@ -1913,7 +1915,7 @@ static kal_uint32 seamless_switch(enum MSDK_SCENARIO_ID_ENUM scenario_id,
 
 	pr_debug("%s _is_seamless %d, _size_to_write %d\n",
 			__func__, _is_seamless, _size_to_write);
-#if 0
+#if SEAMLESS_NO_USE
 	for (k = 0; k < _size_to_write; k += 2)
 		pr_debug("k = %d, 0x%04x , 0x%02x\n", k,  _i2c_data[k], _i2c_data[k+1]);
 
@@ -1922,7 +1924,7 @@ static kal_uint32 seamless_switch(enum MSDK_SCENARIO_ID_ENUM scenario_id,
 		_i2c_data,
 		_size_to_write);
 
-#if 0
+#if SEAMLESS_NO_USE
 	pr_debug("===========================================\n");
 
 	for (k = 0; k < _size_to_write; k += 2)
@@ -1961,11 +1963,15 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 		pScenarios = (MUINT32 *)((uintptr_t)(*(feature_data+1)));
 		switch (*feature_data) {
 		case MSDK_SCENARIO_ID_CAMERA_PREVIEW:
-			*pScenarios = MSDK_SCENARIO_ID_CUSTOM1;
-			break;
+			/*
+			 * *pScenarios = MSDK_SCENARIO_ID_CUSTOM1;
+			 * break;
+			 */
 		case MSDK_SCENARIO_ID_CUSTOM1:
-			*pScenarios = MSDK_SCENARIO_ID_CAMERA_PREVIEW;
-			break;
+			/*
+			 * *pScenarios = MSDK_SCENARIO_ID_CAMERA_PREVIEW;
+			 * break;
+			 */
 		case MSDK_SCENARIO_ID_CAMERA_CAPTURE_JPEG:
 		case MSDK_SCENARIO_ID_VIDEO_PREVIEW:
 		case MSDK_SCENARIO_ID_SLIM_VIDEO:
@@ -1978,7 +1984,7 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 			*pScenarios = 0xff;
 			break;
 		}
-		pr_debug("SENSOR_FEATURE_GET_SEAMLESS_SCENARIOS %d %d\n",
+		pr_debug("SENSOR_FEATURE_GET_SEAMLESS_SCENARIOS %llu %u\n",
 			*feature_data, *pScenarios);
 		break;
 	case SENSOR_FEATURE_SEAMLESS_SWITCH:

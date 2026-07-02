@@ -8,6 +8,127 @@
 #define _MT6359_H_
 
 /*************Register Bit Define*************/
+#define MT6359_TOP0_ID                       0x0
+#define MT6359_SMT_CON1                      0x32
+#define MT6359_DRV_CON2                      0x3c
+#define MT6359_DRV_CON3                      0x3e
+#define MT6359_DRV_CON4                      0x40
+#define MT6359_TOP_CKPDN_CON0                0x10c
+#define MT6359_TOP_CKPDN_CON0_SET            0x10e
+#define MT6359_TOP_CKPDN_CON0_CLR            0x110
+#define MT6359_AUXADC_RQST0                  0x1108
+#define MT6359_AUXADC_CON10                  0x11a0
+#define MT6359_AUXADC_ACCDET                 0x11ba
+#define MT6359_LDO_VUSB_OP_EN                0x1d0c
+#define MT6359_LDO_VUSB_OP_EN_SET            0x1d0e
+#define MT6359_LDO_VUSB_OP_EN_CLR            0x1d10
+#define MT6359_AUD_TOP_CKPDN_CON0            0x230c
+#define MT6359_AUD_TOP_CKPDN_CON0_SET        0x230e
+#define MT6359_AUD_TOP_CKPDN_CON0_CLR        0x2310
+#define MT6359_AUD_TOP_RST_CON0              0x2320
+#define MT6359_AUD_TOP_RST_CON0_SET          0x2322
+#define MT6359_AUD_TOP_RST_CON0_CLR          0x2324
+#define MT6359_AUD_TOP_INT_CON0              0x2328
+#define MT6359_AUD_TOP_INT_CON0_SET          0x232a
+#define MT6359_AUD_TOP_INT_CON0_CLR          0x232c
+#define MT6359_AUD_TOP_INT_MASK_CON0         0x232e
+#define MT6359_AUD_TOP_INT_MASK_CON0_SET     0x2330
+#define MT6359_AUD_TOP_INT_MASK_CON0_CLR     0x2332
+#define MT6359_AUD_TOP_INT_STATUS0           0x2334
+#define MT6359_AFE_NCP_CFG2                  0x24e2
+#define MT6359_AUDENC_DSN_ID                 0x2500
+#define MT6359_AUDENC_DSN_REV0               0x2502
+#define MT6359_AUDENC_DSN_DBI                0x2504
+#define MT6359_AUDENC_DSN_FPI                0x2506
+#define MT6359_AUDENC_ANA_CON0               0x2508
+#define MT6359_AUDENC_ANA_CON1               0x250a
+#define MT6359_AUDENC_ANA_CON2               0x250c
+#define MT6359_AUDENC_ANA_CON3               0x250e
+#define MT6359_AUDENC_ANA_CON4               0x2510
+#define MT6359_AUDENC_ANA_CON5               0x2512
+#define MT6359_AUDENC_ANA_CON6               0x2514
+#define MT6359_AUDENC_ANA_CON7               0x2516
+#define MT6359_AUDENC_ANA_CON8               0x2518
+#define MT6359_AUDENC_ANA_CON9               0x251a
+#define MT6359_AUDENC_ANA_CON10              0x251c
+#define MT6359_AUDENC_ANA_CON11              0x251e
+#define MT6359_AUDENC_ANA_CON12              0x2520
+#define MT6359_AUDENC_ANA_CON13              0x2522
+#define MT6359_AUDENC_ANA_CON14              0x2524
+#define MT6359_AUDENC_ANA_CON15              0x2526
+#define MT6359_AUDENC_ANA_CON16              0x2528
+#define MT6359_AUDENC_ANA_CON17              0x252a
+#define MT6359_AUDENC_ANA_CON18              0x252c
+#define MT6359_AUDENC_ANA_CON19              0x252e
+#define MT6359_AUDENC_ANA_CON20              0x2530
+#define MT6359_AUDENC_ANA_CON21              0x2532
+#define MT6359_AUDENC_ANA_CON22              0x2534
+#define MT6359_AUDENC_ANA_CON23              0x2536
+#define MT6359_AUDDEC_DSN_ID                 0x2580
+#define MT6359_AUDDEC_DSN_REV0               0x2582
+#define MT6359_AUDDEC_DSN_DBI                0x2584
+#define MT6359_AUDDEC_DSN_FPI                0x2586
+#define MT6359_AUDDEC_ANA_CON0               0x2588
+#define MT6359_AUDDEC_ANA_CON1               0x258a
+#define MT6359_AUDDEC_ANA_CON2               0x258c
+#define MT6359_AUDDEC_ANA_CON3               0x258e
+#define MT6359_AUDDEC_ANA_CON4               0x2590
+#define MT6359_AUDDEC_ANA_CON5               0x2592
+#define MT6359_AUDDEC_ANA_CON6               0x2594
+#define MT6359_AUDDEC_ANA_CON7               0x2596
+#define MT6359_AUDDEC_ANA_CON8               0x2598
+#define MT6359_AUDDEC_ANA_CON9               0x259a
+#define MT6359_AUDDEC_ANA_CON10              0x259c
+#define MT6359_AUDDEC_ANA_CON11              0x259e
+#define MT6359_AUDDEC_ANA_CON12              0x25a0
+#define MT6359_AUDDEC_ANA_CON13              0x25a2
+#define MT6359_AUDDEC_ANA_CON14              0x25a4
+#define MT6359_ACCDET_DSN_DIG_ID             0x2680
+#define MT6359_ACCDET_DSN_DIG_REV0           0x2682
+#define MT6359_ACCDET_DSN_DBI                0x2684
+#define MT6359_ACCDET_DSN_FPI                0x2686
+#define MT6359_ACCDET_CON0                   0x2688
+#define MT6359_ACCDET_CON1                   0x268a
+#define MT6359_ACCDET_CON2                   0x268c
+#define MT6359_ACCDET_CON3                   0x268e
+#define MT6359_ACCDET_CON4                   0x2690
+#define MT6359_ACCDET_CON5                   0x2692
+#define MT6359_ACCDET_CON6                   0x2694
+#define MT6359_ACCDET_CON7                   0x2696
+#define MT6359_ACCDET_CON8                   0x2698
+#define MT6359_ACCDET_CON9                   0x269a
+#define MT6359_ACCDET_CON10                  0x269c
+#define MT6359_ACCDET_CON11                  0x269e
+#define MT6359_ACCDET_CON12                  0x26a0
+#define MT6359_ACCDET_CON13                  0x26a2
+#define MT6359_ACCDET_CON14                  0x26a4
+#define MT6359_ACCDET_CON15                  0x26a6
+#define MT6359_ACCDET_CON16                  0x26a8
+#define MT6359_ACCDET_CON17                  0x26aa
+#define MT6359_ACCDET_CON18                  0x26ac
+#define MT6359_ACCDET_CON19                  0x26ae
+#define MT6359_ACCDET_CON20                  0x26b0
+#define MT6359_ACCDET_CON21                  0x26b2
+#define MT6359_ACCDET_CON22                  0x26b4
+#define MT6359_ACCDET_CON23                  0x26b6
+#define MT6359_ACCDET_CON24                  0x26b8
+#define MT6359_ACCDET_CON25                  0x26ba
+#define MT6359_ACCDET_CON26                  0x26bc
+#define MT6359_ACCDET_CON27                  0x26be
+#define MT6359_ACCDET_CON28                  0x26c0
+#define MT6359_ACCDET_CON29                  0x26c2
+#define MT6359_ACCDET_CON30                  0x26c4
+#define MT6359_ACCDET_CON31                  0x26c6
+#define MT6359_ACCDET_CON32                  0x26c8
+#define MT6359_ACCDET_CON33                  0x26ca
+#define MT6359_ACCDET_CON34                  0x26cc
+#define MT6359_ACCDET_CON35                  0x26ce
+#define MT6359_ACCDET_CON36                  0x26d0
+#define MT6359_ACCDET_CON37                  0x26d2
+#define MT6359_ACCDET_CON38                  0x26d4
+#define MT6359_ACCDET_CON39                  0x26d6
+#define MT6359_ACCDET_CON40                  0x26d8
+
 #define TOP0_ANA_ID_ADDR                               \
 	MT6359_TOP0_ID
 #define TOP0_ANA_ID_SFT                                0
@@ -4409,6 +4530,273 @@
 #define RG_AUDINTGAIN2_MASK_SFT                           (0x3f << 8)
 
 /* audio register */
+#define MT6359_GPIO_DIR0                     0x88
+#define MT6359_GPIO_DIR0_SET                 0x8a
+#define MT6359_GPIO_DIR0_CLR                 0x8c
+#define MT6359_GPIO_DIR1                     0x8e
+#define MT6359_GPIO_DIR1_SET                 0x90
+#define MT6359_GPIO_DIR1_CLR                 0x92
+
+#define MT6359_DCXO_CW11                     0x7a6
+#define MT6359_DCXO_CW12                     0x7a8
+#define MT6359_LDO_VAUD18_CON0               0x1c9a
+
+#define MT6359_GPIO_MODE0                    0xcc
+#define MT6359_GPIO_MODE0_SET                0xce
+#define MT6359_GPIO_MODE0_CLR                0xd0
+#define MT6359_GPIO_MODE1                    0xd2
+#define MT6359_GPIO_MODE1_SET                0xd4
+#define MT6359_GPIO_MODE1_CLR                0xd6
+#define MT6359_GPIO_MODE2                    0xd8
+#define MT6359_GPIO_MODE2_SET                0xda
+#define MT6359_GPIO_MODE2_CLR                0xdc
+#define MT6359_GPIO_MODE3                    0xde
+#define MT6359_GPIO_MODE3_SET                0xe0
+#define MT6359_GPIO_MODE3_CLR                0xe2
+#define MT6359_GPIO_MODE4                    0xe4
+#define MT6359_GPIO_MODE4_SET                0xe6
+#define MT6359_GPIO_MODE4_CLR                0xe8
+
+#define MT6359_AUD_TOP_ID                    0x2300
+#define MT6359_AUD_TOP_REV0                  0x2302
+#define MT6359_AUD_TOP_DBI                   0x2304
+#define MT6359_AUD_TOP_DXI                   0x2306
+#define MT6359_AUD_TOP_CKPDN_TPM0            0x2308
+#define MT6359_AUD_TOP_CKPDN_TPM1            0x230a
+#define MT6359_AUD_TOP_CKPDN_CON0            0x230c
+#define MT6359_AUD_TOP_CKPDN_CON0_SET        0x230e
+#define MT6359_AUD_TOP_CKPDN_CON0_CLR        0x2310
+#define MT6359_AUD_TOP_CKSEL_CON0            0x2312
+#define MT6359_AUD_TOP_CKSEL_CON0_SET        0x2314
+#define MT6359_AUD_TOP_CKSEL_CON0_CLR        0x2316
+#define MT6359_AUD_TOP_CKTST_CON0            0x2318
+#define MT6359_AUD_TOP_CLK_HWEN_CON0         0x231a
+#define MT6359_AUD_TOP_CLK_HWEN_CON0_SET     0x231c
+#define MT6359_AUD_TOP_CLK_HWEN_CON0_CLR     0x231e
+#define MT6359_AUD_TOP_RST_CON0              0x2320
+#define MT6359_AUD_TOP_RST_CON0_SET          0x2322
+#define MT6359_AUD_TOP_RST_CON0_CLR          0x2324
+#define MT6359_AUD_TOP_RST_BANK_CON0         0x2326
+#define MT6359_AUD_TOP_INT_CON0              0x2328
+#define MT6359_AUD_TOP_INT_CON0_SET          0x232a
+#define MT6359_AUD_TOP_INT_CON0_CLR          0x232c
+#define MT6359_AUD_TOP_INT_MASK_CON0         0x232e
+#define MT6359_AUD_TOP_INT_MASK_CON0_SET     0x2330
+#define MT6359_AUD_TOP_INT_MASK_CON0_CLR     0x2332
+#define MT6359_AUD_TOP_INT_STATUS0           0x2334
+#define MT6359_AUD_TOP_INT_RAW_STATUS0       0x2336
+#define MT6359_AUD_TOP_INT_MISC_CON0         0x2338
+#define MT6359_AUD_TOP_MON_CON0              0x233a
+#define MT6359_AUDIO_DIG_DSN_ID              0x2380
+#define MT6359_AUDIO_DIG_DSN_REV0            0x2382
+#define MT6359_AUDIO_DIG_DSN_DBI             0x2384
+#define MT6359_AUDIO_DIG_DSN_DXI             0x2386
+#define MT6359_AFE_UL_DL_CON0                0x2388
+#define MT6359_AFE_DL_SRC2_CON0_L            0x238a
+#define MT6359_AFE_UL_SRC_CON0_H             0x238c
+#define MT6359_AFE_UL_SRC_CON0_L             0x238e
+#define MT6359_AFE_ADDA6_L_SRC_CON0_H        0x2390
+#define MT6359_AFE_ADDA6_UL_SRC_CON0_L       0x2392
+#define MT6359_AFE_TOP_CON0                  0x2394
+#define MT6359_AUDIO_TOP_CON0                0x2396
+#define MT6359_AFE_MON_DEBUG0                0x2398
+#define MT6359_AFUNC_AUD_CON0                0x239a
+#define MT6359_AFUNC_AUD_CON1                0x239c
+#define MT6359_AFUNC_AUD_CON2                0x239e
+#define MT6359_AFUNC_AUD_CON3                0x23a0
+#define MT6359_AFUNC_AUD_CON4                0x23a2
+#define MT6359_AFUNC_AUD_CON5                0x23a4
+#define MT6359_AFUNC_AUD_CON6                0x23a6
+#define MT6359_AFUNC_AUD_CON7                0x23a8
+#define MT6359_AFUNC_AUD_CON8                0x23aa
+#define MT6359_AFUNC_AUD_CON9                0x23ac
+#define MT6359_AFUNC_AUD_CON10               0x23ae
+#define MT6359_AFUNC_AUD_CON11               0x23b0
+#define MT6359_AFUNC_AUD_CON12               0x23b2
+#define MT6359_AFUNC_AUD_MON0                0x23b4
+#define MT6359_AFUNC_AUD_MON1                0x23b6
+#define MT6359_AUDRC_TUNE_MON0               0x23b8
+#define MT6359_AFE_ADDA_MTKAIF_FIFO_CFG0     0x23ba
+#define MT6359_AFE_ADDA_MTKAIF_FIFO_LOG_MON1 0x23bc
+#define MT6359_AFE_ADDA_MTKAIF_MON0          0x23be
+#define MT6359_AFE_ADDA_MTKAIF_MON1          0x23c0
+#define MT6359_AFE_ADDA_MTKAIF_MON2          0x23c2
+#define MT6359_AFE_ADDA6_MTKAIF_MON3         0x23c4
+#define MT6359_AFE_ADDA_MTKAIF_MON4          0x23c6
+#define MT6359_AFE_ADDA_MTKAIF_MON5          0x23c8
+#define MT6359_AFE_ADDA_MTKAIF_CFG0          0x23ca
+#define MT6359_AFE_ADDA_MTKAIF_RX_CFG0       0x23cc
+#define MT6359_AFE_ADDA_MTKAIF_RX_CFG1       0x23ce
+#define MT6359_AFE_ADDA_MTKAIF_RX_CFG2       0x23d0
+#define MT6359_AFE_ADDA_MTKAIF_RX_CFG3       0x23d2
+#define MT6359_AFE_ADDA_MTKAIF_SYNCWORD_CFG0 0x23d4
+#define MT6359_AFE_ADDA_MTKAIF_SYNCWORD_CFG1 0x23d6
+#define MT6359_AFE_SGEN_CFG0                 0x23d8
+#define MT6359_AFE_SGEN_CFG1                 0x23da
+#define MT6359_AFE_ADC_ASYNC_FIFO_CFG        0x23dc
+#define MT6359_AFE_ADC_ASYNC_FIFO_CFG1       0x23de
+#define MT6359_AFE_DCCLK_CFG0                0x23e0
+#define MT6359_AFE_DCCLK_CFG1                0x23e2
+#define MT6359_AUDIO_DIG_CFG                 0x23e4
+#define MT6359_AUDIO_DIG_CFG1                0x23e6
+#define MT6359_AFE_AUD_PAD_TOP               0x23e8
+#define MT6359_AFE_AUD_PAD_TOP_MON           0x23ea
+#define MT6359_AFE_AUD_PAD_TOP_MON1          0x23ec
+#define MT6359_AFE_AUD_PAD_TOP_MON2          0x23ee
+#define MT6359_AFE_DL_NLE_CFG                0x23f0
+#define MT6359_AFE_DL_NLE_MON                0x23f2
+#define MT6359_AFE_CG_EN_MON                 0x23f4
+#define MT6359_AFE_MIC_ARRAY_CFG             0x23f6
+#define MT6359_AFE_CHOP_CFG0                 0x23f8
+#define MT6359_AFE_MTKAIF_MUX_CFG            0x23fa
+#define MT6359_AUDIO_DIG_2ND_DSN_ID          0x2400
+#define MT6359_AUDIO_DIG_2ND_DSN_REV0        0x2402
+#define MT6359_AUDIO_DIG_2ND_DSN_DBI         0x2404
+#define MT6359_AUDIO_DIG_2ND_DSN_DXI         0x2406
+#define MT6359_AFE_PMIC_NEWIF_CFG3           0x2408
+#define MT6359_AFE_VOW_TOP_CON0              0x240a
+#define MT6359_AFE_VOW_TOP_CON1              0x240c
+#define MT6359_AFE_VOW_TOP_CON2              0x240e
+#define MT6359_AFE_VOW_TOP_CON3              0x2410
+#define MT6359_AFE_VOW_TOP_CON4              0x2412
+#define MT6359_AFE_VOW_TOP_MON0              0x2414
+#define MT6359_AFE_VOW_VAD_CFG0              0x2416
+#define MT6359_AFE_VOW_VAD_CFG1              0x2418
+#define MT6359_AFE_VOW_VAD_CFG2              0x241a
+#define MT6359_AFE_VOW_VAD_CFG3              0x241c
+#define MT6359_AFE_VOW_VAD_CFG4              0x241e
+#define MT6359_AFE_VOW_VAD_CFG5              0x2420
+#define MT6359_AFE_VOW_VAD_CFG6              0x2422
+#define MT6359_AFE_VOW_VAD_CFG7              0x2424
+#define MT6359_AFE_VOW_VAD_CFG8              0x2426
+#define MT6359_AFE_VOW_VAD_CFG9              0x2428
+#define MT6359_AFE_VOW_VAD_CFG10             0x242a
+#define MT6359_AFE_VOW_VAD_CFG11             0x242c
+#define MT6359_AFE_VOW_VAD_CFG12             0x242e
+#define MT6359_AFE_VOW_VAD_MON0              0x2430
+#define MT6359_AFE_VOW_VAD_MON1              0x2432
+#define MT6359_AFE_VOW_VAD_MON2              0x2434
+#define MT6359_AFE_VOW_VAD_MON3              0x2436
+#define MT6359_AFE_VOW_VAD_MON4              0x2438
+#define MT6359_AFE_VOW_VAD_MON5              0x243a
+#define MT6359_AFE_VOW_VAD_MON6              0x243c
+#define MT6359_AFE_VOW_VAD_MON7              0x243e
+#define MT6359_AFE_VOW_VAD_MON8              0x2440
+#define MT6359_AFE_VOW_VAD_MON9              0x2442
+#define MT6359_AFE_VOW_VAD_MON10             0x2444
+#define MT6359_AFE_VOW_VAD_MON11             0x2446
+#define MT6359_AFE_VOW_TGEN_CFG0             0x2448
+#define MT6359_AFE_VOW_TGEN_CFG1             0x244a
+#define MT6359_AFE_VOW_HPF_CFG0              0x244c
+#define MT6359_AFE_VOW_HPF_CFG1              0x244e
+#define MT6359_AUDIO_DIG_3RD_DSN_ID          0x2480
+#define MT6359_AUDIO_DIG_3RD_DSN_REV0        0x2482
+#define MT6359_AUDIO_DIG_3RD_DSN_DBI         0x2484
+#define MT6359_AUDIO_DIG_3RD_DSN_DXI         0x2486
+#define MT6359_AFE_VOW_PERIODIC_CFG0         0x2488
+#define MT6359_AFE_VOW_PERIODIC_CFG1         0x248a
+#define MT6359_AFE_VOW_PERIODIC_CFG2         0x248c
+#define MT6359_AFE_VOW_PERIODIC_CFG3         0x248e
+#define MT6359_AFE_VOW_PERIODIC_CFG4         0x2490
+#define MT6359_AFE_VOW_PERIODIC_CFG5         0x2492
+#define MT6359_AFE_VOW_PERIODIC_CFG6         0x2494
+#define MT6359_AFE_VOW_PERIODIC_CFG7         0x2496
+#define MT6359_AFE_VOW_PERIODIC_CFG8         0x2498
+#define MT6359_AFE_VOW_PERIODIC_CFG9         0x249a
+#define MT6359_AFE_VOW_PERIODIC_CFG10        0x249c
+#define MT6359_AFE_VOW_PERIODIC_CFG11        0x249e
+#define MT6359_AFE_VOW_PERIODIC_CFG12        0x24a0
+#define MT6359_AFE_VOW_PERIODIC_CFG13        0x24a2
+#define MT6359_AFE_VOW_PERIODIC_CFG14        0x24a4
+#define MT6359_AFE_VOW_PERIODIC_CFG15        0x24a6
+#define MT6359_AFE_VOW_PERIODIC_CFG16        0x24a8
+#define MT6359_AFE_VOW_PERIODIC_CFG17        0x24aa
+#define MT6359_AFE_VOW_PERIODIC_CFG18        0x24ac
+#define MT6359_AFE_VOW_PERIODIC_CFG19        0x24ae
+#define MT6359_AFE_VOW_PERIODIC_CFG20        0x24b0
+#define MT6359_AFE_VOW_PERIODIC_CFG21        0x24b2
+#define MT6359_AFE_VOW_PERIODIC_CFG22        0x24b4
+#define MT6359_AFE_VOW_PERIODIC_CFG23        0x24b6
+#define MT6359_AFE_VOW_PERIODIC_CFG24        0x24b8
+#define MT6359_AFE_VOW_PERIODIC_CFG25        0x24ba
+#define MT6359_AFE_VOW_PERIODIC_CFG26        0x24bc
+#define MT6359_AFE_VOW_PERIODIC_CFG27        0x24be
+#define MT6359_AFE_VOW_PERIODIC_CFG28        0x24c0
+#define MT6359_AFE_VOW_PERIODIC_CFG29        0x24c2
+#define MT6359_AFE_VOW_PERIODIC_CFG30        0x24c4
+#define MT6359_AFE_VOW_PERIODIC_CFG31        0x24c6
+#define MT6359_AFE_VOW_PERIODIC_CFG32        0x24c8
+#define MT6359_AFE_VOW_PERIODIC_CFG33        0x24ca
+#define MT6359_AFE_VOW_PERIODIC_CFG34        0x24cc
+#define MT6359_AFE_VOW_PERIODIC_CFG35        0x24ce
+#define MT6359_AFE_VOW_PERIODIC_CFG36        0x24d0
+#define MT6359_AFE_VOW_PERIODIC_CFG37        0x24d2
+#define MT6359_AFE_VOW_PERIODIC_CFG38        0x24d4
+#define MT6359_AFE_VOW_PERIODIC_CFG39        0x24d6
+#define MT6359_AFE_VOW_PERIODIC_MON0         0x24d8
+#define MT6359_AFE_VOW_PERIODIC_MON1         0x24da
+#define MT6359_AFE_VOW_PERIODIC_MON2         0x24dc
+#define MT6359_AFE_NCP_CFG0                  0x24de
+#define MT6359_AFE_NCP_CFG1                  0x24e0
+#define MT6359_AFE_NCP_CFG2                  0x24e2
+#define MT6359_AUDENC_DSN_ID                 0x2500
+#define MT6359_AUDENC_DSN_REV0               0x2502
+#define MT6359_AUDENC_DSN_DBI                0x2504
+#define MT6359_AUDENC_DSN_FPI                0x2506
+#define MT6359_AUDENC_ANA_CON0               0x2508
+#define MT6359_AUDENC_ANA_CON1               0x250a
+#define MT6359_AUDENC_ANA_CON2               0x250c
+#define MT6359_AUDENC_ANA_CON3               0x250e
+#define MT6359_AUDENC_ANA_CON4               0x2510
+#define MT6359_AUDENC_ANA_CON5               0x2512
+#define MT6359_AUDENC_ANA_CON6               0x2514
+#define MT6359_AUDENC_ANA_CON7               0x2516
+#define MT6359_AUDENC_ANA_CON8               0x2518
+#define MT6359_AUDENC_ANA_CON9               0x251a
+#define MT6359_AUDENC_ANA_CON10              0x251c
+#define MT6359_AUDENC_ANA_CON11              0x251e
+#define MT6359_AUDENC_ANA_CON12              0x2520
+#define MT6359_AUDENC_ANA_CON13              0x2522
+#define MT6359_AUDENC_ANA_CON14              0x2524
+#define MT6359_AUDENC_ANA_CON15              0x2526
+#define MT6359_AUDENC_ANA_CON16              0x2528
+#define MT6359_AUDENC_ANA_CON17              0x252a
+#define MT6359_AUDENC_ANA_CON18              0x252c
+#define MT6359_AUDENC_ANA_CON19              0x252e
+#define MT6359_AUDENC_ANA_CON20              0x2530
+#define MT6359_AUDENC_ANA_CON21              0x2532
+#define MT6359_AUDENC_ANA_CON22              0x2534
+#define MT6359_AUDENC_ANA_CON23              0x2536
+#define MT6359_AUDDEC_DSN_ID                 0x2580
+#define MT6359_AUDDEC_DSN_REV0               0x2582
+#define MT6359_AUDDEC_DSN_DBI                0x2584
+#define MT6359_AUDDEC_DSN_FPI                0x2586
+#define MT6359_AUDDEC_ANA_CON0               0x2588
+#define MT6359_AUDDEC_ANA_CON1               0x258a
+#define MT6359_AUDDEC_ANA_CON2               0x258c
+#define MT6359_AUDDEC_ANA_CON3               0x258e
+#define MT6359_AUDDEC_ANA_CON4               0x2590
+#define MT6359_AUDDEC_ANA_CON5               0x2592
+#define MT6359_AUDDEC_ANA_CON6               0x2594
+#define MT6359_AUDDEC_ANA_CON7               0x2596
+#define MT6359_AUDDEC_ANA_CON8               0x2598
+#define MT6359_AUDDEC_ANA_CON9               0x259a
+#define MT6359_AUDDEC_ANA_CON10              0x259c
+#define MT6359_AUDDEC_ANA_CON11              0x259e
+#define MT6359_AUDDEC_ANA_CON12              0x25a0
+#define MT6359_AUDDEC_ANA_CON13              0x25a2
+#define MT6359_AUDDEC_ANA_CON14              0x25a4
+#define MT6359_AUDZCD_DSN_ID                 0x2600
+#define MT6359_AUDZCD_DSN_REV0               0x2602
+#define MT6359_AUDZCD_DSN_DBI                0x2604
+#define MT6359_AUDZCD_DSN_FPI                0x2606
+#define MT6359_ZCD_CON0                      0x2608
+#define MT6359_ZCD_CON1                      0x260a
+#define MT6359_ZCD_CON2                      0x260c
+#define MT6359_ZCD_CON3                      0x260e
+#define MT6359_ZCD_CON4                      0x2610
+#define MT6359_ZCD_CON5                      0x2612
+
 #define MT6359_MAX_REGISTER MT6359_ZCD_CON5
 
 enum {
@@ -4417,7 +4805,323 @@ enum {
 	MT6359_MTKAIF_PROTOCOL_2_CLK_P2,
 };
 
-#define CODEC_MT6359_NAME "mtk-codec-mt6359"
+enum {
+	MT6359_AIF_1 = 0,	/* dl: hp, rcv, hp+lo */
+	MT6359_AIF_2,		/* dl: lo only */
+	MT6359_AIF_VOW,
+	MT6359_AIF_NUM,
+};
+
+enum {
+	AUDIO_ANALOG_VOLUME_HSOUTL,
+	AUDIO_ANALOG_VOLUME_HSOUTR,
+	AUDIO_ANALOG_VOLUME_HPOUTL,
+	AUDIO_ANALOG_VOLUME_HPOUTR,
+	AUDIO_ANALOG_VOLUME_LINEOUTL,
+	AUDIO_ANALOG_VOLUME_LINEOUTR,
+	AUDIO_ANALOG_VOLUME_MICAMP1,
+	AUDIO_ANALOG_VOLUME_MICAMP2,
+	AUDIO_ANALOG_VOLUME_MICAMP3,
+	AUDIO_ANALOG_VOLUME_TYPE_MAX
+};
+
+enum {
+	AUDIO_ANALOG_CHANNELS_L = 0,
+	AUDIO_ANALOG_CHANNELS_R,
+	AUDIO_ANALOG_CHANNELS_3,
+};
+
+enum {
+	MUX_MIC_TYPE_0,	/* ain0, micbias 0 */
+	MUX_MIC_TYPE_1,	/* ain1, micbias 1 */
+	MUX_MIC_TYPE_2,	/* ain2/3, micbias 2 */
+	MUX_PGA_L,
+	MUX_PGA_R,
+	MUX_PGA_3,
+	MUX_HP_L,
+	MUX_HP_R,
+	MUX_NUM,
+};
+
+enum {
+	DEVICE_HP,
+	DEVICE_LO,
+	DEVICE_RCV,
+	DEVICE_MIC1,
+	DEVICE_MIC2,
+	DEVICE_NUM
+};
+
+enum {
+	HP_GAIN_CTL_ZCD = 0,
+	HP_GAIN_CTL_NLE,
+	HP_GAIN_CTL_NUM,
+};
+
+/* Supply widget subseq */
+enum {
+	/* common */
+	SUPPLY_SEQ_CLK_BUF,
+	SUPPLY_SEQ_AUD_GLB,
+	SUPPLY_SEQ_HP_PULL_DOWN,
+	SUPPLY_SEQ_CLKSQ,
+	SUPPLY_SEQ_ADC_CLKGEN,
+	SUPPLY_SEQ_DEC_CLK,
+	SUPPLY_SEQ_TOP_CK,
+	SUPPLY_SEQ_TOP_CK_LAST,
+	SUPPLY_SEQ_DCC_CLK,
+	SUPPLY_SEQ_MIC_BIAS,
+	SUPPLY_SEQ_DMIC,
+	SUPPLY_SEQ_AUD_TOP,
+	SUPPLY_SEQ_AUD_TOP_LAST,
+	SUPPLY_SEQ_DL_SDM_FIFO_CLK,
+	SUPPLY_SEQ_DL_SDM,
+	SUPPLY_SEQ_DL_NCP,
+	SUPPLY_SEQ_AFE,
+	/* playback */
+	SUPPLY_SEQ_DL_SRC,
+	SUPPLY_SEQ_DL_ESD_RESIST,
+	SUPPLY_SEQ_HP_DAMPING_OFF_RESET_CMFB,
+	SUPPLY_SEQ_HP_MUTE,
+	SUPPLY_SEQ_DL_LDO_REMOTE_SENSE,
+	SUPPLY_SEQ_DL_LDO,
+	SUPPLY_SEQ_DL_NV,
+	SUPPLY_SEQ_HP_ANA_TRIM,
+	SUPPLY_SEQ_DL_IBIST,
+	/* capture */
+	SUPPLY_SEQ_UL_PGA,
+	SUPPLY_SEQ_UL_ADC,
+	SUPPLY_SEQ_UL_MTKAIF,
+	SUPPLY_SEQ_UL_SRC_DMIC,
+	SUPPLY_SEQ_UL_SRC,
+	/* vow */
+	SUPPLY_SEQ_AUD_VOW,
+	SUPPLY_SEQ_VOW_CLK,
+	SUPPLY_SEQ_VOW_LDO,
+	SUPPLY_SEQ_AUD_GLB_VOW,
+	SUPPLY_SEQ_VOW_DIG_CFG,
+	SUPPLY_SEQ_VOW_PERIODIC_CFG,
+	SUPPLY_SEQ_VOW_AUD_LPW,
+};
+
+enum {
+	CH_L = 0,
+	CH_R,
+	NUM_CH,
+};
+
+enum {
+	DRBIAS_4UA = 0,
+	DRBIAS_5UA,
+	DRBIAS_6UA,
+	DRBIAS_7UA,
+	DRBIAS_8UA,
+	DRBIAS_9UA,
+	DRBIAS_10UA,
+	DRBIAS_11UA,
+};
+
+enum {
+	IBIAS_4UA = 0,
+	IBIAS_5UA,
+	IBIAS_6UA,
+	IBIAS_7UA,
+};
+
+enum {
+	IBIAS_ZCD_3UA = 0,
+	IBIAS_ZCD_4UA,
+	IBIAS_ZCD_5UA,
+	IBIAS_ZCD_6UA,
+};
+
+enum {
+	MIC_BIAS_1P7 = 0,
+	MIC_BIAS_1P8,
+	MIC_BIAS_1P9,
+	MIC_BIAS_2P0,
+	MIC_BIAS_2P1,
+	MIC_BIAS_2P5,
+	MIC_BIAS_2P6,
+	MIC_BIAS_2P7,
+};
+
+enum {
+	DL_GAIN_8DB = 0,
+	DL_GAIN_0DB = 8,
+	DL_GAIN_N_1DB = 9,
+	DL_GAIN_N_10DB = 18,
+	DL_GAIN_N_22DB = 30,
+	DL_GAIN_N_40DB = 0x1f,
+};
+
+enum {
+	MIC_TYPE_MUX_IDLE = 0,
+	MIC_TYPE_MUX_ACC,
+	MIC_TYPE_MUX_DMIC,
+	MIC_TYPE_MUX_DCC,
+	MIC_TYPE_MUX_DCC_ECM_DIFF,
+	MIC_TYPE_MUX_DCC_ECM_SINGLE,
+};
+
+enum {
+	MIC_INDEX_IDLE = 0,
+	MIC_INDEX_MAIN,
+	MIC_INDEX_REF,
+	MIC_INDEX_THIRD,
+	MIC_INDEX_HEADSET,
+};
+
+enum {
+	LO_MUX_OPEN = 0,
+	LO_MUX_L_DAC,
+	LO_MUX_3RD_DAC,
+	LO_MUX_TEST_MODE,
+	LO_MUX_MASK = 0x3,
+};
+
+enum {
+	HP_MUX_OPEN = 0,
+	HP_MUX_HPSPK,
+	HP_MUX_HP,
+	HP_MUX_TEST_MODE,
+	HP_MUX_HP_IMPEDANCE,
+	HP_MUX_MASK = 0x7,
+};
+
+enum {
+	RCV_MUX_OPEN = 0,
+	RCV_MUX_MUTE,
+	RCV_MUX_VOICE_PLAYBACK,
+	RCV_MUX_TEST_MODE,
+	RCV_MUX_MASK = 0x3,
+};
+
+enum {
+	PGA_L_MUX_NONE = 0,
+	PGA_L_MUX_AIN0,
+	PGA_L_MUX_AIN1,
+};
+
+enum {
+	PGA_R_MUX_NONE = 0,
+	PGA_R_MUX_AIN2,
+	PGA_R_MUX_AIN3,
+	PGA_R_MUX_AIN0,
+};
+
+enum {
+	UL_SRC_MUX_AMIC = 0,
+	UL_SRC_MUX_DMIC,
+};
+
+enum {
+	MISO_MUX_UL1_CH1 = 0,
+	MISO_MUX_UL1_CH2,
+	MISO_MUX_UL2_CH1,
+	MISO_MUX_UL2_CH2,
+};
+
+enum {
+	VOW_AMIC_MUX_ADC_L = 0,
+	VOW_AMIC_MUX_ADC_R,
+	VOW_AMIC_MUX_ADC_T,
+};
+
+enum {
+	DMIC_MUX_DMIC_DATA0 = 0,
+	DMIC_MUX_DMIC_DATA1_L,
+	DMIC_MUX_DMIC_DATA1_L_1,
+	DMIC_MUX_DMIC_DATA1_R,
+};
+
+enum {
+	ADC_MUX_IDLE = 0,
+	ADC_MUX_AIN0,
+	ADC_MUX_PREAMPLIFIER,
+	ADC_MUX_IDLE1,
+};
+
+enum {
+	PGA_3_MUX_NONE = 0,
+	PGA_3_MUX_AIN3,
+	PGA_3_MUX_AIN2,
+};
+
+enum {
+	VOW_MTKIF_TX_SET_STEREO = 0,
+	VOW_MTKIF_TX_SET_MONO,
+};
+
+enum {
+	TRIM_BUF_MUX_OPEN = 0,
+	TRIM_BUF_MUX_HPL,
+	TRIM_BUF_MUX_HPR,
+	TRIM_BUF_MUX_HSP,
+	TRIM_BUF_MUX_HSN,
+	TRIM_BUF_MUX_LOLP,
+	TRIM_BUF_MUX_LOLN,
+	TRIM_BUF_MUX_AU_REFN,
+	TRIM_BUF_MUX_AVSS32,
+	TRIM_BUF_MUX_UNUSED,
+};
+
+enum {
+	TRIM_BUF_GAIN_0DB = 0,
+	TRIM_BUF_GAIN_6DB,
+	TRIM_BUF_GAIN_12DB,
+	TRIM_BUF_GAIN_18DB,
+};
+
+enum {
+	TRIM_STEP0 = 0,
+	TRIM_STEP1,
+	TRIM_STEP2,
+	TRIM_STEP3,
+	TRIM_STEP_NUM,
+};
+
+enum {
+	AUXADC_AVG_1 = 0,
+	AUXADC_AVG_4,
+	AUXADC_AVG_8,
+	AUXADC_AVG_16,
+	AUXADC_AVG_32,
+	AUXADC_AVG_64,
+	AUXADC_AVG_128,
+	AUXADC_AVG_256,
+};
+
+struct dc_trim_data {
+	bool calibrated;
+	int mic_vinp_mv;
+};
+
+struct hp_trim_data {
+	unsigned int hp_trim_l;
+	unsigned int hp_trim_r;
+	unsigned int hp_fine_trim_l;
+	unsigned int hp_fine_trim_r;
+};
+
+struct mt6359_vow_periodic_on_off_data {
+	unsigned long long pga_on;
+	unsigned long long precg_on;
+	unsigned long long adc_on;
+	unsigned long long micbias0_on;
+	unsigned long long micbias1_on;
+	unsigned long long dcxo_on;
+	unsigned long long audglb_on;
+	unsigned long long vow_on;
+	unsigned long long pga_off;
+	unsigned long long precg_off;
+	unsigned long long adc_off;
+	unsigned long long micbias0_off;
+	unsigned long long micbias1_off;
+	unsigned long long dcxo_off;
+	unsigned long long audglb_off;
+	unsigned long long vow_off;
+};
 
 struct mt6359_codec_ops {
 	int (*enable_dc_compensation)(bool enable);
@@ -4426,15 +5130,120 @@ struct mt6359_codec_ops {
 	int (*adda_dl_gain_control)(bool mute);
 };
 
+struct mt6359_priv {
+	struct device *dev;
+	struct regmap *regmap;
+	unsigned int dl_rate[MT6359_AIF_NUM];
+	unsigned int ul_rate[MT6359_AIF_NUM];
+	int ana_gain[AUDIO_ANALOG_VOLUME_TYPE_MAX];
+	unsigned int mux_select[MUX_NUM];
+	int dev_counter[DEVICE_NUM];
+	int hp_gain_ctl;
+	int hp_hifi_mode;
+	int hp_plugged;
+	int mtkaif_protocol;
+	int dmic_one_wire_mode;
+
+	/* dc trim */
+	struct dc_trim_data dc_trim;
+	struct hp_trim_data hp_trim_3_pole;
+	struct hp_trim_data hp_trim_4_pole;
+	struct iio_channel *hpofs_cal_auxadc;
+
+	/* headphone impedence */
+	struct nvmem_device *hp_efuse;
+	int hp_impedance;
+	int hp_current_calibrate_val;
+	struct mt6359_codec_ops ops;
+
+	/* debugfs */
+	struct dentry *debugfs;
+
+	/* vow control */
+	int vow_enable;
+	int reg_afe_vow_vad_cfg0;
+	int reg_afe_vow_vad_cfg1;
+	int reg_afe_vow_vad_cfg2;
+	int reg_afe_vow_vad_cfg3;
+	int reg_afe_vow_vad_cfg4;
+	int reg_afe_vow_vad_cfg5;
+	int reg_afe_vow_periodic;
+	unsigned int vow_channel;
+	struct mt6359_vow_periodic_on_off_data vow_periodic_param;
+	/* vow dmic low power mode, 1: enable, 0: disable */
+	int vow_dmic_lp;
+	int vow_single_mic_select;
+
+	/* regulator */
+	struct regulator *reg_vaud18;
+};
+
+#define MT_SOC_ENUM_EXT_ID(xname, xenum, xhandler_get, xhandler_put, id) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, .device = id,\
+	.info = snd_soc_info_enum_double, \
+	.get = xhandler_get, .put = xhandler_put, \
+	.private_value = (unsigned long)&xenum }
+
+/* dl bias */
+#define DRBIAS_MASK 0x7
+#define DRBIAS_HP_SFT (RG_AUDBIASADJ_0_VAUDP32_SFT + 0)
+#define DRBIAS_HP_MASK_SFT (DRBIAS_MASK << DRBIAS_HP_SFT)
+#define DRBIAS_HS_SFT (RG_AUDBIASADJ_0_VAUDP32_SFT + 3)
+#define DRBIAS_HS_MASK_SFT (DRBIAS_MASK << DRBIAS_HS_SFT)
+#define DRBIAS_LO_SFT (RG_AUDBIASADJ_0_VAUDP32_SFT + 6)
+#define DRBIAS_LO_MASK_SFT (DRBIAS_MASK << DRBIAS_LO_SFT)
+#define IBIAS_MASK 0x3
+#define IBIAS_HP_SFT (RG_AUDBIASADJ_1_VAUDP32_SFT + 0)
+#define IBIAS_HP_MASK_SFT (IBIAS_MASK << IBIAS_HP_SFT)
+#define IBIAS_HS_SFT (RG_AUDBIASADJ_1_VAUDP32_SFT + 2)
+#define IBIAS_HS_MASK_SFT (IBIAS_MASK << IBIAS_HS_SFT)
+#define IBIAS_LO_SFT (RG_AUDBIASADJ_1_VAUDP32_SFT + 4)
+#define IBIAS_LO_MASK_SFT (IBIAS_MASK << IBIAS_LO_SFT)
+#define IBIAS_ZCD_SFT (RG_AUDBIASADJ_1_VAUDP32_SFT + 6)
+#define IBIAS_ZCD_MASK_SFT (IBIAS_MASK << IBIAS_ZCD_SFT)
+
+/* dl pga gain */
+#define DL_GAIN_N_10DB_REG (DL_GAIN_N_10DB << 7 | DL_GAIN_N_10DB)
+#define DL_GAIN_N_22DB_REG (DL_GAIN_N_22DB << 7 | DL_GAIN_N_22DB)
+#define DL_GAIN_N_40DB_REG (DL_GAIN_N_40DB << 7 | DL_GAIN_N_40DB)
+#define DL_GAIN_REG_MASK 0x0f9f
+
+/* mic type */
+
+#define IS_DCC_BASE(x) (x == MIC_TYPE_MUX_DCC || \
+			x == MIC_TYPE_MUX_DCC_ECM_DIFF || \
+			x == MIC_TYPE_MUX_DCC_ECM_SINGLE)
+
+#define IS_AMIC_BASE(x) (x == MIC_TYPE_MUX_ACC || IS_DCC_BASE(x))
+
+/* VOW MTKIF TX setting */
+#define VOW_MCLK 13000
+#define VOW_MTKIF_TX_MONO_CLK 650
+#define VOW_MTKIF_TX_STEREO_CLK 1083
+
+/* reg idx for -40dB */
+#define PGA_MINUS_40_DB_REG_VAL 0x1f
+#define HP_PGA_MINUS_40_DB_REG_VAL 0x3f
+
+/* dc trim */
+#define TRIM_TIMES 26
+#define TRIM_DISCARD_NUM 3
+#define TRIM_USEFUL_NUM (TRIM_TIMES - (TRIM_DISCARD_NUM * 2))
+
+/* headphone impedance detection */
+#define PARALLEL_OHM 0
+
+/* codec name */
+#define CODEC_MT6359_NAME "mtk-codec-mt6359"
+#define DEVICE_MT6359_NAME "mt6359-sound"
+
 int mt6359_set_codec_ops(struct snd_soc_component *cmpnt,
 			 struct mt6359_codec_ops *ops);
-
 int mt6359_set_mtkaif_protocol(struct snd_soc_component *cmpnt,
 			       int mtkaif_protocol);
-
-int mt6359_mtkaif_calibration_enable(struct snd_soc_component *cmpnt);
-int mt6359_mtkaif_calibration_disable(struct snd_soc_component *cmpnt);
-int mt6359_set_mtkaif_calibration_phase(struct snd_soc_component *cmpnt,
-					int phase_1, int phase_2, int phase_3);
+void mt6359_mtkaif_calibration_enable(struct snd_soc_component *cmpnt);
+void mt6359_mtkaif_calibration_disable(struct snd_soc_component *cmpnt);
+void mt6359_set_mtkaif_calibration_phase(struct snd_soc_component *cmpnt,
+					 int phase_1, int phase_2, int phase_3);
 
 #endif/* end _MT6359_H_ */

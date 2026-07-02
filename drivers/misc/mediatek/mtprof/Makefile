@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2015 MediaTek Inc.
+# Copyright (C) 2020 MediaTek Inc.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 2 as
@@ -11,10 +11,13 @@
 # GNU General Public License for more details.
 #
 
-MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
-ccflags-y += -Idrivers/misc/mediatek/mtprof
-subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat
-LINUXINCLUDE += -include $(srctree)/kernel/sched/sched.h
-
 obj-$(CONFIG_MTPROF) = bootprof.o
-obj-$(CONFIG_MTK_SCHED_MONITOR) += common.o prof_main.o sched_monitor.o sched_monitor_test.o
+
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include
+ccflags-y += -I$(srctree)/include/trace/events
+ccflags-y += -I$(srctree)/include/kernel
+CFLAGS_irq_monitor_main.o := -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mtprof
+
+obj-$(CONFIG_MTK_IRQ_MONITOR) += irq_monitor.o
+irq_monitor-y += irq_monitor_main.o irq_monitor_test.o irq_monitor_log.o
+irq_monitor-y += irq_count_tracer.o common.o

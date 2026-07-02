@@ -33,79 +33,99 @@
 #include "ccci_config.h"
 #include "ccci_common_config.h"
 #include "ccci_core.h"
+#ifndef CCCI_KMODULE_ENABLE
 #include "modem_sys.h"
+#endif
 #include "ccci_bm.h"
 #include "ccci_hif_cldma.h"
-#include "md_sys1_platform.h"
+//#include "md_sys1_platform.h"
 #include "cldma_reg.h"
-#include "modem_reg_base.h"
 #include "ccci_fsm.h"
 #include "ccci_port.h"
 #include "ccci_cldma_plat.h"
-#include "ccci_platform.h"
 #include "ccci_hif_cldma.h"
 
 #define TAG "cldma"
 
-void cldma_plat_hw_reset(unsigned char md_id)
+void cldma_plat_hw_reset(void)
 {
-	unsigned int reg_value;
-	//struct ccci_modem *md = ccci_md_get_modem_by_id(md_id);
+	unsigned int reg_value = 0;
+	int ret;
 
-	CCCI_NORMAL_LOG(md_id, TAG, "%s:rst cldma\n", __func__);
+	CCCI_NORMAL_LOG(0, TAG, "%s:rst cldma\n", __func__);
 
 	/* reset cldma hw: AO Domain */
-	reg_value = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
+	ret = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_RST0_REG_AO, &reg_value);
+	if (ret) {
+		CCCI_ERROR_LOG(0, TAG, "read INFRA_RST0_REG_AO ret=%d\n", ret);
+		return;
+	}
 	reg_value &= ~(CLDMA_AO_RST_MASK); /* the bits in reg is WO, */
 	reg_value |= (CLDMA_AO_RST_MASK);/* so only this bit effective */
 	regmap_write(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_RST0_REG_AO, reg_value);
-	CCCI_BOOTUP_LOG(md_id, TAG, "%s:clear reset\n", __func__);
+	CCCI_BOOTUP_LOG(0, TAG, "%s:clear reset\n", __func__);
 
 	/* reset cldma clr */
-	reg_value = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
+	ret = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_RST1_REG_AO, &reg_value);
+	if (ret) {
+		CCCI_ERROR_LOG(0, TAG, "read INFRA_RST1_REG_AO ret=%d\n", ret);
+		return;
+	}
 	reg_value &= ~(CLDMA_AO_RST_MASK);/* read no use, maybe a time delay */
 	reg_value |= (CLDMA_AO_RST_MASK);
 	regmap_write(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_RST1_REG_AO, reg_value);
-	CCCI_BOOTUP_LOG(md_id, TAG, "%s:done\n", __func__);
+	CCCI_BOOTUP_LOG(0, TAG, "%s:done\n", __func__);
 
 	/* reset cldma hw: PD Domain */
-	reg_value = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
+	ret = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_RST0_REG_PD, &reg_value);
+	if (ret) {
+		CCCI_ERROR_LOG(0, TAG, "read INFRA_RST0_REG_PD ret=%d\n", ret);
+		return;
+	}
 	reg_value &= ~(CLDMA_PD_RST_MASK);
 	reg_value |= (CLDMA_PD_RST_MASK);
 	regmap_write(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_RST0_REG_PD, reg_value);
-	CCCI_BOOTUP_LOG(md_id, TAG, "%s:clear reset\n", __func__);
+	CCCI_BOOTUP_LOG(0, TAG, "%s:clear reset\n", __func__);
 
 	/* reset cldma clr */
-	reg_value = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
+	ret = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_RST1_REG_PD, &reg_value);
+	if (ret) {
+		CCCI_ERROR_LOG(0, TAG, "read INFRA_RST1_REG_PD ret=%d\n", ret);
+		return;
+	}
 	reg_value &= ~(CLDMA_PD_RST_MASK);
 	reg_value |= (CLDMA_PD_RST_MASK);
 	regmap_write(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_RST1_REG_PD, reg_value);
-	CCCI_DEBUG_LOG(md_id, TAG, "%s:done\n", __func__);
+	CCCI_DEBUG_LOG(0, TAG, "%s:done\n", __func__);
 
 	/* set cldma wakeup source mask */
-	reg_value = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
+	ret = regmap_read(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_CLDMA_CTRL_REG, &reg_value);
+	if (ret) {
+		CCCI_ERROR_LOG(0, TAG, "read INFRA_CLDMA_CTRL_REG ret=%d\n", ret);
+		return;
+	}
 	reg_value |= (CLDMA_IP_BUSY_MASK);
 	regmap_write(cldma_ctrl->plat_val.infra_ao_base,
 		INFRA_CLDMA_CTRL_REG, reg_value);
-	CCCI_DEBUG_LOG(md_id, TAG, "set cldma ctrl reg as:0x%x\n", reg_value);
+	CCCI_DEBUG_LOG(0, TAG, "set cldma ctrl reg as:0x%x\n", reg_value);
 }
 
 
-void cldma_plat_set_clk_cg(unsigned char md_id, unsigned int on)
+void cldma_plat_set_clk_cg(unsigned int on)
 {
 	int idx = 0;
 	int ret = 0;
 
-	CCCI_NORMAL_LOG(md_id, TAG, "%s: on=%d\n", __func__, on);
+	CCCI_NORMAL_LOG(0, TAG, "%s: on=%d\n", __func__, on);
 
 	for (idx = 0; idx < CLDMA_CLOCK_COUNT; idx++) {
 		if (cldma_clk_table[idx].clk_ref == NULL)
@@ -114,26 +134,22 @@ void cldma_plat_set_clk_cg(unsigned char md_id, unsigned int on)
 		if (on) {
 			ret = clk_prepare_enable(cldma_clk_table[idx].clk_ref);
 			if (ret)
-				CCCI_ERROR_LOG(md_id, TAG,
+				CCCI_ERROR_LOG(0, TAG,
 					"%s: on=%d,ret=%d\n",
 					__func__, on, ret);
-			devapc_check_flag = 1;
-
-		} else {
-			devapc_check_flag = 0;
+		} else
 			clk_disable_unprepare(cldma_clk_table[idx].clk_ref);
-		}
 	}
 }
 
-int cldma_plat_suspend(unsigned char md_id)
+int cldma_plat_suspend(void)
 {
-	CCCI_NORMAL_LOG(md_id, TAG, "[%s]\n", __func__);
+	CCCI_NORMAL_LOG(0, TAG, "[%s]\n", __func__);
 
 	return 0;
 }
 
-void cldma_plat_resume(unsigned char md_id)
+void cldma_plat_resume(void)
 {
 	//struct md_sys1_info *md_info = (struct md_sys1_info *)md->private_data;
 	//enum MD_STATE md_state = ccci_fsm_get_md_state(md->index);
@@ -142,7 +158,7 @@ void cldma_plat_resume(unsigned char md_id)
 	unsigned int val = 0;
 	dma_addr_t bk_addr = 0;
 
-	CCCI_NORMAL_LOG(md_id, TAG, "%s\n", __func__);
+	CCCI_NORMAL_LOG(0, TAG, "%s\n", __func__);
 
 //	if (md_state == GATED ||
 //			md_state == WAITING_TO_STOP ||
@@ -154,7 +170,7 @@ void cldma_plat_resume(unsigned char md_id)
 //	}
 
 	if (cldma_ctrl->cldma_state != HIF_CLDMA_STATE_PWRON) {
-		CCCI_NORMAL_LOG(md_id, TAG,
+		CCCI_NORMAL_LOG(0, TAG,
 			"Resume no need reset cldma for md_state=%d\n",
 			cldma_ctrl->cldma_state);
 		return;
@@ -166,7 +182,7 @@ void cldma_plat_resume(unsigned char md_id)
 	if (cldma_read32(cldma_ctrl->cldma_ap_pdn_base, CLDMA_AP_TQSAR(0))
 		|| cldma_reg_get_4msb_val(cldma_ctrl->cldma_ap_ao_base,
 		CLDMA_AP_UL_START_ADDR_4MSB, cldma_ctrl->txq[0].index)) {
-		CCCI_NORMAL_LOG(md_id, TAG,
+		CCCI_NORMAL_LOG(0, TAG,
 			"Resume cldma pdn register: No need  ...\n");
 		spin_lock_irqsave(&cldma_ctrl->cldma_timeout_lock, flags);
 		if (!(cldma_read32(cldma_ctrl->cldma_ap_ao_base,
@@ -177,11 +193,11 @@ void cldma_plat_resume(unsigned char md_id)
 			cldma_read32(cldma_ctrl->cldma_ap_pdn_base,
 				CLDMA_AP_SO_RESUME_CMD); /* dummy read */
 		} else
-			CCCI_NORMAL_LOG(md_id, TAG,
+			CCCI_NORMAL_LOG(0, TAG,
 				"Resume cldma ao register: No need  ...\n");
 		spin_unlock_irqrestore(&cldma_ctrl->cldma_timeout_lock, flags);
 	} else {
-		CCCI_NORMAL_LOG(md_id, TAG,
+		CCCI_NORMAL_LOG(0, TAG,
 			"Resume cldma pdn register ...11\n");
 		spin_lock_irqsave(&cldma_ctrl->cldma_timeout_lock, flags);
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
@@ -204,7 +220,7 @@ void cldma_plat_resume(unsigned char md_id)
 					CLDMA_AP_UL_CURRENT_ADDR_BK_4MSB,
 					cldma_ctrl->txq[i].index) == 0) {
 				if (i != 7) /* Queue 7 not used currently */
-					CCCI_DEBUG_LOG(md_id, TAG,
+					CCCI_DEBUG_LOG(0, TAG,
 					"Resume CH(%d) current bak:== 0\n", i);
 				cldma_reg_set_tx_start_addr(
 						cldma_ctrl->cldma_ap_pdn_base,
@@ -244,7 +260,7 @@ void cldma_plat_resume(unsigned char md_id)
 		cldma_ctrl->txq_started = 0;
 		cldma_ctrl->txq_active |= CLDMA_BM_ALL_QUEUE;
 
-		ccci_write32(cldma_ctrl->cldma_ap_pdn_base, CLDMA_AP_L2TIMCR0,
+		cldma_write32(cldma_ctrl->cldma_ap_pdn_base, CLDMA_AP_L2TIMCR0,
 			CLDMA_TX_INT_DONE |
 			CLDMA_TX_INT_QUEUE_EMPTY |
 			CLDMA_TX_INT_ERROR);
@@ -258,8 +274,7 @@ void cldma_plat_resume(unsigned char md_id)
 		cldma_write32(cldma_ctrl->cldma_ap_pdn_base,
 			CLDMA_AP_L3RIMCR1, CLDMA_BM_INT_ALL);
 		spin_unlock_irqrestore(&cldma_ctrl->cldma_timeout_lock, flags);
-		CCCI_NORMAL_LOG(md_id, TAG,
+		CCCI_NORMAL_LOG(0, TAG,
 			"Resume cldma pdn register done\n");
 	}
 }
-

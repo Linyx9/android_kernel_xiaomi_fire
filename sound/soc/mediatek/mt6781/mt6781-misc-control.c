@@ -195,7 +195,7 @@ static int mt6781_sgen_amplitude_set(struct snd_kcontrol *kcontrol,
 
 	amplitude = ucontrol->value.integer.value[0];
 	if (amplitude > AMP_DIV_CH1_MASK) {
-		dev_warn(afe->dev, "%s(), amplitude %d invalid\n",
+		dev_info(afe->dev, "%s(), amplitude %d invalid\n",
 			 __func__, amplitude);
 		return -EINVAL;
 	}
@@ -1749,13 +1749,26 @@ static int mt6781_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 		enable = false;
 
 	if (!dl_memif->substream) {
-		dev_warn(afe->dev, "%s(), dl_memif->substream == NULL\n",
+		dev_info(afe->dev, "%s(), dl_memif->substream == NULL\n",
 			 __func__);
-		return -EINVAL;
+
+		if (afe_priv->usb_call_echo_ref_reallocate) {
+			dev_info(afe->dev, "%s(), free area: %p\n", __func__,
+				 dl_memif->dma_area);
+			/* free previous allocate */
+			dma_free_coherent(afe->dev,
+					  dl_memif->dma_bytes,
+					  dl_memif->dma_area,
+					  dl_memif->dma_addr);
+
+			afe_priv->usb_call_echo_ref_reallocate = false;
+			afe_priv->usb_call_echo_ref_enable = false;
+		}
+		return 0;
 	}
 
 	if (!ul_memif->substream) {
-		dev_warn(afe->dev, "%s(), ul_memif->substream == NULL\n",
+		dev_info(afe->dev, "%s(), ul_memif->substream == NULL\n",
 			 __func__);
 		return -EINVAL;
 	}
@@ -1778,6 +1791,9 @@ static int mt6781_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 			unsigned char *dma_area;
 
 			if (afe_priv->usb_call_echo_ref_reallocate) {
+				dev_info(afe->dev, "%s(), free area: %p\n",
+					 __func__,
+					 dl_memif->dma_area);
 				/* free previous allocate */
 				dma_free_coherent(afe->dev,
 						  dl_memif->dma_bytes,
@@ -1791,7 +1807,7 @@ static int mt6781_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 						      &dl_memif->dma_addr,
 						      GFP_KERNEL | GFP_DMA);
 			if (!dma_area) {
-				dev_err(afe->dev, "%s(), dma_alloc_coherent fail\n",
+				dev_info(afe->dev, "%s(), dma_alloc_coherent fail\n",
 					__func__);
 				return -ENOMEM;
 			}
@@ -1839,6 +1855,8 @@ static int mt6781_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 		mtk_memif_set_disable(afe, ul_id);
 
 		if (afe_priv->usb_call_echo_ref_reallocate) {
+			dev_info(afe->dev, "%s(), free area: %p\n", __func__,
+				 dl_memif->dma_area);
 			/* free previous allocate */
 			dma_free_coherent(afe->dev,
 					  dl_memif->dma_bytes,
@@ -1915,7 +1933,7 @@ static int speech_property_get(struct snd_kcontrol *kcontrol,
 	sph_property = (int *)get_sph_property_by_name(afe_priv,
 						       kcontrol->id.name);
 	if (!sph_property) {
-		dev_err(afe->dev, "%s(), sph_property == NULL\n", __func__);
+		dev_info(afe->dev, "%s(), sph_property == NULL\n", __func__);
 		return -EINVAL;
 	}
 	ucontrol->value.integer.value[0] = *sph_property;
@@ -1934,7 +1952,7 @@ static int speech_property_set(struct snd_kcontrol *kcontrol,
 	sph_property = (int *)get_sph_property_by_name(afe_priv,
 						       kcontrol->id.name);
 	if (!sph_property) {
-		dev_err(afe->dev, "%s(), sph_property == NULL\n", __func__);
+		dev_info(afe->dev, "%s(), sph_property == NULL\n", __func__);
 		return -EINVAL;
 	}
 	*sph_property = ucontrol->value.integer.value[0];
@@ -2040,7 +2058,6 @@ static const struct snd_kcontrol_new mt6781_afe_bargein_controls[] = {
 
 int mt6781_add_misc_control(struct snd_soc_component *platform)
 {
-	dev_info(platform->dev, "%s()\n", __func__);
 
 	snd_soc_add_component_controls(platform,
 				      mt6781_afe_sgen_controls,

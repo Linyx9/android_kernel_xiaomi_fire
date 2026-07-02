@@ -18,11 +18,9 @@
 #include <asm/page.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/panic_notifier.h>
 
 #include <teei_client_main.h>
-#ifdef CONFIG_MTK_TEE_SANITY
-#include <tee_sanity.h>
-#endif
 #include "tz_log.h"
 #include "nt_smc_call.h"
 #include "notify_queue.h"
@@ -124,6 +122,7 @@ static void tz_driver_dump_logs(struct tz_log_state *s)
 	struct boot_log_rb *boot_log = s->boot_log;
 	uint32_t get, put, alloc;
 	int read_chars;
+	int ret = 0;
 	static DEFINE_RATELIMIT_STATE(_rs,
 				TZ_LOG_RATELIMIT_INTERVAL,
 				TZ_LOG_RATELIMIT_BURST);
@@ -174,7 +173,10 @@ static void tz_driver_dump_logs(struct tz_log_state *s)
 		 * if log level >= KERN_INFO)
 		 */
 
-		IMSG_PRINTK("[TZ_LOG] %s", s->line_buffer);
+		if (likely(is_teei_ready()))
+			IMSG_PRINTK("[TZ_LOG] %s", s->line_buffer);
+		else
+			IMSG_PRINTK("[TZ_LOG] %s", s->line_buffer);
 
 		/*
 		 * Dump early log to boot log buffer
@@ -189,7 +191,9 @@ static void tz_driver_dump_logs(struct tz_log_state *s)
 
 		/* Print warning message */
 		/* if log output frequency is over rate limit */
-		__ratelimit(&_rs);
+		ret = __ratelimit(&_rs);
+		if (ret != 0)
+			IMSG_DEBUG("ratelimit failed\n");
 
 		get += read_chars;
 
@@ -204,9 +208,8 @@ static void tz_driver_dump_logs(struct tz_log_state *s)
 int teei_log_fn(void *work)
 {
 	int retVal = 0;
-#ifdef CONFIG_MICROTRUST_TZ_LOG
+#if IS_ENABLED(CONFIG_MICROTRUST_TZ_LOG)
 	struct tz_log_state *s;
-	unsigned long flags;
 
 	s = g_tz_log_state;
 #endif
@@ -219,7 +222,7 @@ int teei_log_fn(void *work)
 				continue;
 		}
 
-#ifdef CONFIG_MICROTRUST_TZ_LOG
+#if IS_ENABLED(CONFIG_MICROTRUST_TZ_LOG)
 		msleep(20);
 		tz_driver_dump_logs(s);
 #endif
@@ -416,7 +419,7 @@ int tz_log_probe(struct platform_device *pdev)
 	s->dev = &pdev->dev;
 	s->get = 0;
 	s->read_get = 0;
-	s->log_pages = alloc_pages(GFP_KERNEL | __GFP_ZERO | GFP_DMA,
+	s->log_pages = alloc_pages(GFP_KERNEL | __GFP_ZERO,
 				   get_order(TZ_LOG_SIZE));
 	if (!s->log_pages) {
 		result = -ENOMEM;
@@ -424,7 +427,7 @@ int tz_log_probe(struct platform_device *pdev)
 	}
 	s->log = page_address(s->log_pages);
 
-	s->boot_log_pages = alloc_pages(GFP_KERNEL | __GFP_ZERO | GFP_DMA,
+	s->boot_log_pages = alloc_pages(GFP_KERNEL | __GFP_ZERO,
 				   get_order(TZ_LOG_SIZE));
 	if (!s->boot_log_pages) {
 		result = -ENOMEM;
@@ -443,7 +446,12 @@ int tz_log_probe(struct platform_device *pdev)
 		IMSG_ERROR("failed to register panic notifier\n");
 		goto error_panic_notifier;
 	}
-	platform_device_add_data(pdev, s, sizeof(struct tz_log_state));
+	result = platform_device_add_data(pdev, s, sizeof(struct tz_log_state));
+
+	if (result != 0) {
+		IMSG_ERROR("failed to add device data\n");
+		goto error_panic_notifier;
+	}
 
 #ifdef ENABLED_TEEI_BOOT_LOG
 	tz_log_debugfs_init();

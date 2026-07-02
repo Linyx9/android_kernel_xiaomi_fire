@@ -11,9 +11,19 @@
 #include <sound/soc.h>
 #include <linux/list.h>
 #include <linux/regmap.h>
+#include <mt-plat/aee.h>
 #include "mt6885-reg.h"
 #include "../common/mtk-base-afe.h"
-#include "../common/mtk-sp-common.h"
+
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
+#define AUDIO_AEE(message) \
+	(aee_kernel_exception_api(__FILE__, \
+				  __LINE__, \
+				  DB_OPT_FTRACE, message, \
+				  "audio assert"))
+#else
+#define AUDIO_AEE(message) WARN_ON(true)
+#endif
 
 enum {
 	MT6885_MEMIF_DL1,
@@ -88,15 +98,14 @@ enum {
 #define MT6885_VOIP_MEMIF MT6885_MEMIF_DL12
 #define MT6885_MMAP_DL_MEMIF MT6885_MEMIF_DL5
 #define MT6885_MMAP_UL_MEMIF MT6885_MEMIF_VUL5
-#define MT6885_BARGEIN_MEMIF MT6885_MEMIF_AWB
+#define MT6885_BARGE_IN_MEMIF MT6885_MEMIF_AWB
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+// adsp define
 #define MT6885_DSP_PRIMARY_MEMIF MT6885_MEMIF_DL1
 #define MT6885_DSP_DEEPBUFFER_MEMIF MT6885_MEMIF_DL3
 #define MT6885_DSP_VOIP_MEMIF MT6885_MEMIF_DL12
 #define MT6885_DSP_PLAYBACKDL_MEMIF MT6885_MEMIF_DL4
 #define MT6885_DSP_PLAYBACKUL_MEMIF MT6885_MEMIF_VUL4
-#endif
 
 enum {
 	MT6885_IRQ_0,
@@ -130,18 +139,6 @@ enum {
 	MT6885_IRQ_NUM,
 };
 
-enum {
-	MTKAIF_PROTOCOL_1 = 0,
-	MTKAIF_PROTOCOL_2,
-	MTKAIF_PROTOCOL_2_CLK_P2,
-};
-
-enum {
-	MTK_AFE_ADDA_DL_GAIN_MUTE = 0,
-	MTK_AFE_ADDA_DL_GAIN_NORMAL = 0xf74f,
-	/* SA suggest apply -0.3db to audio/speech path */
-};
-
 /* MCLK */
 enum {
 	MT6885_I2S0_MCK = 0,
@@ -158,27 +155,22 @@ enum {
 	MT6885_MCK_NUM,
 };
 
-/* SMC CALL Operations */
-enum mtk_audio_smc_call_op {
-	MTK_AUDIO_SMC_OP_INIT = 0,
-	MTK_AUDIO_SMC_OP_DRAM_REQUEST,
-	MTK_AUDIO_SMC_OP_DRAM_RELEASE,
-	MTK_AUDIO_SMC_OP_FM_REQUEST,
-	MTK_AUDIO_SMC_OP_FM_RELEASE,
-	MTK_AUDIO_SMC_OP_ADSP_REQUEST,
-	MTK_AUDIO_SMC_OP_ADSP_RELEASE,
-	MTK_AUDIO_SMC_OP_NUM
-};
-
 struct snd_pcm_substream;
 struct mtk_base_irq_data;
 struct clk;
+
+struct mt6885_compress_info {
+	int card;
+	int device;
+	int dir;
+	char id[64];
+};
 
 struct mt6885_afe_private {
 	struct clk **clk;
 	struct regmap *topckgen;
 	struct regmap *apmixed;
-	struct regmap *infracfg_ao;
+	struct regmap *infracfg;
 	int irq_cnt[MT6885_MEMIF_NUM];
 	int stf_positive_gain_db;
 	int dram_resource_counter;
@@ -238,7 +230,6 @@ struct mt6885_afe_private {
 	int speech_md_headversion;
 	int speech_md_version;
 	int speech_cust_param_init;
-	int speech_dynamic_dl_mute;
 };
 
 int mt6885_dai_adda_register(struct mtk_base_afe *afe);
@@ -258,15 +249,12 @@ unsigned int mt6885_general_rate_transform(struct device *dev,
 					   unsigned int rate);
 unsigned int mt6885_rate_transform(struct device *dev,
 				   unsigned int rate, int aud_blk);
+int mt6885_dai_set_priv(struct mtk_base_afe *afe, int id,
+			int priv_size, const void *priv_data);
+
 int mt6885_enable_dc_compensation(bool enable);
 int mt6885_set_lch_dc_compensation(int value);
 int mt6885_set_rch_dc_compensation(int value);
 int mt6885_adda_dl_gain_control(bool mute);
 
-int mt6885_dai_set_priv(struct mtk_base_afe *afe, int id,
-			int priv_size, const void *priv_data);
-#ifdef CONFIG_SND_SOC_CS35L43
-extern const struct snd_soc_ops cirrus_amp_ops;
-extern int cs35l41_snd_init(struct snd_soc_pcm_runtime *rtd);
-#endif
 #endif

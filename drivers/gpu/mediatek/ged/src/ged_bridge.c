@@ -6,19 +6,23 @@
 #include <linux/kernel.h>
 #include <mt-plat/mtk_gpu_utility.h>
 
-#ifdef CONFIG_MTK_FPSGO_V3
 #include <mt-plat/fpsgo_common.h>
-#endif
 
 #include "ged_base.h"
 #include "ged_bridge.h"
 #include "ged_log.h"
+#include "ged_tracepoint.h"
 #include "ged_monitor_3D_fence.h"
 #include "ged_notify_sw_vsync.h"
 #include "ged_dvfs.h"
 #include <linux/module.h>
 #include "ged_kpi.h"
 #include "ged.h"
+
+#ifndef CONFIG_MTK_GPU_LEGACY
+#include <gpufreq_v2.h>
+#endif /* CONFIG_MTK_GPU_LEGACY */
+
 
 static unsigned int ged_boost_enable = 1;
 //-----------------------------------------------------------------------------
@@ -65,8 +69,14 @@ int ged_bridge_monitor_3D_fence(
 	struct GED_BRIDGE_IN_MONITOR3DFENCE *psMonitor3DFenceINT,
 	struct GED_BRIDGE_OUT_MONITOR3DFENCE *psMonitor3DFenceOUT)
 {
-	psMonitor3DFenceOUT->eError =
-		ged_monitor_3D_fence_add(psMonitor3DFenceINT->fd);
+	if (psMonitor3DFenceINT->dump_flag == 1) {
+		mtk_gpu_fence_debug_dump(
+			psMonitor3DFenceINT->fd,
+			psMonitor3DFenceINT->pid,
+			psMonitor3DFenceINT->eType,
+			psMonitor3DFenceINT->timeouts);
+		psMonitor3DFenceOUT->eError = GED_OK;
+	}
 	return 0;
 }
 //-----------------------------------------------------------------------------
@@ -137,6 +147,12 @@ int ged_bridge_gpu_timestamp(
 					psGpuBeginINT->i32FrameID,
 					psGpuBeginINT->fence_fd,
 					psGpuBeginINT->isSF);
+		} else if (psGpuBeginINT->fence_fd == -1 &&
+				   psGpuBeginINT->i32FrameID == -1 &&
+				   psGpuBeginINT->isSF == -3 &&
+				   psGpuBeginINT->pid == -1 ) {
+			psGpuBeginOUT->eError =
+				ged_kpi_target_fps_hint(psGpuBeginINT->ullWnd, psGpuBeginINT->QedBuffer_length);
 		} else if (psGpuBeginINT->QedBuffer_length != -1) {
 			psGpuBeginOUT->eError =
 				ged_kpi_queue_buffer_ts(psGpuBeginINT->pid,
@@ -164,12 +180,22 @@ int ged_bridge_gpu_hint_to_cpu(
 		struct GED_BRIDGE_OUT_GPU_HINT_TO_CPU *out)
 {
 	int ret = 0;
-#ifdef CONFIG_MTK_FPSGO_V3
-	ret = fpsgo_notify_gpu_block(in->tid, in->i32BridgeFD, in->hint);
-#endif
+	trace_GPU_DVFS__Policy__Common__Sync_Api(in->hint);
+	trace_tracing_mark_write(5566, "Sync_Api", in->hint);
 	out->eError = GED_OK;
 	out->boost_flag = ret;
-	out->boost_value = ged_dvfs_boost_value();
+
+#ifndef CONFIG_MTK_GPU_LEGACY
+	if (in->hint == 10)
+		out->boost_flag = gpufreq_get_cur_temperature();
+#endif /* CONFIG_MTK_GPU_LEGACY */
+
+	if (in->hint <= 1)
+		out->boost_value = ged_dvfs_boost_value();
+	else
+		out->boost_value = -1;
+
+	set_api_sync_flag(in->hint);
 
 	return 0;
 }
@@ -203,12 +229,11 @@ int ged_bridge_query_dvfs_freq_pred(
 	struct GED_BRIDGE_IN_QUERY_DVFS_FREQ_PRED *QueryDVFSFreqPredIn,
 	struct GED_BRIDGE_OUT_QUERY_DVFS_FREQ_PRED *QueryDVFSFreqPredOut)
 {
-	/* GiFT hint status to GED */
 	if (QueryDVFSFreqPredIn->hint) {
 		QueryDVFSFreqPredOut->eError =
 			ged_kpi_set_gift_status(QueryDVFSFreqPredIn->hint);
 	}
-	/* GiFT query gpu_freq info from GED */
+
 	else {
 		QueryDVFSFreqPredOut->eError = ged_kpi_query_dvfs_freq_pred(
 			&QueryDVFSFreqPredOut->gpu_freq_cur,
@@ -223,11 +248,9 @@ int ged_bridge_query_gpu_dvfs_info(
 	struct GED_BRIDGE_IN_QUERY_GPU_DVFS_INFO *QueryGPUDVFSInfoIn,
 	struct GED_BRIDGE_OUT_QUERY_GPU_DVFS_INFO *QueryGPUDVFSInfoOut)
 {
-	/* GiFT hint PID status to GED */
 	if (QueryGPUDVFSInfoIn->pid)
 		ged_kpi_set_gift_target_pid(QueryGPUDVFSInfoIn->pid);
 
-	/* GiFT hint status to GED */
 	if (QueryGPUDVFSInfoIn->hint) {
 		if (QueryGPUDVFSInfoIn->gift_ratio)
 			QueryGPUDVFSInfoOut->eError =
@@ -237,7 +260,28 @@ int ged_bridge_query_gpu_dvfs_info(
 				ged_kpi_set_gift_status(QueryGPUDVFSInfoIn->hint);
 	}
 	QueryGPUDVFSInfoOut->eError = ged_kpi_query_gpu_dvfs_info(
-			QueryGPUDVFSInfoOut);
+		QueryGPUDVFSInfoOut);
+
+	return 0;
+}
+
+//-----------------------------------------------------------------------------
+int ged_bridge_hint_frame_info(
+	struct GED_BRIDGE_IN_HINT_FRAME_INFO *HintFrameInfoIn,
+	struct GED_BRIDGE_OUT_HINT_FRAME_INFO *HintFrameInfoOut)
+{
+	GED_LOGD("HintFrameInfoIn %llu,%d,%d,%d--%u,%d,%d--%llu,%d--%d,%d,%d,%d",
+			(unsigned long long)HintFrameInfoIn->BBQ_id, HintFrameInfoIn->target_fps,
+			HintFrameInfoIn->target_fps_margin, HintFrameInfoIn->enable, HintFrameInfoIn->cmd,
+			HintFrameInfoIn->pid, HintFrameInfoIn->tid, (unsigned long long)HintFrameInfoIn->core,
+			HintFrameInfoIn->by_mask, HintFrameInfoIn->reserved1, HintFrameInfoIn->reserved2,
+			HintFrameInfoIn->reserved3, HintFrameInfoIn->reserved4);
+
+	if (HintFrameInfoIn->cmd == GED_FRAME_INFO_TARGET_FPS && HintFrameInfoIn->target_fps)
+		ged_kpi_set_target_FPS_api(HintFrameInfoIn->BBQ_id, HintFrameInfoIn->target_fps,
+			HintFrameInfoIn->target_fps_margin);
+	HintFrameInfoOut->eError = ged_kpi_hint_frame_info(HintFrameInfoOut);
+
 	return 0;
 }
 

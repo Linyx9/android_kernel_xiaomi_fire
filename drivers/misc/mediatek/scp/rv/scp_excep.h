@@ -46,8 +46,8 @@ extern void aed_scp_exception_api(const int *log, int log_size,
 		const int *phy, int phy_size, const char *detail,
 		const int db_opt);
 extern void scp_excep_cleanup(void);
-extern void print_clk_registers(void);
 extern uint32_t memorydump_size_probe(struct platform_device *pdev);
+extern uint32_t scp_get_secure_dump_size(void);
 enum { r0, r1, r2, r3, r12, lr, pc, psr};
 extern int scp_ee_enable;
 extern int scp_reset_counts;
@@ -67,5 +67,4 @@ typedef enum MDUMP {
 	MDUMP_DRAM,
 	MDUMP_TOTAL
 } MDUMP_t;
-
 #endif

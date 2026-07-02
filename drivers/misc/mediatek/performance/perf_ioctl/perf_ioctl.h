@@ -31,6 +31,8 @@ struct _FPSGO_PACKAGE {
 		__u32 tid;
 		__s32 fps;
 		__s32 cmd;
+		__s32 active;
+		__u32 pid1;
 	};
 	union {
 		__u32 start;
@@ -40,62 +42,79 @@ struct _FPSGO_PACKAGE {
 	union {
 		__u64 frame_time;
 		__u64 bufID;
+		__s64 time_diff;
+		__u64 sf_buf_id;
 	};
-	__u64 frame_id; /* for HWUI only*/
+	__u64 frame_id;
 	union {
 		__s32 queue_SF;
 		__s32 value2;
+		__u32 pid2;
 	};
 	__u64 identifier;
 };
 
-#define MAX_DEVICE 2
-struct _EARA_NN_PACKAGE {
+struct _FPSGO_SBE_PACKAGE {
 	__u32 pid;
+	__u32 rtid;
+	__u64 frame_id;
+	__u64 identifier;
+	__u32 start;
+	__u32 blc;
+	__u64 mask;
+	__u8 name[16];
+	__u8 specific_name[1000];
+	__s32 num;
+	__u32 mode;
+};
+
+struct _XGFFRAME_PACKAGE {
 	__u32 tid;
-	__u64 mid;
-	__s32 errorno;
-	__s32 priority;
-	__s32 num_step;
+	__u64 queueid;
+	__u64 frameid;
 
-	__s32 dev_usage;
-	__u32 bw_usage;
-	__s32 thrm_throttled;
+	__u64 cputime;
+	__u32 area;
+	__u32 deplist_size;
 
 	union {
-		__s32 *device;
-		__u64 p_dummy_device;
-	};
-	union {
-		__s32 *boost;
-		__u64 p_dummy_boost;
-	};
-	union {
-		__u64 *exec_time;
-		__u64 p_dummy_exec_time;
-	};
-	union {
-		__u64 *target_time;
-		__u64 p_dummy_target_time;
+		__u32 *deplist;
+		__u64 p_dummy_deplist;
+		__u32 min_cap;
 	};
 };
 
-enum  {
-	USAGE_DEVTYPE_CPU  = 0,
-	USAGE_DEVTYPE_GPU  = 1,
-	USAGE_DEVTYPE_APU  = 2,
-	USAGE_DEVTYPE_MDLA = 3,
-	USAGE_DEVTYPE_VPU  = 4,
-	USAGE_DEVTYPE_MAX  = 5,
+struct _SMART_LAUNCH_PACKAGE {
+	int target_time;
+	int feedback_time;
+	int pre_opp;
+	int next_opp;
+	int capabilty_ration;
 };
 
-#define EARASYS_MAX_SIZE 27
-struct _EARA_SYS_PACKAGE {
+struct _FPSGO_LR_PAIR_PACKAGE {
 	union {
-		__s32 cmd;
-		__s32 data[EARASYS_MAX_SIZE];
+		__u32 tid;
 	};
+	union {
+		__u64 surface_id;
+	};
+	union {
+		__u64 buffer_id;
+		__u64 exp_l2q_ns;
+		__u64 rl_exp_l2q_us;
+	};
+	__u64 queue_ts;
+	__u64 logic_head_ts;
+	__u64 l2q_ns;
+	union {
+		__u32 is_logic_head_valid;
+		__u32 fpsgo_l2q_enable;
+		__u32 exp_vsync_multiple;
+	};
+	__u64 ktime_now_ns;
 };
+
 
 #define FPSGO_QUEUE                  _IOW('g', 1,  struct _FPSGO_PACKAGE)
 #define FPSGO_DEQUEUE                _IOW('g', 3,  struct _FPSGO_PACKAGE)
@@ -106,14 +125,27 @@ struct _EARA_SYS_PACKAGE {
 #define FPSGO_BQID                   _IOW('g', 16, struct _FPSGO_PACKAGE)
 #define FPSGO_GET_FPS                _IOW('g', 17, struct _FPSGO_PACKAGE)
 #define FPSGO_GET_CMD                _IOW('g', 18, struct _FPSGO_PACKAGE)
-#define FPSGO_GBE_GET_CMD            _IOW('g', 19, struct _FPSGO_PACKAGE)
+#define FPSGO_GET_FSTB_ACTIVE        _IOW('g', 20, struct _FPSGO_PACKAGE)
+#define FPSGO_WAIT_FSTB_ACTIVE       _IOW('g', 21, struct _FPSGO_PACKAGE)
+#define FPSGO_SBE_RESCUE             _IOW('g', 22, struct _FPSGO_PACKAGE)
+#define FPSGO_ACQUIRE                _IOW('g', 23, struct _FPSGO_PACKAGE)
+#define FPSGO_BUFFER_QUOTA           _IOW('g', 24, struct _FPSGO_PACKAGE)
+#define FPSGO_GET_CAM_APK_PID        _IOW('g', 25, struct _FPSGO_PACKAGE)
+#define FPSGO_GET_CAM_SERVER_PID     _IOW('g', 26, struct _FPSGO_PACKAGE)
+#define FPSGO_SBE_SET_POLICY         _IOW('g', 27, struct _FPSGO_SBE_PACKAGE)
+#define FPSGO_HINT_FRAME             _IOW('g', 28, struct _FPSGO_SBE_PACKAGE)
+#define FPSGO_VSYNC_PERIOD           _IOW('g', 29, struct _FPSGO_PACKAGE)
+#define FPSGO_SBE_BUFFER_COUNT       _IOW('g', 30, struct _FPSGO_PACKAGE)
 
-#define EARA_NN_BEGIN               _IOW('g', 1, struct _EARA_NN_PACKAGE)
-#define EARA_NN_END                 _IOW('g', 2, struct _EARA_NN_PACKAGE)
-#define EARA_GETUSAGE               _IOW('g', 3, struct _EARA_NN_PACKAGE)
-#define EARA_GETSTATE               _IOW('g', 4, struct _EARA_NN_PACKAGE)
+#define XGFFRAME_START              _IOW('g', 1, struct _XGFFRAME_PACKAGE)
+#define XGFFRAME_END                _IOW('g', 2, struct _XGFFRAME_PACKAGE)
+#define XGFFRAME_MIN_CAP            _IOW('g', 3, struct _XGFFRAME_PACKAGE)
 
-#define EARA_GETINDEX                _IOW('g', 1, struct _EARA_SYS_PACKAGE)
-#define EARA_COLLECT                 _IOW('g', 2, struct _EARA_SYS_PACKAGE)
+#define SMART_LAUNCH_ALGORITHM      _IOW('g', 1, struct _SMART_LAUNCH_PACKAGE)
+
+#define FPSGO_LR_PAIR               _IOW('g', 1, struct _FPSGO_LR_PAIR_PACKAGE)
+#define FPSGO_SF_TOUCH_ACTIVE       _IOW('g', 2, struct _FPSGO_LR_PAIR_PACKAGE)
+#define FPSGO_SF_EXP_L2Q            _IOW('g', 3, struct _FPSGO_LR_PAIR_PACKAGE)
+
 #endif
 

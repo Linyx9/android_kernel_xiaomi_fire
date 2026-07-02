@@ -32,7 +32,7 @@
 		dsb(sy);  \
 	} while (0)
 
-#ifdef CONFIG_64BIT
+#if IS_ENABLED(CONFIG_64BIT)
 #define mt_reg_sync_writeq(v, a) \
 	do {    \
 		__raw_writeq((v), (void __force __iomem *)((a)));   \
@@ -59,19 +59,19 @@
 
 #define mt65xx_reg_sync_writel(v, a) \
 	do {    \
-		*(volatile unsigned int *)(a) = (v);    \
+		*(unsigned int *)(a) = (v);    \
 		dsb(); \
 	} while (0)
 
 #define mt65xx_reg_sync_writew(v, a) \
 	do {    \
-		*(volatile unsigned short *)(a) = (v);    \
+		*(unsigned short *)(a) = (v);    \
 		dsb(); \
 	} while (0)
 
 #define mt65xx_reg_sync_writeb(v, a) \
 	do {    \
-		*(volatile unsigned char *)(a) = (v);    \
+		*(unsigned char *)(a) = (v);    \
 		dsb(); \
 	} while (0)
 

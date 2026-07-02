@@ -24,12 +24,11 @@
 #include "apusys_power.h"
 #include "edma_dbgfs.h"
 #include "edma_plat_internal.h"
-#include "apusys_dbg.h"
+//#include "apusys_dbg.h"
 
 #define NO_INTERRUPT		0
 #define EDMA_POWEROFF_TIME_DEFAULT 2000
 
-static void edma_sw_reset(struct edma_sub *edma_sub);
 
 void print_error_status(struct edma_sub *edma_sub,
 				struct edma_request *req)
@@ -129,7 +128,7 @@ void edma_enable_sequence(struct edma_sub *edma_sub)
 	edma_clear_reg32(edma_sub->base_addr, APU_EDMA2_CTL_0, DMA_SW_RST);
 }
 
-static void edma_sw_reset(struct edma_sub *edma_sub)
+void edma_sw_reset(struct edma_sub *edma_sub)
 {
 	u32 value = 0, count = 0;
 	unsigned long flags;
@@ -159,7 +158,7 @@ static void edma_sw_reset(struct edma_sub *edma_sub)
 				pr_notice("hang %s edma error dump [0x%x] = 0x%x\n",
 					__func__, i*4, status);
 			}
-			apusys_reg_dump();
+			//apusys_reg_dump();
 
 			/* continues do edma */
 			spin_lock_irqsave(&edma_sub->reg_lock, flags);

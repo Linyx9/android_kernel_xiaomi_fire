@@ -187,16 +187,15 @@ static int _cl_cam_read(struct seq_file *m, void *v)
 
 static int _cl_cam_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_cam_read, PDE_DATA(inode));
+	return single_open(file, _cl_cam_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_cam_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_cam_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_cam_write,
-	.release = single_release,
+static const struct proc_ops _cl_cam_fops = {
+	.proc_open = _cl_cam_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_cam_write,
+	.proc_release = single_release,
 };
 
 static int mtk_cl_cam_get_max_state
@@ -275,16 +274,15 @@ static int _cl_apu_status_read(struct seq_file *m, void *v)
 
 static int _cl_apu_status_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_apu_status_read, PDE_DATA(inode));
+	return single_open(file, _cl_apu_status_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_apu_status_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_apu_status_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_apu_status_write,
-	.release = single_release,
+static const struct proc_ops _cl_apu_status_fops = {
+	.proc_open = _cl_apu_status_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_apu_status_write,
+	.proc_release = single_release,
 };
 #endif
 
@@ -329,16 +327,15 @@ static int _cl_cam_status_read(struct seq_file *m, void *v)
 
 static int _cl_cam_status_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_cam_status_read, PDE_DATA(inode));
+	return single_open(file, _cl_cam_status_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_cam_status_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_cam_status_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_cam_status_write,
-	.release = single_release,
+static const struct proc_ops _cl_cam_status_fops = {
+	.proc_open = _cl_cam_status_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_cam_status_write,
+	.proc_release = single_release,
 };
 
 static ssize_t _cl_cam_dual_off_write
@@ -388,16 +385,15 @@ static int _cl_cam_dual_off_read(struct seq_file *m, void *v)
 
 static int _cl_cam_dual_off_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, _cl_cam_dual_off_read, PDE_DATA(inode));
+	return single_open(file, _cl_cam_dual_off_read, pde_data(inode));
 }
 
-static const struct file_operations _cl_cam_dual_off_fops = {
-	.owner = THIS_MODULE,
-	.open = _cl_cam_dual_off_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_cam_dual_off_write,
-	.release = single_release,
+static const struct proc_ops _cl_cam_dual_off_fops = {
+	.proc_open = _cl_cam_dual_off_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_cam_dual_off_write,
+	.proc_release = single_release,
 };
 
 
@@ -450,16 +446,15 @@ static int _cl_cam_dual_off_setting_read(struct seq_file *m, void *v)
 static int _cl_cam_dual_off_setting_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, _cl_cam_dual_off_setting_read,
-						PDE_DATA(inode));
+						pde_data(inode));
 }
 
-static const struct file_operations _cl_cam_dual_off_fops_setting = {
-	.owner = THIS_MODULE,
-	.open = _cl_cam_dual_off_setting_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _cl_cam_dual_off_setting_write,
-	.release = single_release,
+static const struct proc_ops _cl_cam_dual_off_fops_setting = {
+	.proc_open = _cl_cam_dual_off_setting_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _cl_cam_dual_off_setting_write,
+	.proc_release = single_release,
 };
 
 static int mtk_cl_cam_urgent_get_max_state
@@ -556,7 +551,7 @@ static void mtk_cooler_cam_urgent_unregister_ltf(void)
 	}
 }
 
-static int __init mtk_cooler_cam_init(void)
+int  mtk_cooler_cam_init(void)
 {
 	int err = 0;
 	int i;
@@ -573,13 +568,6 @@ static int __init mtk_cooler_cam_init(void)
 
 	struct proc_dir_entry *entry;
 
-#if 0
-	entry = create_proc_entry("driver/cl_cam", 0644, NULL);
-	if (entry != NULL) {
-		entry->read_proc = _cl_cam_read;
-		entry->write_proc = _cl_cam_write;
-	}
-#endif
 #if defined(THERMAL_APU_UNLIMIT)
 	entry = proc_create("driver/cl_apu_status", 0664,
 				NULL, &_cl_apu_status_fops);
@@ -637,12 +625,14 @@ static int __init mtk_cooler_cam_init(void)
 	return err;
 }
 
-static void __exit mtk_cooler_cam_exit(void)
+void mtk_cooler_cam_exit(void)
 {
 	/* mtk_cooler_cam_dprintk("%s\n", __func__); */
 
 	mtk_cooler_cam_unregister_ltf();
 	mtk_cooler_cam_urgent_unregister_ltf();
 }
-module_init(mtk_cooler_cam_init);
-module_exit(mtk_cooler_cam_exit);
+//module_init(mtk_cooler_cam_init);
+//module_exit(mtk_cooler_cam_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

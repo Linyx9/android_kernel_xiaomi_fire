@@ -12,10 +12,11 @@
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 #include <mt-plat/aee.h>
-#include <mt-plat/mtk_secure_api.h>
+#include <linux/soc/mediatek/mtk_sip_svc.h>
 #include "mmsram.h"
 
 #define MMSYSRAM_INTEN0		(0x000)
@@ -71,6 +72,7 @@
 #define MAX_CLK_NUM	(8)
 
 struct mmsram_dev {
+	struct device *dev;
 	void __iomem *ctrl_base;
 	void __iomem *sram_paddr;
 	void __iomem *sram_vaddr;
@@ -86,7 +88,9 @@ enum smc_mmsram_request {
 static struct work_struct dump_reg_work;
 
 static struct mmsram_dev *mmsram;
+#if !IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 static atomic_t clk_ref = ATOMIC_INIT(0);
+#endif
 static bool is_secure_on;
 static bool debug_enable;
 
@@ -98,7 +102,11 @@ static int set_clk_enable(bool is_enable)
 #if !IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 	int i, j;
 
+	if (!mmsram || !mmsram->dev)
+		return -ENODEV;
+
 	if (is_enable) {
+		pm_runtime_get_sync(mmsram->dev);
 		for (i = 0; i < MAX_CLK_NUM; i++) {
 			if (mmsram->clk[i])
 				ret = clk_prepare_enable(mmsram->clk[i]);
@@ -117,6 +125,7 @@ static int set_clk_enable(bool is_enable)
 		for (i = MAX_CLK_NUM - 1; i >= 0; i--)
 			if (mmsram->clk[i])
 				clk_disable_unprepare(mmsram->clk[i]);
+		pm_runtime_put_sync(mmsram->dev);
 		atomic_dec(&clk_ref);
 	}
 #endif
@@ -165,6 +174,7 @@ void mmsram_set_secure(bool secure_on)
 		writel(0, mmsram->ctrl_base + MMSYSRAM_SEC_CTRL0);
 	after_reg_rw();
 }
+EXPORT_SYMBOL_GPL(mmsram_set_secure);
 
 static void init_mmsram_reg(void)
 {
@@ -227,9 +237,9 @@ void mmsram_get_info(struct mmsram_data *data)
 	data->paddr = mmsram->sram_paddr;
 	data->vaddr = mmsram->sram_vaddr;
 	data->size = mmsram->sram_size;
-	pr_notice("%s: pa:%#x va:%#x size:%#lx\n",
-		__func__, data->paddr, data->vaddr,
-		data->size);
+	pr_notice("%s: pa:%#lx va:%#lx size:%#zx\n",
+		__func__, (unsigned long)data->paddr,
+		(unsigned long)data->vaddr, data->size);
 }
 EXPORT_SYMBOL_GPL(mmsram_get_info);
 
@@ -290,8 +300,9 @@ static void dump_reg_func(struct work_struct *work)
 	writel(0x0, ctrl_base + MMSYSRAM_INSTA1);
 
 	after_reg_rw();
-
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning("MMSRAM", "MMSRAM Violation.");
+#endif
 }
 
 static irqreturn_t mmsram_irq_handler(int irq, void *data)
@@ -305,6 +316,9 @@ static int mmsram_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	int irq, err, clk_num, i;
+	struct device_node *sminode;
+	struct platform_device *smidev;
+	unsigned int dl_flags = DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS;
 
 	mmsram = devm_kzalloc(&pdev->dev, sizeof(*mmsram), GFP_KERNEL);
 	if (!mmsram)
@@ -338,7 +352,7 @@ static int mmsram_probe(struct platform_device *pdev)
 		return PTR_ERR(mmsram->sram_vaddr);
 	}
 
-	dev_notice(&pdev->dev, "probe va=%p pa=%p size=%#lx\n",
+	dev_notice(&pdev->dev, "probe va=%p pa=%p size=%#zx\n",
 		mmsram->sram_vaddr, mmsram->sram_paddr,
 		mmsram->sram_size);
 
@@ -368,6 +382,18 @@ static int mmsram_probe(struct platform_device *pdev)
 		dev_notice(&pdev->dev,
 			"failed to register ISR %d (%d)", irq, err);
 		return err;
+	}
+
+	mmsram->dev = &pdev->dev;
+	sminode = of_parse_phandle(pdev->dev.of_node, "mmsram-smidev", 0);
+	if (sminode) {
+		smidev = of_find_device_by_node(sminode);
+		if (!device_link_add(mmsram->dev, &smidev->dev, dl_flags)) {
+			dev_notice(&pdev->dev, "add larbdev device link failed");
+			return -EINVAL;
+		}
+		pm_runtime_enable(mmsram->dev);
+		of_node_put(sminode);
 	}
 
 	INIT_WORK(&dump_reg_work, dump_reg_func);

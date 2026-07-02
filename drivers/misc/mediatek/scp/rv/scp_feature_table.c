@@ -53,104 +53,11 @@ struct scp_feature_tb feature_table[NUM_FEATURE_ID] = {
 	{
 		.feature        = ULTRA_FEATURE_ID,
 	},
-};
-
-/*scp sensor type list*/
-struct scp_sub_feature_tb sensor_type_table[NUM_SENSOR_TYPE] = {
 	{
-		.feature = ACCELEROMETER_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
+		.feature        = RVSPKPROCESS_FEATURE_ID,
 	},
 	{
-		.feature = MAGNETIC_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = ORIENTATION_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = GYROSCOPE_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = LIGHT_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = PROXIMITY_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = PRESSURE_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = STEP_COUNTER_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = SIGNIFICANT_MOTION_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = STEP_DETECTOR_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = GLANCE_GESTURE_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = ANSWER_CALL_FEATURE_ID,
-		.freq    = 3,
-		.enable  = 0,
-	},
-	{
-		.feature = SHAKE_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = STATIONARY_DETECT_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = MOTION_DETECT_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = IN_POCKET_FEATURE_ID,
-		.freq    = 3,
-		.enable  = 0,
-	},
-	{
-		.feature = SHAKE_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = DEVICE_ORIENTATION_FEATURE_ID,
-		.freq    = 2,
-		.enable  = 0,
-	},
-	{
-		.feature = ACTIVITY_FEATURE_ID,
-		.freq    = 3,
-		.enable  = 0,
+		.feature        = RVVOICE_CALL_FEATURE_ID,
 	},
 };
 

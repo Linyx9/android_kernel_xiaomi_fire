@@ -8,18 +8,20 @@
 #include <dt-bindings/phy/phy.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
-#include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
-#include <linux/sysfs.h>
 #include <linux/proc_fs.h>
+#include <linux/regmap.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
+
+#include "phy-mtk-io.h"
 
 /* version V1 sub-banks offset base address */
 /* banks shared by multiple phys */
@@ -32,7 +34,8 @@
 #define SSUSB_SIFSLV_V1_U3PHYD		0x000
 #define SSUSB_SIFSLV_V1_U3PHYA		0x200
 
-/* version V2 sub-banks offset base address */
+/* version V2/V3 sub-banks offset base address */
+/* V3: U2FREQ is not used anymore, but reserved */
 /* u2 phy banks */
 #define SSUSB_SIFSLV_V2_MISC		0x000
 #define SSUSB_SIFSLV_V2_U2FREQ		0x100
@@ -43,74 +46,81 @@
 #define SSUSB_SIFSLV_V2_U3PHYD		0x200
 #define SSUSB_SIFSLV_V2_U3PHYA		0x400
 
+#define U3P_MISC_REG1		0x04
+#define MR1_EFUSE_AUTO_LOAD_DIS		BIT(6)
+
 #define U3P_USBPHYACR0		0x000
 #define PA0_RG_U2PLL_FORCE_ON		BIT(15)
+#define PA0_USB20_PLL_PREDIV		GENMASK(7, 6)
 #define PA0_RG_USB20_INTR_EN		BIT(5)
+#define PA0_RG_USB20_BGR_DIV		GENMASK(3, 2)
+#define PA0_RG_USB20_BGR_DIV_MASK	(0x3)
+#define PA0_RG_USB20_BGR_DIV_OFET	(2)
 
 #define U3P_USBPHYACR1		0x004
-#define PA1_RG_U2_INTR_CAL		GENMASK(23, 19)
-#define PA1_RG_U2_INTR_CAL_VAL(x)	((0x1f & (x)) << 19)
+#define PA1_RG_INTR_CAL		GENMASK(23, 19)
 #define PA1_RG_VRT_SEL			GENMASK(14, 12)
-#define PA1_RG_VRT_SEL_VAL(x)	((0x7 & (x)) << 12)
 #define PA1_RG_VRT_SEL_MASK	(0x7)
 #define PA1_RG_VRT_SEL_OFST	(12)
 #define PA1_RG_TERM_SEL		GENMASK(10, 8)
-#define PA1_RG_TERM_SEL_VAL(x)	((0x7 & (x)) << 8)
 #define PA1_RG_TERM_SEL_MASK	(0x7)
 #define PA1_RG_TERM_SEL_OFST	(8)
 
 #define U3P_USBPHYACR2		0x008
+#define PA2_RG_U2PLL_BW			GENMASK(21, 19)
 #define PA2_RG_SIF_U2PLL_FORCE_EN	BIT(18)
+#define PA2_RG_USB20_PLL_BW		GENMASK(21, 19)
+#define PA2_RG_USB20_PLL_BW_MASK	(0x7)
+#define PA2_RG_USB20_PLL_BW_OFET	(19)
+
+#define PA2_RG_U2_CLKREF_REV	BIT(3)
+#define PA2_RG_U2_CLKREF_REV_1		GENMASK(12, 11)
 
 #define U3P_USBPHYACR5		0x014
 #define PA5_RG_U2_HSTX_SRCAL_EN	BIT(15)
 #define PA5_RG_U2_HSTX_SRCTRL		GENMASK(14, 12)
-#define PA5_RG_U2_HSTX_SRCTRL_VAL(x)	((0x7 & (x)) << 12)
 #define PA5_RG_U2_HS_100U_U3_EN	BIT(11)
 
 #define U3P_USBPHYACR6		0x018
+#define PA6_RG_U2_PRE_EMP		GENMASK(31, 30)
 #define PA6_RG_U2_PHY_REV6		GENMASK(31, 30)
 #define PA6_RG_U2_PHY_REV6_VAL(x)	((0x3 & (x)) << 30)
 #define PA6_RG_U2_PHY_REV6_MASK	(0x3)
 #define PA6_RG_U2_PHY_REV6_OFET	(30)
-
-#if (!defined CONFIG_MACH_MT6781) && (!defined CONFIG_MACH_MT6768)
 #define PA6_RG_U2_PHY_REV4		BIT(28)
-#define PA6_RG_U2_PHY_REV4_VAL(x)	((0x1 & (x)) << 28)
 #define PA6_RG_U2_PHY_REV4_MASK	(0x1)
 #define PA6_RG_U2_PHY_REV4_OFET	(28)
 #define PA6_RG_U2_PHY_REV1		BIT(25)
-#endif
-
 #define PA6_RG_U2_BC11_SW_EN		BIT(23)
 #define PA6_RG_U2_OTG_VBUSCMP_EN	BIT(20)
-#define PA6_RG_U2_DISCTH	GENMASK(7, 4)
-#define PA6_RG_U2_DISCTH_VAL(x)	((0xf & (x)) << 4)
+#define PA6_RG_U2_DISCTH		GENMASK(7, 4)
 #define PA6_RG_U2_DISCTH_MASK	(0xf)
 #define PA6_RG_U2_DISCTH_OFET	(4)
 #define PA6_RG_U2_SQTH		GENMASK(3, 0)
-#define PA6_RG_U2_SQTH_VAL(x)	(0xf & (x))
+#define PA6_RG_U2_SQTH_MASK	(0xf)
+#define PA6_RG_U2_SQTH_OFET	(0)
 
-#define U3P_USBPHYACR3		0x01c
-#define PA3_RG_USB20_PUPD_BIST_EN	BIT(12)
-#define PA3_RG_USB20_EN_PU_DP		BIT(9)
+#define U3P_U2PHYACR3		0x01c
+#define P2C_RG_USB20_PUPD_BIST_EN	BIT(12)
+#define P2C_RG_USB20_EN_PU_DP		BIT(9)
 
 #define U3P_U2PHYACR4		0x020
-#define P2C_RG_USB20_DM_100K_EN		BIT(17)
 #define P2C_RG_USB20_GPIO_CTL		BIT(9)
 #define P2C_USB20_GPIO_MODE		BIT(8)
 #define P2C_U2_GPIO_CTR_MSK	(P2C_RG_USB20_GPIO_CTL | P2C_USB20_GPIO_MODE)
+
+#define U3P_U2PHYA_RESV		0x030
+#define P2R_RG_U2PLL_FBDIV_26M		0x1bb13b
+#define P2R_RG_U2PLL_FBDIV_48M		0x3c0000
+
+#define U3P_U2PHYA_RESV1	0x044
+#define P2R_RG_U2PLL_REFCLK_SEL	BIT(5)
+#define P2R_RG_U2PLL_FRA_EN		BIT(3)
 
 #define U3D_U2PHYDCR0		0x060
 #define P2C_RG_SIF_U2PLL_FORCE_ON	BIT(24)
 
 #define U3P_U2PHYDTM0		0x068
-#define P2C_RG_UART_MODE		GENMASK(31, 30)
-#define P2C_RG_UART_MODE_VAL(x)		((0x3 & (x)) << 30)
-#define P2C_RG_UART_MODE_OFET		(30)
-#define P2C_FORCE_UART_I		BIT(29)
-#define P2C_FORCE_UART_BIAS_EN		BIT(28)
-#define P2C_FORCE_UART_TX_OE		BIT(27)
 #define P2C_FORCE_UART_EN		BIT(26)
 #define P2C_FORCE_DATAIN		BIT(23)
 #define P2C_FORCE_DM_PULLDOWN		BIT(21)
@@ -119,7 +129,6 @@
 #define P2C_FORCE_SUSPENDM		BIT(18)
 #define P2C_FORCE_TERMSEL		BIT(17)
 #define P2C_RG_DATAIN			GENMASK(13, 10)
-#define P2C_RG_DATAIN_VAL(x)		((0xf & (x)) << 10)
 #define P2C_RG_DMPULLDOWN		BIT(7)
 #define P2C_RG_DPPULLDOWN		BIT(6)
 #define P2C_RG_XCVRSEL			GENMASK(5, 4)
@@ -140,8 +149,6 @@
 		P2C_RG_DPPULLDOWN | P2C_RG_TERMSEL)
 
 #define U3P_U2PHYDTM1		0x06C
-#define P2C_RG_UART_BIAS_EN		BIT(18)
-#define P2C_RG_UART_TX_OE		BIT(17)
 #define P2C_RG_UART_EN			BIT(16)
 #define P2C_FORCE_VBUSVALID		BIT(13)
 #define P2C_FORCE_SESSEND		BIT(12)
@@ -169,65 +176,56 @@
 #define P3C_RG_SWRST_U3_PHYD_FORCE_EN	BIT(24)
 
 #define U3P_U3_PHYA_REG0	0x000
-#define P3A_RG_SSUSB_IEXT_INTR_CTRL	GENMASK(15, 10)
-#define P3A_RG_SSUSB_IEXT_INTR_CTRL_VAL(x)	((0x3f & (x)) << 10)
-
+#define P3A_RG_IEXT_INTR		GENMASK(15, 10)
 #define P3A_RG_CLKDRV_OFF		GENMASK(3, 2)
-#define P3A_RG_CLKDRV_OFF_VAL(x)	((0x3 & (x)) << 2)
 
 #define U3P_U3_PHYA_REG1	0x004
 #define P3A_RG_CLKDRV_AMP		GENMASK(31, 29)
-#define P3A_RG_CLKDRV_AMP_VAL(x)	((0x7 & (x)) << 29)
 #define RG_SSUSB_VA_ON			BIT(29)
 
 #define U3P_U3_PHYA_REG6	0x018
 #define P3A_RG_TX_EIDLE_CM		GENMASK(31, 28)
-#define P3A_RG_TX_EIDLE_CM_VAL(x)	((0xf & (x)) << 28)
 
 #define U3P_U3_PHYA_REG9	0x024
 #define P3A_RG_RX_DAC_MUX		GENMASK(5, 1)
-#define P3A_RG_RX_DAC_MUX_VAL(x)	((0x1f & (x)) << 1)
 
 #define U3P_U3_PHYA_DA_REG0	0x100
 #define P3A_RG_XTAL_EXT_PE2H		GENMASK(17, 16)
-#define P3A_RG_XTAL_EXT_PE2H_VAL(x)	((0x3 & (x)) << 16)
 #define P3A_RG_XTAL_EXT_PE1H		GENMASK(13, 12)
-#define P3A_RG_XTAL_EXT_PE1H_VAL(x)	((0x3 & (x)) << 12)
 #define P3A_RG_XTAL_EXT_EN_U3		GENMASK(11, 10)
-#define P3A_RG_XTAL_EXT_EN_U3_VAL(x)	((0x3 & (x)) << 10)
 
 #define U3P_U3_PHYA_DA_REG4	0x108
 #define P3A_RG_PLL_DIVEN_PE2H		GENMASK(21, 19)
 #define P3A_RG_PLL_BC_PE2H		GENMASK(7, 6)
-#define P3A_RG_PLL_BC_PE2H_VAL(x)	((0x3 & (x)) << 6)
 
 #define U3P_U3_PHYA_DA_REG5	0x10c
 #define P3A_RG_PLL_BR_PE2H		GENMASK(29, 28)
-#define P3A_RG_PLL_BR_PE2H_VAL(x)	((0x3 & (x)) << 28)
 #define P3A_RG_PLL_IC_PE2H		GENMASK(15, 12)
-#define P3A_RG_PLL_IC_PE2H_VAL(x)	((0xf & (x)) << 12)
 
 #define U3P_U3_PHYA_DA_REG6	0x110
 #define P3A_RG_PLL_IR_PE2H		GENMASK(19, 16)
-#define P3A_RG_PLL_IR_PE2H_VAL(x)	((0xf & (x)) << 16)
 
 #define U3P_U3_PHYA_DA_REG7	0x114
 #define P3A_RG_PLL_BP_PE2H		GENMASK(19, 16)
-#define P3A_RG_PLL_BP_PE2H_VAL(x)	((0xf & (x)) << 16)
 
 #define U3P_U3_PHYA_DA_REG20	0x13c
 #define P3A_RG_PLL_DELTA1_PE2H		GENMASK(31, 16)
-#define P3A_RG_PLL_DELTA1_PE2H_VAL(x)	((0xffff & (x)) << 16)
 
 #define U3P_U3_PHYA_DA_REG25	0x148
 #define P3A_RG_PLL_DELTA_PE2H		GENMASK(15, 0)
-#define P3A_RG_PLL_DELTA_PE2H_VAL(x)	(0xffff & (x))
 
 #define U3P_U3_PHYD_MIX0		0x000
 
 #define U3P_U3_PHYD_LFPS1		0x00c
 #define P3D_RG_FWAKE_TH		GENMASK(21, 16)
-#define P3D_RG_FWAKE_TH_VAL(x)	((0x3f & (x)) << 16)
+
+#define U3P_U3_PHYD_IMPCAL0		0x010
+#define P3D_RG_FORCE_TX_IMPEL		BIT(31)
+#define P3D_RG_TX_IMPEL			GENMASK(28, 24)
+
+#define U3P_U3_PHYD_IMPCAL1		0x014
+#define P3D_RG_FORCE_RX_IMPEL		BIT(31)
+#define P3D_RG_RX_IMPEL			GENMASK(28, 24)
 
 #define U3P_U3_PHYD_RX0			0x02c
 
@@ -235,27 +233,21 @@
 
 #define U3P_U3_PHYD_PIPE0		0x040
 
-#define U3P_U3_PHYD_IMPCAL0		0x010
-#define P3D_RG_SSUSB_TX_IMPSEL		GENMASK(28, 24)
-#define P3D_RG_SSUSB_TX_IMPSEL_VAL(x)	((0x1f & (x)) << 24)
-
-#define U3P_U3_PHYD_IMPCAL1		0x014
-#define P3D_RG_SSUSB_RX_IMPSEL		GENMASK(28, 24)
-#define P3D_RG_SSUSB_RX_IMPSEL_VAL(x)	((0x1f & (x)) << 24)
+#define U3P_U3_PHYD_RSV			0x054
+#define P3D_RG_EFUSE_AUTO_LOAD_DIS	BIT(12)
 
 #define U3P_U3_PHYD_CDR1		0x05c
 #define P3D_RG_CDR_BIR_LTD1		GENMASK(28, 24)
-#define P3D_RG_CDR_BIR_LTD1_VAL(x)	((0x1f & (x)) << 24)
 #define P3D_RG_CDR_BIR_LTD0		GENMASK(12, 8)
-#define P3D_RG_CDR_BIR_LTD0_VAL(x)	((0x1f & (x)) << 8)
+
+#define U3P_U3_PHYD_EQ_EYE3		0xdc
+#define P3D_RG_EQ_LEQ_SHIFT		GENMASK(26, 24)
 
 #define U3P_U3_PHYD_RXDET1		0x128
 #define P3D_RG_RXDET_STB2_SET		GENMASK(17, 9)
-#define P3D_RG_RXDET_STB2_SET_VAL(x)	((0x1ff & (x)) << 9)
 
 #define U3P_U3_PHYD_RXDET2		0x12c
 #define P3D_RG_RXDET_STB2_SET_P3	GENMASK(8, 0)
-#define P3D_RG_RXDET_STB2_SET_P3_VAL(x)	(0x1ff & (x))
 
 #define U3P_SPLLC_XTALCTL3		0x018
 #define XC3_RG_U3_XTAL_RX_PWD		BIT(9)
@@ -263,10 +255,8 @@
 
 #define U3P_U2FREQ_FMCR0	0x00
 #define P2F_RG_MONCLK_SEL	GENMASK(27, 26)
-#define P2F_RG_MONCLK_SEL_VAL(x)	((0x3 & (x)) << 26)
 #define P2F_RG_FREQDET_EN	BIT(24)
 #define P2F_RG_CYCLECNT		GENMASK(23, 0)
-#define P2F_RG_CYCLECNT_VAL(x)	((P2F_RG_CYCLECNT) & (x))
 
 #define U3P_U2FREQ_VALUE	0x0c
 
@@ -283,80 +273,77 @@
 #define PHYD_CTRL_SIGNAL_MODE4		0x1c
 /* CDR Charge Pump P-path current adjustment */
 #define RG_CDR_BICLTD1_GEN1_MSK		GENMASK(23, 20)
-#define RG_CDR_BICLTD1_GEN1_VAL(x)	((0xf & (x)) << 20)
 #define RG_CDR_BICLTD0_GEN1_MSK		GENMASK(11, 8)
-#define RG_CDR_BICLTD0_GEN1_VAL(x)	((0xf & (x)) << 8)
 
 #define PHYD_DESIGN_OPTION2		0x24
 /* Symbol lock count selection */
 #define RG_LOCK_CNT_SEL_MSK		GENMASK(5, 4)
-#define RG_LOCK_CNT_SEL_VAL(x)		((0x3 & (x)) << 4)
 
 #define PHYD_DESIGN_OPTION9	0x40
 /* COMWAK GAP width window */
 #define RG_TG_MAX_MSK		GENMASK(20, 16)
-#define RG_TG_MAX_VAL(x)	((0x1f & (x)) << 16)
 /* COMINIT GAP width window */
 #define RG_T2_MAX_MSK		GENMASK(13, 8)
-#define RG_T2_MAX_VAL(x)	((0x3f & (x)) << 8)
 /* COMWAK GAP width window */
 #define RG_TG_MIN_MSK		GENMASK(7, 5)
-#define RG_TG_MIN_VAL(x)	((0x7 & (x)) << 5)
 /* COMINIT GAP width window */
 #define RG_T2_MIN_MSK		GENMASK(4, 0)
-#define RG_T2_MIN_VAL(x)	(0x1f & (x))
 
 #define ANA_RG_CTRL_SIGNAL1		0x4c
 /* TX driver tail current control for 0dB de-empahsis mdoe for Gen1 speed */
 #define RG_IDRV_0DB_GEN1_MSK		GENMASK(13, 8)
-#define RG_IDRV_0DB_GEN1_VAL(x)		((0x3f & (x)) << 8)
 
 #define ANA_RG_CTRL_SIGNAL4		0x58
 #define RG_CDR_BICLTR_GEN1_MSK		GENMASK(23, 20)
-#define RG_CDR_BICLTR_GEN1_VAL(x)	((0xf & (x)) << 20)
 /* Loop filter R1 resistance adjustment for Gen1 speed */
 #define RG_CDR_BR_GEN2_MSK		GENMASK(10, 8)
-#define RG_CDR_BR_GEN2_VAL(x)		((0x7 & (x)) << 8)
 
 #define ANA_RG_CTRL_SIGNAL6		0x60
 /* I-path capacitance adjustment for Gen1 */
 #define RG_CDR_BC_GEN1_MSK		GENMASK(28, 24)
-#define RG_CDR_BC_GEN1_VAL(x)		((0x1f & (x)) << 24)
 #define RG_CDR_BIRLTR_GEN1_MSK		GENMASK(4, 0)
-#define RG_CDR_BIRLTR_GEN1_VAL(x)	(0x1f & (x))
 
 #define ANA_EQ_EYE_CTRL_SIGNAL1		0x6c
 /* RX Gen1 LEQ tuning step */
 #define RG_EQ_DLEQ_LFI_GEN1_MSK		GENMASK(11, 8)
-#define RG_EQ_DLEQ_LFI_GEN1_VAL(x)	((0xf & (x)) << 8)
 
 #define ANA_EQ_EYE_CTRL_SIGNAL4		0xd8
 #define RG_CDR_BIRLTD0_GEN1_MSK		GENMASK(20, 16)
-#define RG_CDR_BIRLTD0_GEN1_VAL(x)	((0x1f & (x)) << 16)
 
 #define ANA_EQ_EYE_CTRL_SIGNAL5		0xdc
 #define RG_CDR_BIRLTD0_GEN3_MSK		GENMASK(4, 0)
-#define RG_CDR_BIRLTD0_GEN3_VAL(x)	(0x1f & (x))
 
-#define PHY_MODE_BC11_SW_SET 1
-#define PHY_MODE_BC11_SW_CLR 2
+/* PHY switch between pcie/usb3/sgmii/sata */
+#define USB_PHY_SWITCH_CTRL	0x0
+#define RG_PHY_SW_TYPE		GENMASK(3, 0)
+#define RG_PHY_SW_PCIE		0x0
+#define RG_PHY_SW_USB3		0x1
+#define RG_PHY_SW_SGMII		0x2
+#define RG_PHY_SW_SATA		0x3
 
-#if (!defined CONFIG_MACH_MT6781) && (!defined CONFIG_MACH_MT6768)
-#define PHY_MODE_DPDMPULLDOWN_SET 3
-#define PHY_MODE_DPDMPULLDOWN_CLR 4
-#define PHY_MODE_DPPULLUP_SET 5
-#define PHY_MODE_DPPULLUP_CLR 6
-#endif
+#define TPHY_CLKS_CNT	2
 
-#define PROC_FILE_TERM_SEL "term_sel"
-#define PROC_FILE_VRT_SEL "vrt_sel"
-#define PROC_FILE_PHY_REV6 "phy_rev6"
-#define PROC_FILE_DISCTH "discth"
+#define TERM_SEL_STR "term_sel"
+#define VRT_SEL_STR "vrt_sel"
+#define PHY_REV4_STR "phy_rev4"
+#define PHY_REV6_STR "phy_rev6"
+#define DISCTH_STR "discth"
+#define RX_SQTH_STR "rx_sqth"
+#define SIB_STR	"sib"
 #define LOOPBACK_STR "loopback_test"
+
+#define PHY_MODE_UART "usb2uart_mode=1"
+#define PHY_MODE_JTAG "usb2jtag_mode=1"
 
 enum mtk_phy_version {
 	MTK_PHY_V1 = 1,
 	MTK_PHY_V2,
+	MTK_PHY_V3,
+};
+
+enum mtk_phy_jtag_version {
+	MTK_PHY_JTAG_V1 = 1,
+	MTK_PHY_JTAG_V2,
 };
 
 enum mtk_phy_efuse {
@@ -376,6 +363,17 @@ static char *efuse_name[4] = {
 struct mtk_phy_pdata {
 	/* avoid RX sensitivity level degradation only for mt8173 */
 	bool avoid_rx_sen_degradation;
+	/*
+	 * workaround only for mt8195, HW fix it for others of V3,
+	 * u2phy should use integer mode instead of fractional mode of
+	 * 48M PLL, fix it by switching PLL to 26M from default 48M
+	 */
+	bool sw_pll_48m_to_26m;
+	/*
+	 * Some SoCs (e.g. mt8195) drop a bit when use auto load efuse,
+	 * support sw way, also support it for v2/v3 optionally.
+	 */
+	bool sw_efuse_supported;
 	enum mtk_phy_version version;
 };
 
@@ -395,27 +393,49 @@ struct u3phy_banks {
 struct mtk_phy_instance {
 	struct phy *phy;
 	void __iomem *port_base;
+	void __iomem *ippc_base;
 	union {
 		struct u2phy_banks u2_banks;
 		struct u3phy_banks u3_banks;
 	};
-	struct clk *ref_clk;	/* reference clock of anolog phy */
+	struct clk_bulk_data clks[TPHY_CLKS_CNT];
 	u32 index;
-	u8 type;
+	u32 type;
+	struct regmap *type_sw;
+	u32 type_sw_reg;
+	u32 type_sw_index;
+	u32 efuse_sw_en;
+	u32 efuse_intr;
+	u32 efuse_tx_imp;
+	u32 efuse_rx_imp;
 	int eye_src;
 	int eye_vrt;
 	int eye_term;
-	int eye_rev6;
-	int eye_disc;
+	int intr;
+	int discth;
+	int pre_emphasis;
+	int rx_sqth;
+	int rev4;
+	int rev6;
+	int pll_bw;
+	int bgr_div;
+	int fsrxlvl;
+	int eq_leq_shift;
 	bool bc12_en;
+	/* u2 eye diagram for host */
+	int eye_src_host;
+	int eye_vrt_host;
+	int eye_term_host;
+	int rev6_host;
+	int discth_host;
 	struct proc_dir_entry *phy_root;
+	bool set_efuse_v1;
+	bool usb_special_phy_settings;
 };
 
 struct mtk_tphy {
 	struct device *dev;
 	void __iomem *sif_base;	/* only shared sif */
-	/* deprecated, use @ref_clk instead in phy instance */
-	struct clk *u3phya_ref;	/* reference clock of usb3 anolog phy */
 	const struct mtk_phy_pdata *pdata;
 	struct mtk_phy_instance **phys;
 	int nphys;
@@ -425,17 +445,93 @@ struct mtk_tphy {
 };
 
 static void u2_phy_props_set(struct mtk_tphy *tphy,
-			     struct mtk_phy_instance *instance);
+		struct mtk_phy_instance *instance);
 
-static void u2_phy_instance_set_mode_ext(struct mtk_tphy *tphy,
-				     struct mtk_phy_instance *instance,
-				     int submode);
+static void u2_phy_host_props_set(struct mtk_tphy *tphy,
+		struct mtk_phy_instance *instance);
 
-void cover_val_to_str(u32 val, u8 width, char *str)
+static ssize_t proc_sib_write(struct file *file,
+	const char __user *ubuf, size_t count, loff_t *ppos)
 {
-	int i, temp;
+	struct seq_file *s = file->private_data;
+	struct mtk_phy_instance *instance = s->private;
+	struct device *dev = &instance->phy->dev;
+	struct u3phy_banks *u3_banks = &instance->u3_banks;
+	char buf[20];
+	unsigned int val;
 
-	temp = val;
+	memset(buf, 0x00, sizeof(buf));
+	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+		return -EFAULT;
+
+	if (IS_ERR_OR_NULL(instance->ippc_base))
+		return -ENODEV;
+
+	if (kstrtouint(buf, 10, &val))
+		return -EINVAL;
+
+	/* SSUSB_SIFSLV_IPPC_BASE SSUSB_IP_SW_RST = 0 */
+	writel(0x00031000, instance->ippc_base + 0x00);
+	/* SSUSB_IP_HOST_PDN = 0 */
+	writel(0x00000000, instance->ippc_base + 0x04);
+	/* SSUSB_IP_DEV_PDN = 0 */
+	writel(0x00000000, instance->ippc_base + 0x08);
+	/* SSUSB_IP_PCIE_PDN = 0 */
+	writel(0x00000000, instance->ippc_base + 0x0C);
+	/* SSUSB_U3_PORT_DIS/SSUSB_U3_PORT_PDN = 0*/
+	writel(0x0000000C, instance->ippc_base + 0x30);
+
+	/*
+	 * USBMAC mode is 0x62910002 (bit 1)
+	 * MDSIB  mode is 0x62910008 (bit 3)
+	 * 0x0629 just likes a signature. Can't be removed.
+	 */
+	if (val)
+		writel(0x62910008, u3_banks->chip);
+	else
+		writel(0x62910002, u3_banks->chip);
+
+	dev_info(dev, "%s, sib=%d\n", __func__, val);
+	return count;
+}
+
+static int proc_sib_show(struct seq_file *s, void *unused)
+{
+	struct mtk_phy_instance *instance = s->private;
+	struct device *dev = &instance->phy->dev;
+	struct u3phy_banks *u3_banks = &instance->u3_banks;
+	unsigned int val;
+	u32 tmp;
+
+	tmp = readl(u3_banks->chip);
+
+	if (tmp == 0x62910008)
+		val = 1;
+	else
+		val = 0;
+
+	dev_info(dev, "%s, sib=%d\n", __func__, val);
+	seq_printf(s, "%d\n", val);
+	return 0;
+}
+
+static int proc_sib_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, proc_sib_show, pde_data(inode));
+}
+
+static const struct  proc_ops proc_sib_fops = {
+	.proc_open = proc_sib_open,
+	.proc_write = proc_sib_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+
+static void cover_val_to_str(u32 val, u8 width, char *str)
+{
+	int i;
+
 	str[width] = '\0';
 	for (i = (width - 1); i >= 0; i--) {
 		if (val % 2)
@@ -483,80 +579,80 @@ static int proc_loopback_test_show(struct seq_file *s, void *unused)
 
 	/* T2R loop back disable */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RX0);
-	tmp &= ~(0x01<<15);
-	tmp |= 0x00<<15;
+	tmp &= ~(0x01 << 15);
+	tmp |= 0x00 << 15;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RX0);
 
 	mdelay(10);
 
 	/* TSEQ lock detect threshold */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_MIX0);
-	tmp &= ~(0x07<<24);
-	tmp |= 0x07<<24;
+	tmp &= ~(0x07 << 24);
+	tmp |= 0x07 << 24;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_MIX0);
 
 	/* set default TSEQ polarity check value = 1 */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_MIX0);
-	tmp &= ~(0x01<<28);
-	tmp |= 0x01<<28;
+	tmp &= ~(0x01 << 28);
+	tmp |= 0x01 << 28;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_MIX0);
 
 	/* TSEQ polarity check enable */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_MIX0);
-	tmp &= ~(0x01<<29);
-	tmp |= 0x01<<29;
+	tmp &= ~(0x01 << 29);
+	tmp |= 0x01 << 29;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_MIX0);
 
 	/* TSEQ decoder enable */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_MIX0);
-	tmp &= ~(0x01<<30);
-	tmp |= 0x01<<30;
+	tmp &= ~(0x01 << 30);
+	tmp |= 0x01 << 30;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_MIX0);
 
 	mdelay(10);
 
 	/* set T2R loop back TSEQ length (x 16us) */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_T2RLB);
-	tmp &= ~(0xff<<0);
-	tmp |= 0xf0<<0;
+	tmp &= ~(0xff << 0);
+	tmp |= 0xf0 << 0;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_T2RLB);
 
 	/* set T2R loop back BDAT reset period (x 16us) */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_T2RLB);
-	tmp &= ~(0x0f<<12);
-	tmp |= 0x0f<<12;
+	tmp &= ~(0x0f << 12);
+	tmp |= 0x0f << 12;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_T2RLB);
 
 	/* T2R loop back pattern select */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_T2RLB);
-	tmp &= ~(0x03<<8);
-	tmp |= 0x00<<8;
+	tmp &= ~(0x03 << 8);
+	tmp |= 0x00 << 8;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_T2RLB);
 
 	mdelay(10);
 
 	/* T2R loop back serial mode */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RX0);
-	tmp &= ~(0x01<<13);
-	tmp |= 0x01<<13;
+	tmp &= ~(0x01 << 13);
+	tmp |= 0x01 << 13;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RX0);
 
 	/* T2R loop back parallel mode = 0 */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RX0);
-	tmp &= ~(0x01<<12);
-	tmp |= 0x00<<12;
+	tmp &= ~(0x01 << 12);
+	tmp |= 0x00 << 12;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RX0);
 
 	/* T2R loop back mode enable */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RX0);
-	tmp &= ~(0x01<<11);
-	tmp |= 0x01<<11;
+	tmp &= ~(0x01 << 11);
+	tmp |= 0x01 << 11;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RX0);
 
 	/* T2R loop back enable */
 	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RX0);
-	tmp &= ~(0x01<<15);
-	tmp |= 0x01<<15;
+	tmp &= ~(0x01 << 15);
+	tmp |= 0x01 << 15;
 	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RX0);
 	mdelay(100);
 
@@ -566,7 +662,7 @@ static int proc_loopback_test_show(struct seq_file *s, void *unused)
 	tmp = readl(u3_banks->phyd + 0x0b4);
 
 	/* verbose dump */
-	dev_info(dev, "rb back             : 0x%x\n", tmp);
+	dev_info(dev, "rb back           /SIB/  : 0x%x\n", tmp);
 	dev_info(dev, "rb t2rlb_lock  : %d\n", (tmp >> 2) & 0x01);
 	dev_info(dev, "rb t2rlb_pass  : %d\n", (tmp >> 3) & 0x01);
 	dev_info(dev, "rb t2rlb_passth: %d\n", (tmp >> 4) & 0x01);
@@ -592,14 +688,14 @@ static int proc_loopback_test_show(struct seq_file *s, void *unused)
 
 static int proc_loopback_test_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, proc_loopback_test_show, PDE_DATA(inode));
+	return single_open(file, proc_loopback_test_show, pde_data(inode));
 }
 
-static const struct file_operations proc_loopback_test_fops = {
-	.open = proc_loopback_test_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct  proc_ops proc_loopback_test_fops = {
+	.proc_open = proc_loopback_test_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int u3_phy_procfs_init(struct mtk_tphy *tphy,
@@ -622,6 +718,14 @@ static int u3_phy_procfs_init(struct mtk_tphy *tphy,
 		dev_info(dev, "failed to creat dir proc u3_phy\n");
 		ret = -ENOMEM;
 		goto err0;
+	}
+
+	file = proc_create_data(SIB_STR, 0644,
+			phy_root, &proc_sib_fops, instance);
+	if (!file) {
+		dev_info(dev, "failed to creat proc file: %s\n", SIB_STR);
+		ret = -ENOMEM;
+		goto err1;
 	}
 
 	file = proc_create_data(LOOPBACK_STR, 0444,
@@ -661,13 +765,13 @@ static int proc_term_sel_show(struct seq_file *s, void *unused)
 
 	cover_val_to_str(tmp, 3, str);
 
-	seq_printf(s, "\n%s = %s\n", PROC_FILE_TERM_SEL, str);
+	seq_printf(s, "\n%s = %s\n", TERM_SEL_STR, str);
 	return 0;
 }
 
 static int proc_term_sel_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, proc_term_sel_show, PDE_DATA(inode));
+	return single_open(file, proc_term_sel_show, pde_data(inode));
 }
 
 static ssize_t proc_term_sel_write(struct file *file,
@@ -678,7 +782,7 @@ static ssize_t proc_term_sel_write(struct file *file,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	char buf[20];
-	u32 tmp, val;
+	u32 val;
 
 	memset(buf, 0x00, sizeof(buf));
 	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
@@ -687,20 +791,17 @@ static ssize_t proc_term_sel_write(struct file *file,
 	if (kstrtouint(buf, 2, &val))
 		return -EINVAL;
 
-	tmp = readl(com + U3P_USBPHYACR1);
-	tmp &= ~PA1_RG_TERM_SEL;
-	tmp |= PA1_RG_TERM_SEL_VAL(val);
-	writel(tmp, com + U3P_USBPHYACR1);
+	mtk_phy_update_field(com + U3P_USBPHYACR1, PA1_RG_TERM_SEL, val);
 
 	return count;
 }
 
-static const struct file_operations proc_term_sel_fops = {
-	.open = proc_term_sel_open,
-	.write = proc_term_sel_write,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops proc_term_sel_fops = {
+	.proc_open = proc_term_sel_open,
+	.proc_write = proc_term_sel_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int proc_vrt_sel_show(struct seq_file *s, void *unused)
@@ -717,13 +818,13 @@ static int proc_vrt_sel_show(struct seq_file *s, void *unused)
 
 	cover_val_to_str(tmp, 3, str);
 
-	seq_printf(s, "\n%s = %s\n", PROC_FILE_VRT_SEL, str);
+	seq_printf(s, "\n%s = %s\n", VRT_SEL_STR, str);
 	return 0;
 }
 
 static int proc_vrt_sel_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, proc_vrt_sel_show, PDE_DATA(inode));
+	return single_open(file, proc_vrt_sel_show, pde_data(inode));
 }
 
 static ssize_t proc_vrt_sel_write(struct file *file,
@@ -734,7 +835,7 @@ static ssize_t proc_vrt_sel_write(struct file *file,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	char buf[20];
-	u32 tmp, val;
+	u32 val;
 
 	memset(buf, 0x00, sizeof(buf));
 	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
@@ -743,20 +844,70 @@ static ssize_t proc_vrt_sel_write(struct file *file,
 	if (kstrtouint(buf, 2, &val))
 		return -EINVAL;
 
-	tmp = readl(com + U3P_USBPHYACR1);
-	tmp &= ~PA1_RG_VRT_SEL;
-	tmp |= PA1_RG_VRT_SEL_VAL(val);
-	writel(tmp, com + U3P_USBPHYACR1);
+	mtk_phy_update_field(com + U3P_USBPHYACR1, PA1_RG_VRT_SEL, val);
 
 	return count;
 }
 
-static const struct file_operations proc_vrt_sel_fops = {
-	.open = proc_vrt_sel_open,
-	.write = proc_vrt_sel_write,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct  proc_ops proc_vrt_sel_fops = {
+	.proc_open = proc_vrt_sel_open,
+	.proc_write = proc_vrt_sel_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+
+static int proc_phy_rev4_show(struct seq_file *s, void *unused)
+{
+	struct mtk_phy_instance *instance = s->private;
+	struct u2phy_banks *u2_banks = &instance->u2_banks;
+	void __iomem *com = u2_banks->com;
+	u32 tmp;
+	char str[16];
+
+	tmp = readl(com + U3P_USBPHYACR6);
+	tmp >>= PA6_RG_U2_PHY_REV4_OFET;
+	tmp &= PA6_RG_U2_PHY_REV4_MASK;
+
+	cover_val_to_str(tmp, 1, str);
+
+	seq_printf(s, "\n%s = %s\n", PHY_REV4_STR, str);
+	return 0;
+}
+
+static int proc_phy_rev4_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, proc_phy_rev4_show, pde_data(inode));
+}
+
+static ssize_t proc_phy_rev4_write(struct file *file,
+	const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	struct seq_file *s = file->private_data;
+	struct mtk_phy_instance *instance = s->private;
+	struct u2phy_banks *u2_banks = &instance->u2_banks;
+	void __iomem *com = u2_banks->com;
+	char buf[20];
+	u32 val;
+
+	memset(buf, 0x00, sizeof(buf));
+	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+		return -EFAULT;
+
+	if (kstrtouint(buf, 2, &val))
+		return -EINVAL;
+
+	mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_PHY_REV4, val);
+
+	return count;
+}
+
+static const struct proc_ops proc_phy_rev4_fops = {
+	.proc_open = proc_phy_rev4_open,
+	.proc_write = proc_phy_rev4_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int proc_phy_rev6_show(struct seq_file *s, void *unused)
@@ -773,13 +924,13 @@ static int proc_phy_rev6_show(struct seq_file *s, void *unused)
 
 	cover_val_to_str(tmp, 2, str);
 
-	seq_printf(s, "\n%s = %s\n", PROC_FILE_PHY_REV6, str);
+	seq_printf(s, "\n%s = %s\n", PHY_REV6_STR, str);
 	return 0;
 }
 
 static int proc_phy_rev6_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, proc_phy_rev6_show, PDE_DATA(inode));
+	return single_open(file, proc_phy_rev6_show, pde_data(inode));
 }
 
 static ssize_t proc_phy_rev6_write(struct file *file,
@@ -790,7 +941,7 @@ static ssize_t proc_phy_rev6_write(struct file *file,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	char buf[20];
-	u32 tmp, val;
+	u32 val;
 
 	memset(buf, 0x00, sizeof(buf));
 	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
@@ -799,20 +950,17 @@ static ssize_t proc_phy_rev6_write(struct file *file,
 	if (kstrtouint(buf, 2, &val))
 		return -EINVAL;
 
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_PHY_REV6;
-	tmp |= PA6_RG_U2_PHY_REV6_VAL(val);
-	writel(tmp, com + U3P_USBPHYACR6);
+	mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_PHY_REV6, val);
 
 	return count;
 }
 
-static const struct file_operations proc_phy_rev6_fops = {
-	.open = proc_phy_rev6_open,
-	.write = proc_phy_rev6_write,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops proc_phy_rev6_fops = {
+	.proc_open = proc_phy_rev6_open,
+	.proc_write = proc_phy_rev6_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int proc_discth_show(struct seq_file *s, void *unused)
@@ -829,13 +977,13 @@ static int proc_discth_show(struct seq_file *s, void *unused)
 
 	cover_val_to_str(tmp, 4, str);
 
-	seq_printf(s, "\n%s = %s\n", PROC_FILE_DISCTH, str);
+	seq_printf(s, "\n%s = %s\n", DISCTH_STR, str);
 	return 0;
 }
 
 static int proc_discth_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, proc_discth_show, PDE_DATA(inode));
+	return single_open(file, proc_discth_show, pde_data(inode));
 }
 
 static ssize_t proc_discth_write(struct file *file,
@@ -846,7 +994,7 @@ static ssize_t proc_discth_write(struct file *file,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	char buf[20];
-	u32 tmp, val;
+	u32 val;
 
 	memset(buf, 0x00, sizeof(buf));
 	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
@@ -855,22 +1003,71 @@ static ssize_t proc_discth_write(struct file *file,
 	if (kstrtouint(buf, 2, &val))
 		return -EINVAL;
 
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_DISCTH;
-	tmp |= PA6_RG_U2_DISCTH_VAL(val);
-	writel(tmp, com + U3P_USBPHYACR6);
+	mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_DISCTH, val);
 
 	return count;
 }
 
-static const struct file_operations proc_discth_fops = {
-	.open = proc_discth_open,
-	.write = proc_discth_write,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops proc_discth_fops = {
+	.proc_open = proc_discth_open,
+	.proc_write = proc_discth_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
+static int proc_rx_sqth_show(struct seq_file *s, void *unused)
+{
+	struct mtk_phy_instance *instance = s->private;
+	struct u2phy_banks *u2_banks = &instance->u2_banks;
+	void __iomem *com = u2_banks->com;
+	u32 tmp;
+	char str[16];
+
+	tmp = readl(com + U3P_USBPHYACR6);
+	tmp >>= PA6_RG_U2_SQTH_OFET;
+	tmp &= PA6_RG_U2_SQTH_MASK;
+
+	cover_val_to_str(tmp, 4, str);
+
+	seq_printf(s, "\n%s = %s\n", RX_SQTH_STR, str);
+	return 0;
+}
+
+static int proc_rx_sqth_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, proc_rx_sqth_show, pde_data(inode));
+}
+
+static ssize_t proc_rx_sqth_write(struct file *file,
+	const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	struct seq_file *s = file->private_data;
+	struct mtk_phy_instance *instance = s->private;
+	struct u2phy_banks *u2_banks = &instance->u2_banks;
+	void __iomem *com = u2_banks->com;
+	char buf[20];
+	u32 val;
+
+	memset(buf, 0x00, sizeof(buf));
+	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+		return -EFAULT;
+
+	if (kstrtouint(buf, 2, &val))
+		return -EINVAL;
+
+	mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_SQTH, val);
+
+	return count;
+}
+
+static const struct proc_ops proc_rx_sqth_fops = {
+	.proc_open = proc_rx_sqth_open,
+	.proc_write = proc_rx_sqth_write,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
 static int u2_phy_procfs_init(struct mtk_tphy *tphy,
 			struct mtk_phy_instance *instance)
 {
@@ -893,34 +1090,50 @@ static int u2_phy_procfs_init(struct mtk_tphy *tphy,
 		goto err0;
 	}
 
-	file = proc_create_data(PROC_FILE_TERM_SEL, 0644,
+	file = proc_create_data(TERM_SEL_STR, 0644,
 			phy_root, &proc_term_sel_fops, instance);
 	if (!file) {
-		dev_info(dev, "failed to creat proc file: %s\n", PROC_FILE_TERM_SEL);
+		dev_info(dev, "failed to creat proc file: %s\n", TERM_SEL_STR);
 		ret = -ENOMEM;
 		goto err1;
 	}
 
-	file = proc_create_data(PROC_FILE_VRT_SEL, 0644,
+	file = proc_create_data(VRT_SEL_STR, 0644,
 			phy_root, &proc_vrt_sel_fops, instance);
 	if (!file) {
-		dev_info(dev, "failed to creat proc file: %s\n", PROC_FILE_VRT_SEL);
+		dev_info(dev, "failed to creat proc file: %s\n", VRT_SEL_STR);
 		ret = -ENOMEM;
 		goto err1;
 	}
 
-	file = proc_create_data(PROC_FILE_PHY_REV6, 0644,
+	file = proc_create_data(PHY_REV4_STR, 0644,
+			phy_root, &proc_phy_rev4_fops, instance);
+	if (!file) {
+		dev_info(dev, "failed to creat proc file: %s\n", PHY_REV4_STR);
+		ret = -ENOMEM;
+		goto err1;
+	}
+
+	file = proc_create_data(PHY_REV6_STR, 0644,
 			phy_root, &proc_phy_rev6_fops, instance);
 	if (!file) {
-		dev_info(dev, "failed to creat proc file: %s\n", PROC_FILE_PHY_REV6);
+		dev_info(dev, "failed to creat proc file: %s\n", PHY_REV6_STR);
 		ret = -ENOMEM;
 		goto err1;
 	}
 
-	file = proc_create_data(PROC_FILE_DISCTH, 0644,
+	file = proc_create_data(DISCTH_STR, 0644,
 			phy_root, &proc_discth_fops, instance);
 	if (!file) {
-		dev_info(dev, "failed to creat proc file: %s\n", PROC_FILE_DISCTH);
+		dev_info(dev, "failed to creat proc file: %s\n", DISCTH_STR);
+		ret = -ENOMEM;
+		goto err1;
+	}
+
+	file = proc_create_data(RX_SQTH_STR, 0644,
+			phy_root, &proc_rx_sqth_fops, instance);
+	if (!file) {
+		dev_info(dev, "failed to creat proc file: %s\n", RX_SQTH_STR);
 		ret = -ENOMEM;
 		goto err1;
 	}
@@ -962,85 +1175,6 @@ static int mtk_phy_procfs_exit(struct mtk_tphy *tphy)
 	return 0;
 }
 
-static int phy_efuse_set(struct mtk_phy_instance *instance,
-			     enum mtk_phy_efuse type)
-{
-	struct device *dev = &instance->phy->dev;
-	struct device_node *np = dev->of_node;
-	struct u2phy_banks *u2_banks;
-	struct u3phy_banks *u3_banks;
-	u32 val, tmp, mask;
-	int index = 0, ret = 0;
-
-	index = of_property_match_string(np,
-			"nvmem-cell-names", efuse_name[type]);
-	if (index < 0)
-		return index;
-
-	ret = of_property_read_u32_index(np, "nvmem-cell-masks",
-			index, &mask);
-	if (ret)
-		return ret;
-
-	ret = nvmem_cell_read_u32(dev, efuse_name[type], &val);
-	if (ret)
-		return ret;
-
-	if (!val || !mask)
-		return 0;
-
-	val = (val & mask) >> (ffs(mask) - 1);
-	dev_info(dev, "%s, %s=0x%x\n", __func__, efuse_name[type], val);
-
-	switch (type) {
-	case INTR_CAL:
-		u2_banks = &instance->u2_banks;
-		tmp = readl(u2_banks->com + U3P_USBPHYACR1);
-		tmp &= ~PA1_RG_U2_INTR_CAL;
-		tmp |= PA1_RG_U2_INTR_CAL_VAL(val);
-		writel(tmp, u2_banks->com + U3P_USBPHYACR1);
-		break;
-	case IEXT_INTR_CTRL:
-		u3_banks = &instance->u3_banks;
-		tmp = readl(u3_banks->phya + U3P_U3_PHYA_REG0);
-		tmp &= ~P3A_RG_SSUSB_IEXT_INTR_CTRL;
-		tmp |= P3A_RG_SSUSB_IEXT_INTR_CTRL_VAL(val);
-		writel(tmp, u3_banks->phya + U3P_U3_PHYA_REG0);
-		break;
-	case RX_IMPSEL:
-		u3_banks = &instance->u3_banks;
-		tmp = readl(u3_banks->phyd + U3P_U3_PHYD_IMPCAL1);
-		tmp &= ~P3D_RG_SSUSB_RX_IMPSEL;
-		tmp |= P3D_RG_SSUSB_RX_IMPSEL_VAL(val);
-		writel(tmp, u3_banks->phyd + U3P_U3_PHYD_IMPCAL1);
-		break;
-	case TX_IMPSEL:
-		u3_banks = &instance->u3_banks;
-		tmp = readl(u3_banks->phyd + U3P_U3_PHYD_IMPCAL0);
-		tmp &= ~P3D_RG_SSUSB_TX_IMPSEL;
-		tmp |= P3D_RG_SSUSB_TX_IMPSEL_VAL(val);
-		writel(tmp, u3_banks->phyd + U3P_U3_PHYD_IMPCAL0);
-		break;
-	default:
-		return 0;
-	}
-
-	return 0;
-}
-
-static void u2_phy_efuse_set(struct mtk_tphy *tphy,
-			     struct mtk_phy_instance *instance)
-{
-	phy_efuse_set(instance, INTR_CAL);
-}
-
-static void u3_phy_efuse_set(struct mtk_tphy *tphy,
-			     struct mtk_phy_instance *instance)
-{
-	phy_efuse_set(instance, IEXT_INTR_CTRL);
-	phy_efuse_set(instance, RX_IMPSEL);
-	phy_efuse_set(instance, TX_IMPSEL);
-}
 
 static void hs_slew_rate_calibrate(struct mtk_tphy *tphy,
 	struct mtk_phy_instance *instance)
@@ -1052,50 +1186,44 @@ static void hs_slew_rate_calibrate(struct mtk_tphy *tphy,
 	int fm_out;
 	u32 tmp;
 
+	/* HW V3 doesn't support slew rate cal anymore */
+	if (tphy->pdata->version == MTK_PHY_V3)
+		return;
+
 	/* use force value */
 	if (instance->eye_src)
 		return;
 
 	/* enable USB ring oscillator */
-	tmp = readl(com + U3P_USBPHYACR5);
-	tmp |= PA5_RG_U2_HSTX_SRCAL_EN;
-	writel(tmp, com + U3P_USBPHYACR5);
+	mtk_phy_set_bits(com + U3P_USBPHYACR5, PA5_RG_U2_HSTX_SRCAL_EN);
 	udelay(1);
 
 	/*enable free run clock */
-	tmp = readl(fmreg + U3P_U2FREQ_FMMONR1);
-	tmp |= P2F_RG_FRCK_EN;
-	writel(tmp, fmreg + U3P_U2FREQ_FMMONR1);
+	mtk_phy_set_bits(fmreg + U3P_U2FREQ_FMMONR1, P2F_RG_FRCK_EN);
 
 	/* set cycle count as 1024, and select u2 channel */
 	tmp = readl(fmreg + U3P_U2FREQ_FMCR0);
 	tmp &= ~(P2F_RG_CYCLECNT | P2F_RG_MONCLK_SEL);
-	tmp |= P2F_RG_CYCLECNT_VAL(U3P_FM_DET_CYCLE_CNT);
+	tmp |= FIELD_PREP(P2F_RG_CYCLECNT, U3P_FM_DET_CYCLE_CNT);
 	if (tphy->pdata->version == MTK_PHY_V1)
-		tmp |= P2F_RG_MONCLK_SEL_VAL(instance->index >> 1);
+		tmp |= FIELD_PREP(P2F_RG_MONCLK_SEL, instance->index >> 1);
 
 	writel(tmp, fmreg + U3P_U2FREQ_FMCR0);
 
 	/* enable frequency meter */
-	tmp = readl(fmreg + U3P_U2FREQ_FMCR0);
-	tmp |= P2F_RG_FREQDET_EN;
-	writel(tmp, fmreg + U3P_U2FREQ_FMCR0);
+	mtk_phy_set_bits(fmreg + U3P_U2FREQ_FMCR0, P2F_RG_FREQDET_EN);
 
 	/* ignore return value */
-	readl_poll_timeout_atomic(fmreg + U3P_U2FREQ_FMMONR1, tmp,
+	readl_poll_timeout(fmreg + U3P_U2FREQ_FMMONR1, tmp,
 			   (tmp & P2F_USB_FM_VALID), 10, 200);
 
 	fm_out = readl(fmreg + U3P_U2FREQ_VALUE);
 
 	/* disable frequency meter */
-	tmp = readl(fmreg + U3P_U2FREQ_FMCR0);
-	tmp &= ~P2F_RG_FREQDET_EN;
-	writel(tmp, fmreg + U3P_U2FREQ_FMCR0);
+	mtk_phy_clear_bits(fmreg + U3P_U2FREQ_FMCR0, P2F_RG_FREQDET_EN);
 
 	/*disable free run clock */
-	tmp = readl(fmreg + U3P_U2FREQ_FMMONR1);
-	tmp &= ~P2F_RG_FRCK_EN;
-	writel(tmp, fmreg + U3P_U2FREQ_FMMONR1);
+	mtk_phy_clear_bits(fmreg + U3P_U2FREQ_FMMONR1, P2F_RG_FRCK_EN);
 
 	if (fm_out) {
 		/* ( 1024 / FM_OUT ) x reference clock frequency x coef */
@@ -1111,69 +1239,65 @@ static void hs_slew_rate_calibrate(struct mtk_tphy *tphy,
 		tphy->src_ref_clk, tphy->src_coef);
 
 	/* set HS slew rate */
-	tmp = readl(com + U3P_USBPHYACR5);
-	tmp &= ~PA5_RG_U2_HSTX_SRCTRL;
-	tmp |= PA5_RG_U2_HSTX_SRCTRL_VAL(calibration_val);
-	writel(tmp, com + U3P_USBPHYACR5);
+	mtk_phy_update_field(com + U3P_USBPHYACR5, PA5_RG_U2_HSTX_SRCTRL,
+			     calibration_val);
 
 	/* disable USB ring oscillator */
-	tmp = readl(com + U3P_USBPHYACR5);
-	tmp &= ~PA5_RG_U2_HSTX_SRCAL_EN;
-	writel(tmp, com + U3P_USBPHYACR5);
+	mtk_phy_clear_bits(com + U3P_USBPHYACR5, PA5_RG_U2_HSTX_SRCAL_EN);
 }
 
 static void u3_phy_instance_init(struct mtk_tphy *tphy,
 	struct mtk_phy_instance *instance)
 {
 	struct u3phy_banks *u3_banks = &instance->u3_banks;
-	u32 tmp;
+	void __iomem *phya = u3_banks->phya;
+	void __iomem *phyd = u3_banks->phyd;
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_REG1);
-	tmp |= RG_SSUSB_VA_ON;
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_REG1);
+	/* ssusb power on */
+	mtk_phy_set_bits(phya + U3P_U3_PHYA_REG1, RG_SSUSB_VA_ON);
 
 	/* gating PCIe Analog XTAL clock */
-	tmp = readl(u3_banks->spllc + U3P_SPLLC_XTALCTL3);
-	tmp |= XC3_RG_U3_XTAL_RX_PWD | XC3_RG_U3_FRC_XTAL_RX_PWD;
-	writel(tmp, u3_banks->spllc + U3P_SPLLC_XTALCTL3);
+	mtk_phy_set_bits(u3_banks->spllc + U3P_SPLLC_XTALCTL3,
+			 XC3_RG_U3_XTAL_RX_PWD | XC3_RG_U3_FRC_XTAL_RX_PWD);
 
 	/* gating XSQ */
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_DA_REG0);
-	tmp &= ~P3A_RG_XTAL_EXT_EN_U3;
-	tmp |= P3A_RG_XTAL_EXT_EN_U3_VAL(2);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_DA_REG0);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_DA_REG0, P3A_RG_XTAL_EXT_EN_U3, 2);
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_REG9);
-	tmp &= ~P3A_RG_RX_DAC_MUX;
-	tmp |= P3A_RG_RX_DAC_MUX_VAL(4);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_REG9);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_REG9, P3A_RG_RX_DAC_MUX, 4);
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_REG6);
-	tmp &= ~P3A_RG_TX_EIDLE_CM;
-	tmp |= P3A_RG_TX_EIDLE_CM_VAL(0xe);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_REG6);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_REG6, P3A_RG_TX_EIDLE_CM, 0xe);
 
-	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_CDR1);
-	tmp &= ~(P3D_RG_CDR_BIR_LTD0 | P3D_RG_CDR_BIR_LTD1);
-	tmp |= P3D_RG_CDR_BIR_LTD0_VAL(0xc) | P3D_RG_CDR_BIR_LTD1_VAL(0x3);
-	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_CDR1);
+	mtk_phy_update_bits(u3_banks->phyd + U3P_U3_PHYD_CDR1,
+			    P3D_RG_CDR_BIR_LTD0 | P3D_RG_CDR_BIR_LTD1,
+			    FIELD_PREP(P3D_RG_CDR_BIR_LTD0, 0xc) |
+			    FIELD_PREP(P3D_RG_CDR_BIR_LTD1, 0x3));
 
-	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_LFPS1);
-	tmp &= ~P3D_RG_FWAKE_TH;
-	tmp |= P3D_RG_FWAKE_TH_VAL(0x34);
-	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_LFPS1);
+	mtk_phy_update_field(phyd + U3P_U3_PHYD_LFPS1, P3D_RG_FWAKE_TH, 0x34);
 
-	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RXDET1);
-	tmp &= ~P3D_RG_RXDET_STB2_SET;
-	tmp |= P3D_RG_RXDET_STB2_SET_VAL(0x10);
-	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RXDET1);
+	mtk_phy_update_field(phyd + U3P_U3_PHYD_RXDET1, P3D_RG_RXDET_STB2_SET, 0x10);
 
-	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RXDET2);
-	tmp &= ~P3D_RG_RXDET_STB2_SET_P3;
-	tmp |= P3D_RG_RXDET_STB2_SET_P3_VAL(0x10);
-	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RXDET2);
+	mtk_phy_update_field(phyd + U3P_U3_PHYD_RXDET2, P3D_RG_RXDET_STB2_SET_P3, 0x10);
 
 	dev_dbg(tphy->dev, "%s(%d)\n", __func__, instance->index);
+}
+
+static void u2_phy_pll_26m_set(struct mtk_tphy *tphy,
+	struct mtk_phy_instance *instance)
+{
+	struct u2phy_banks *u2_banks = &instance->u2_banks;
+	void __iomem *com = u2_banks->com;
+
+	if (!tphy->pdata->sw_pll_48m_to_26m)
+		return;
+
+	mtk_phy_update_field(com + U3P_USBPHYACR0, PA0_USB20_PLL_PREDIV, 0);
+
+	mtk_phy_update_field(com + U3P_USBPHYACR2, PA2_RG_U2PLL_BW, 3);
+
+	writel(P2R_RG_U2PLL_FBDIV_26M, com + U3P_U2PHYA_RESV);
+
+	mtk_phy_set_bits(com + U3P_U2PHYA_RESV1,
+			 P2R_RG_U2PLL_FRA_EN | P2R_RG_U2PLL_REFCLK_SEL);
 }
 
 static void u2_phy_instance_init(struct mtk_tphy *tphy,
@@ -1182,58 +1306,43 @@ static void u2_phy_instance_init(struct mtk_tphy *tphy,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	u32 index = instance->index;
-	u32 tmp;
 
 	/* switch to USB function, and enable usb pll */
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp &= ~(P2C_FORCE_UART_EN | P2C_FORCE_SUSPENDM);
-	tmp |= P2C_RG_XCVRSEL_VAL(1) | P2C_RG_DATAIN_VAL(0);
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_FORCE_UART_EN | P2C_FORCE_SUSPENDM);
 
-	tmp = readl(com + U3P_U2PHYDTM1);
-	tmp &= ~P2C_RG_UART_EN;
-	writel(tmp, com + U3P_U2PHYDTM1);
+	mtk_phy_update_field(com + U3P_U2PHYDTM0, P2C_RG_XCVRSEL, 1);
 
-	tmp = readl(com + U3P_USBPHYACR0);
-	tmp |= PA0_RG_USB20_INTR_EN;
-	writel(tmp, com + U3P_USBPHYACR0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_RG_DATAIN);
+
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM1, P2C_RG_UART_EN);
+
+	mtk_phy_set_bits(com + U3P_USBPHYACR0, PA0_RG_USB20_INTR_EN);
 
 	/* disable switch 100uA current to SSUSB */
-	tmp = readl(com + U3P_USBPHYACR5);
-	tmp &= ~PA5_RG_U2_HS_100U_U3_EN;
-	writel(tmp, com + U3P_USBPHYACR5);
+	mtk_phy_clear_bits(com + U3P_USBPHYACR5, PA5_RG_U2_HS_100U_U3_EN);
 
-	if (!index) {
-		tmp = readl(com + U3P_U2PHYACR4);
-		tmp &= ~P2C_U2_GPIO_CTR_MSK;
-		writel(tmp, com + U3P_U2PHYACR4);
-	}
+	mtk_phy_clear_bits(com + U3P_U2PHYACR4, P2C_U2_GPIO_CTR_MSK);
 
 	if (tphy->pdata->avoid_rx_sen_degradation) {
 		if (!index) {
-			tmp = readl(com + U3P_USBPHYACR2);
-			tmp |= PA2_RG_SIF_U2PLL_FORCE_EN;
-			writel(tmp, com + U3P_USBPHYACR2);
+			mtk_phy_set_bits(com + U3P_USBPHYACR2, PA2_RG_SIF_U2PLL_FORCE_EN);
 
-			tmp = readl(com + U3D_U2PHYDCR0);
-			tmp &= ~P2C_RG_SIF_U2PLL_FORCE_ON;
-			writel(tmp, com + U3D_U2PHYDCR0);
+			mtk_phy_clear_bits(com + U3D_U2PHYDCR0, P2C_RG_SIF_U2PLL_FORCE_ON);
 		} else {
-			tmp = readl(com + U3D_U2PHYDCR0);
-			tmp |= P2C_RG_SIF_U2PLL_FORCE_ON;
-			writel(tmp, com + U3D_U2PHYDCR0);
+			mtk_phy_set_bits(com + U3D_U2PHYDCR0, P2C_RG_SIF_U2PLL_FORCE_ON);
 
-			tmp = readl(com + U3P_U2PHYDTM0);
-			tmp |= P2C_RG_SUSPENDM | P2C_FORCE_SUSPENDM;
-			writel(tmp, com + U3P_U2PHYDTM0);
+			mtk_phy_set_bits(com + U3P_U2PHYDTM0,
+					 P2C_RG_SUSPENDM | P2C_FORCE_SUSPENDM);
 		}
 	}
 
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_BC11_SW_EN;	/* DP/DM BC1.1 path Disable */
-	tmp &= ~PA6_RG_U2_SQTH;
-	tmp |= PA6_RG_U2_SQTH_VAL(2);
-	writel(tmp, com + U3P_USBPHYACR6);
+	/* DP/DM BC1.1 path Disable */
+	mtk_phy_clear_bits(com + U3P_USBPHYACR6, PA6_RG_U2_BC11_SW_EN);
+
+	mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_SQTH, 2);
+
+	/* Workaround only for mt8195, HW fix it for others (V3) */
+	u2_phy_pll_26m_set(tphy, instance);
 
 	dev_dbg(tphy->dev, "%s(%d)\n", __func__, index);
 }
@@ -1244,102 +1353,59 @@ static void u2_phy_instance_power_on(struct mtk_tphy *tphy,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	u32 index = instance->index;
-	u32 tmp;
 
-	tmp = readl(com + U3P_U2PHYDTM0);
+	mtk_phy_set_bits(com + U3P_U2PHYDTM0, P2C_FORCE_SUSPENDM);
 
-#if (!defined CONFIG_MACH_MT6781) && (!defined CONFIG_MACH_MT6768)
-	tmp |= P2C_FORCE_SUSPENDM;
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_RG_SUSPENDM);
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp &= ~P2C_RG_SUSPENDM;
-	writel(tmp, com + U3P_U2PHYDTM0);
-
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp |= P2C_RG_SUSPENDM;
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_set_bits(com + U3P_U2PHYDTM0, P2C_RG_SUSPENDM);
 
 	udelay(30);
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp &= ~P2C_FORCE_SUSPENDM;
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_FORCE_SUSPENDM);
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp &= ~P2C_RG_SUSPENDM;
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_RG_SUSPENDM);
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp &= ~(P2C_FORCE_UART_EN);
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_FORCE_UART_EN);
 
-	tmp = readl(com + U3P_U2PHYDTM1);
-	tmp &= ~P2C_RG_UART_EN;
-	writel(tmp, com + U3P_U2PHYDTM1);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM1, P2C_RG_UART_EN);
 
-	tmp = readl(com + U3P_U2PHYACR4);
-	tmp &= ~P2C_U2_GPIO_CTR_MSK;
-	writel(tmp, com + U3P_U2PHYACR4);
+	mtk_phy_clear_bits(com + U3P_U2PHYACR4, P2C_U2_GPIO_CTR_MSK);
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp &= ~P2C_FORCE_SUSPENDM;
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_FORCE_SUSPENDM);
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-#endif
-	tmp &= ~(P2C_RG_XCVRSEL | P2C_RG_DATAIN | P2C_DTM0_PART_MASK);
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0,
+			   P2C_RG_XCVRSEL | P2C_RG_DATAIN | P2C_DTM0_PART_MASK);
 
-#if (!defined CONFIG_MACH_MT6781) && (!defined CONFIG_MACH_MT6768)
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_BC11_SW_EN;
-	writel(tmp, com + U3P_USBPHYACR6);
-#endif
+	mtk_phy_clear_bits(com + U3P_USBPHYACR6, PA6_RG_U2_BC11_SW_EN);
 
 	/* OTG Enable */
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp |= PA6_RG_U2_OTG_VBUSCMP_EN;
-	writel(tmp, com + U3P_USBPHYACR6);
+	mtk_phy_set_bits(com + U3P_USBPHYACR6, PA6_RG_U2_OTG_VBUSCMP_EN);
 
-	tmp = readl(com + U3P_U2PHYDTM1);
-	tmp |= P2C_RG_VBUSVALID | P2C_RG_AVALID;
-	tmp &= ~P2C_RG_SESSEND;
-	writel(tmp, com + U3P_U2PHYDTM1);
+	mtk_phy_set_bits(com + U3P_U2PHYDTM1, P2C_RG_VBUSVALID | P2C_RG_AVALID);
 
-#if (!defined CONFIG_MACH_MT6781) && (!defined CONFIG_MACH_MT6768)
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_PHY_REV6;
-	tmp |= PA6_RG_U2_PHY_REV6_VAL(1);
-	writel(tmp, com + U3P_USBPHYACR6);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM1, P2C_RG_SESSEND);
+
+	mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_PHY_REV6, 1);
 
 	udelay(800);
-#endif
 
 	if (tphy->pdata->avoid_rx_sen_degradation && index) {
-		tmp = readl(com + U3D_U2PHYDCR0);
-		tmp |= P2C_RG_SIF_U2PLL_FORCE_ON;
-		writel(tmp, com + U3D_U2PHYDCR0);
+		mtk_phy_set_bits(com + U3D_U2PHYDCR0, P2C_RG_SIF_U2PLL_FORCE_ON);
 
-		tmp = readl(com + U3P_U2PHYDTM0);
-		tmp |= P2C_RG_SUSPENDM | P2C_FORCE_SUSPENDM;
-		writel(tmp, com + U3P_U2PHYDTM0);
+		mtk_phy_set_bits(com + U3P_U2PHYDTM0, P2C_RG_SUSPENDM | P2C_FORCE_SUSPENDM);
 	}
-
-#if (defined CONFIG_MACH_MT6781) || (defined CONFIG_MACH_MT6768)
-	/* set SW_BC11_EN as 0 which is usb control DPDM */
-	u2_phy_instance_set_mode_ext(tphy, instance, PHY_MODE_BC11_SW_CLR);
+#if IS_ENABLED(CONFIG_USB_MTK_HDRC)
+	if (instance->usb_special_phy_settings) {
+		/* Used by phone products */
+		/* HQA Setting */
+		if (instance->discth)
+			mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_DISCTH,
+					instance->discth);
+		else
+			mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_DISCTH, 0xf);
+	}
 #endif
-
-#ifdef CONFIG_USB_MTK_HDRC
-	/* Used by phone products */
-	/* HQA Setting */
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_DISCTH;
-	tmp |= PA6_RG_U2_DISCTH_VAL(0xf);
-	writel(tmp, com + U3P_USBPHYACR6);
-#endif
-
 	dev_info(tphy->dev, "%s(%d)\n", __func__, index);
 }
 
@@ -1349,88 +1415,43 @@ static void u2_phy_instance_power_off(struct mtk_tphy *tphy,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	u32 index = instance->index;
-	u32 tmp;
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-#if (defined CONFIG_MACH_MT6781) || (defined CONFIG_MACH_MT6768)
-	tmp &= ~(P2C_RG_XCVRSEL | P2C_RG_DATAIN);
-	tmp |= P2C_RG_XCVRSEL_VAL(1) | P2C_DTM0_PART_MASK2;
-#if defined(CONFIG_MACH_MT6739)
-	dev_info(tphy->dev, "%s, write DTM0 SUSPENDM\n", __func__);
-	tmp |= P2C_RG_SUSPENDM;
-#endif
-#else
-	tmp &= ~(P2C_FORCE_UART_EN);
-#endif
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_FORCE_UART_EN);
 
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM1, P2C_RG_UART_EN);
 
-#if (!defined CONFIG_MACH_MT6781) && (!defined CONFIG_MACH_MT6768)
-	tmp = readl(com + U3P_U2PHYDTM1);
-	tmp &= ~P2C_RG_UART_EN;
-	writel(tmp, com + U3P_U2PHYDTM1);
+	mtk_phy_clear_bits(com + U3P_U2PHYACR4, P2C_U2_GPIO_CTR_MSK);
 
-	tmp = readl(com + U3P_U2PHYACR4);
-	tmp &= ~P2C_U2_GPIO_CTR_MSK;
-	writel(tmp, com + U3P_U2PHYACR4);
-
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_BC11_SW_EN;
-	writel(tmp, com + U3P_USBPHYACR6);
-#endif
+	mtk_phy_clear_bits(com + U3P_USBPHYACR6, PA6_RG_U2_BC11_SW_EN);
 
 	/* OTG Disable */
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_OTG_VBUSCMP_EN;
-	writel(tmp, com + U3P_USBPHYACR6);
+	mtk_phy_clear_bits(com + U3P_USBPHYACR6, PA6_RG_U2_OTG_VBUSCMP_EN);
 
-	tmp = readl(com + U3P_U2PHYDTM1);
-	tmp &= ~(P2C_RG_VBUSVALID | P2C_RG_AVALID);
-	tmp |= P2C_RG_SESSEND;
-	writel(tmp, com + U3P_U2PHYDTM1);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM1, P2C_RG_VBUSVALID | P2C_RG_AVALID);
 
-#if (!defined CONFIG_MACH_MT6781) && (!defined CONFIG_MACH_MT6768)
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp |= P2C_RG_SUSPENDM | P2C_FORCE_SUSPENDM;
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_set_bits(com + U3P_U2PHYDTM1, P2C_RG_SESSEND);
+
+	mtk_phy_set_bits(com + U3P_U2PHYDTM0,  P2C_RG_SUSPENDM | P2C_FORCE_SUSPENDM);
 
 	mdelay(2);
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp &= ~P2C_RG_DATAIN;
-	tmp |= (P2C_RG_XCVRSEL_VAL(1) | P2C_DTM0_PART_MASK);
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_RG_DATAIN);
+	mtk_phy_set_bits(com + U3P_U2PHYDTM0, (P2C_RG_XCVRSEL_VAL(1) | P2C_DTM0_PART_MASK));
 
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp |= PA6_RG_U2_PHY_REV6_VAL(1);
-	writel(tmp, com + U3P_USBPHYACR6);
+	mtk_phy_set_bits(com + U3P_USBPHYACR6, PA6_RG_U2_PHY_REV6_VAL(1));
 
 	udelay(800);
 
-	tmp = readl(com + U3P_U2PHYDTM0);
-	tmp &= ~P2C_RG_SUSPENDM;
-	writel(tmp, com + U3P_U2PHYDTM0);
+	mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_RG_SUSPENDM);
 
 	udelay(1);
-#endif
 
 	if (tphy->pdata->avoid_rx_sen_degradation && index) {
-		tmp = readl(com + U3P_U2PHYDTM0);
-		tmp &= ~(P2C_RG_SUSPENDM | P2C_FORCE_SUSPENDM);
-		writel(tmp, com + U3P_U2PHYDTM0);
+		mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_RG_SUSPENDM | P2C_FORCE_SUSPENDM);
 
-		tmp = readl(com + U3D_U2PHYDCR0);
-		tmp &= ~P2C_RG_SIF_U2PLL_FORCE_ON;
-		writel(tmp, com + U3D_U2PHYDCR0);
+		mtk_phy_clear_bits(com + U3D_U2PHYDCR0, P2C_RG_SIF_U2PLL_FORCE_ON);
 	}
 
-#if (defined CONFIG_MACH_MT6781) || (defined CONFIG_MACH_MT6768)
-	/*
-	 * set SW_BC11_EN as 0 which is charger control DPDM
-	 * to disable USB DPDM
-	 */
-	u2_phy_instance_set_mode_ext(tphy, instance, PHY_MODE_BC11_SW_SET);
-#endif
 	dev_info(tphy->dev, "%s(%d)\n", __func__, index);
 }
 
@@ -1440,257 +1461,114 @@ static void u2_phy_instance_exit(struct mtk_tphy *tphy,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	u32 index = instance->index;
-	u32 tmp;
 
 	if (tphy->pdata->avoid_rx_sen_degradation && index) {
-		tmp = readl(com + U3D_U2PHYDCR0);
-		tmp &= ~P2C_RG_SIF_U2PLL_FORCE_ON;
-		writel(tmp, com + U3D_U2PHYDCR0);
+		mtk_phy_clear_bits(com + U3D_U2PHYDCR0, P2C_RG_SIF_U2PLL_FORCE_ON);
 
-		tmp = readl(com + U3P_U2PHYDTM0);
-		tmp &= ~P2C_FORCE_SUSPENDM;
-		writel(tmp, com + U3P_U2PHYDTM0);
+		mtk_phy_clear_bits(com + U3P_U2PHYDTM0, P2C_FORCE_SUSPENDM);
 	}
-}
-
-static void u2_phy_instance_set_mode_2uart(struct u2phy_banks *u2_banks)
-{
-	u32 tmp;
-
-	/* Clear PA6_RG_U2_BC11_SW_EN */
-	tmp = readl(u2_banks->com + U3P_USBPHYACR6);
-	tmp &= ~(PA6_RG_U2_BC11_SW_EN);
-	writel(tmp, u2_banks->com + U3P_USBPHYACR6);
-
-	/* Set P2C_RG_SUSPENDM */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp |= P2C_RG_SUSPENDM;
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Set P2C_FORCE_SUSPENDM */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp |= P2C_FORCE_SUSPENDM;
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Clear and Set P2C_RG_UART_MODE to 2'b01 */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp &= ~(P2C_RG_UART_MODE);
-	tmp |= P2C_RG_UART_MODE_VAL(0x1);
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Clear P2C_FORCE_UART_I */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp &= ~(P2C_FORCE_UART_I);
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Set P2C_FORCE_UART_BIAS_EN */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp |= P2C_FORCE_UART_BIAS_EN;
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Set P2C_FORCE_UART_TX_OE */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp |= P2C_FORCE_UART_TX_OE;
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Set P2C_FORCE_UART_EN */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp |= P2C_FORCE_UART_EN;
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Set P2C_RG_UART_BIAS_EN */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp |= P2C_RG_UART_BIAS_EN;
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Set P2C_RG_UART_TX_OE */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp |= P2C_RG_UART_TX_OE;
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Set P2C_RG_UART_EN */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp |= P2C_RG_UART_EN;
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-	/* Set P2C_RG_USB20_DM_100K_EN */
-	tmp = readl(u2_banks->com + U3P_U2PHYACR4);
-	tmp |= P2C_RG_USB20_DM_100K_EN;
-	writel(tmp, u2_banks->com + U3P_U2PHYACR4);
-
-	/* Clear P2C_RG_DMPULLDOWN, P2C_RG_DPPULLDOWN */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp &= ~(P2C_RG_DPPULLDOWN | P2C_RG_DMPULLDOWN);
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-}
-
-static void u2_phy_instance_set_mode_2usb(struct u2phy_banks *u2_banks)
-{
-	u32 tmp;
-
-	/* Cear P2C_FORCE_UART_EN and P2C_RG_UART_MODE */
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-	tmp &= ~(P2C_FORCE_UART_EN | P2C_RG_UART_MODE);
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-}
-
-static int u2_phy_instance_get_mode_ext(struct mtk_tphy *tphy, struct mtk_phy_instance *instance)
-{
-	struct u2phy_banks *u2_banks = &instance->u2_banks;
-	u32 tmp;
-
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-
-	if ((tmp & P2C_RG_UART_MODE) >> P2C_RG_UART_MODE_OFET)
-		return PHY_MODE_UART;
-	else
-		return PHY_MODE_USB_OTG;
 }
 
 static void u2_phy_instance_set_mode(struct mtk_tphy *tphy,
 				     struct mtk_phy_instance *instance,
-				     enum phy_mode mode)
-{
-	struct u2phy_banks *u2_banks = &instance->u2_banks;
-	struct device *dev = &instance->phy->dev;
-	u32 tmp;
-
-	tmp = readl(u2_banks->com + U3P_U2PHYDTM1);
-	switch (mode) {
-	case PHY_MODE_UART:
-		u2_phy_instance_set_mode_2uart(u2_banks);
-		return;
-	case PHY_MODE_USB_DEVICE:
-		tmp |= P2C_FORCE_IDDIG | P2C_RG_IDDIG;
-#if 0
-		device_property_read_u32(dev, "mediatek,eye-src",
-				 &instance->eye_src);
-		device_property_read_u32(dev, "mediatek,eye-vrt",
-				 &instance->eye_vrt);
-		device_property_read_u32(dev, "mediatek,eye-term",
-				 &instance->eye_term);
-		device_property_read_u32(dev, "mediatek,eye-rev6",
-				 &instance->eye_rev6);
-		device_property_read_u32(dev, "mediatek,eye-disc",
-				 &instance->eye_disc);
-#endif
-		instance->eye_vrt = 0x7;
-		instance->eye_term = 0x3;
-		instance->eye_rev6 = 0x3;
-		instance->eye_disc = 0x9;
-		u2_phy_props_set(tphy, instance);
-		break;
-	case PHY_MODE_USB_HOST:
-		tmp |= P2C_FORCE_IDDIG;
-		tmp &= ~P2C_RG_IDDIG;
-#ifdef	CONFIG_USB_MTK_HDRC
-		/* Used by phone products */
-		tmp |= P2C_RG_VBUSVALID | P2C_RG_BVALID | P2C_RG_AVALID;
-		tmp &= ~P2C_RG_SESSEND;
-#endif
-#if 0
-		device_property_read_u32(dev, "mediatek,host-eye-src",
-				 &instance->eye_src);
-		device_property_read_u32(dev, "mediatek,host-eye-vrt",
-				 &instance->eye_vrt);
-		device_property_read_u32(dev, "mediatek,host-eye-term",
-				 &instance->eye_term);
-		device_property_read_u32(dev, "mediatek,host-eye-rev6",
-				 &instance->eye_rev6);
-		device_property_read_u32(dev, "mediatek,host-eye-disc",
-				 &instance->eye_disc);
-#endif
-		instance->eye_vrt = 0x7;
-		instance->eye_term = 0x3;
-		instance->eye_rev6 = 0x3;
-		instance->eye_disc = 0x9;
-		u2_phy_props_set(tphy, instance);
-		break;
-	case PHY_MODE_USB_OTG:
-		u2_phy_instance_set_mode_2usb(u2_banks);
-		tmp &= ~(P2C_FORCE_IDDIG | P2C_RG_IDDIG);
-		break;
-	case PHY_MODE_INVALID:
-		/* Used by phone products */
-		tmp |= P2C_RG_SESSEND | P2C_RG_RG_IDPULLUP;
-		tmp &= ~(P2C_RG_VBUSVALID | P2C_RG_BVALID | P2C_RG_AVALID |
-			P2C_RG_IDDIG);
-		tmp |= P2C_FORCE_IDDIG;
-		break;
-	default:
-		return;
-	}
-#ifdef	CONFIG_USB_MTK_HDRC
-	/* Used by phone products */
-	tmp |= P2C_FORCE_VBUSVALID | P2C_FORCE_SESSEND | P2C_FORCE_BVALID |
-		P2C_FORCE_AVALID | P2C_FORCE_IDPULLUP;
-#endif
-	writel(tmp, u2_banks->com + U3P_U2PHYDTM1);
-}
-
-static void u2_phy_instance_set_mode_ext(struct mtk_tphy *tphy,
-				     struct mtk_phy_instance *instance,
+				     enum phy_mode mode,
 				     int submode)
 {
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	u32 tmp;
 
-	dev_info(tphy->dev, "%s submode(%d)\n", __func__, submode);
+	dev_info(tphy->dev, "%s mode(%d), submode(%d)\n", __func__,
+		mode, submode);
 
-	switch (submode) {
-	case PHY_MODE_BC11_SW_SET:
-		tmp = readl(u2_banks->com + U3P_USBPHYACR6);
-		tmp |= PA6_RG_U2_BC11_SW_EN;
-		writel(tmp, u2_banks->com + U3P_USBPHYACR6);
-		break;
-	case PHY_MODE_BC11_SW_CLR:
-		tmp = readl(u2_banks->com + U3P_USBPHYACR6);
-		tmp &= ~PA6_RG_U2_BC11_SW_EN;
-		writel(tmp, u2_banks->com + U3P_USBPHYACR6);
-		break;
-
-#if (!defined CONFIG_MACH_MT6781) && (!defined CONFIG_MACH_MT6768)
-	case PHY_MODE_DPDMPULLDOWN_SET:
-		tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-		tmp |= P2C_RG_DPPULLDOWN | P2C_RG_DMPULLDOWN;
-		writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-		tmp = readl(u2_banks->com + U3P_USBPHYACR6);
-		tmp &= ~PA6_RG_U2_PHY_REV1;
-		writel(tmp, u2_banks->com + U3P_USBPHYACR6);
-
-		tmp = readl(u2_banks->com + U3P_USBPHYACR6);
-		tmp &= ~PA6_RG_U2_BC11_SW_EN;
-		writel(tmp, u2_banks->com + U3P_USBPHYACR6);
-		break;
-	case PHY_MODE_DPDMPULLDOWN_CLR:
-		tmp = readl(u2_banks->com + U3P_U2PHYDTM0);
-		tmp &= ~(P2C_RG_DPPULLDOWN | P2C_RG_DMPULLDOWN);
-		writel(tmp, u2_banks->com + U3P_U2PHYDTM0);
-
-		tmp = readl(u2_banks->com + U3P_USBPHYACR6);
-		tmp |= PA6_RG_U2_PHY_REV1;
-		writel(tmp, u2_banks->com + U3P_USBPHYACR6);
-
-		tmp = readl(u2_banks->com + U3P_USBPHYACR6);
-		tmp |= PA6_RG_U2_BC11_SW_EN;
-		writel(tmp, u2_banks->com + U3P_USBPHYACR6);
-		break;
-	case PHY_MODE_DPPULLUP_SET:
-		tmp = readl(u2_banks->com + U3P_USBPHYACR3);
-		tmp |= PA3_RG_USB20_PUPD_BIST_EN |
-			PA3_RG_USB20_EN_PU_DP;
-		writel(tmp, u2_banks->com + U3P_USBPHYACR3);
-		break;
-	case PHY_MODE_DPPULLUP_CLR:
-		tmp = readl(u2_banks->com + U3P_USBPHYACR3);
-		tmp &= ~(PA3_RG_USB20_PUPD_BIST_EN |
-			PA3_RG_USB20_EN_PU_DP);
-		writel(tmp, u2_banks->com + U3P_USBPHYACR3);
-		break;
+	if (!submode) {
+		tmp = readl(u2_banks->com + U3P_U2PHYDTM1);
+		switch (mode) {
+		case PHY_MODE_USB_DEVICE:
+			u2_phy_props_set(tphy, instance);
+			tmp |= P2C_FORCE_IDDIG | P2C_RG_IDDIG;
+			break;
+		case PHY_MODE_USB_HOST:
+			u2_phy_host_props_set(tphy, instance);
+			tmp |= P2C_FORCE_IDDIG;
+			tmp &= ~P2C_RG_IDDIG;
+#if IS_ENABLED(CONFIG_USB_MTK_HDRC)
+			if (instance->usb_special_phy_settings) {
+				/* Used by phone products */
+				tmp |= P2C_RG_VBUSVALID | P2C_RG_BVALID | P2C_RG_AVALID;
+				tmp &= ~P2C_RG_SESSEND;
+			}
 #endif
-	default:
-		return;
+			break;
+		case PHY_MODE_USB_OTG:
+			tmp &= ~(P2C_FORCE_IDDIG | P2C_RG_IDDIG);
+			break;
+#if IS_ENABLED(CONFIG_USB_MTK_HDRC)
+		case PHY_MODE_INVALID:
+			if (instance->usb_special_phy_settings) {
+				/* Used by phone products */
+				tmp |= P2C_RG_SESSEND | P2C_RG_RG_IDPULLUP;
+				tmp &= ~(P2C_RG_VBUSVALID | P2C_RG_BVALID | P2C_RG_AVALID |
+					P2C_RG_IDDIG);
+				tmp |= P2C_FORCE_IDDIG;
+			} else
+				return;
+			break;
+#endif
+
+		default:
+			return;
+		}
+#if IS_ENABLED(CONFIG_USB_MTK_HDRC)
+		if (instance->usb_special_phy_settings) {
+		/* Used by phone products */
+			tmp |= P2C_FORCE_VBUSVALID | P2C_FORCE_SESSEND | P2C_FORCE_BVALID |
+				P2C_FORCE_AVALID | P2C_FORCE_IDPULLUP;
+		}
+#endif
+		writel(tmp, u2_banks->com + U3P_U2PHYDTM1);
+	} else {
+		switch (submode) {
+		case PHY_MODE_BC11_SW_SET:
+			mtk_phy_set_bits(u2_banks->com + U3P_USBPHYACR6,
+					 PA6_RG_U2_BC11_SW_EN);
+			break;
+		case PHY_MODE_BC11_SW_CLR:
+			mtk_phy_clear_bits(u2_banks->com + U3P_USBPHYACR6,
+					   PA6_RG_U2_BC11_SW_EN);
+			break;
+		case PHY_MODE_DPDMPULLDOWN_SET:
+			mtk_phy_set_bits(u2_banks->com + U3P_U2PHYDTM0,
+					 P2C_RG_DPPULLDOWN | P2C_RG_DMPULLDOWN);
+
+			mtk_phy_clear_bits(u2_banks->com + U3P_USBPHYACR6,
+					   PA6_RG_U2_PHY_REV1);
+
+			mtk_phy_clear_bits(u2_banks->com + U3P_USBPHYACR6,
+					   PA6_RG_U2_BC11_SW_EN);
+			break;
+		case PHY_MODE_DPDMPULLDOWN_CLR:
+			mtk_phy_clear_bits(u2_banks->com + U3P_U2PHYDTM0,
+					   (P2C_RG_DPPULLDOWN | P2C_RG_DMPULLDOWN));
+
+			mtk_phy_set_bits(u2_banks->com + U3P_USBPHYACR6,
+					 PA6_RG_U2_PHY_REV1);
+
+			mtk_phy_set_bits(u2_banks->com + U3P_USBPHYACR6,
+					 PA6_RG_U2_BC11_SW_EN);
+			break;
+		case PHY_MODE_DPPULLUP_SET:
+			mtk_phy_set_bits(u2_banks->com + U3P_U2PHYACR3,
+					  P2C_RG_USB20_PUPD_BIST_EN |
+					  P2C_RG_USB20_EN_PU_DP);
+			break;
+		case PHY_MODE_DPPULLUP_CLR:
+			mtk_phy_clear_bits(u2_banks->com + U3P_U2PHYACR3,
+					   P2C_RG_USB20_PUPD_BIST_EN |
+					   P2C_RG_USB20_EN_PU_DP);
+			break;
+		default:
+			return;
+		}
 	}
 }
 
@@ -1699,15 +1577,12 @@ static void u3_phy_instance_power_on(struct mtk_tphy *tphy,
 {
 	struct u3phy_banks *bank = &instance->u3_banks;
 	u32 index = instance->index;
-	u32 tmp;
 
-	tmp = readl(bank->chip + U3P_U3_CHIP_GPIO_CTLD);
-	tmp &= ~(P3C_FORCE_IP_SW_RST | P3C_REG_IP_SW_RST);
-	writel(tmp, bank->chip + U3P_U3_CHIP_GPIO_CTLD);
+	mtk_phy_clear_bits(bank->chip + U3P_U3_CHIP_GPIO_CTLD,
+			   P3C_FORCE_IP_SW_RST | P3C_REG_IP_SW_RST);
 
-	tmp = readl(bank->chip + U3P_U3_CHIP_GPIO_CTLE);
-	tmp &= ~(P3C_RG_SWRST_U3_PHYD_FORCE_EN | P3C_RG_SWRST_U3_PHYD);
-	writel(tmp, bank->chip + U3P_U3_CHIP_GPIO_CTLE);
+	mtk_phy_clear_bits(bank->chip + U3P_U3_CHIP_GPIO_CTLE,
+			   P3C_RG_SWRST_U3_PHYD_FORCE_EN | P3C_RG_SWRST_U3_PHYD);
 
 	dev_info(tphy->dev, "%s(%d)\n", __func__, index);
 }
@@ -1716,16 +1591,16 @@ static void u3_phy_instance_power_off(struct mtk_tphy *tphy,
 	struct mtk_phy_instance *instance)
 {
 	struct u3phy_banks *bank = &instance->u3_banks;
+	enum phy_mode mode = instance->phy->attrs.mode;
 	u32 index = instance->index;
-	u32 tmp;
 
-	tmp = readl(bank->chip + U3P_U3_CHIP_GPIO_CTLD);
-	tmp |= P3C_FORCE_IP_SW_RST | P3C_REG_IP_SW_RST;
-	writel(tmp, bank->chip + U3P_U3_CHIP_GPIO_CTLD);
+	if (mode !=  PHY_MODE_USB_HOST) {
+		mtk_phy_set_bits(bank->chip + U3P_U3_CHIP_GPIO_CTLD,
+			 P3C_FORCE_IP_SW_RST | P3C_REG_IP_SW_RST);
 
-	tmp = readl(bank->chip + U3P_U3_CHIP_GPIO_CTLE);
-	tmp |= P3C_RG_SWRST_U3_PHYD_FORCE_EN | P3C_RG_SWRST_U3_PHYD;
-	writel(tmp, bank->chip + U3P_U3_CHIP_GPIO_CTLE);
+		mtk_phy_set_bits(bank->chip + U3P_U3_CHIP_GPIO_CTLE,
+			 P3C_RG_SWRST_U3_PHYD_FORCE_EN | P3C_RG_SWRST_U3_PHYD);
+	}
 
 	dev_info(tphy->dev, "%s(%d)\n", __func__, index);
 }
@@ -1734,69 +1609,46 @@ static void pcie_phy_instance_init(struct mtk_tphy *tphy,
 	struct mtk_phy_instance *instance)
 {
 	struct u3phy_banks *u3_banks = &instance->u3_banks;
-	u32 tmp;
+	void __iomem *phya = u3_banks->phya;
 
 	if (tphy->pdata->version != MTK_PHY_V1)
 		return;
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_DA_REG0);
-	tmp &= ~(P3A_RG_XTAL_EXT_PE1H | P3A_RG_XTAL_EXT_PE2H);
-	tmp |= P3A_RG_XTAL_EXT_PE1H_VAL(0x2) | P3A_RG_XTAL_EXT_PE2H_VAL(0x2);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_DA_REG0);
+	mtk_phy_update_bits(phya + U3P_U3_PHYA_DA_REG0,
+			    P3A_RG_XTAL_EXT_PE1H | P3A_RG_XTAL_EXT_PE2H,
+			    FIELD_PREP(P3A_RG_XTAL_EXT_PE1H, 0x2) |
+			    FIELD_PREP(P3A_RG_XTAL_EXT_PE2H, 0x2));
 
 	/* ref clk drive */
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_REG1);
-	tmp &= ~P3A_RG_CLKDRV_AMP;
-	tmp |= P3A_RG_CLKDRV_AMP_VAL(0x4);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_REG1);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_REG1, P3A_RG_CLKDRV_AMP, 0x4);
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_REG0);
-	tmp &= ~P3A_RG_CLKDRV_OFF;
-	tmp |= P3A_RG_CLKDRV_OFF_VAL(0x1);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_REG0);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_REG0, P3A_RG_CLKDRV_OFF, 0x1);
 
 	/* SSC delta -5000ppm */
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_DA_REG20);
-	tmp &= ~P3A_RG_PLL_DELTA1_PE2H;
-	tmp |= P3A_RG_PLL_DELTA1_PE2H_VAL(0x3c);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_DA_REG20);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_DA_REG20, P3A_RG_PLL_DELTA1_PE2H, 0x3c);
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_DA_REG25);
-	tmp &= ~P3A_RG_PLL_DELTA_PE2H;
-	tmp |= P3A_RG_PLL_DELTA_PE2H_VAL(0x36);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_DA_REG25);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_DA_REG25, P3A_RG_PLL_DELTA_PE2H, 0x36);
 
 	/* change pll BW 0.6M */
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_DA_REG5);
-	tmp &= ~(P3A_RG_PLL_BR_PE2H | P3A_RG_PLL_IC_PE2H);
-	tmp |= P3A_RG_PLL_BR_PE2H_VAL(0x1) | P3A_RG_PLL_IC_PE2H_VAL(0x1);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_DA_REG5);
+	mtk_phy_update_bits(phya + U3P_U3_PHYA_DA_REG5,
+			    P3A_RG_PLL_BR_PE2H | P3A_RG_PLL_IC_PE2H,
+			    FIELD_PREP(P3A_RG_PLL_BR_PE2H, 0x1) |
+			    FIELD_PREP(P3A_RG_PLL_IC_PE2H, 0x1));
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_DA_REG4);
-	tmp &= ~(P3A_RG_PLL_DIVEN_PE2H | P3A_RG_PLL_BC_PE2H);
-	tmp |= P3A_RG_PLL_BC_PE2H_VAL(0x3);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_DA_REG4);
+	mtk_phy_update_bits(phya + U3P_U3_PHYA_DA_REG4,
+			    P3A_RG_PLL_DIVEN_PE2H | P3A_RG_PLL_BC_PE2H,
+			    FIELD_PREP(P3A_RG_PLL_BC_PE2H, 0x3));
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_DA_REG6);
-	tmp &= ~P3A_RG_PLL_IR_PE2H;
-	tmp |= P3A_RG_PLL_IR_PE2H_VAL(0x2);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_DA_REG6);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_DA_REG6, P3A_RG_PLL_IR_PE2H, 0x2);
 
-	tmp = readl(u3_banks->phya + U3P_U3_PHYA_DA_REG7);
-	tmp &= ~P3A_RG_PLL_BP_PE2H;
-	tmp |= P3A_RG_PLL_BP_PE2H_VAL(0xa);
-	writel(tmp, u3_banks->phya + U3P_U3_PHYA_DA_REG7);
+	mtk_phy_update_field(phya + U3P_U3_PHYA_DA_REG7, P3A_RG_PLL_BP_PE2H, 0xa);
 
 	/* Tx Detect Rx Timing: 10us -> 5us */
-	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RXDET1);
-	tmp &= ~P3D_RG_RXDET_STB2_SET;
-	tmp |= P3D_RG_RXDET_STB2_SET_VAL(0x10);
-	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RXDET1);
+	mtk_phy_update_field(u3_banks->phyd + U3P_U3_PHYD_RXDET1,
+			     P3D_RG_RXDET_STB2_SET, 0x10);
 
-	tmp = readl(u3_banks->phyd + U3P_U3_PHYD_RXDET2);
-	tmp &= ~P3D_RG_RXDET_STB2_SET_P3;
-	tmp |= P3D_RG_RXDET_STB2_SET_P3_VAL(0x10);
-	writel(tmp, u3_banks->phyd + U3P_U3_PHYD_RXDET2);
+	mtk_phy_update_field(u3_banks->phyd + U3P_U3_PHYD_RXDET2,
+			     P3D_RG_RXDET_STB2_SET_P3, 0x10);
 
 	/* wait for PCIe subsys register to active */
 	usleep_range(2500, 3000);
@@ -1807,15 +1659,12 @@ static void pcie_phy_instance_power_on(struct mtk_tphy *tphy,
 	struct mtk_phy_instance *instance)
 {
 	struct u3phy_banks *bank = &instance->u3_banks;
-	u32 tmp;
 
-	tmp = readl(bank->chip + U3P_U3_CHIP_GPIO_CTLD);
-	tmp &= ~(P3C_FORCE_IP_SW_RST | P3C_REG_IP_SW_RST);
-	writel(tmp, bank->chip + U3P_U3_CHIP_GPIO_CTLD);
+	mtk_phy_clear_bits(bank->chip + U3P_U3_CHIP_GPIO_CTLD,
+			   P3C_FORCE_IP_SW_RST | P3C_REG_IP_SW_RST);
 
-	tmp = readl(bank->chip + U3P_U3_CHIP_GPIO_CTLE);
-	tmp &= ~(P3C_RG_SWRST_U3_PHYD_FORCE_EN | P3C_RG_SWRST_U3_PHYD);
-	writel(tmp, bank->chip + U3P_U3_CHIP_GPIO_CTLE);
+	mtk_phy_clear_bits(bank->chip + U3P_U3_CHIP_GPIO_CTLE,
+			   P3C_RG_SWRST_U3_PHYD_FORCE_EN | P3C_RG_SWRST_U3_PHYD);
 }
 
 static void pcie_phy_instance_power_off(struct mtk_tphy *tphy,
@@ -1823,15 +1672,12 @@ static void pcie_phy_instance_power_off(struct mtk_tphy *tphy,
 
 {
 	struct u3phy_banks *bank = &instance->u3_banks;
-	u32 tmp;
 
-	tmp = readl(bank->chip + U3P_U3_CHIP_GPIO_CTLD);
-	tmp |= P3C_FORCE_IP_SW_RST | P3C_REG_IP_SW_RST;
-	writel(tmp, bank->chip + U3P_U3_CHIP_GPIO_CTLD);
+	mtk_phy_set_bits(bank->chip + U3P_U3_CHIP_GPIO_CTLD,
+			 P3C_FORCE_IP_SW_RST | P3C_REG_IP_SW_RST);
 
-	tmp = readl(bank->chip + U3P_U3_CHIP_GPIO_CTLE);
-	tmp |= P3C_RG_SWRST_U3_PHYD_FORCE_EN | P3C_RG_SWRST_U3_PHYD;
-	writel(tmp, bank->chip + U3P_U3_CHIP_GPIO_CTLE);
+	mtk_phy_set_bits(bank->chip + U3P_U3_CHIP_GPIO_CTLE,
+			 P3C_RG_SWRST_U3_PHYD_FORCE_EN | P3C_RG_SWRST_U3_PHYD);
 }
 
 static void sata_phy_instance_init(struct mtk_tphy *tphy,
@@ -1839,55 +1685,42 @@ static void sata_phy_instance_init(struct mtk_tphy *tphy,
 {
 	struct u3phy_banks *u3_banks = &instance->u3_banks;
 	void __iomem *phyd = u3_banks->phyd;
-	u32 tmp;
 
 	/* charge current adjustment */
-	tmp = readl(phyd + ANA_RG_CTRL_SIGNAL6);
-	tmp &= ~(RG_CDR_BIRLTR_GEN1_MSK | RG_CDR_BC_GEN1_MSK);
-	tmp |= RG_CDR_BIRLTR_GEN1_VAL(0x6) | RG_CDR_BC_GEN1_VAL(0x1a);
-	writel(tmp, phyd + ANA_RG_CTRL_SIGNAL6);
+	mtk_phy_update_bits(phyd + ANA_RG_CTRL_SIGNAL6,
+			    RG_CDR_BIRLTR_GEN1_MSK | RG_CDR_BC_GEN1_MSK,
+			    FIELD_PREP(RG_CDR_BIRLTR_GEN1_MSK, 0x6) |
+			    FIELD_PREP(RG_CDR_BC_GEN1_MSK, 0x1a));
 
-	tmp = readl(phyd + ANA_EQ_EYE_CTRL_SIGNAL4);
-	tmp &= ~RG_CDR_BIRLTD0_GEN1_MSK;
-	tmp |= RG_CDR_BIRLTD0_GEN1_VAL(0x18);
-	writel(tmp, phyd + ANA_EQ_EYE_CTRL_SIGNAL4);
+	mtk_phy_update_field(phyd + ANA_EQ_EYE_CTRL_SIGNAL4, RG_CDR_BIRLTD0_GEN1_MSK, 0x18);
 
-	tmp = readl(phyd + ANA_EQ_EYE_CTRL_SIGNAL5);
-	tmp &= ~RG_CDR_BIRLTD0_GEN3_MSK;
-	tmp |= RG_CDR_BIRLTD0_GEN3_VAL(0x06);
-	writel(tmp, phyd + ANA_EQ_EYE_CTRL_SIGNAL5);
+	mtk_phy_update_field(phyd + ANA_EQ_EYE_CTRL_SIGNAL5, RG_CDR_BIRLTD0_GEN3_MSK, 0x06);
 
-	tmp = readl(phyd + ANA_RG_CTRL_SIGNAL4);
-	tmp &= ~(RG_CDR_BICLTR_GEN1_MSK | RG_CDR_BR_GEN2_MSK);
-	tmp |= RG_CDR_BICLTR_GEN1_VAL(0x0c) | RG_CDR_BR_GEN2_VAL(0x07);
-	writel(tmp, phyd + ANA_RG_CTRL_SIGNAL4);
+	mtk_phy_update_bits(phyd + ANA_RG_CTRL_SIGNAL4,
+			    RG_CDR_BICLTR_GEN1_MSK | RG_CDR_BR_GEN2_MSK,
+			    FIELD_PREP(RG_CDR_BICLTR_GEN1_MSK, 0x0c) |
+			    FIELD_PREP(RG_CDR_BR_GEN2_MSK, 0x07));
 
-	tmp = readl(phyd + PHYD_CTRL_SIGNAL_MODE4);
-	tmp &= ~(RG_CDR_BICLTD0_GEN1_MSK | RG_CDR_BICLTD1_GEN1_MSK);
-	tmp |= RG_CDR_BICLTD0_GEN1_VAL(0x08) | RG_CDR_BICLTD1_GEN1_VAL(0x02);
-	writel(tmp, phyd + PHYD_CTRL_SIGNAL_MODE4);
+	mtk_phy_update_bits(phyd + PHYD_CTRL_SIGNAL_MODE4,
+			    RG_CDR_BICLTD0_GEN1_MSK | RG_CDR_BICLTD1_GEN1_MSK,
+			    FIELD_PREP(RG_CDR_BICLTD0_GEN1_MSK, 0x08) |
+			    FIELD_PREP(RG_CDR_BICLTD1_GEN1_MSK, 0x02));
 
-	tmp = readl(phyd + PHYD_DESIGN_OPTION2);
-	tmp &= ~RG_LOCK_CNT_SEL_MSK;
-	tmp |= RG_LOCK_CNT_SEL_VAL(0x02);
-	writel(tmp, phyd + PHYD_DESIGN_OPTION2);
+	mtk_phy_update_field(phyd + PHYD_DESIGN_OPTION2, RG_LOCK_CNT_SEL_MSK, 0x02);
 
-	tmp = readl(phyd + PHYD_DESIGN_OPTION9);
-	tmp &= ~(RG_T2_MIN_MSK | RG_TG_MIN_MSK |
-		 RG_T2_MAX_MSK | RG_TG_MAX_MSK);
-	tmp |= RG_T2_MIN_VAL(0x12) | RG_TG_MIN_VAL(0x04) |
-	       RG_T2_MAX_VAL(0x31) | RG_TG_MAX_VAL(0x0e);
-	writel(tmp, phyd + PHYD_DESIGN_OPTION9);
+	mtk_phy_update_bits(phyd + PHYD_DESIGN_OPTION9,
+			    RG_T2_MIN_MSK | RG_TG_MIN_MSK,
+			    FIELD_PREP(RG_T2_MIN_MSK, 0x12) |
+			    FIELD_PREP(RG_TG_MIN_MSK, 0x04));
 
-	tmp = readl(phyd + ANA_RG_CTRL_SIGNAL1);
-	tmp &= ~RG_IDRV_0DB_GEN1_MSK;
-	tmp |= RG_IDRV_0DB_GEN1_VAL(0x20);
-	writel(tmp, phyd + ANA_RG_CTRL_SIGNAL1);
+	mtk_phy_update_bits(phyd + PHYD_DESIGN_OPTION9,
+			    RG_T2_MAX_MSK | RG_TG_MAX_MSK,
+			    FIELD_PREP(RG_T2_MAX_MSK, 0x31) |
+			    FIELD_PREP(RG_TG_MAX_MSK, 0x0e));
 
-	tmp = readl(phyd + ANA_EQ_EYE_CTRL_SIGNAL1);
-	tmp &= ~RG_EQ_DLEQ_LFI_GEN1_MSK;
-	tmp |= RG_EQ_DLEQ_LFI_GEN1_VAL(0x03);
-	writel(tmp, phyd + ANA_EQ_EYE_CTRL_SIGNAL1);
+	mtk_phy_update_field(phyd + ANA_RG_CTRL_SIGNAL1, RG_IDRV_0DB_GEN1_MSK, 0x20);
+
+	mtk_phy_update_field(phyd + ANA_EQ_EYE_CTRL_SIGNAL1, RG_EQ_DLEQ_LFI_GEN1_MSK, 0x03);
 
 	dev_dbg(tphy->dev, "%s(%d)\n", __func__, instance->index);
 }
@@ -1919,10 +1752,6 @@ static void phy_v1_banks_init(struct mtk_tphy *tphy,
 		return;
 	}
 }
-
-#ifdef CONFIG_MACH_MT6771
-static struct mtk_phy_instance *bc11_instance;
-#endif
 
 static void phy_v2_banks_init(struct mtk_tphy *tphy,
 			      struct mtk_phy_instance *instance)
@@ -1964,14 +1793,59 @@ static void phy_parse_property(struct mtk_tphy *tphy,
 				 &instance->eye_vrt);
 	device_property_read_u32(dev, "mediatek,eye-term",
 				 &instance->eye_term);
-	device_property_read_u32(dev, "mediatek,eye-rev6",
-				 &instance->eye_rev6);
-	device_property_read_u32(dev, "mediatek,eye-disc",
-				 &instance->eye_disc);
-	dev_dbg(dev, "bc12:%d, src:%d, vrt:%d, term:%d, rev6:%d, disc:%d\n",
+	device_property_read_u32(dev, "mediatek,intr",
+				 &instance->intr);
+	device_property_read_u32(dev, "mediatek,discth",
+				 &instance->discth);
+	device_property_read_u32(dev, "mediatek,pre-emphasis",
+				 &instance->pre_emphasis);
+	device_property_read_u32(dev, "mediatek,rx-sqth",
+				 &instance->rx_sqth);
+	device_property_read_u32(dev, "mediatek,rev4",
+				 &instance->rev4);
+	device_property_read_u32(dev, "mediatek,rev6",
+				 &instance->rev6);
+	device_property_read_u32(dev, "mediatek,eye-src-host",
+				 &instance->eye_src_host);
+	device_property_read_u32(dev, "mediatek,eye-vrt-host",
+				 &instance->eye_vrt_host);
+	device_property_read_u32(dev, "mediatek,eye-term-host",
+				 &instance->eye_term_host);
+	device_property_read_u32(dev, "mediatek,rev6-host",
+				&instance->rev6_host);
+	device_property_read_u32(dev, "mediatek,disc-host",
+				&instance->discth_host);
+	device_property_read_u32(dev, "mediatek,pll-bw",
+				&instance->pll_bw);
+	device_property_read_u32(dev, "mediatek,bgr-div",
+				&instance->bgr_div);
+	device_property_read_u32(dev, "mediatek,fsrxlvl",
+				&instance->fsrxlvl);
+	device_property_read_u32(dev, "mediatek,eq-leq-shift",
+				&instance->eq_leq_shift);
+	instance->usb_special_phy_settings = device_property_read_bool(dev,
+				"mediatek,usb-special-phy-settings");
+	dev_dbg(dev, "bc12:%d, src:%d, vrt:%d, term:%d, intr:%d, disc:%d\n",
 		instance->bc12_en, instance->eye_src,
 		instance->eye_vrt, instance->eye_term,
-		instance->eye_rev6, instance->eye_disc);
+		instance->intr, instance->discth);
+	dev_dbg(dev, "pre-emp:%d\n", instance->pre_emphasis);
+	dev_dbg(dev, "rx_sqth:%d\n", instance->rx_sqth);
+	dev_dbg(dev, "rev4:%d, rev6:%d\n", instance->rev4, instance->rev6);
+	dev_dbg(dev, "pll-bw:%d, bgr-div:%d\n", instance->pll_bw, instance->bgr_div);
+	dev_dbg(dev, "fsrxlvl:%d, eq-leq-shift:%d\n", instance->fsrxlvl, instance->eq_leq_shift);
+	dev_dbg(dev, "usb-special-phy-settings:%d\n", instance->usb_special_phy_settings);
+}
+
+static void u3_phy_props_set(struct mtk_tphy *tphy,
+			     struct mtk_phy_instance *instance)
+{
+	struct u3phy_banks *u3_banks = &instance->u3_banks;
+
+	if (instance->eq_leq_shift) {
+		mtk_phy_update_field(u3_banks->phyd + U3P_U3_PHYD_EQ_EYE3,
+				P3D_RG_EQ_LEQ_SHIFT, instance->eq_leq_shift);
+	}
 }
 
 static void u2_phy_props_set(struct mtk_tphy *tphy,
@@ -1980,58 +1854,378 @@ static void u2_phy_props_set(struct mtk_tphy *tphy,
 	struct u2phy_banks *u2_banks = &instance->u2_banks;
 	void __iomem *com = u2_banks->com;
 	struct device *dev = &instance->phy->dev;
-	u32 tmp;
+	struct device_node *np = dev->parent->of_node;
 
-	dev_info(dev, "%s, bc12:%d, src:%d, vrt:%d, term:%d, rev6:%d, dis:%d",
-		__func__, instance->bc12_en, instance->eye_src,
-		instance->eye_vrt, instance->eye_term, instance->eye_rev6,
-		instance->eye_disc);
+	dev_info(dev, "bc12:%d, src:%d, vrt:%d, term:%d, intr:%d\n",
+		instance->bc12_en, instance->eye_src,
+		instance->eye_vrt, instance->eye_term, instance->intr);
+	dev_info(dev, "disc:%d rx_sqth:%d\n",
+		instance->discth, instance->rx_sqth);
+	dev_info(dev, "rev4:%d, rev6:%d\n", instance->rev4, instance->rev6);
+	dev_dbg(dev, "pll-bw:%d, bgr-div:%d\n", instance->pll_bw, instance->bgr_div);
 
-	if (instance->bc12_en) {
-		tmp = readl(com + U3P_U2PHYBC12C);
-		tmp |= P2C_RG_CHGDT_EN;	/* BC1.2 path Enable */
-		writel(tmp, com + U3P_U2PHYBC12C);
+	if (instance->bc12_en) /* BC1.2 path Enable */
+		mtk_phy_set_bits(com + U3P_U2PHYBC12C, P2C_RG_CHGDT_EN);
+
+	if (tphy->pdata->version < MTK_PHY_V3 && instance->eye_src)
+		mtk_phy_update_field(com + U3P_USBPHYACR5, PA5_RG_U2_HSTX_SRCTRL,
+				     instance->eye_src);
+
+	if (instance->eye_vrt)
+		mtk_phy_update_field(com + U3P_USBPHYACR1, PA1_RG_VRT_SEL,
+				     instance->eye_vrt);
+
+	if (instance->eye_term)
+		mtk_phy_update_field(com + U3P_USBPHYACR1, PA1_RG_TERM_SEL,
+				     instance->eye_term);
+
+	if (instance->intr) {
+		if (u2_banks->misc)
+			mtk_phy_set_bits(u2_banks->misc + U3P_MISC_REG1,
+					 MR1_EFUSE_AUTO_LOAD_DIS);
+
+		mtk_phy_update_field(com + U3P_USBPHYACR1, PA1_RG_INTR_CAL,
+				     instance->intr);
 	}
 
-	if (instance->eye_src) {
-		tmp = readl(com + U3P_USBPHYACR5);
-		tmp &= ~PA5_RG_U2_HSTX_SRCTRL;
-		tmp |= PA5_RG_U2_HSTX_SRCTRL_VAL(instance->eye_src);
-		writel(tmp, com + U3P_USBPHYACR5);
+	if (instance->discth)
+		mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_DISCTH,
+				     instance->discth);
+
+	if (instance->pre_emphasis)
+		mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_PRE_EMP,
+				     instance->pre_emphasis);
+
+	if (instance->rev4)
+		mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_PHY_REV4,
+				     instance->rev4);
+
+	if (instance->rev6)
+		mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_PHY_REV6,
+				     instance->rev6);
+
+	if (instance->pll_bw)
+		mtk_phy_update_field(com + U3P_USBPHYACR2, PA2_RG_USB20_PLL_BW,
+				     instance->pll_bw);
+
+	if (instance->bgr_div)
+		mtk_phy_update_field(com + U3P_USBPHYACR0, PA0_RG_USB20_BGR_DIV,
+				    instance->bgr_div);
+
+	if (instance->fsrxlvl) {
+		mtk_phy_update_field(com + U3P_USBPHYACR2, PA2_RG_U2_CLKREF_REV,
+				instance->fsrxlvl);
 	}
 
-	if (instance->eye_vrt) {
-		tmp = readl(com + U3P_USBPHYACR1);
-		tmp &= ~PA1_RG_VRT_SEL;
-		tmp |= PA1_RG_VRT_SEL_VAL(instance->eye_vrt);
-		writel(tmp, com + U3P_USBPHYACR1);
+	if (instance->rx_sqth) {
+		if(of_device_is_compatible(np, "mediatek,mt6781-tphy")) {
+			/* for mt6781 only */
+			/* USBPHY_CLR32(0x18, (0x1<<28)); */
+			mtk_phy_clear_bits(com + U3P_USBPHYACR6, PA6_RG_U2_PHY_REV4);
+		}
+
+		if(of_device_is_compatible(np, "mediatek,mt6781-tphy") ||
+				of_device_is_compatible(np, "mediatek,mt6833-tphy")) {
+			/* for mt6781 && mt6833 */
+			/* USBPHY_CLR32(0x18, (0xf<<0)); */
+			mtk_phy_clear_bits(com + U3P_USBPHYACR6, PA6_RG_U2_SQTH);
+		}
+
+		mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_SQTH,
+				     instance->rx_sqth);
 	}
 
-	if (instance->eye_term) {
-		tmp = readl(com + U3P_USBPHYACR1);
-		tmp &= ~PA1_RG_TERM_SEL;
-		tmp |= PA1_RG_TERM_SEL_VAL(instance->eye_term);
-		writel(tmp, com + U3P_USBPHYACR1);
+	if(of_device_is_compatible(np, "mediatek,mt6853-tphy")) {
+		/* for mt6853 only */
+		/* u3phywrite32(U3D_USBPHYACR2, 11, (0x3<<11), 0x3); */
+		mtk_phy_update_field(com + U3P_USBPHYACR2,
+				PA2_RG_U2_CLKREF_REV_1, 0x3);
+	}
+}
+
+static void u2_phy_host_props_set(struct mtk_tphy *tphy,
+			     struct mtk_phy_instance *instance)
+{
+	struct u2phy_banks *u2_banks = &instance->u2_banks;
+	void __iomem *com = u2_banks->com;
+
+	if (instance->eye_src_host)
+		mtk_phy_update_field(com + U3P_USBPHYACR5, PA5_RG_U2_HSTX_SRCTRL,
+				instance->eye_src_host);
+
+	if (instance->eye_vrt_host)
+		mtk_phy_update_field(com + U3P_USBPHYACR1, PA1_RG_VRT_SEL,
+				instance->eye_vrt_host);
+
+	if (instance->eye_term_host)
+		mtk_phy_update_field(com + U3P_USBPHYACR1, PA1_RG_TERM_SEL,
+				instance->eye_term_host);
+
+	if (instance->rev6_host)
+		mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_PHY_REV6,
+				instance->rev6_host);
+
+	if (instance->discth_host)
+		mtk_phy_update_field(com + U3P_USBPHYACR6, PA6_RG_U2_DISCTH,
+				instance->discth_host);
+}
+
+/* type switch for usb3/pcie/sgmii/sata */
+static int phy_type_syscon_get(struct mtk_phy_instance *instance,
+			       struct device_node *dn)
+{
+	struct of_phandle_args args;
+	int ret;
+
+	/* type switch function is optional */
+	if (!of_property_read_bool(dn, "mediatek,syscon-type"))
+		return 0;
+
+	ret = of_parse_phandle_with_fixed_args(dn, "mediatek,syscon-type",
+					       2, 0, &args);
+	if (ret)
+		return ret;
+
+	instance->type_sw_reg = args.args[0];
+	instance->type_sw_index = args.args[1] & 0x3; /* <=3 */
+	instance->type_sw = syscon_node_to_regmap(args.np);
+	of_node_put(args.np);
+	dev_info(&instance->phy->dev, "type_sw - reg %#x, index %d\n",
+		 instance->type_sw_reg, instance->type_sw_index);
+
+	return PTR_ERR_OR_ZERO(instance->type_sw);
+}
+
+static int phy_type_set(struct mtk_phy_instance *instance)
+{
+	int type;
+	u32 offset;
+
+	if (!instance->type_sw)
+		return 0;
+
+	switch (instance->type) {
+	case PHY_TYPE_USB3:
+		type = RG_PHY_SW_USB3;
+		break;
+	case PHY_TYPE_PCIE:
+		type = RG_PHY_SW_PCIE;
+		break;
+	case PHY_TYPE_SGMII:
+		type = RG_PHY_SW_SGMII;
+		break;
+	case PHY_TYPE_SATA:
+		type = RG_PHY_SW_SATA;
+		break;
+	case PHY_TYPE_USB2:
+	default:
+		return 0;
 	}
 
-	if (instance->eye_rev6) {
-		tmp = readl(com + U3P_USBPHYACR6);
-		tmp &= ~PA6_RG_U2_PHY_REV6;
-		tmp |= PA6_RG_U2_PHY_REV6_VAL(instance->eye_rev6);
-		writel(tmp, com + U3P_USBPHYACR6);
+	offset = instance->type_sw_index * BITS_PER_BYTE;
+	regmap_update_bits(instance->type_sw, instance->type_sw_reg,
+			   RG_PHY_SW_TYPE << offset, type << offset);
+
+	return 0;
+}
+
+static int phy_efuse_get(struct mtk_tphy *tphy, struct mtk_phy_instance *instance)
+{
+	struct device *dev = &instance->phy->dev;
+	int ret = 0;
+
+	instance->set_efuse_v1 = device_property_read_bool(dev,
+				"mediatek,set-efuse-v1");
+	dev_info(dev, "set-efuse-v1:%d\n", instance->set_efuse_v1);
+	/* tphy v1 doesn't support sw efuse, skip it */
+	if (!tphy->pdata->sw_efuse_supported || instance->set_efuse_v1) {
+		instance->efuse_sw_en = 0;
+		return 0;
 	}
 
-	if (instance->eye_disc) {
-		tmp = readl(com + U3P_USBPHYACR6);
-		tmp &= ~PA6_RG_U2_DISCTH;
-		tmp |= PA6_RG_U2_DISCTH_VAL(instance->eye_disc);
-		writel(tmp, com + U3P_USBPHYACR6);
+	/* software efuse is optional */
+	instance->efuse_sw_en = device_property_read_bool(dev, "nvmem-cells");
+	if (!instance->efuse_sw_en)
+		return 0;
+
+	switch (instance->type) {
+	case PHY_TYPE_USB2:
+		ret = nvmem_cell_read_variable_le_u32(dev, "intr", &instance->efuse_intr);
+		if (ret) {
+			dev_err(dev, "fail to get u2 intr efuse, %d\n", ret);
+			break;
+		}
+
+		/* no efuse, ignore it */
+		if (!instance->efuse_intr) {
+			dev_warn(dev, "no u2 intr efuse, but dts enable it\n");
+			instance->efuse_sw_en = 0;
+			break;
+		}
+
+		dev_dbg(dev, "u2 efuse - intr %x\n", instance->efuse_intr);
+		break;
+
+	case PHY_TYPE_USB3:
+	case PHY_TYPE_PCIE:
+		ret = nvmem_cell_read_variable_le_u32(dev, "intr", &instance->efuse_intr);
+		if (ret) {
+			dev_err(dev, "fail to get u3 intr efuse, %d\n", ret);
+			break;
+		}
+
+		ret = nvmem_cell_read_variable_le_u32(dev, "rx_imp", &instance->efuse_rx_imp);
+		if (ret) {
+			dev_err(dev, "fail to get u3 rx_imp efuse, %d\n", ret);
+			break;
+		}
+
+		ret = nvmem_cell_read_variable_le_u32(dev, "tx_imp", &instance->efuse_tx_imp);
+		if (ret) {
+			dev_err(dev, "fail to get u3 tx_imp efuse, %d\n", ret);
+			break;
+		}
+
+		/* no efuse, ignore it */
+		if (!instance->efuse_intr &&
+		    !instance->efuse_rx_imp &&
+		    !instance->efuse_tx_imp) {
+			dev_warn(dev, "no u3 intr efuse, but dts enable it\n");
+			instance->efuse_sw_en = 0;
+			break;
+		}
+
+		dev_dbg(dev, "u3 efuse - intr %x, rx_imp %x, tx_imp %x\n",
+			instance->efuse_intr, instance->efuse_rx_imp,instance->efuse_tx_imp);
+		break;
+	default:
+		dev_err(dev, "no sw efuse for type %d\n", instance->type);
+		ret = -EINVAL;
 	}
 
-#ifdef CONFIG_MACH_MT6771
-	if ((tphy->phys[0] == instance) && (instance->type == PHY_TYPE_USB2))
-		bc11_instance = instance;
-#endif
+	return ret;
+}
+
+static int phy_efuse_set_v1(struct mtk_phy_instance *instance,
+			     enum mtk_phy_efuse type)
+{
+	struct device *dev = &instance->phy->dev;
+	struct device_node *np = dev->of_node;
+	struct u2phy_banks *u2_banks;
+	struct u3phy_banks *u3_banks;
+	u32 val, mask;
+	int index = 0, ret = 0;
+
+	index = of_property_match_string(np,
+			"nvmem-cell-names", efuse_name[type]);
+	if (index < 0)
+		return index;
+
+	ret = of_property_read_u32_index(np, "nvmem-cell-masks",
+			index, &mask);
+	if (ret)
+		return ret;
+
+	ret = nvmem_cell_read_u32(dev, efuse_name[type], &val);
+	if (ret)
+		return ret;
+
+	if (!val || !mask)
+		return 0;
+
+	val = (val & mask) >> (ffs(mask) - 1);
+	dev_info(dev, "%s, %s=0x%x\n", __func__, efuse_name[type], val);
+
+	switch (type) {
+	case INTR_CAL:
+		u2_banks = &instance->u2_banks;
+		mtk_phy_update_field(u2_banks->com + U3P_USBPHYACR1,
+				PA1_RG_INTR_CAL, val);
+		break;
+	case IEXT_INTR_CTRL:
+		u3_banks = &instance->u3_banks;
+		mtk_phy_update_field(u3_banks->phya + U3P_U3_PHYA_REG0,
+				P3A_RG_IEXT_INTR, val);
+		break;
+	case RX_IMPSEL:
+		u3_banks = &instance->u3_banks;
+		mtk_phy_update_field(u3_banks->phyd + U3P_U3_PHYD_IMPCAL1,
+				P3D_RG_RX_IMPEL, val);
+		break;
+	case TX_IMPSEL:
+		u3_banks = &instance->u3_banks;
+		mtk_phy_update_field(u3_banks->phyd + U3P_U3_PHYD_IMPCAL0,
+				P3D_RG_TX_IMPEL, val);
+		break;
+	default:
+		return 0;
+	}
+
+	return 0;
+}
+
+static void phy_efuse_set_(struct mtk_tphy *tphy,
+		struct mtk_phy_instance *instance)
+{
+	switch (instance->type) {
+	case PHY_TYPE_USB2:
+		/** u2_phy_efuse_set */
+		phy_efuse_set_v1(instance, INTR_CAL);
+		break;
+	case PHY_TYPE_USB3:
+		/** u3_phy_efuse_set */
+		phy_efuse_set_v1(instance, IEXT_INTR_CTRL);
+		phy_efuse_set_v1(instance, RX_IMPSEL);
+		phy_efuse_set_v1(instance, TX_IMPSEL);
+		break;
+	default:
+		break;
+	}
+}
+
+static void phy_efuse_set(struct mtk_phy_instance *instance)
+{
+	struct device *dev = &instance->phy->dev;
+	struct u2phy_banks *u2_banks = &instance->u2_banks;
+	struct u3phy_banks *u3_banks = &instance->u3_banks;
+
+	struct mtk_tphy *tphy = dev_get_drvdata(dev->parent);
+
+	if ((tphy->pdata->version == MTK_PHY_V1 && !instance->efuse_sw_en) ||
+			instance->set_efuse_v1) {
+		phy_efuse_set_(tphy, instance);
+		return;
+	}
+
+	if (!instance->efuse_sw_en)
+		return;
+
+	switch (instance->type) {
+	case PHY_TYPE_USB2:
+		mtk_phy_set_bits(u2_banks->misc + U3P_MISC_REG1, MR1_EFUSE_AUTO_LOAD_DIS);
+
+		mtk_phy_update_field(u2_banks->com + U3P_USBPHYACR1, PA1_RG_INTR_CAL,
+				     instance->efuse_intr);
+		break;
+	case PHY_TYPE_USB3:
+	case PHY_TYPE_PCIE:
+		mtk_phy_set_bits(u3_banks->phyd + U3P_U3_PHYD_RSV, P3D_RG_EFUSE_AUTO_LOAD_DIS);
+
+		mtk_phy_update_field(u3_banks->phyd + U3P_U3_PHYD_IMPCAL0, P3D_RG_TX_IMPEL,
+				    instance->efuse_tx_imp);
+		mtk_phy_set_bits(u3_banks->phyd + U3P_U3_PHYD_IMPCAL0, P3D_RG_FORCE_TX_IMPEL);
+
+		mtk_phy_update_field(u3_banks->phyd + U3P_U3_PHYD_IMPCAL1, P3D_RG_RX_IMPEL,
+				    instance->efuse_rx_imp);
+		mtk_phy_set_bits(u3_banks->phyd + U3P_U3_PHYD_IMPCAL1, P3D_RG_FORCE_RX_IMPEL);
+
+		mtk_phy_update_field(u3_banks->phya + U3P_U3_PHYA_REG0, P3A_RG_IEXT_INTR,
+				    instance->efuse_intr);
+		break;
+	default:
+		dev_warn(dev, "no sw efuse for type %d\n", instance->type);
+		break;
+	}
 }
 
 static int mtk_phy_init(struct phy *phy)
@@ -2040,32 +2234,20 @@ static int mtk_phy_init(struct phy *phy)
 	struct mtk_tphy *tphy = dev_get_drvdata(phy->dev.parent);
 	int ret;
 
-	ret = clk_prepare_enable(tphy->u3phya_ref);
-	if (ret) {
-		dev_err(tphy->dev, "failed to enable u3phya_ref\n");
+	ret = clk_bulk_prepare_enable(TPHY_CLKS_CNT, instance->clks);
+	if (ret)
 		return ret;
-	}
 
-	ret = clk_prepare_enable(instance->ref_clk);
-	if (ret) {
-		dev_err(tphy->dev, "failed to enable ref_clk\n");
-		return ret;
-	}
-
-	ret = u2_phy_instance_get_mode_ext(tphy, instance);
-	if (ret == PHY_MODE_UART)
-		return 0;
+	phy_efuse_set(instance);
 
 	switch (instance->type) {
 	case PHY_TYPE_USB2:
 		u2_phy_instance_init(tphy, instance);
-		u2_phy_efuse_set(tphy, instance);
 		u2_phy_props_set(tphy, instance);
 		u2_phy_procfs_init(tphy, instance);
 		break;
 	case PHY_TYPE_USB3:
 		u3_phy_instance_init(tphy, instance);
-		u3_phy_efuse_set(tphy, instance);
 		u3_phy_procfs_init(tphy, instance);
 		break;
 	case PHY_TYPE_PCIE:
@@ -2074,8 +2256,12 @@ static int mtk_phy_init(struct phy *phy)
 	case PHY_TYPE_SATA:
 		sata_phy_instance_init(tphy, instance);
 		break;
+	case PHY_TYPE_SGMII:
+		/* nothing to do, only used to set type */
+		break;
 	default:
 		dev_err(tphy->dev, "incompatible PHY type\n");
+		clk_bulk_disable_unprepare(TPHY_CLKS_CNT, instance->clks);
 		return -EINVAL;
 	}
 
@@ -2090,8 +2276,10 @@ static int mtk_phy_power_on(struct phy *phy)
 	if (instance->type == PHY_TYPE_USB2) {
 		u2_phy_instance_power_on(tphy, instance);
 		hs_slew_rate_calibrate(tphy, instance);
+		u2_phy_props_set(tphy, instance);
 	} else if (instance->type == PHY_TYPE_USB3) {
 		u3_phy_instance_power_on(tphy, instance);
+		u3_phy_props_set(tphy, instance);
 	} else if (instance->type == PHY_TYPE_PCIE) {
 		pcie_phy_instance_power_on(tphy, instance);
 	}
@@ -2123,26 +2311,11 @@ static int mtk_phy_exit(struct phy *phy)
 		u2_phy_instance_exit(tphy, instance);
 		u2_phy_procfs_exit(instance);
 	}
-
 	if (instance->type == PHY_TYPE_USB3)
 		u3_phy_procfs_exit(instance);
 
-	clk_disable_unprepare(instance->ref_clk);
-	clk_disable_unprepare(tphy->u3phya_ref);
+	clk_bulk_disable_unprepare(TPHY_CLKS_CNT, instance->clks);
 	return 0;
-}
-
-static int mtk_phy_get_mode_ext(struct phy *phy)
-{
-	struct mtk_phy_instance *instance = phy_get_drvdata(phy);
-	struct mtk_tphy *tphy = dev_get_drvdata(phy->dev.parent);
-	int ret;
-
-	ret = 0;
-	if (instance->type == PHY_TYPE_USB2)
-		ret = u2_phy_instance_get_mode_ext(tphy, instance);
-
-	return ret;
 }
 
 static int mtk_phy_set_mode(struct phy *phy, enum phy_mode mode, int submode)
@@ -2150,13 +2323,163 @@ static int mtk_phy_set_mode(struct phy *phy, enum phy_mode mode, int submode)
 	struct mtk_phy_instance *instance = phy_get_drvdata(phy);
 	struct mtk_tphy *tphy = dev_get_drvdata(phy->dev.parent);
 
-	if (instance->type == PHY_TYPE_USB2) {
-		if (submode)
-			u2_phy_instance_set_mode_ext(tphy, instance, submode);
-		else
-			u2_phy_instance_set_mode(tphy, instance, mode);
+	if (instance->type == PHY_TYPE_USB2)
+		u2_phy_instance_set_mode(tphy, instance, mode, submode);
+
+	return 0;
+}
+
+static bool mtk_phy_uart_mode(struct mtk_tphy *tphy)
+{
+	struct device_node *of_chosen;
+	char *bootargs;
+	bool uart_mode = false;
+
+	of_chosen = of_find_node_by_path("/chosen");
+	if (of_chosen) {
+		bootargs = (char *)of_get_property(of_chosen,
+			"bootargs", NULL);
+
+		if (bootargs && strstr(bootargs, PHY_MODE_UART))
+			uart_mode = true;
 	}
 
+	return uart_mode;
+}
+
+static int mtk_phy_uart_init(struct phy *phy)
+{
+	struct mtk_phy_instance *instance = phy_get_drvdata(phy);
+	struct mtk_tphy *tphy = dev_get_drvdata(phy->dev.parent);
+	int ret;
+
+	if  (instance->type != PHY_TYPE_USB2)
+		return 0;
+
+	dev_info(tphy->dev, "uart init\n");
+
+	ret = clk_bulk_prepare_enable(TPHY_CLKS_CNT, instance->clks);
+	if (ret) {
+		dev_info(tphy->dev, "failed to enable clock\n");
+		return ret;
+	}
+	udelay(250);
+
+	return 0;
+}
+
+static int mtk_phy_uart_exit(struct phy *phy)
+{
+	struct mtk_phy_instance *instance = phy_get_drvdata(phy);
+	struct mtk_tphy *tphy = dev_get_drvdata(phy->dev.parent);
+
+	if  (instance->type != PHY_TYPE_USB2)
+		return 0;
+
+	dev_info(tphy->dev, "uart exit\n");
+
+	clk_bulk_disable_unprepare(TPHY_CLKS_CNT, instance->clks);
+	return 0;
+}
+
+static bool mtk_phy_jtag_mode(struct mtk_tphy *tphy)
+{
+	struct device_node *of_chosen;
+	char *bootargs;
+	bool jtag_mode = false;
+
+	of_chosen = of_find_node_by_path("/chosen");
+	if (of_chosen) {
+		bootargs = (char *)of_get_property(of_chosen,
+			"bootargs", NULL);
+
+		if (bootargs && strstr(bootargs, PHY_MODE_JTAG))
+			jtag_mode = true;
+	}
+
+	return jtag_mode;
+}
+
+static int mtk_phy_jtag_init(struct phy *phy)
+{
+	struct mtk_phy_instance *instance = phy_get_drvdata(phy);
+	struct mtk_tphy *tphy = dev_get_drvdata(phy->dev.parent);
+	struct device *dev = &phy->dev;
+	struct device_node *np = dev->of_node;
+	struct u2phy_banks *u2_banks = &instance->u2_banks;
+	struct of_phandle_args args;
+	struct regmap *reg_base;
+	u32 jtag_vers;
+	u32 tmp;
+	int ret;
+
+	if  (instance->type != PHY_TYPE_USB2)
+		return 0;
+
+	dev_info(tphy->dev, "jtag init\n");
+
+	ret = of_parse_phandle_with_fixed_args(np, "usb2jtag", 1, 0, &args);
+	if (ret)
+		return ret;
+
+	jtag_vers = args.args[0];
+	reg_base = syscon_node_to_regmap(args.np);
+	of_node_put(args.np);
+
+	dev_info(tphy->dev, "version:%d\n", jtag_vers);
+
+	ret = clk_bulk_prepare_enable(TPHY_CLKS_CNT, instance->clks);
+	if (ret) {
+		dev_err(tphy->dev, "failed to enable clock\n");
+		return ret;
+	}
+	tmp = readl(u2_banks->com + 0x20);
+	tmp |= 0xf300;
+	writel(tmp, u2_banks->com + 0x20);
+
+	tmp = readl(u2_banks->com  + 0x18);
+	tmp &= 0xff7ffff;
+	writel(tmp, u2_banks->com  + 0x18);
+
+	tmp = readl(u2_banks->com);
+	tmp |= 0x1;
+	writel(tmp, u2_banks->com);
+
+	tmp = readl(u2_banks->com  + 0x08);
+	tmp &= 0xfffdffff;
+	writel(tmp, u2_banks->com  + 0x08);
+
+	udelay(100);
+
+	switch (jtag_vers) {
+	case MTK_PHY_JTAG_V1:
+		regmap_read(reg_base, 0xf00, &tmp);
+		tmp |= 0x4030;
+		regmap_write(reg_base, 0xf00, tmp);
+		break;
+	case MTK_PHY_JTAG_V2:
+		regmap_read(reg_base, 0x100, &tmp);
+		tmp |= 0x2;
+		regmap_write(reg_base, 0x100, tmp);
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+static int mtk_phy_jtag_exit(struct phy *phy)
+{
+	struct mtk_phy_instance *instance = phy_get_drvdata(phy);
+	struct mtk_tphy *tphy = dev_get_drvdata(phy->dev.parent);
+
+	if  (instance->type != PHY_TYPE_USB2)
+		return 0;
+
+	dev_info(tphy->dev, "jtag exit\n");
+
+	clk_bulk_disable_unprepare(TPHY_CLKS_CNT, instance->clks);
 	return 0;
 }
 
@@ -2167,6 +2490,7 @@ static struct phy *mtk_phy_xlate(struct device *dev,
 	struct mtk_phy_instance *instance = NULL;
 	struct device_node *phy_np = args->np;
 	int index;
+	int ret;
 
 	if (args->args_count != 1) {
 		dev_err(dev, "invalid number of cells in 'phy' property\n");
@@ -2188,24 +2512,46 @@ static struct phy *mtk_phy_xlate(struct device *dev,
 	if (!(instance->type == PHY_TYPE_USB2 ||
 	      instance->type == PHY_TYPE_USB3 ||
 	      instance->type == PHY_TYPE_PCIE ||
-	      instance->type == PHY_TYPE_SATA)) {
+	      instance->type == PHY_TYPE_SATA ||
+	      instance->type == PHY_TYPE_SGMII)) {
 		dev_err(dev, "unsupported device type: %d\n", instance->type);
 		return ERR_PTR(-EINVAL);
 	}
 
-	if (tphy->pdata->version == MTK_PHY_V1) {
+	switch (tphy->pdata->version) {
+	case MTK_PHY_V1:
 		phy_v1_banks_init(tphy, instance);
-	} else if (tphy->pdata->version == MTK_PHY_V2) {
+		break;
+	case MTK_PHY_V2:
+	case MTK_PHY_V3:
 		phy_v2_banks_init(tphy, instance);
-	} else {
+		break;
+	default:
 		dev_err(dev, "phy version is not supported\n");
 		return ERR_PTR(-EINVAL);
 	}
 
+	ret = phy_efuse_get(tphy, instance);
+	if (ret)
+		return ERR_PTR(ret);
+
 	phy_parse_property(tphy, instance);
+	phy_type_set(instance);
 
 	return instance->phy;
 }
+
+static const struct phy_ops mtk_phy_uart_ops = {
+	.init		= mtk_phy_uart_init,
+	.exit		= mtk_phy_uart_exit,
+	.owner		= THIS_MODULE,
+};
+
+static const struct phy_ops mtk_phy_jtag_ops = {
+	.init		= mtk_phy_jtag_init,
+	.exit		= mtk_phy_jtag_exit,
+	.owner		= THIS_MODULE,
+};
 
 static const struct phy_ops mtk_tphy_ops = {
 	.init		= mtk_phy_init,
@@ -2213,7 +2559,6 @@ static const struct phy_ops mtk_tphy_ops = {
 	.power_on	= mtk_phy_power_on,
 	.power_off	= mtk_phy_power_off,
 	.set_mode	= mtk_phy_set_mode,
-	.get_mode_ext	= mtk_phy_get_mode_ext,
 	.owner		= THIS_MODULE,
 };
 
@@ -2224,7 +2569,13 @@ static const struct mtk_phy_pdata tphy_v1_pdata = {
 
 static const struct mtk_phy_pdata tphy_v2_pdata = {
 	.avoid_rx_sen_degradation = false,
+	.sw_efuse_supported = true,
 	.version = MTK_PHY_V2,
+};
+
+static const struct mtk_phy_pdata tphy_v3_pdata = {
+	.sw_efuse_supported = true,
+	.version = MTK_PHY_V3,
 };
 
 static const struct mtk_phy_pdata mt8173_pdata = {
@@ -2232,12 +2583,20 @@ static const struct mtk_phy_pdata mt8173_pdata = {
 	.version = MTK_PHY_V1,
 };
 
+static const struct mtk_phy_pdata mt8195_pdata = {
+	.sw_pll_48m_to_26m = true,
+	.sw_efuse_supported = true,
+	.version = MTK_PHY_V3,
+};
+
 static const struct of_device_id mtk_tphy_id_table[] = {
 	{ .compatible = "mediatek,mt2701-u3phy", .data = &tphy_v1_pdata },
 	{ .compatible = "mediatek,mt2712-u3phy", .data = &tphy_v2_pdata },
 	{ .compatible = "mediatek,mt8173-u3phy", .data = &mt8173_pdata },
+	{ .compatible = "mediatek,mt8195-tphy", .data = &mt8195_pdata },
 	{ .compatible = "mediatek,generic-tphy-v1", .data = &tphy_v1_pdata },
 	{ .compatible = "mediatek,generic-tphy-v2", .data = &tphy_v2_pdata },
+	{ .compatible = "mediatek,generic-tphy-v3", .data = &tphy_v3_pdata },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, mtk_tphy_id_table);
@@ -2267,14 +2626,6 @@ static int mtk_tphy_probe(struct platform_device *pdev)
 	if (!tphy->phys)
 		return -ENOMEM;
 
-	retval = device_rename(dev, np->name);
-	if (retval)
-		dev_info(&pdev->dev, "failed to rename\n");
-	/* fix uaf(use after free) issue: backup pdev->name,
-	 * device_rename will free pdev->name
-	 */
-	pdev->name = pdev->dev.kobj.name;
-
 	tphy->dev = dev;
 	platform_set_drvdata(pdev, tphy);
 
@@ -2289,21 +2640,21 @@ static int mtk_tphy_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* it's deprecated, make it optional for backward compatibility */
-	tphy->u3phya_ref = devm_clk_get_optional(dev, "u3phya_ref");
-	if (IS_ERR(tphy->u3phya_ref))
-		return PTR_ERR(tphy->u3phya_ref);
-
-	tphy->src_ref_clk = U3P_REF_CLK;
-	tphy->src_coef = U3P_SLEW_RATE_COEF;
-	/* update parameters of slew rate calibrate if exist */
-	device_property_read_u32(dev, "mediatek,src-ref-clk-mhz",
-		&tphy->src_ref_clk);
-	device_property_read_u32(dev, "mediatek,src-coef", &tphy->src_coef);
+	if (tphy->pdata->version < MTK_PHY_V3) {
+		tphy->src_ref_clk = U3P_REF_CLK;
+		tphy->src_coef = U3P_SLEW_RATE_COEF;
+		/* update parameters of slew rate calibrate if exist */
+		device_property_read_u32(dev, "mediatek,src-ref-clk-mhz",
+					 &tphy->src_ref_clk);
+		device_property_read_u32(dev, "mediatek,src-coef",
+					 &tphy->src_coef);
+	}
 
 	port = 0;
 	for_each_child_of_node(np, child_np) {
 		struct mtk_phy_instance *instance;
+		struct clk_bulk_data *clks;
+		struct device *subdev;
 		struct phy *phy;
 
 		instance = devm_kzalloc(dev, sizeof(*instance), GFP_KERNEL);
@@ -2321,18 +2672,30 @@ static int mtk_tphy_probe(struct platform_device *pdev)
 			goto put_child;
 		}
 
+		subdev = &phy->dev;
 		retval = of_address_to_resource(child_np, 0, &res);
 		if (retval) {
-			dev_err(dev, "failed to get address resource(id-%d)\n",
+			dev_err(subdev, "failed to get address resource(id-%d)\n",
 				port);
 			goto put_child;
 		}
 
-		instance->port_base = devm_ioremap_resource(&phy->dev, &res);
+		instance->port_base = devm_ioremap_resource(subdev, &res);
 		if (IS_ERR(instance->port_base)) {
-			dev_err(dev, "failed to remap phy regs\n");
 			retval = PTR_ERR(instance->port_base);
 			goto put_child;
+		}
+
+		/* Get optional property ippc address */
+		retval = of_address_to_resource(child_np, 1, &res);
+		if (retval) {
+			dev_info(dev, "failed to get ippc resource(id-%d)\n",
+				port);
+		} else {
+			instance->ippc_base = devm_ioremap(dev, res.start,
+				resource_size(&res));
+			if (IS_ERR(instance->ippc_base))
+				dev_info(dev, "failed to remap ippc regs\n");
 		}
 
 		instance->phy = phy;
@@ -2340,18 +2703,23 @@ static int mtk_tphy_probe(struct platform_device *pdev)
 		phy_set_drvdata(phy, instance);
 		port++;
 
-		/* if deprecated clock is provided, ignore instance's one */
-		if (tphy->u3phya_ref)
-			continue;
-
-		instance->ref_clk = devm_clk_get(&phy->dev, "ref");
-		if (IS_ERR(instance->ref_clk)) {
-			dev_err(dev, "failed to get ref_clk(id-%d)\n", port);
-			retval = PTR_ERR(instance->ref_clk);
+		clks = instance->clks;
+		clks[0].id = "ref";     /* digital (& analog) clock */
+		clks[1].id = "da_ref";  /* analog clock */
+		retval = devm_clk_bulk_get_optional(subdev, TPHY_CLKS_CNT, clks);
+		if (retval)
 			goto put_child;
-		}
-	}
 
+		retval = phy_type_syscon_get(instance, child_np);
+		if (retval)
+			goto put_child;
+
+		/* change ops to usb uart or jtage mode */
+		if (mtk_phy_uart_mode(tphy))
+			phy->ops = &mtk_phy_uart_ops;
+		else if (mtk_phy_jtag_mode(tphy))
+			phy->ops = &mtk_phy_jtag_ops;
+	}
 	mtk_phy_procfs_init(tphy);
 
 	provider = devm_of_phy_provider_register(dev, mtk_phy_xlate);
@@ -2380,42 +2748,6 @@ static struct platform_driver mtk_tphy_driver = {
 };
 
 module_platform_driver(mtk_tphy_driver);
-
-#ifdef CONFIG_MACH_MT6771
-void Charger_Detect_Init(void)
-{
-	struct u2phy_banks *u2_banks;
-	void __iomem *com;
-	u32 tmp;
-
-	if (!bc11_instance)
-		return;
-
-	u2_banks = &bc11_instance->u2_banks;
-	com = u2_banks->com;
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp |= PA6_RG_U2_BC11_SW_EN;   /* DP/DM BC1.1 path Disable */
-	writel(tmp, com + U3P_USBPHYACR6);
-}
-EXPORT_SYMBOL_GPL(Charger_Detect_Init);
-
-void Charger_Detect_Release(void)
-{
-	struct u2phy_banks *u2_banks;
-	void __iomem *com;
-	u32 tmp;
-
-	if (!bc11_instance)
-		return;
-
-	u2_banks = &bc11_instance->u2_banks;
-	com = u2_banks->com;
-	tmp = readl(com + U3P_USBPHYACR6);
-	tmp &= ~PA6_RG_U2_BC11_SW_EN;   /* DP/DM BC1.1 path Disable */
-	writel(tmp, com + U3P_USBPHYACR6);
-}
-EXPORT_SYMBOL_GPL(Charger_Detect_Release);
-#endif
 
 MODULE_AUTHOR("Chunfeng Yun <chunfeng.yun@mediatek.com>");
 MODULE_DESCRIPTION("MediaTek T-PHY driver");

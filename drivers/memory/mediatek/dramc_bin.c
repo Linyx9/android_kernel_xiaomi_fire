@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Author: Sagy Shih <sagy.shih@mediatek.com>
  */
-
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/printk.h>
 #include <linux/vmalloc.h>
 
@@ -371,3 +371,6 @@ fail:
 	return ret;
 }
 
+MODULE_AUTHOR("Mediatek Corporation");
+MODULE_DESCRIPTION("DRAMC BINNING Test");
+MODULE_LICENSE("GPL v2");

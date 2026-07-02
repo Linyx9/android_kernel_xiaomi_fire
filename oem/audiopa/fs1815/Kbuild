@@ -1,0 +1,9 @@
+ifdef CONFIG_SND_SOC_FS1815
+	SND_SOC_FS1815_OBJS += fs1815.o
+	SND_SOC_FS1815_OBJS += fsm_core.o
+	SND_SOC_FS1815_OBJS += fsm_i2c.o
+endif
+
+obj-$(CONFIG_SND_SOC_FS1815) += snd-soc-fs1815.o
+snd-soc-fs1815-y := $(SND_SOC_FS1815_OBJS)
+

@@ -14,7 +14,6 @@
 
 #include "../common/mtk-afe-fe-dai.h"
 #include "../common/mtk-afe-platform-driver.h"
-#include "../scp_vow/mtk-scp-vow-common.h"
 
 #include "mt6877-afe-common.h"
 
@@ -194,7 +193,7 @@ static int mt6877_sgen_amplitude_set(struct snd_kcontrol *kcontrol,
 
 	amplitude = ucontrol->value.integer.value[0];
 	if (amplitude > AMP_DIV_CH1_MASK) {
-		dev_warn(afe->dev, "%s(), amplitude %d invalid\n",
+		dev_info(afe->dev, "%s(), amplitude %d invalid\n",
 			 __func__, amplitude);
 		return -EINVAL;
 	}
@@ -285,46 +284,6 @@ static const struct snd_kcontrol_new mt6877_afe_sgen_controls[] = {
 		   FREQ_DIV_CH2_SFT, FREQ_DIV_CH2_MASK, 0),
 };
 
-/* audio debug log */
-static const char * const mt6877_afe_off_on_str[] = {
-	"Off", "On"
-};
-
-static int mt6877_afe_debug_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	return 0;
-}
-
-static int mt6877_afe_debug_set(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
-	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(cmpnt);
-	unsigned int value, i;
-
-	for (i = 0; i <= AFE_MAX_REGISTER; i = i + 4) {
-		if (!mt6877_reg_str[i / 4])
-			continue;
-
-		regmap_read(afe->regmap, i, &value);
-		dev_info(afe->dev, "%s = 0x%x\n",
-			 mt6877_reg_str[i / 4], value);
-	}
-
-	return 0;
-}
-
-static const struct soc_enum mt6877_afe_misc_enum[] = {
-	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(mt6877_afe_off_on_str),
-			    mt6877_afe_off_on_str),
-};
-
-static const struct snd_kcontrol_new mt6877_afe_debug_controls[] = {
-	SOC_ENUM_EXT("Audio_Debug_Setting", mt6877_afe_misc_enum[0],
-		     mt6877_afe_debug_get, mt6877_afe_debug_set),
-};
-
 /* usb call control */
 static int mt6877_usb_echo_ref_get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
@@ -358,13 +317,26 @@ static int mt6877_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 		enable = false;
 
 	if (!dl_memif->substream) {
-		dev_warn(afe->dev, "%s(), dl_memif->substream == NULL\n",
+		dev_info(afe->dev, "%s(), dl_memif->substream == NULL\n",
 			 __func__);
-		return -EINVAL;
+
+		if (afe_priv->usb_call_echo_ref_reallocate) {
+			dev_info(afe->dev, "%s(), free area: %p\n", __func__,
+				 dl_memif->dma_area);
+			/* free previous allocate */
+			dma_free_coherent(afe->dev,
+					  dl_memif->dma_bytes,
+					  dl_memif->dma_area,
+					  dl_memif->dma_addr);
+
+			afe_priv->usb_call_echo_ref_reallocate = false;
+			afe_priv->usb_call_echo_ref_enable = false;
+		}
+		return 0;
 	}
 
 	if (!ul_memif->substream) {
-		dev_warn(afe->dev, "%s(), ul_memif->substream == NULL\n",
+		dev_info(afe->dev, "%s(), ul_memif->substream == NULL\n",
 			 __func__);
 		return -EINVAL;
 	}
@@ -387,6 +359,9 @@ static int mt6877_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 			unsigned char *dma_area;
 
 			if (afe_priv->usb_call_echo_ref_reallocate) {
+				dev_info(afe->dev, "%s(), free area: %p\n",
+					 __func__,
+					 dl_memif->dma_area);
 				/* free previous allocate */
 				dma_free_coherent(afe->dev,
 						  dl_memif->dma_bytes,
@@ -400,7 +375,7 @@ static int mt6877_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 						      &dl_memif->dma_addr,
 						      GFP_KERNEL | GFP_DMA);
 			if (!dma_area) {
-				dev_err(afe->dev, "%s(), dma_alloc_coherent fail\n",
+				dev_info(afe->dev, "%s(), dma_alloc_coherent fail\n",
 					__func__);
 				return -ENOMEM;
 			}
@@ -417,7 +392,8 @@ static int mt6877_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 		/* just to double confirm the buffer size is align */
 		if (dl_memif->dma_bytes !=
 		    word_size_align(dl_memif->dma_bytes)) {
-			AUDIO_AEE("buffer size not align");
+			dev_info(afe->dev, "%s(), buffer size not align\n",
+				__func__);
 		}
 
 		/* let ul use the same memory as dl */
@@ -448,6 +424,8 @@ static int mt6877_usb_echo_ref_set(struct snd_kcontrol *kcontrol,
 		mtk_memif_set_disable(afe, ul_id);
 
 		if (afe_priv->usb_call_echo_ref_reallocate) {
+			dev_info(afe->dev, "%s(), free area: %p\n", __func__,
+				 dl_memif->dma_area);
 			/* free previous allocate */
 			dma_free_coherent(afe->dev,
 					  dl_memif->dma_bytes,
@@ -524,7 +502,7 @@ static int speech_property_get(struct snd_kcontrol *kcontrol,
 	sph_property = (int *)get_sph_property_by_name(afe_priv,
 						       kcontrol->id.name);
 	if (!sph_property) {
-		dev_err(afe->dev, "%s(), sph_property == NULL\n", __func__);
+		dev_info(afe->dev, "%s(), sph_property == NULL\n", __func__);
 		return -EINVAL;
 	}
 	ucontrol->value.integer.value[0] = *sph_property;
@@ -543,7 +521,7 @@ static int speech_property_set(struct snd_kcontrol *kcontrol,
 	sph_property = (int *)get_sph_property_by_name(afe_priv,
 						       kcontrol->id.name);
 	if (!sph_property) {
-		dev_err(afe->dev, "%s(), sph_property == NULL\n", __func__);
+		dev_info(afe->dev, "%s(), sph_property == NULL\n", __func__);
 		return -EINVAL;
 	}
 	*sph_property = ucontrol->value.integer.value[0];
@@ -612,13 +590,13 @@ static const struct snd_kcontrol_new mt6877_afe_speech_controls[] = {
 static int mt6877_afe_vow_bargein_get(struct snd_kcontrol *kcontrol,
 				      struct snd_ctl_elem_value *ucontrol)
 {
-#if defined(CONFIG_MTK_VOW_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_VOW_SUPPORT)
 	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(cmpnt);
 	int id;
 
-	id = get_scp_vow_memif_id();
-	ucontrol->value.integer.value[0] = afe->memif[id].vow_bargein_enable;
+	id = MT6877_BARGEIN_MEMIF;
+	ucontrol->value.integer.value[0] = afe->memif[id].vow_barge_in_enable;
 #endif
 	return 0;
 }
@@ -626,17 +604,17 @@ static int mt6877_afe_vow_bargein_get(struct snd_kcontrol *kcontrol,
 static int mt6877_afe_vow_bargein_set(struct snd_kcontrol *kcontrol,
 				      struct snd_ctl_elem_value *ucontrol)
 {
-#if defined(CONFIG_MTK_VOW_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_VOW_SUPPORT)
 	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(cmpnt);
 	int id;
 	int val;
 
-	id = get_scp_vow_memif_id();
+	id = MT6877_BARGEIN_MEMIF;
 	val = ucontrol->value.integer.value[0];
 	dev_info(afe->dev, "%s(), %d\n", __func__, val);
 
-	afe->memif[id].vow_bargein_enable = (val > 0) ? true : false;
+	afe->memif[id].vow_barge_in_enable = (val > 0) ? true : false;
 #endif
 	return 0;
 }
@@ -647,27 +625,25 @@ static const struct snd_kcontrol_new mt6877_afe_bargein_controls[] = {
 		       mt6877_afe_vow_bargein_set),
 };
 
-int mt6877_add_misc_control(struct snd_soc_component *platform)
+int mt6877_add_misc_control(struct snd_soc_component *component)
 {
-	dev_info(platform->dev, "%s()\n", __func__);
+	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
 
-	snd_soc_add_component_controls(platform,
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
+
+	snd_soc_add_component_controls(component,
 				      mt6877_afe_sgen_controls,
 				      ARRAY_SIZE(mt6877_afe_sgen_controls));
 
-	snd_soc_add_component_controls(platform,
-				      mt6877_afe_debug_controls,
-				      ARRAY_SIZE(mt6877_afe_debug_controls));
-
-	snd_soc_add_component_controls(platform,
+	snd_soc_add_component_controls(component,
 				      mt6877_afe_usb_controls,
 				      ARRAY_SIZE(mt6877_afe_usb_controls));
 
-	snd_soc_add_component_controls(platform,
+	snd_soc_add_component_controls(component,
 				      mt6877_afe_speech_controls,
 				      ARRAY_SIZE(mt6877_afe_speech_controls));
 
-	snd_soc_add_component_controls(platform,
+	snd_soc_add_component_controls(component,
 				      mt6877_afe_bargein_controls,
 				      ARRAY_SIZE(mt6877_afe_bargein_controls));
 

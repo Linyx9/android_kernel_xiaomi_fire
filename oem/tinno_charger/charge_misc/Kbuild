@@ -1,0 +1,3 @@
+ifdef CONFIG_OEM_TINNO_CHARGE_MISC
+	obj-y += charge_misc/
+endif

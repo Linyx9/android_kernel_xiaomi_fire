@@ -689,7 +689,7 @@ static int i2s_out_tinyconn_event(struct snd_soc_dapm_widget *w,
 		reg = AFE_I2S_CON1;
 		reg_shift = I2S2_32BIT_EN_SFT;
 		reg_mask_shift = I2S2_32BIT_EN_MASK_SFT;
-		pr_err("%s(), error widget name %s, default use i2s1\n",
+		pr_info("%s(), error widget name %s, default use i2s1\n",
 		       __func__, w->name);
 	}
 
@@ -1752,7 +1752,7 @@ static int mtk_dai_i2s_config(struct mtk_base_afe *afe,
 				   0xffffeffe, i2s_con);
 		break;
 	default:
-		dev_warn(afe->dev, "%s(), id %d not support\n",
+		dev_info(afe->dev, "%s(), id %d not support\n",
 			 __func__, i2s_id);
 		return -EINVAL;
 	}
@@ -2079,7 +2079,7 @@ int mt6877_dai_i2s_register(struct mtk_base_afe *afe)
 	struct mtk_base_afe_dai *dai;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

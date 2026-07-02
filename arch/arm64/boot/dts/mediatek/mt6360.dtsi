@@ -1,44 +1,33 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2020 MediaTek Inc.
- */
+ * Copyright (c) 2021 MediaTek Inc.
+*/
+
 &i2c5 {
-	subpmic_mtk:subpmic@34 {
-		compatible = "mediatek,subpmic";
-		reg = <0x34>;
-		mt6360,intr_gpio_num = <3>; /* direct defined GPIO num */
-		mt6360,intr_gpio = <&pio 3 0x0>; /* GPIO */
-		interrupt-controller;
+status = "okay";
+	clock-frequency = <3400000>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+    subpmic_mtk: mt6360@34 {
 		#interrupt-cells = <2>;
-		mt6360_adc: adc {
-			compatible = "mediatek,mt6360_pmu_adc";
-			interrupts = <41 0>, <43 0>, <44 0>;
-			interrupt-names = "bat_ovp_adc_evt",
-					  "adc_wakeup_evt",
-					  "adc_donei";
-			#io-channel-cells = <1>;
-		};
+		status = "ok";
+		compatible = "mediatek,mt6360";
+		reg = <0x34>;
+		wakeup-source;
+		interrupt-controller;
+		interrupt-parent = <&pio>;
+		interrupts = <24 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-names = "IRQB";
 		mt6360_chg: chg {
-			compatible = "mediatek,mt6360_pmu_chg";
-			interrupts = <4 0>, <6 0>, <7 0>, <9 0>,
-				     <12 0>, <13 0>, <14 0>, <15 0>,
-				     <27 0>, <29 0>, <30 0>, <32 0>,
-				     <35 0>, <40 0>, <48 0>, <60 0>;
-			interrupt-names = "chg_treg_evt", "chg_mivr_evt",
-					  "pwr_rdy_evt", "chg_batsysuv_evt",
-					  "chg_vsysuv_evt", "chg_vsysov_evt",
-					  "chg_vbatov_evt", "chg_vbusov_evt",
-					  "chg_tmri", "chg_adpbadi",
-					  "chg_rvpi",  "chg_aiccmeasl",
-					  "wdtmri", "pumpx_donei",
-					  "attachi", "chrdet_ext_evt";
+			compatible ="mediatek,mt6360-chg";
+			vinovp = <14500000>;
 			io-channels = <&mt6360_adc 0>, <&mt6360_adc 1>,
 				      <&mt6360_adc 3>, <&mt6360_adc 4>,
 				      <&mt6360_adc 5>, <&mt6360_adc 6>,
 				      <&mt6360_adc 8>, <&mt6360_adc 10>;
 			io-channel-names = "USBID", "VBUSDIV5", "VSYS", "VBAT",
 					   "IBUS", "IBAT", "TEMP_JC", "TS";
-			bootmode = <&chosen>;
 			chg_name = "primary_chg";
 			ichg = <2000000>;		/* uA */
 			aicr = <500000>;		/* uA */
@@ -50,17 +39,14 @@
 			ircmp_vclamp = <32000>;		/* uV */
 			en_te = <1>;
 			en_wdt = <1>;
-			en_otg_wdt = <1>;
 			aicc_once = <1>;
 			post_aicc = <1>;
 			batoc_notify = <0>;
 			charger = <&mt6360_chg>;
-			bc12_sel = <0>;
-#if !defined (CONFIG_MACH_MT6833)
 			phys = <&u2port0 PHY_TYPE_USB2>;
 			phy-names = "usb2-phy";
 			usb = <&ssusb>;
-#endif
+			bc12_ref = <&mtk_ctd>;
 			otg_vbus: usb-otg-vbus {
 				regulator-compatible = "usb-otg-vbus";
 				regulator-name = "usb-otg-vbus";
@@ -70,135 +56,258 @@
 				regulator-max-microamp = <3000000>;
 			};
 		};
-		fled {
-			compatible = "mediatek,mt6360_pmu_fled";
-			interrupts = <74 0>, <75 0>, <78 0>, <79 0>;
-			interrupt-names = "fled_tx_evt", "fled_lvf_evt",
-					  "fled2_short_evt", "fled1_short_evt";
-			/* 0: fixed mode, 1: tracking mode */
-			fled_vmid_track = <0>;
-			/* 64~2432ms, 32ms/step */
-			fled_strb_tout = <1248>;
-			/* 25000~400000uA, 12500uA/step */
-			fled1_tor_cur = <37500>;
-			/*
-			 * 25000~750000uA, 6250uA/step
-			 * 750000~1500000uA, 12500uA/step
-			 */
-			/*fled1_strb_cur = <800000>; */
-			fled1_strb_cur = <750000>;
-			/* 25000~400000uA, 12500uA/step */
-			fled2_tor_cur = <37500>;
-			/*
-			 * 25000~750000uA, 6250uA/step
-			 * 750000~1500000uA, 12500uA/step
-			 */
-			fled2_strb_cur = <800000>;
+		mt6360_adc: adc {
+			compatible = "mediatek,mt6360-adc";
+			#io-channel-cells = <1>;
 		};
-		rgbled {
-			compatible = "mediatek,mt6360_pmu_rgbled";
-			mt,led_name = "mt6360_pmu_led1", "mt6360_pmu_led2",
-				      "mt6360_pmu_led3", "mt6360_pmu_led4";
-			mt,led_default_trigger = "cc_mode", "cc_mode",
-						 "cc_mode", "none";
+		mt6360_led: led {
+			compatible = "mediatek,mt6360-led";
+			rgbon_sync = <1>;
+			iled  {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				led@0 {
+					reg = <0>;
+					label = "isink1";
+				};
+				led@1 {
+					reg = <1>;
+					label = "isink2";
+				};
+				led@2 {
+					reg = <2>;
+					label = "isink3";
+				};
+				led@3 {
+					reg = <3>;
+					label = "isink4";
+				};
+			};
+			fled {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				flash@0 {
+					reg = <0>;
+					label = "mt6360_flash_ch1";
+					led-max-microamp = <400000>;
+					flash-max-microamp = <1500000>;
+					flash-max-timeout = <1248000>;
+					type = <0>;
+					ct = <0>;
+					part = <0>;
+					port@0 {
+						fl_core_0: endpoint {
+							remote-endpoint = <&flashlight_0>;
+						};
+					};
+				};
+				flash@1 {
+					reg = <1>;
+					label = "mt6360_flash_ch2";
+					led-max-microamp = <400000>;
+					flash-max-microamp = <1500000>;
+					flash-max-timeout = <1248000>;
+					type = <0>;
+					ct = <1>;
+					part = <0>;
+					port@1 {
+						fl_core_1: endpoint {
+							remote-endpoint = <&flashlight_1>;
+						};
+					};
+				};
+			};
 		};
-		core {
-			compatible = "mediatek,mt6360_pmu_core";
-			interrupts = <65 0>, <66 0>, <67 0>,
-				     <68 0>, <69 0>, <70 0>,
-				     <71 0>;
-			interrupt-names = "ap_wdtrst_evt",
-					  "en_evt",
-					  "qonb_rst_evt",
-					  "mrstb_evt",
-					  "otp_evt",
-					  "vddaov_evt",
-					  "sysuv_evt";
-			mren = <1>;
-			apwdtrst_en = <1>;
-			cc_open_sel = <3>;
-			i2c_cc_open_tsel = <1>;
-			ldo5_otp_en = <0>;
+		mt6360_pmic: regulator {
+			compatible = "mt6360-regulator";
+			mt6360_mdla_buck_reg: buck1 {
+				regulator-compatible = "BUCK1";
+				regulator-name = "mt6360,buck1";
+				regulator-min-microvolt = <300000>;
+				regulator-max-microvolt = <1300000>;
+				regulator-allowed-modes = <0 2 3>;
+				regulator-always-on;
+			};
+			buck2 {
+				regulator-compatible = "BUCK2";
+				regulator-name = "mt6360,buck2";
+				regulator-min-microvolt = <300000>;
+				regulator-max-microvolt = <1300000>;
+				regulator-allowed-modes = <0 2 3>;
+				regulator-always-on;
+			};
+			ldo6 {
+				regulator-compatible = "LDO6";
+				regulator-name = "mt6360,ldo6";
+				regulator-min-microvolt = <500000>;
+				regulator-max-microvolt = <2100000>;
+				regulator-allowed-modes = <0 2>;
+				regulator-always-on;
+			};
+			ldo7 {
+				regulator-compatible = "LDO7";
+				regulator-name = "mt6360,ldo7";
+				regulator-min-microvolt = <500000>;
+				regulator-max-microvolt = <2100000>;
+				regulator-allowed-modes = <0 2>;
+				regulator-always-on;
+			};
+			mt_pmic_vfp_ldo_reg: ldo1 {
+				regulator-compatible = "LDO1";
+				regulator-name = "mt6360,ldo1";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3600000>;
+				regulator-allowed-modes = <0 2>;
+			};
+			mt_pmic_vtp_ldo_reg: ldo2 {
+				regulator-compatible = "LDO2";
+				regulator-name = "vtp";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3600000>;
+				regulator-allowed-modes = <0 2>;
+			};
+			mt_pmic_vmc_ldo_reg: ldo3 {
+				regulator-compatible = "LDO3";
+				regulator-name = "mt6360,ldo3";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3600000>;
+				regulator-allowed-modes = <0 2>;
+			};
+			mt_pmic_vmch_ldo_reg: ldo5 {
+				regulator-compatible = "LDO5";
+				regulator-name = "mt6360,ldo5";
+				regulator-min-microvolt = <2700000>;
+				regulator-max-microvolt = <3600000>;
+				regulator-allowed-modes = <0 2>;
+			};
 		};
 	};
-
-	subpmic_pmic_mtk:subpmic_pmic@1a {
-		compatible = "mediatek,subpmic_pmic";
-		reg = <0x1a>;
+	mt6360_typec: tcpc@4e {
+		compatible = "mediatek,mt6360_typec";
+		reg = <0x4e>;
+		mt-tcpc,name = "type_c_port0"; /* tcpc_device's name */
+		/* 0: Unknown, 1: SNK, 2: SRC, 3: DRP, 4: Try.SRC, 5: Try.SNK */
+		mt-tcpc,role-def = <5>;
+		mt-tcpc,rp-level = <1>; /* 0: Default, 1: 1.5, 2: 3.0 */
+		/* 0: Never, 1: Always, 2: EMarkOnly, 3: StartOnly */
+		mt-tcpc,vconn-supply = <1>;
+		mt6360pd,intr-gpio = <&pio 25 0x0>;
+		mt6360pd,intr-gpio-num = <25>;
+		mt6360pd,pcb-gpio = <&pio 19 0x0>;
+		mt6360pd,pcb-gpio-num = <19>;
 		interrupt-parent = <&subpmic_mtk>;
-		interrupts = <96 0>, <100 0>, <101 0>, <102 0>,
-			     <104 0>, <108 0>, <109 0>, <110 0>,
-			     <118 0>, <119 0>, <126 0>, <127 0>;
-		interrupt-names = "buck1_pgb_evt", "buck1_oc_evt",
-				  "buck1_ov_evt", "buck1_uv_evt",
-				  "buck2_pgb_evt", "buck2_oc_evt",
-				  "buck2_ov_evt", "buck2_uv_evt",
-				  "ldo6_oc_evt", "ldo7_oc_evt",
-				  "ldo6_pgb_evt", "ldo7_pgb_evt";
-		pwr_off_seq = [06 04 00 02];
-		buck1 {
-			regulator-compatible = "BUCK1";
-			regulator-name = "VMDLA";
-			regulator-min-microvolt = <300000>;
-			regulator-max-microvolt = <1300000>;
-			regulator-always-on;
+		interrupts = <64 0>;
+		interrupt-names = "usbid_evt";
+		charger = <&mt6360_chg>;
+		pd-data {
+			pd,vid = <0x29cf>;
+			pd,pid = <0x6360>;
+			pd,source-cap-ext = /bits/ 8 <0xcf 0x29 0x60 0x63
+						      0x00 0x00 0x00 0x00
+						      0x00 0x00 0x00 0x00
+						      0x00 0x00 0x00 0x00
+						      0x00 0x00 0x00 0x00
+						      0x00 0x00 0x01 0x07
+						      0x00>;
+			pd,sink-cap-ext = /bits/ 8 <0xcf 0x29 0x60 0x63
+						    0x00 0x00 0x00 0x00
+						    0x00 0x00 0x01 0x00
+						    0x00 0x00 0x00 0x00
+						    0x01 0x0b 0x01 0x0a
+						    0x0a 0x00 0x00 0x00>;
+			pd,mfrs = "RichtekTCPC";
+
+			/*
+			 *	VSAFE5V = 0, MAX_POWER = 1, CUSTOM = 2,
+			 *	MAX_POWER_LV = 0x21, MAX_POWER_LVIC = 0x31
+			 *	MAX_POWER_HV = 0x41, MAX_POWER_HVIC = 0x51
+			 */
+			pd,charging-policy = <0x31>;
+
+			pd,source-pdo-size = <1>;
+			pd,source-pdo-data = <0x00019096>; /* 5V, 1500 mA */
+			pd,sink-pdo-size = <1>;
+			pd,sink-pdo-data = <0x000190c8>;
+
+			/*
+			 * No DP, host + device
+			 *	pd,id-vdo-size = <6>;
+			 *	pd,id-vdo-data = <0xd14029cf 0x0 0x63600000
+						  0x61000000 0x0 0x41000000>;
+			 * With DP Sink capability
+			 *	pd,id-vdo-size = <6>;
+			 *	pd,id-vdo-data = <0xd54029cf 0x0 0x63600000
+						  0x61000000 0x0 0x41000000>;
+			 */
+
+			pd,id-vdo-size = <6>;
+			pd,id-vdo-data = <0xd14029cf 0x0 0x63600000
+					  0x61000000 0x0 0x41000000>;
+
+			bat,nr = <1>;
+			bat-info0 {
+				bat,vid = <0x29cf>;
+				bat,pid = <0x6360>;
+				bat,mfrs = "bat1";
+				bat,design-cap = <3000>;
+			};
 		};
-		buck2 {
-			regulator-compatible = "BUCK2";
-			regulator-name = "VDRAM1";
-			regulator-min-microvolt = <300000>;
-			regulator-max-microvolt = <1300000>;
-			regulator-always-on;
+		dpm-caps {
+			local-dr-power;
+			local-dr-data;
+			// local-ext-power;
+			local-usb-comm;
+			// local-usb-suspend;
+			// local-high-cap;
+			// local-give-back;
+			local-no-suspend;
+
+			/* With DP Source capability */
+			// attempt-enter-dp-mode;
+			// attempt-discover-cable;
+			// attempt-discover-id;
+			// attempt-discover-svids;
+
+			/* 0: disable, 1: prefer-snk, 2: prefer-src */
+			pr-check = <0>;
+			// pr-reject-as-source;
+			// pr-reject-as-sink;
+			// pr-check-gp-source;
+			// pr-check-gp-sink;
+
+			/* 0: disable, 1: prefer-ufp, 2: prefer-dfp */
+			dr-check = <0>;
+			// dr-reject-as-dfp;
+			// dr-reject-as-ufp;
 		};
-		ldo6 {
-			regulator-compatible = "LDO6";
-			regulator-name = "VMDDR";
-			regulator-min-microvolt = <500000>;
-			regulator-max-microvolt = <2100000>;
-			regulator-always-on;
-		};
-		ldo7 {
-			regulator-compatible = "LDO7";
-			regulator-name = "VDRAM2";
-			regulator-min-microvolt = <500000>;
-			regulator-max-microvolt = <2100000>;
-			regulator-always-on;
+		displayport {
+			/* connection type = "both", "ufp-d", "dfp-d" */
+			1st-connection = "dfp-d";
+			2nd-connection = "dfp-d";
+			// usbr20-not-used;
+			typec,receptacle;
+			ufp-d {
+				// pin-assignment,mode-c;
+				// pin-assignment,mode-d;
+				// pin-assignment,mode-e;
+			};
+			dfp-d {
+				pin-assignment,mode-c;
+				pin-assignment,mode-d;
+				pin-assignment,mode-e;
+			};
 		};
 	};
-
-	subpmic_ldo_mtk:subpmic_ldo@64 {
-		compatible = "mediatek,subpmic_ldo";
-		reg = <0x64>;
-		interrupt-parent = <&subpmic_mtk>;
-		interrupts = <113 0>, <114 0>, <115 0>, <117 0>,
-			     <121 0>, <122 0>, <123 0>, <125 0>;
-		interrupt-names = "ldo1_oc_evt", "ldo2_oc_evt",
-				  "ldo3_oc_evt", "ldo5_oc_evt",
-				  "ldo1_pgb_evt", "ldo2_pgb_evt",
-				  "ldo3_pgb_evt", "ldo5_pgb_evt";
-		mt_pmic_vfp_ldo_reg: ldo1 {
-			regulator-compatible = "LDO1";
-			regulator-name = "VFP";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <3600000>;
+};
+&mtk_composite_v4l2_1 {
+	port@0 {
+		flashlight_0: endpoint {
+			remote-endpoint = <&fl_core_0>;
 		};
-		mt_pmic_vtp_ldo_reg: ldo2 {
-			regulator-compatible = "LDO2";
-			regulator-name = "VTP";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <3600000>;
-		};
-		mt_pmic_vmc_ldo_reg: ldo3 {
-			regulator-compatible = "LDO3";
-			regulator-name = "VMC";
-			regulator-min-microvolt = <1200000>;
-			regulator-max-microvolt = <3600000>;
-		};
-		mt_pmic_vmch_ldo_reg: ldo5 {
-			regulator-compatible = "LDO5";
-			regulator-name = "VMCH";
-			regulator-min-microvolt = <2700000>;
-			regulator-max-microvolt = <3600000>;
+	};
+	port@1 {
+		flashlight_1: endpoint {
+			remote-endpoint = <&fl_core_1>;
 		};
 	};
 };

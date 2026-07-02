@@ -4,6 +4,8 @@
  * All rights reserved.
  * Copyright (c) 2015-2019, MICROTRUST Incorporated
  * All rights reserved.
+ * Copyright (c) 2017-2018, GNU General Public License
+ * All rights reserved.
  *
  */
 
@@ -388,7 +390,7 @@ struct tee_ioctl_shm_kern_op_arg {
 
 #define TEE_IOCTL_SHM_KERN_OP_GET_PA		0
 #define TEE_IOCTL_SHM_KERN_OP_FLUSH_CACHE	1
-#define TEE_IOCTL_SHM_KERN_OP_INVALID_CACHE 2
+#define TEE_IOCTL_SHM_KERN_OP_INVALID_CACHE     2
 
 /**
  * TEE_IOC_SHM_KERN_OP - kernel operations for specific shared memory
@@ -444,6 +446,11 @@ struct tee_ioctl_capi_proxy_arg {
 #define TEE_IOC_CAPI_PROXY  _IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 11, \
 				     struct tee_ioctl_capi_proxy_arg)
 
+#define TEE_IOC_SHM_RELEASE _IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 12, \
+				     struct tee_ioctl_shm_alloc_data)
+
+#define TEE_IOC_SHM_ID _IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 13, \
+				     struct tee_ioctl_shm_alloc_data)
 /*
  * Five syscalls are used when communicating with the TEE driver.
  * open(): opens the device associated with the driver
@@ -455,11 +462,4 @@ struct tee_ioctl_capi_proxy_arg {
  *	   tee_ioctl_shm_alloc_data
  * munmap(): unmaps previously shared memory
  */
-
-#define TEE_IOC_SHM_RELEASE _IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 12, \
-					struct tee_ioctl_shm_alloc_data)
-
-#define TEE_IOC_SHM_ID _IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 13, \
-					struct tee_ioctl_shm_alloc_data)
-
 #endif /*__TEE_H*/

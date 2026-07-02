@@ -1,0 +1,12 @@
+/*
+ * this is the dtsi sample for cx2560x.
+ * update date:2024.04.22
+ */
+
+eta6937: eta6937@6A {
+	compatible = "mediatek,eta6937";
+	reg = <0x6A>;
+	status = "okay";
+	chg_name = "secondary_chg";
+	eta,en_gpio = <&pio 151 0x0>;
+};

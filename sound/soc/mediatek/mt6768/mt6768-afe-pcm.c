@@ -13,7 +13,7 @@
 #include <linux/pm_runtime.h>
 #include <sound/soc.h>
 
-#ifdef CONFIG_MTK_ACAO_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_ACAO_SUPPORT)
 #include "mtk_mcdi_governor_hint.h"
 #endif
 
@@ -29,10 +29,10 @@
 #include "mt6768-afe-gpio.h"
 #include "mt6768-interconnection.h"
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 #include "../audio_dsp/mtk-dsp-common.h"
 #endif
-#if defined(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
 #include "../scp_spk/mtk-scp-spk-common.h"
 #endif
 
@@ -57,7 +57,8 @@ static int mt6768_fe_startup(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	int memif_num = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int memif_num = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	const struct snd_pcm_hardware *mtk_afe_hardware = afe->mtk_afe_hardware;
 	int ret;
@@ -97,7 +98,8 @@ void mt6768_fe_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt6768_afe_private *afe_priv = afe->platform_priv;
-	int memif_num = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int memif_num = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	int irq_id = memif->irq_usage;
 
@@ -119,7 +121,8 @@ int mt6768_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 	struct snd_pcm_runtime * const runtime = substream->runtime;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt6768_afe_private *afe_priv = afe->platform_priv;
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[id];
 	int irq_id = memif->irq_usage;
 	struct mtk_base_afe_irq *irqs = &afe->irqs[irq_id];
@@ -135,8 +138,8 @@ int mt6768_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
-	defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
+	IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 		/* with dsp enable, not to set when stop_threshold = ~(0U) */
 		if (runtime->stop_threshold == ~(0U))
 			ret = 0;
@@ -166,9 +169,8 @@ int mt6768_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 			counter = afe_priv->irq_cnt[id];
 
 		mtk_regmap_update_bits(afe->regmap, irq_data->irq_cnt_reg,
-				       irq_data->irq_cnt_maskbit
-				       << irq_data->irq_cnt_shift,
-				       counter << irq_data->irq_cnt_shift);
+				       irq_data->irq_cnt_maskbit,
+				       counter, irq_data->irq_cnt_shift);
 
 		/* set irq fs */
 		fs = afe->irq_fs(substream, runtime->rate);
@@ -177,18 +179,16 @@ int mt6768_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 			return -EINVAL;
 
 		mtk_regmap_update_bits(afe->regmap, irq_data->irq_fs_reg,
-				       irq_data->irq_fs_maskbit
-				       << irq_data->irq_fs_shift,
-				       fs << irq_data->irq_fs_shift);
+				       irq_data->irq_fs_maskbit,
+				       fs, irq_data->irq_fs_shift);
 		/* enable interrupt */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
-	defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
+	IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 		if (runtime->stop_threshold != ~(0U))
 #endif
 			mtk_regmap_update_bits(afe->regmap,
-				irq_data->irq_en_reg,
-				1 << irq_data->irq_en_shift,
-				1 << irq_data->irq_en_shift);
+				irq_data->irq_en_reg, 1,
+				1, irq_data->irq_en_shift);
 
 		return 0;
 	case SNDRV_PCM_TRIGGER_STOP:
@@ -200,12 +200,11 @@ int mt6768_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 				if (avail >= runtime->buffer_size) {
 					dev_warn(afe->dev, "%s(), id %d, xrun assert\n",
 						 __func__, id);
-					AUDIO_AEE("CRDISPATCH_KEY:UL xrun");
 				}
 			}
 		}
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
-	defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
+	IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 		if (runtime->stop_threshold == ~(0U))
 			ret = 0;
 		else
@@ -219,17 +218,16 @@ int mt6768_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 		}
 
 		/* disable interrupt */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
-	defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
+	IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 		if (runtime->stop_threshold != ~(0U))
 #endif
 			mtk_regmap_update_bits(afe->regmap,
-				irq_data->irq_en_reg,
-				1 << irq_data->irq_en_shift,
-				0 << irq_data->irq_en_shift);
+				irq_data->irq_en_reg, 1,
+				0, irq_data->irq_en_shift);
 		/* and clear pending IRQ */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
-	defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
+	IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 		if (runtime->stop_threshold != ~(0U))
 #endif
 			regmap_write(afe->regmap, irq_data->irq_clr_reg,
@@ -240,14 +238,15 @@ int mt6768_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 	}
 }
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 int mt6768_fe_prepare(struct snd_pcm_substream *substream,
 		      struct snd_soc_dai *dai)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_pcm_runtime * const runtime = substream->runtime;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[id];
 	int irq_id = memif->irq_usage;
 	struct mtk_base_afe_irq *irqs = &afe->irqs[irq_id];
@@ -262,9 +261,8 @@ int mt6768_fe_prepare(struct snd_pcm_substream *substream,
 
 	/* set irq counter */
 	mtk_regmap_update_bits(afe->regmap, irq_data->irq_cnt_reg,
-			       irq_data->irq_cnt_maskbit
-			       << irq_data->irq_cnt_shift,
-			       counter << irq_data->irq_cnt_shift);
+			       irq_data->irq_cnt_maskbit,
+			       counter, irq_data->irq_cnt_shift);
 
 	/* set irq fs */
 	fs = afe->irq_fs(substream, runtime->rate);
@@ -273,9 +271,8 @@ int mt6768_fe_prepare(struct snd_pcm_substream *substream,
 		return -EINVAL;
 
 	mtk_regmap_update_bits(afe->regmap, irq_data->irq_fs_reg,
-			       irq_data->irq_fs_maskbit
-			       << irq_data->irq_fs_shift,
-			       fs << irq_data->irq_fs_shift);
+			       irq_data->irq_fs_maskbit,
+			       fs, irq_data->irq_fs_shift);
 exit:
 	return ret;
 }
@@ -288,7 +285,8 @@ static int mt6768_memif_fs(struct snd_pcm_substream *substream,
 	struct snd_soc_component *component =
 		snd_soc_rtdcom_lookup(rtd, AFE_PCM_NAME);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 
 	return mt6768_rate_transform(afe->dev, rate, id);
 }
@@ -305,6 +303,7 @@ static int mt6768_irq_fs(struct snd_pcm_substream *substream, unsigned int rate)
 	struct snd_soc_component *component =
 		snd_soc_rtdcom_lookup(rtd, AFE_PCM_NAME);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
+
 	return mt6768_general_rate_transform(afe->dev, rate);
 }
 
@@ -324,7 +323,7 @@ static const struct snd_soc_dai_ops mt6768_memif_dai_ops = {
 	.shutdown	= mt6768_fe_shutdown,
 	.hw_params	= mtk_afe_fe_hw_params,
 	.hw_free	= mtk_afe_fe_hw_free,
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	.prepare	= mt6768_fe_prepare,
 #else
 	.prepare	= mtk_afe_fe_prepare,
@@ -694,12 +693,12 @@ static int mt6768_deep_scene_set(struct snd_kcontrol *kcontrol,
 
 	if (afe_priv->deep_playback_state == 1) {
 		memif->ack_enable = true;
-#ifdef CONFIG_MTK_ACAO_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_ACAO_SUPPORT)
 		system_idle_hint_request(SYSTEM_IDLE_HINT_USER_AUDIO, 1);
 #endif
 	} else {
 		memif->ack_enable = false;
-#ifdef CONFIG_MTK_ACAO_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_ACAO_SUPPORT)
 		system_idle_hint_request(SYSTEM_IDLE_HINT_USER_AUDIO, 0);
 #endif
 	}
@@ -860,7 +859,7 @@ static int mt6768_sram_size_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-#if defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 static int mt6768_vow_barge_in_irq_id_get(struct snd_kcontrol *kcontrol,
 					  struct snd_ctl_elem_value *ucontrol)
 {
@@ -875,7 +874,7 @@ static int mt6768_vow_barge_in_irq_id_get(struct snd_kcontrol *kcontrol,
 }
 #endif
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 static int mt6768_adsp_primary_mem_get(struct snd_kcontrol *kcontrol,
 				       struct snd_ctl_elem_value *ucontrol)
 {
@@ -1145,7 +1144,7 @@ static int mt6768_mmap_ion_get(struct snd_kcontrol *kcontrol,
 static int mt6768_mmap_ion_set(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	mtk_get_ion_buffer();
+	//mtk_get_ion_buffer();
 	return 0;
 }
 
@@ -1216,11 +1215,11 @@ static const struct snd_kcontrol_new mt6768_pcm_kcontrols[] = {
 		       mt6768_voip_scene_get, mt6768_voip_scene_set),
 	SOC_SINGLE_EXT("sram_size", SND_SOC_NOPM, 0, 0xffffffff, 0,
 		       mt6768_sram_size_get, NULL),
-#if defined(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_VOW_BARGE_IN_SUPPORT)
 	SOC_SINGLE_EXT("vow_barge_in_irq_id", SND_SOC_NOPM, 0, 0x3ffff, 0,
 		       mt6768_vow_barge_in_irq_id_get, NULL),
 #endif
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	SOC_SINGLE_EXT("adsp_primary_sharemem_scenario",
 		       SND_SOC_NOPM, 0, 0x1, 0,
 		       mt6768_adsp_primary_mem_get,
@@ -1550,10 +1549,10 @@ static const struct mtk_base_memif_data memif_data[MT6768_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_MEMIF_PBUF_SIZE,
-		.pbuf_mask_shift = DL1_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL1_PBUF_SIZE_MASK,
 		.pbuf_shift = DL1_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_MEMIF_MINLEN,
-		.minlen_mask_shift = DL1_MINLEN_MASK_SFT,
+		.minlen_mask = DL1_MINLEN_MASK,
 		.minlen_shift = DL1_MINLEN_SFT,
 	},
 	[MT6768_MEMIF_DL12] = {
@@ -1579,10 +1578,10 @@ static const struct mtk_base_memif_data memif_data[MT6768_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_MEMIF_PBUF_SIZE,
-		.pbuf_mask_shift = DL1_DATA2_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL1_DATA2_PBUF_SIZE_MASK,
 		.pbuf_shift = DL1_DATA2_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_MEMIF_MINLEN,
-		.minlen_mask_shift = DL1_DATA2_MINLEN_MASK_SFT,
+		.minlen_mask = DL1_DATA2_MINLEN_MASK,
 		.minlen_shift = DL1_DATA2_MINLEN_SFT,
 	},
 	[MT6768_MEMIF_DL2] = {
@@ -1608,10 +1607,10 @@ static const struct mtk_base_memif_data memif_data[MT6768_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_MEMIF_PBUF_SIZE,
-		.pbuf_mask_shift = DL2_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL2_PBUF_SIZE_MASK,
 		.pbuf_shift = DL2_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_MEMIF_MINLEN,
-		.minlen_mask_shift = DL2_MINLEN_MASK_SFT,
+		.minlen_mask = DL2_MINLEN_MASK,
 		.minlen_shift = DL2_MINLEN_SFT,
 	},
 	[MT6768_MEMIF_DL3] = {
@@ -1637,10 +1636,10 @@ static const struct mtk_base_memif_data memif_data[MT6768_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_MEMIF_PBUF_SIZE,
-		.pbuf_mask_shift = DL3_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL3_PBUF_SIZE_MASK,
 		.pbuf_shift = DL3_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_MEMIF_MINLEN,
-		.minlen_mask_shift = DL3_MINLEN_MASK_SFT,
+		.minlen_mask = DL3_MINLEN_MASK,
 		.minlen_shift = DL3_MINLEN_SFT,
 	},
 	[MT6768_MEMIF_MOD_DAI] = {
@@ -1705,7 +1704,7 @@ static const struct mtk_base_memif_data memif_data[MT6768_MEMIF_NUM] = {
 		.mono_reg = AFE_DAC_CON0,
 		.mono_shift = VUL_DATA2_DATA_SFT,
 		.quad_ch_reg = AFE_MEMIF_PBUF_SIZE,
-		.quad_ch_mask_shift = VUL12_4CH_EN_MASK_SFT,
+		.quad_ch_mask = VUL12_4CH_EN_MASK,
 		.quad_ch_shift = VUL12_4CH_EN_SFT,
 		.enable_reg = AFE_DAC_CON0,
 		.enable_shift = VUL_DATA2_ON_SFT,
@@ -2080,7 +2079,7 @@ static const struct regmap_config mt6768_afe_regmap_config = {
 	.cache_type = REGCACHE_FLAT,
 };
 
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if !IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 static irqreturn_t mt6768_afe_irq_handler(int irq_id, void *dev)
 {
 	struct mtk_base_afe *afe = dev;
@@ -2242,14 +2241,16 @@ static int mt6768_afe_pcm_platform_probe(struct snd_soc_component *platform)
 }
 
 const struct snd_soc_component_driver mt6768_afe_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_afe_pcm_ops,
-	.pcm_new = mtk_afe_pcm_new,
-	.pcm_free = mtk_afe_pcm_free,
-	.probe = mt6768_afe_pcm_platform_probe,
+	.name           = AFE_PCM_NAME,
+	.open           = mtk_afe_pcm_open,
+	.pcm_construct  = mtk_afe_pcm_new,
+	.pcm_destruct   = mtk_afe_pcm_free,
+	.pointer        = mtk_afe_pcm_pointer,
+	.copy           = mtk_afe_pcm_copy_user,
+	.probe          = mt6768_afe_pcm_platform_probe,
 };
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 static ssize_t mt6768_debugfs_read(struct file *file, char __user *buf,
 				    size_t count, loff_t *pos)
 {
@@ -3266,7 +3267,7 @@ static const dai_register_cb dai_register_cbs[] = {
 static int mt6768_afe_pcm_dev_probe(struct platform_device *pdev)
 {
 	int ret, i;
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if !IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 	int irq_id = 0;
 #endif
 	struct mtk_base_afe *afe = NULL;
@@ -3332,11 +3333,8 @@ static int mt6768_afe_pcm_dev_probe(struct platform_device *pdev)
 	/* init sram */
 	afe->sram = devm_kzalloc(&pdev->dev, sizeof(struct mtk_audio_sram),
 				GFP_KERNEL);
-	if (!afe->sram) {
-		dev_err(dev, "%s(), no memory when allocate afe->sram, size = %zu\n",
-			__func__, sizeof(struct mtk_audio_sram));
+	if (!afe->sram)
 		return -ENOMEM;
-	}
 
 	ret = mtk_audio_sram_init(dev, afe->sram, &mt6768_sram_ops);
 	if (ret) {
@@ -3351,11 +3349,8 @@ static int mt6768_afe_pcm_dev_probe(struct platform_device *pdev)
 	afe->memif = devm_kcalloc(dev, afe->memif_size, sizeof(*afe->memif),
 				  GFP_KERNEL);
 
-	if (!afe->memif) {
-		dev_err(dev, "%s(), no memory when allocate afe->memif, size = %d * %zu\n",
-				__func__, afe->memif_size, sizeof(*afe->memif));
+	if (!afe->memif)
 		return -ENOMEM;
-	}
 
 	for (i = 0; i < afe->memif_size; i++) {
 		afe->memif[i].data = &memif_data[i];
@@ -3370,16 +3365,13 @@ static int mt6768_afe_pcm_dev_probe(struct platform_device *pdev)
 	afe->irqs = devm_kcalloc(dev, afe->irqs_size, sizeof(*afe->irqs),
 				 GFP_KERNEL);
 
-	if (!afe->irqs) {
-		dev_err(dev, "%s(), no memory when allocate afe->irqs, size = %d * %zu\n",
-				__func__, afe->irqs_size, sizeof(*afe->irqs));
+	if (!afe->irqs)
 		return -ENOMEM;
-	}
 
 	for (i = 0; i < afe->irqs_size; i++)
 		afe->irqs[i].irq_data = &irq_data[i];
 
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+#if !IS_ENABLED(CONFIG_FPGA_EARLY_PORTING)
 	/* request irq */
 	irq_id = platform_get_irq(pdev, 0);
 	if (irq_id <= 0) {
@@ -3387,7 +3379,7 @@ static int mt6768_afe_pcm_dev_probe(struct platform_device *pdev)
 		return irq_id < 0 ? irq_id : -ENXIO;
 	}
 	ret = devm_request_irq(dev, irq_id, mt6768_afe_irq_handler,
-			       IRQF_TRIGGER_LOW, "Afe_ISR_Handle", (void *)afe);
+			       IRQF_TRIGGER_NONE, "Afe_ISR_Handle", (void *)afe);
 	if (ret) {
 		dev_err(dev, "could not request_irq for Afe_ISR_Handle\n");
 		return ret;
@@ -3427,7 +3419,7 @@ static int mt6768_afe_pcm_dev_probe(struct platform_device *pdev)
 	afe->request_dram_resource = mt6768_afe_dram_request;
 	afe->release_dram_resource = mt6768_afe_dram_release;
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	/* debugfs */
 	afe->debug_cmds = mt6768_debug_cmds;
 	afe->debugfs = debugfs_create_file("mtksocaudio",
@@ -3451,8 +3443,8 @@ static int mt6768_afe_pcm_dev_probe(struct platform_device *pdev)
 		goto err_dai_component;
 	}
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
-	defined(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
+	IS_ENABLED(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
 	audio_set_dsp_afe(afe);
 #endif
 
@@ -3522,7 +3514,7 @@ static struct platform_driver mt6768_afe_pcm_driver = {
 	.driver = {
 		   .name = "mt6768-audio",
 		   .of_match_table = mt6768_afe_pcm_dt_match,
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 		   .pm = &mt6768_afe_pm_ops,
 #endif
 	},

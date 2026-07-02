@@ -73,7 +73,8 @@ static int cap_mem_blk_io;
  *    function implementation
  */
 static int mtk_capture_probe(struct platform_device *pdev);
-static int mtk_capture_pcm_close(struct snd_pcm_substream *substream);
+static int mtk_capture_pcm_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream);
 static int mtk_afe_capture_component_probe(struct snd_soc_component *component);
 
 static const char *const capture_HD_input[] = {"Off", "On"};
@@ -92,7 +93,6 @@ static int Audio_capture_hdinput_Get(struct snd_kcontrol *kcontrol,
 static int Audio_capture_hdinput_Set(struct snd_kcontrol *kcontrol,
 				     struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s()\n", __func__);
 	if (ucontrol->value.enumerated.item[0] > ARRAY_SIZE(capture_HD_input)) {
 		pr_warn("return -EINVAL\n");
 		return -EINVAL;
@@ -238,7 +238,8 @@ static struct snd_pcm_hardware mtk_capture_hardware = {
 	.fifo_size = 0,
 };
 
-static int mtk_capture_pcm_prepare(struct snd_pcm_substream *substream)
+static int mtk_capture_pcm_prepare(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream)
 {
 	pr_debug("%s, format = %d, rate = %d\n", __func__,
 		substream->runtime->format, substream->runtime->rate);
@@ -315,7 +316,6 @@ static int mtk_capture_pcm_prepare(struct snd_pcm_substream *substream)
 
 static int mtk_capture_alsa_stop(struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 
 	irq_user_id = NULL;
 
@@ -328,12 +328,14 @@ static int mtk_capture_alsa_stop(struct snd_pcm_substream *substream)
 }
 
 static snd_pcm_uframes_t
-mtk_capture_pcm_pointer(struct snd_pcm_substream *substream)
+mtk_capture_pcm_pointer(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream)
 {
 	return get_mem_frame_index(substream, VUL_Control_context, cap_mem_blk);
 }
 
-static int mtk_capture_pcm_hw_params(struct snd_pcm_substream *substream,
+static int mtk_capture_pcm_hw_params(struct snd_soc_component *component,
+				     struct snd_pcm_substream *substream,
 				     struct snd_pcm_hw_params *hw_params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -381,7 +383,8 @@ static int mtk_capture_pcm_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_capture_pcm_hw_free(struct snd_pcm_substream *substream)
+static int mtk_capture_pcm_hw_free(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream)
 {
 	if (Capture_dma_buf->area) {
 		if (mCaptureUseSram == true) {
@@ -404,7 +407,8 @@ static struct snd_pcm_hw_constraint_list constraints_channels = {
 	.list = soc_multiple_supported_channels,
 };
 
-static int mtk_capture_pcm_open(struct snd_pcm_substream *substream)
+static int mtk_capture_pcm_open(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
@@ -427,16 +431,16 @@ static int mtk_capture_pcm_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_err("capture_pcm_close\n");
-		mtk_capture_pcm_close(substream);
+		mtk_capture_pcm_close(component, substream);
 		return ret;
 	}
 
 	return 0;
 }
 
-static int mtk_capture_pcm_close(struct snd_pcm_substream *substream)
+static int mtk_capture_pcm_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 
 	if (mPrepareDone == true) {
 		if (!is_adc1_closed_before) {
@@ -484,7 +488,6 @@ static int mtk_capture_pcm_close(struct snd_pcm_substream *substream)
 
 static int mtk_capture_alsa_start(struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 
 	/* set memory */
 	SetSampleRate(cap_mem_blk, substream->runtime->rate);
@@ -501,7 +504,8 @@ static int mtk_capture_alsa_start(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_capture_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_capture_pcm_trigger(struct snd_soc_component *component,
+				   struct snd_pcm_substream *substream, int cmd)
 {
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -514,56 +518,43 @@ static int mtk_capture_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	return -EINVAL;
 }
 
-static int mtk_capture_pcm_copy(struct snd_pcm_substream *substream,
+static int mtk_capture_pcm_copy(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
 				int channel, unsigned long pos,
-				void __user *dst, unsigned long count)
+				struct iov_iter *dst, unsigned long count)
 {
 	vcore_dvfs(&vcore_dvfs_enable, false);
 	return mtk_memblk_copy(substream, channel, pos, dst, count,
 			       VUL_Control_context, cap_mem_blk);
 }
 
-static int mtk_capture_pcm_silence(struct snd_pcm_substream *substream,
-				   int channel,
-				   unsigned long pos,
-				   unsigned long bytes)
-{
-	pr_debug("dummy_pcm_silence\n");
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
-static struct page *mtk_capture_pcm_page(struct snd_pcm_substream *substream,
+static struct page *mtk_capture_pcm_page(struct snd_soc_component *component,
+					 struct snd_pcm_substream *substream,
 					 unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_afe_capture_ops = {
+static const struct snd_soc_component_driver mtk_soc_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_afe_capture_component_probe,
 	.open = mtk_capture_pcm_open,
 	.close = mtk_capture_pcm_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_capture_pcm_hw_params,
 	.hw_free = mtk_capture_pcm_hw_free,
 	.prepare = mtk_capture_pcm_prepare,
 	.trigger = mtk_capture_pcm_trigger,
 	.pointer = mtk_capture_pcm_pointer,
-	.copy_user = mtk_capture_pcm_copy,
-	.fill_silence = mtk_capture_pcm_silence,
+	.copy = mtk_capture_pcm_copy,
 	.page = mtk_capture_pcm_page,
-	.mmap = mtk_pcm_mmap,
-};
 
-static struct snd_soc_component_driver mtk_soc_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_afe_capture_ops,
-	.probe = mtk_afe_capture_component_probe,
 };
 
 static int mtk_capture_probe(struct platform_device *pdev)
 {
-	pr_debug("mtk_capture_probe\n");
 
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (pdev->dev.dma_mask == NULL)
@@ -609,7 +600,7 @@ static int mtk_capture_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_capture_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_capture",
@@ -622,7 +613,7 @@ static struct platform_driver mtk_afe_capture_driver = {
 
 			.name = MT_SOC_UL1_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_capture_of_ids,
 #endif
 		},
@@ -638,7 +629,6 @@ static int __init mtk_soc_capture_platform_init(void)
 {
 	int ret = 0;
 
-	pr_info("%s\n", __func__);
 #ifndef CONFIG_OF
 	soc_mtkafe_capture_dev = platform_device_alloc(MT_SOC_UL1_PCM, -1);
 	if (!soc_mtkafe_capture_dev)

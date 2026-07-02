@@ -1,0 +1,3 @@
+ifdef CONFIG_OEM_BATTERY_SWITCH_UPM2388
+	obj-y += upm2388/
+endif

@@ -194,7 +194,6 @@ void *isee_get_drvdata(struct tee_device *teedev);
 
 struct tee_shm *isee_shm_kalloc(struct tee_context *ctx, size_t size, u32 flags);
 void isee_shm_kfree(struct tee_shm *shm);
-
 /**
  * isee_shm_alloc() - Allocate shared memory
  * @ctx:	Context that allocates the shared memory
@@ -289,23 +288,23 @@ static inline bool tee_param_is_memref(struct tee_param *param)
 	}
 }
 
-struct tee_context *tee_client_open_context(struct tee_context *start,
+struct tee_context *isee_client_open_context(struct tee_context *start,
 			int (*match)(struct tee_ioctl_version_data *,
 				const void *),
 			const void *data, struct tee_ioctl_version_data *vers);
 
-void tee_client_close_context(struct tee_context *ctx);
+void isee_client_close_context(struct tee_context *ctx);
 
-void tee_client_get_version(struct tee_context *ctx,
+void isee_client_get_version(struct tee_context *ctx,
 			struct tee_ioctl_version_data *vers);
 
-int tee_client_open_session(struct tee_context *ctx,
+int isee_client_open_session(struct tee_context *ctx,
 			struct tee_ioctl_open_session_arg *arg,
 			struct tee_param *param);
 
-int tee_client_close_session(struct tee_context *ctx, u32 session);
+int isee_client_close_session(struct tee_context *ctx, u32 session);
 
-int tee_client_invoke_func(struct tee_context *ctx,
+int isee_client_invoke_func(struct tee_context *ctx,
 			struct tee_ioctl_invoke_arg *arg,
 			struct tee_param *param);
 

@@ -5,9 +5,6 @@
 
 #include <linux/uaccess.h>
 #include <linux/clk.h>
-#include <mtk_vcorefs_manager.h>
-#include <mt-plat/mtk_chip.h>
-#include <mtk_dramc.h>
 
 #if defined(SMI_WHI)
 #include "mmdvfs_config_mt6799.h"
@@ -26,21 +23,33 @@
 #include "mmdvfs_config_mt6771.h"
 #elif defined(SMI_CAN)
 #include "mmdvfs_config_mt6775.h"
+#elif defined(SMI_CER)
+#include "mmdvfs_config_mt6765.h"
 #endif
 
-#include "mtk_smi.h"
+#include "mtk-smi-bwc.h"
 #include "mmdvfs_mgr.h"
 #include "mmdvfs_internal.h"
 
-#ifdef CONFIG_MTK_FREQ_HOPPING
+#if IS_ENABLED(CONFIG_MTK_FREQ_HOPPING)
 #include "mtk_freqhopping_drv.h"
 #endif
 
 #ifdef USE_DDR_TYPE
 #include "mt_emi_api.h"
 #endif
-#include "mmdvfs_pmqos.h"
 
+#if defined(SMI_CER)
+#define KIR_MM 0
+#endif
+
+#ifdef MMDVFS_QOS_SUPPORT
+int mmdvfs_dbg_clk_set(int step, bool is_force);
+int mmdvfs_qos_force_step(int step)
+{
+	return mmdvfs_dbg_clk_set(step, true);
+}
+#endif
 
 /* Class: mmdvfs_step_util */
 static int mmdvfs_get_legacy_mmclk_step_from_mmclk_opp(
@@ -244,6 +253,24 @@ struct mmdvfs_step_util mmdvfs_step_util_obj_mt6775 = {
 	mmdvfs_step_util_set_step,
 	mmdvfs_get_clients_clk_opp
 };
+
+#elif defined(SMI_CER)
+struct mmdvfs_step_util mmdvfs_step_util_obj_mt6765 = {
+	{0},
+	MMDVFS_SCEN_COUNT,
+	{0},
+	MT6765_MMDVFS_OPP_MAX,
+	NULL,
+	MMDVFS_VOLTAGE_COUNT,
+	NULL,
+	MT6765_MMDVFS_OPP_MAX,
+	MMDVFS_FINE_STEP_OPP0,
+	mmdvfs_step_util_init,
+	mmdvfs_get_legacy_mmclk_step_from_mmclk_opp,
+	mmdvfs_get_opp_from_legacy_step,
+	mmdvfs_step_util_set_step,
+	mmdvfs_get_clients_clk_opp
+};
 #endif
 
 /* Class: mmdvfs_adaptor */
@@ -363,6 +390,25 @@ struct mmdvfs_adaptor mmdvfs_adaptor_obj_mt6771_lp3 = {
 	mmdvfs_get_cam_sys_clk,
 	mmdvfs_single_profile_dump,
 };
+
+#elif defined(SMI_CER)
+struct mmdvfs_adaptor mmdvfs_adaptor_obj_mt6765 = {
+	KIR_MM,
+	0, 0, 0,
+	mt6765_clk_sources, MT6765_CLK_SOURCE_NUM,
+	mt6765_clk_hw_map_setting, MMDVFS_CLK_MUX_NUM,
+	mt6765_step_profile, MT6765_MMDVFS_OPP_MAX,
+	MT6765_MMDVFS_USER_CONTROL_SCEN_MASK,
+	mmdvfs_profile_dump,
+	mmdvfs_single_hw_configuration_dump,
+	mmdvfs_hw_configuration_dump,
+	mmdvfs_determine_step,
+	mmdvfs_apply_hw_configurtion_by_step,
+	mmdvfs_apply_vcore_hw_configurtion_by_step,
+	mmdvfs_apply_clk_hw_configurtion_by_step,
+	mmdvfs_get_cam_sys_clk,
+	mmdvfs_single_profile_dump,
+};
 #endif
 
 /* class: ISP PMQoS Handler */
@@ -398,6 +444,12 @@ struct mmdvfs_thresholds_dvfs_handler dvfs_handler_mt6771_3600 = {
 #elif defined(SMI_CAN)
 struct mmdvfs_thresholds_dvfs_handler dvfs_handler_mt6775 = {
 	mt6775_mmdvfs_threshold_settings,
+	MMDVFS_PMQOS_NUM,
+	get_step_by_threshold
+};
+#elif defined(SMI_CER)
+struct mmdvfs_thresholds_dvfs_handler dvfs_handler_mt6765 = {
+	mt6765_mmdvfs_threshold_settings,
 	MMDVFS_PMQOS_NUM,
 	get_step_by_threshold
 };
@@ -509,8 +561,13 @@ static int mmdvfs_apply_vcore_hw_configurtion_by_step(
 		vcore_step = hw_config_ptr->vcore_step;
 	}
 
-	if (vcorefs_request_dvfs_opp(self->vcore_kicker, vcore_step) != 0)
-		MMDVFSMSG("Set vcore step failed: %d\n", vcore_step);
+	if (request_vcore_opp != NULL) {
+		if (request_vcore_opp(self->vcore_kicker, vcore_step) != 0)
+			MMDVFSMSG("Set vcore step failed: %d\n", vcore_step);
+	} else {
+		MMDVFSMSG("Set vcore step failed: %d; Please try again when vcore is loaded.\n",
+			vcore_step);
+	}
 	/* Set vcore step */
 	MMDVFSDEBUG(3, "Set vcore step: %d\n", vcore_step);
 
@@ -622,7 +679,7 @@ static void mmdvfs_configure_clk_hw(struct mmdvfs_adaptor *self,
 				MMDVFSMSG("Failed to set rate:%s->%d\n",
 				clk_hw_map->clk_mux.ccf_name, clk_rate);
 		} else {
-#ifdef CONFIG_MTK_FREQ_HOPPING
+#if IS_ENABLED(CONFIG_MTK_FREQ_HOPPING)
 			int hopping_ret = -1;
 
 			hopping_ret = mt_dfs_general_pll(pll_id, clk_rate);
@@ -797,7 +854,7 @@ static void mmdvfs_single_hw_configuration_dump(struct mmdvfs_adaptor *self,
 
 	for (i = 0; i < hw_configuration->total_clks; i++) {
 		char *ccf_clk_source_name = "NONE";
-		char *ccf_clk_mux_name = "NONE";
+		char *ccf_clk_mux_name __maybe_unused = "NONE";
 		u32 clk_rate_mhz = 0;
 		u32 clk_step = 0;
 		u32 clk_id = 0;
@@ -1221,6 +1278,13 @@ void mmdvfs_config_util_init(void)
 		g_dvfs_handler = &mmdvfs_thresholds_dvfs_handler_obj;
 #endif
 		break;
+	case MMDVFS_PROFILE_CER:
+#if defined(SMI_CER)
+		g_mmdvfs_adaptor = &mmdvfs_adaptor_obj_mt6765;
+		g_mmdvfs_step_util = &mmdvfs_step_util_obj_mt6765;
+		g_dvfs_handler = &mmdvfs_thresholds_dvfs_handler_obj;
+#endif
+		break;
 	case MMDVFS_PROFILE_SYL:
 #if defined(SMI_SYL)
 		g_dvfs_handler = &dvfs_handler_mt6771;
@@ -1398,6 +1462,7 @@ static int get_qos_step(s32 opp)
 	return legacy_to_qos_step[opp].qos_step;
 }
 
+#ifdef MMDVFS_QOS_SUPPORT
 void mmdvfs_qos_update(struct mmdvfs_step_util *step_util, int new_step)
 {
 	int i;
@@ -1422,6 +1487,7 @@ void mmdvfs_qos_update(struct mmdvfs_step_util *step_util, int new_step)
 	/* No scenario is matched, cancel qos step anyway */
 	mmdvfs_qos_force_step(get_qos_step(MMDVFS_FINE_STEP_UNREQUEST));
 }
+#endif
 
 static void update_qos_scenario(void)
 {

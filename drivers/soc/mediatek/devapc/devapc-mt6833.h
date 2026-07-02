@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2019 MediaTek Inc.
+ * Copyright (C) 2022 MediaTek Inc.
  */
 
-#ifndef __DEVAPC_MT6873_H__
-#define __DEVAPC_MT6873_H__
+#ifndef __DEVAPC_MT6833_H__
+#define __DEVAPC_MT6833_H__
 
 #include "devapc-mtk-multi-ao.h"
 
@@ -46,6 +46,7 @@ enum DEVAPC_PD_OFFSET {
 	PD_SHIFT_STA_OFFSET = 0xF20,
 	PD_SHIFT_SEL_OFFSET = 0xF30,
 	PD_SHIFT_CON_OFFSET = 0xF10,
+	PD_VIO_DBG3_OFFSET = 0x90C,
 };
 
 #define SRAMROM_SLAVE_TYPE	SLAVE_TYPE_INFRA	/* Infra */
@@ -601,7 +602,7 @@ static struct mtk_device_info mt6833_devices_infra[] = {
 	{-1, -1, 386, "OOB_way_en", true},
 	{-1, -1, 387, "OOB_way_en", true},
 	{-1, -1, 388, "OOB_way_en", true},
-	{-1, -1, 389, "OOB_way_en", true},
+	{-1, -1, 389, "OOB_way_en", false},
 	{-1, -1, 390, "OOB_way_en", true},
 	{-1, -1, 391, "OOB_way_en", true},
 
@@ -768,7 +769,7 @@ static struct mtk_device_info mt6833_devices_peri[] = {
 	{-1, -1, 124, "OOB_way_en", true},
 	{-1, -1, 125, "OOB_way_en", true},
 	{-1, -1, 126, "OOB_way_en", true},
-	{-1, -1, 127, "OOB_way_en", true},
+	{-1, -1, 127, "OOB_way_en", false},
 	{-1, -1, 128, "OOB_way_en", true},
 	{-1, -1, 129, "OOB_way_en", true},
 	{-1, -1, 130, "OOB_way_en", true},
@@ -1168,4 +1169,4 @@ enum DEVAPC_VIO_SLAVE_NUM {
 	VIO_SLAVE_NUM_PERI_PAR = ARRAY_SIZE(mt6833_devices_peri_par),
 };
 
-#endif /* __DEVAPC_MT6873_H__ */
+#endif /* __DEVAPC_MT6833_H__ */

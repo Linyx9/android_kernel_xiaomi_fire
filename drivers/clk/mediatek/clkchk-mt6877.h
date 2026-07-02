@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef __DRV_CLKCHK_MT6877_H
 #define __DRV_CLKCHK_MT6877_H
@@ -43,18 +43,28 @@ enum chk_sys_id {
 	chk_sys_num = 33,
 };
 
-extern const char * const *get_mt6877_all_clk_names(void);
-extern struct regbase *get_mt6877_all_reg_bases(void);
-extern struct regname *get_mt6877_all_reg_names(void);
+enum chk_pd_id {
+	MT6877_CHK_PD_CONN,
+	MT6877_CHK_PD_ISP0,
+	MT6877_CHK_PD_ISP1,
+	MT6877_CHK_PD_IPE,
+	MT6877_CHK_PD_VDEC,
+	MT6877_CHK_PD_VENC,
+	MT6877_CHK_PD_DISP,
+	MT6877_CHK_PD_AUDIO,
+	MT6877_CHK_PD_APU,
+	MT6877_CHK_PD_CAM,
+	MT6877_CHK_PD_CAM_RAWA,
+	MT6877_CHK_PD_CAM_RAWB,
+	MT6877_CHK_PD_CSI,
+	MT6877_CHK_PD_NUM,
+};
 
-/*ram console api*/
-#ifdef CONFIG_MTK_RAM_CONSOLE
-extern void aee_rr_rec_clk(int id, u32 val);
+#ifdef CONFIG_MTK_DVFSRC_HELPER
+extern int get_sw_req_vcore_opp(void);
 #endif
 
-extern void print_enabled_clks_once(void);
-extern void print_subsys_reg(enum chk_sys_id id);
-extern int get_sw_req_vcore_opp(void);
-
+extern void print_subsys_reg_mt6877(enum chk_sys_id id);
+extern u32 get_mt6877_reg_value(u32 id, u32 ofs);
 #endif	/* __DRV_CLKCHK_MT6877_H */
 

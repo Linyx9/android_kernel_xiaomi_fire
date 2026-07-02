@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_LAMU_PANEL
+	PANEL_DJN_NT36672S_OBJS += dsi-panel-djn-nt36672s-672-1080x2400-vdo-60hz.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_PANEL) += dsi_panel_djn_nt36672s_672_1080x2400_vdo_60hz.o
+dsi_panel_djn_nt36672s_672_1080x2400_vdo_60hz-y := $(PANEL_DJN_NT36672S_OBJS)
+

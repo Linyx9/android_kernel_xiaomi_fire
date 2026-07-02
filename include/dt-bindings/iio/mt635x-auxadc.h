@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #ifndef _DT_BINDINGS_MT635X_AUXADC_H
@@ -22,26 +22,29 @@
 #define AUXADC_HPOFS_CAL			0x0c
 #define AUXADC_DCXO_TEMP			0x0d
 #define AUXADC_VBIF				0x0e
-#define AUXADC_CHAN_MIN                         AUXADC_BATADC
-#if defined(CONFIG_MACH_MT6768)
-#define AUXADC_CHAN_MAX                         AUXADC_VBIF
-#elif defined(CONFIG_MACH_MT6739)
-#define AUXADC_CHAN_MAX                         AUXADC_VBIF
-#elif defined(CONFIG_MACH_MT6781)
-#define AUXADC_CHAN_MAX                         AUXADC_VBIF
-#elif defined(CONFIG_MACH_MT6877)
-#define AUXADC_CHAN_MAX                         AUXADC_VBIF
-#elif defined(CONFIG_MACH_MT6833)
-#define AUXADC_CHAN_MAX                         AUXADC_VBIF
-#elif defined(CONFIG_MACH_MT6853)
-#define AUXADC_CHAN_MAX                         AUXADC_VBIF
-#elif defined(CONFIG_MACH_MT6873)
-#define AUXADC_CHAN_MAX                         AUXADC_VBIF
-#else
 #define AUXADC_IMP				0x0f
 #define AUXADC_IMIX_R				0x10
+#define AUXADC_VTREF				0x11
+#define AUXADC_VSYSSNS				0x12
+#define AUXADC_VIN1				0x13
+#define AUXADC_VIN2				0x14
+#define AUXADC_VIN3				0x15
+#define AUXADC_VIN4				0x16
+#define AUXADC_VIN5				0x17
+#define AUXADC_VIN6				0x18
+#define AUXADC_VIN7				0x19
 
-#define AUXADC_CHAN_MAX				AUXADC_IMIX_R
-#endif
+#define AUXADC_CHAN_MIN				AUXADC_BATADC
+#define AUXADC_CHAN_MAX				AUXADC_VIN7
+
+#define ADC_PURES_100K				(0)
+#define ADC_PURES_30K				(1)
+#define ADC_PURES_400K				(2)
+#define ADC_PURES_OPEN				(3)
+
+#define ADC_PURES_100K_MASK			(ADC_PURES_100K << 8)
+#define ADC_PURES_30K_MASK			(ADC_PURES_30K << 8)
+#define ADC_PURES_400K_MASK			(ADC_PURES_400K << 8)
+#define ADC_PURES_OPEN_MASK			(ADC_PURES_OPEN << 8)
 
 #endif /* _DT_BINDINGS_MT635X_AUXADC_H */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  Mediatek ALSA SoC AFE platform driver for 6833
+ *  Mediatek ALSA SoC AFE platform driver for 6877
  *
  *  Copyright (c) 2020 MediaTek Inc.
  *  Author: Eason Yen <eason.yen@mediatek.com>
@@ -14,10 +14,10 @@
 #include <linux/pm_runtime.h>
 #include <sound/soc.h>
 #include <linux/arm-smccc.h> /* for Kernel Native SMC API */
-#include <mt-plat/mtk_secure_api.h> /* for SMC ID table */
+#include <linux/soc/mediatek/mtk_sip_svc.h> /* for SMC ID table */
 
 
-#ifdef CONFIG_MTK_ACAO_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_ACAO_SUPPORT)
 #include "mtk_mcdi_governor_hint.h"
 #endif
 
@@ -26,33 +26,28 @@
 #include "../common/mtk-afe-fe-dai.h"
 #include "../common/mtk-sp-pcm-ops.h"
 #include "../common/mtk-sram-manager.h"
-
-#if defined(CONFIG_MTK_ION)
 #include "../common/mtk-mmap-ion.h"
-#endif
-
 #include "mt6877-afe-common.h"
 #include "mt6877-afe-clk.h"
 #include "mt6877-afe-gpio.h"
 #include "mt6877-interconnection.h"
-
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-#include "../audio_dsp/v2/mtk-dsp-common.h"
-#include <adsp_core.h>
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#include "../audio_dsp/mtk-dsp-common.h"
 #endif
-#if defined(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
-#include "../scp_spk/mtk-scp-spk-common.h"
+#if IS_ENABLED(CONFIG_MTK_ULTRASND_PROXIMITY)
+#include "../ultrasound/ultra_scp/mtk-scp-ultra-common.h"
 #endif
-
-#if defined(CONFIG_MTK_ULTRASND_PROXIMITY)
-#include "../scp_ultra/mtk-scp-ultra-common.h"
-#endif
-
 /* FORCE_FPGA_ENABLE_IRQ use irq in fpga */
 /* #define FORCE_FPGA_ENABLE_IRQ */
 
+#define AFE_SYS_DEBUG_SIZE (1024 * 32) // 32K
+#define MAX_DEBUG_WRITE_INPUT 256
+
+static ssize_t mt6877_debug_read_reg(char *buffer, int size, struct mtk_base_afe *afe);
+
 static const struct snd_pcm_hardware mt6877_afe_hardware = {
 	.info = (SNDRV_PCM_INFO_MMAP |
+		 SNDRV_PCM_INFO_NO_PERIOD_WAKEUP |
 		 SNDRV_PCM_INFO_INTERLEAVED |
 		 SNDRV_PCM_INFO_MMAP_VALID),
 	.formats = (SNDRV_PCM_FMTBIT_S16_LE |
@@ -72,7 +67,8 @@ static int mt6877_fe_startup(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	int memif_num = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int memif_num = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	const struct snd_pcm_hardware *mtk_afe_hardware = afe->mtk_afe_hardware;
 	int ret;
@@ -87,7 +83,7 @@ static int mt6877_fe_startup(struct snd_pcm_substream *substream,
 	ret = snd_pcm_hw_constraint_integer(runtime,
 					    SNDRV_PCM_HW_PARAM_PERIODS);
 	if (ret < 0)
-		dev_err(afe->dev, "snd_pcm_hw_constraint_integer failed\n");
+		dev_info(afe->dev, "snd_pcm_hw_constraint_integer failed\n");
 
 	/* dynamic allocate irq to memif */
 	if (memif->irq_usage < 0) {
@@ -97,7 +93,7 @@ static int mt6877_fe_startup(struct snd_pcm_substream *substream,
 			/* link */
 			memif->irq_usage = irq_id;
 		} else {
-			dev_err(afe->dev, "%s() error: no more asys irq\n",
+			dev_info(afe->dev, "%s() error: no more asys irq\n",
 				__func__);
 			ret = -EBUSY;
 		}
@@ -112,7 +108,8 @@ void mt6877_fe_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt6877_afe_private *afe_priv = afe->platform_priv;
-	int memif_num = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int memif_num = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[memif_num];
 	int irq_id = memif->irq_usage;
 
@@ -134,7 +131,8 @@ int mt6877_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 	struct snd_pcm_runtime * const runtime = substream->runtime;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
 	struct mt6877_afe_private *afe_priv = afe->platform_priv;
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[id];
 	int irq_id = memif->irq_usage;
 	struct mtk_base_afe_irq *irqs = &afe->irqs[irq_id];
@@ -144,27 +142,25 @@ int mt6877_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 	int fs;
 	int ret = 0;
 
-	dev_info(afe->dev, "%s(), %s cmd %d, irq_id %d\n",
-		 __func__, memif->data->name, cmd, irq_id);
+	if (!in_interrupt())
+		dev_info(afe->dev,
+			 "%s(), %s cmd %d, irq_id %d, is_afe_need_triggered %d, no_period_wakeup %d\n",
+			 __func__, memif->data->name, cmd, irq_id,
+			 is_afe_need_triggered(memif),
+			 runtime->no_period_wakeup);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
-		/* set memif enable */
-		if (memif->vow_bargein_enable)
-			/* memif will be set by scp */
-			ret = 0;
-		else
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-			/* with dsp enable, not to set when stop_threshold = ~(0U) */
-			if (runtime->stop_threshold == ~(0U))
-				ret = 0;
-			else
-				/* only when adsp enable using hw semaphore to set memif */
-				ret = mtk_dsp_memif_set_enable(afe, id);
-#else
+		if (is_afe_need_triggered(memif)) {
 			ret = mtk_memif_set_enable(afe, id);
-#endif
+			if (ret) {
+				dev_info(afe->dev,
+					"%s(), error, id %d, memif enable, ret %d\n",
+					__func__, id, ret);
+				return ret;
+			}
+		}
 
 		/*
 		 * for small latency record
@@ -175,43 +171,25 @@ int mt6877_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 				udelay(300);
 		}
 
-		if (ret) {
-			dev_err(afe->dev, "%s(), error, id %d, memif enable, ret %d\n",
-				__func__, id, ret);
-			return ret;
-		}
-
 		/* set irq counter */
 		if (afe_priv->irq_cnt[id] > 0)
 			counter = afe_priv->irq_cnt[id];
 
 		mtk_regmap_update_bits(afe->regmap, irq_data->irq_cnt_reg,
-				       irq_data->irq_cnt_maskbit
-				       << irq_data->irq_cnt_shift,
-				       counter << irq_data->irq_cnt_shift);
+				       irq_data->irq_cnt_maskbit,
+				       counter, irq_data->irq_cnt_shift);
 
 		/* set irq fs */
 		fs = afe->irq_fs(substream, runtime->rate);
-
 		if (fs < 0)
 			return -EINVAL;
 
 		mtk_regmap_update_bits(afe->regmap, irq_data->irq_fs_reg,
-				       irq_data->irq_fs_maskbit
-				       << irq_data->irq_fs_shift,
-				       fs << irq_data->irq_fs_shift);
+				       irq_data->irq_fs_maskbit,
+				       fs, irq_data->irq_fs_shift);
 
-		/* enable interrupt */
-		/* barge-in set stop_threshold == ~(0U), interrupt is set by scp */
-		if (runtime->stop_threshold != ~(0U))
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-			mtk_dsp_irq_set_enable(afe, irq_data);
-#else
-			mtk_regmap_update_bits(afe->regmap,
-					       irq_data->irq_en_reg,
-					       1 << irq_data->irq_en_shift,
-					       1 << irq_data->irq_en_shift);
-#endif
+		if (!runtime->no_period_wakeup)
+			mtk_irq_set_enable(afe, irq_data, id);
 
 		return 0;
 	case SNDRV_PCM_TRIGGER_STOP:
@@ -221,57 +199,30 @@ int mt6877_fe_trigger(struct snd_pcm_substream *substream, int cmd,
 				int avail = snd_pcm_capture_avail(runtime);
 
 				if (avail >= runtime->buffer_size) {
-					dev_warn(afe->dev, "%s(), id %d, xrun assert\n",
+					dev_info(afe->dev, "%s(), id %d, xrun assert\n",
 						 __func__, id);
 					AUDIO_AEE("xrun assert");
 				}
 			}
 		}
-		/* set memif disable */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) || defined(CONFIG_MTK_VOW_SUPPORT)
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-		/* only when adsp enable using hw semaphore to set memif */
-		if (runtime->stop_threshold == ~(0U) && is_adsp_system_running() &&
-			!mtk_audio_get_adsp_reset_status())
-			ret = 0;
-		else
-			ret = mtk_dsp_memif_set_disable(afe, id);
-#elif defined(CONFIG_MTK_VOW_SUPPORT)
-		/* TODO: check memif->vow_bargein_enable */
-		if (runtime->stop_threshold == ~(0U))
-			ret = 0;
-		else
-			ret = mtk_memif_set_disable(afe, id);
-#endif
-#else
-		ret = mtk_memif_set_disable(afe, id);
-#endif
 
-		if (ret) {
-			dev_err(afe->dev, "%s(), error, id %d, memif enable, ret %d\n",
-				__func__, id, ret);
+		if (is_afe_need_triggered(memif)) {
+			ret = mtk_memif_set_disable(afe, id);
+			if (ret) {
+				dev_info(afe->dev,
+					"%s(), error, id %d, memif enable, ret %d\n",
+					__func__, id, ret);
+			}
 		}
 
-		/* disable interrupt */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-		if (runtime->stop_threshold != ~(0U) || (!is_adsp_system_running()) ||
-			mtk_audio_get_adsp_reset_status())
-			mtk_dsp_irq_set_disable(afe, irq_data);
-#else
-		/* barge-in set stop_threshold == ~(0U), interrupt is set by scp */
-		if (runtime->stop_threshold != ~(0U))
-			mtk_regmap_update_bits(afe->regmap,
-					       irq_data->irq_en_reg,
-					       1 << irq_data->irq_en_shift,
-					       0 << irq_data->irq_en_shift);
-#endif
-		/* clear pending IRQ */
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) || defined(CONFIG_MTK_VOW_SUPPORT)
-		/* TODO: check memif->vow_bargein_enable */
-		if (runtime->stop_threshold != ~(0U))
-#endif
+		if (!runtime->no_period_wakeup) {
+			/* disable interrupt */
+			mtk_irq_set_disable(afe, irq_data, id);
+
+			/* clear pending IRQ */
 			regmap_write(afe->regmap, irq_data->irq_clr_reg,
 				     1 << irq_data->irq_clr_shift);
+		}
 
 		return ret;
 	default:
@@ -286,7 +237,8 @@ static int mt6877_memif_fs(struct snd_pcm_substream *substream,
 	struct snd_soc_component *component =
 		snd_soc_rtdcom_lookup(rtd, AFE_PCM_NAME);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 
 	return mt6877_rate_transform(afe->dev, rate, id);
 }
@@ -304,7 +256,6 @@ static int mt6877_irq_fs(struct snd_pcm_substream *substream, unsigned int rate)
 		snd_soc_rtdcom_lookup(rtd, AFE_PCM_NAME);
 	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
 
-
 	return mt6877_general_rate_transform(afe->dev, rate);
 }
 
@@ -318,14 +269,15 @@ int mt6877_get_memif_pbuf_size(struct snd_pcm_substream *substream)
 		return MT6877_MEMIF_PBUF_SIZE_32_BYTES;
 }
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 int mt6877_fe_prepare(struct snd_pcm_substream *substream,
 		      struct snd_soc_dai *dai)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_pcm_runtime * const runtime = substream->runtime;
 	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
-	int id = rtd->cpu_dai->id;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	int id = cpu_dai->id;
 	struct mtk_base_afe_memif *memif = &afe->memif[id];
 	int irq_id = memif->irq_usage;
 	struct mtk_base_afe_irq *irqs = &afe->irqs[irq_id];
@@ -340,9 +292,8 @@ int mt6877_fe_prepare(struct snd_pcm_substream *substream,
 
 	/* set irq counter */
 	mtk_regmap_update_bits(afe->regmap, irq_data->irq_cnt_reg,
-			       irq_data->irq_cnt_maskbit
-			       << irq_data->irq_cnt_shift,
-			       counter << irq_data->irq_cnt_shift);
+			       irq_data->irq_cnt_maskbit,
+			       counter, irq_data->irq_cnt_shift);
 
 	/* set irq fs */
 	fs = afe->irq_fs(substream, runtime->rate);
@@ -351,9 +302,8 @@ int mt6877_fe_prepare(struct snd_pcm_substream *substream,
 		return -EINVAL;
 
 	mtk_regmap_update_bits(afe->regmap, irq_data->irq_fs_reg,
-			       irq_data->irq_fs_maskbit
-			       << irq_data->irq_fs_shift,
-			       fs << irq_data->irq_fs_shift);
+			       irq_data->irq_fs_maskbit,
+			       fs, irq_data->irq_fs_shift);
 exit:
 	return ret;
 }
@@ -365,7 +315,7 @@ static const struct snd_soc_dai_ops mt6877_memif_dai_ops = {
 	.shutdown	= mt6877_fe_shutdown,
 	.hw_params	= mtk_afe_fe_hw_params,
 	.hw_free	= mtk_afe_fe_hw_free,
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	.prepare	= mt6877_fe_prepare,
 #else
 	.prepare	= mtk_afe_fe_prepare,
@@ -867,12 +817,12 @@ static int mt6877_deep_scene_set(struct snd_kcontrol *kcontrol,
 
 	if (afe_priv->deep_playback_state == 1) {
 		memif->ack_enable = true;
-#ifdef CONFIG_MTK_ACAO_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_ACAO_SUPPORT)
 		system_idle_hint_request(SYSTEM_IDLE_HINT_USER_AUDIO, 1);
 #endif
 	} else {
 		memif->ack_enable = false;
-#ifdef CONFIG_MTK_ACAO_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_ACAO_SUPPORT)
 		system_idle_hint_request(SYSTEM_IDLE_HINT_USER_AUDIO, 0);
 #endif
 	}
@@ -1047,7 +997,7 @@ static int mt6877_vow_barge_in_irq_id_get(struct snd_kcontrol *kcontrol,
 }
 
 
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 static int mt6877_adsp_ref_mem_get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
@@ -1183,7 +1133,6 @@ static int mt6877_adsp_mem_set(struct snd_kcontrol *kcontrol,
 }
 #endif
 
-#if defined(CONFIG_MTK_ION)
 static int mt6877_mmap_dl_scene_get(struct snd_kcontrol *kcontrol,
 				    struct snd_ctl_elem_value *ucontrol)
 {
@@ -1272,7 +1221,11 @@ static int mt6877_mmap_ion_get(struct snd_kcontrol *kcontrol,
 static int mt6877_mmap_ion_set(struct snd_kcontrol *kcontrol,
 			       struct snd_ctl_elem_value *ucontrol)
 {
-	mtk_get_ion_buffer();
+	struct snd_soc_component *cmpnt = snd_soc_kcontrol_component(kcontrol);
+	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(cmpnt);
+
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
+	mtk_exporter_init(afe->dev);
 	return 0;
 }
 
@@ -1317,7 +1270,6 @@ static int mt6877_ul_mmap_fd_set(struct snd_kcontrol *kcontrol,
 {
 	return 0;
 }
-#endif
 
 static const struct snd_kcontrol_new mt6877_pcm_kcontrols[] = {
 	SOC_SINGLE_EXT("Audio IRQ1 CNT", SND_SOC_NOPM, 0, 0x3ffff, 0,
@@ -1346,7 +1298,7 @@ static const struct snd_kcontrol_new mt6877_pcm_kcontrols[] = {
 		       mt6877_sram_size_get, NULL),
 	SOC_SINGLE_EXT("vow_barge_in_irq_id", SND_SOC_NOPM, 0, 0x3ffff, 0,
 		       mt6877_vow_barge_in_irq_id_get, NULL),
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	SOC_SINGLE_EXT("adsp_primary_sharemem_scenario",
 		       SND_SOC_NOPM, 0, 0x1, 0,
 		       mt6877_adsp_mem_get,
@@ -1392,7 +1344,6 @@ static const struct snd_kcontrol_new mt6877_pcm_kcontrols[] = {
 		       mt6877_adsp_mem_get,
 		       mt6877_adsp_mem_set),
 #endif
-#if defined(CONFIG_MTK_ION)
 	SOC_SINGLE_EXT("mmap_play_scenario", SND_SOC_NOPM, 0, 0x1, 0,
 		       mt6877_mmap_dl_scene_get, mt6877_mmap_dl_scene_set),
 	SOC_SINGLE_EXT("mmap_record_scenario", SND_SOC_NOPM, 0, 0x1, 0,
@@ -1409,7 +1360,6 @@ static const struct snd_kcontrol_new mt6877_pcm_kcontrols[] = {
 		       SND_SOC_NOPM, 0, 0xffffffff, 0,
 		       mt6877_ul_mmap_fd_get,
 		       mt6877_ul_mmap_fd_set),
-#endif
 };
 
 static int ul_tinyconn_event(struct snd_soc_dapm_widget *w,
@@ -1438,7 +1388,7 @@ static int ul_tinyconn_event(struct snd_soc_dapm_widget *w,
 	} else {
 		reg_shift = AWB2_USE_TINY_SFT;
 		reg_mask_shift = AWB2_USE_TINY_MASK_SFT;
-		pr_err("%s(), error widget name %s, default use UL4",
+		pr_info("%s(), error widget name %s, default use UL4",
 		       __func__, w->name);
 	}
 
@@ -1989,10 +1939,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL1_CON0,
-		.pbuf_mask_shift = DL1_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL1_PBUF_SIZE_MASK,
 		.pbuf_shift = DL1_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL1_CON0,
-		.minlen_mask_shift = DL1_MINLEN_MASK_SFT,
+		.minlen_mask = DL1_MINLEN_MASK,
 		.minlen_shift = DL1_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL12] = {
@@ -2018,10 +1968,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL12_CON0,
-		.pbuf_mask_shift = DL12_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL12_PBUF_SIZE_MASK,
 		.pbuf_shift = DL12_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL12_CON0,
-		.minlen_mask_shift = DL12_MINLEN_MASK_SFT,
+		.minlen_mask = DL12_MINLEN_MASK,
 		.minlen_shift = DL12_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL2] = {
@@ -2047,10 +1997,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL2_CON0,
-		.pbuf_mask_shift = DL2_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL2_PBUF_SIZE_MASK,
 		.pbuf_shift = DL2_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL2_CON0,
-		.minlen_mask_shift = DL2_MINLEN_MASK_SFT,
+		.minlen_mask = DL2_MINLEN_MASK,
 		.minlen_shift = DL2_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL3] = {
@@ -2076,10 +2026,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL3_CON0,
-		.pbuf_mask_shift = DL3_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL3_PBUF_SIZE_MASK,
 		.pbuf_shift = DL3_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL3_CON0,
-		.minlen_mask_shift = DL3_MINLEN_MASK_SFT,
+		.minlen_mask = DL3_MINLEN_MASK,
 		.minlen_shift = DL3_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL4] = {
@@ -2105,10 +2055,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL4_CON0,
-		.pbuf_mask_shift = DL4_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL4_PBUF_SIZE_MASK,
 		.pbuf_shift = DL4_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL4_CON0,
-		.minlen_mask_shift = DL4_MINLEN_MASK_SFT,
+		.minlen_mask = DL4_MINLEN_MASK,
 		.minlen_shift = DL4_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL5] = {
@@ -2134,10 +2084,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL5_CON0,
-		.pbuf_mask_shift = DL5_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL5_PBUF_SIZE_MASK,
 		.pbuf_shift = DL5_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL5_CON0,
-		.minlen_mask_shift = DL5_MINLEN_MASK_SFT,
+		.minlen_mask = DL5_MINLEN_MASK,
 		.minlen_shift = DL5_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL6] = {
@@ -2163,10 +2113,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL6_CON0,
-		.pbuf_mask_shift = DL6_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL6_PBUF_SIZE_MASK,
 		.pbuf_shift = DL6_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL6_CON0,
-		.minlen_mask_shift = DL6_MINLEN_MASK_SFT,
+		.minlen_mask = DL6_MINLEN_MASK,
 		.minlen_shift = DL6_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL7] = {
@@ -2192,10 +2142,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL7_CON0,
-		.pbuf_mask_shift = DL7_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL7_PBUF_SIZE_MASK,
 		.pbuf_shift = DL7_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL7_CON0,
-		.minlen_mask_shift = DL7_MINLEN_MASK_SFT,
+		.minlen_mask = DL7_MINLEN_MASK,
 		.minlen_shift = DL7_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL8] = {
@@ -2221,10 +2171,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL8_CON0,
-		.pbuf_mask_shift = DL8_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL8_PBUF_SIZE_MASK,
 		.pbuf_shift = DL8_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL8_CON0,
-		.minlen_mask_shift = DL8_MINLEN_MASK_SFT,
+		.minlen_mask = DL8_MINLEN_MASK,
 		.minlen_shift = DL8_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DL9] = {
@@ -2250,10 +2200,10 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.msb_reg = -1,
 		.msb_shift = -1,
 		.pbuf_reg = AFE_DL9_CON0,
-		.pbuf_mask_shift = DL9_PBUF_SIZE_MASK_SFT,
+		.pbuf_mask = DL9_PBUF_SIZE_MASK,
 		.pbuf_shift = DL9_PBUF_SIZE_SFT,
 		.minlen_reg = AFE_DL9_CON0,
-		.minlen_mask_shift = DL9_MINLEN_MASK_SFT,
+		.minlen_mask = DL9_MINLEN_MASK,
 		.minlen_shift = DL9_MINLEN_SFT,
 	},
 	[MT6877_MEMIF_DAI] = {
@@ -2343,7 +2293,7 @@ static const struct mtk_base_memif_data memif_data[MT6877_MEMIF_NUM] = {
 		.mono_reg = AFE_VUL12_CON0,
 		.mono_shift = VUL12_MONO_SFT,
 		.quad_ch_reg = AFE_VUL12_CON0,
-		.quad_ch_mask_shift = VUL12_4CH_EN_MASK_SFT,
+		.quad_ch_mask = VUL12_4CH_EN_MASK,
 		.quad_ch_shift = VUL12_4CH_EN_SFT,
 		.enable_reg = AFE_DAC_CON0,
 		.enable_shift = VUL12_ON_SFT,
@@ -3255,7 +3205,7 @@ static const struct regmap_config mt6877_afe_regmap_config = {
 	.cache_type = REGCACHE_FLAT,
 };
 
-#if !defined(CONFIG_FPGA_EARLY_PORTING) || defined(FORCE_FPGA_ENABLE_IRQ)
+#if !IS_ENABLED(CONFIG_FPGA_EARLY_PORTING) || IS_ENABLED(FORCE_FPGA_ENABLE_IRQ)
 static irqreturn_t mt6877_afe_irq_handler(int irq_id, void *dev)
 {
 	struct mtk_base_afe *afe = dev;
@@ -3274,7 +3224,7 @@ static irqreturn_t mt6877_afe_irq_handler(int irq_id, void *dev)
 	status_mcu = status & mcu_en & AFE_IRQ_STATUS_BITS;
 
 	if (ret || status_mcu == 0) {
-		dev_err(afe->dev, "%s(), irq status err, ret %d, status 0x%x, mcu_en 0x%x\n",
+		dev_info(afe->dev, "%s(), irq status err, ret %d, status 0x%x, mcu_en 0x%x\n",
 			__func__, ret, status, mcu_en);
 
 		goto err_irq;
@@ -3311,7 +3261,7 @@ static int mt6877_afe_runtime_suspend(struct device *dev)
 	unsigned int value = 0;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	if (!afe->regmap)
 		goto skip_regmap;
@@ -3326,7 +3276,7 @@ static int mt6877_afe_runtime_suspend(struct device *dev)
 				       20,
 				       1 * 1000 * 1000);
 	if (ret)
-		dev_warn(afe->dev, "%s(), ret %d\n", __func__, ret);
+		dev_info(afe->dev, "%s(), ret %d\n", __func__, ret);
 
 	/* make sure all irq status are cleared */
 	regmap_write(afe->regmap, AFE_IRQ_MCU_CLR, 0xffffffff);
@@ -3350,12 +3300,10 @@ skip_regmap:
 static int mt6877_afe_runtime_resume(struct device *dev)
 {
 	struct mtk_base_afe *afe = dev_get_drvdata(dev);
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
 	struct mt6877_afe_private *afe_priv = afe->platform_priv;
-#endif
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	ret = mt6877_afe_enable_clock(afe);
 	if (ret)
@@ -3366,11 +3314,10 @@ static int mt6877_afe_runtime_resume(struct device *dev)
 
 	regcache_cache_only(afe->regmap, false);
 	regcache_sync(afe->regmap);
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
+
 	/* enable audio sys DCM for power saving */
 	regmap_update_bits(afe_priv->infracfg_ao,
 			   PERI_BUS_DCM_CTRL, 0x1 << 29, 0x1 << 29);
-#endif
 	regmap_update_bits(afe->regmap, AUDIO_TOP_CON0, 0x1 << 29, 0x1 << 29);
 
 	/* force cpu use 8_24 format when writing 32bit data */
@@ -3390,7 +3337,7 @@ skip_regmap:
 
 static int mt6877_afe_pcm_copy(struct snd_pcm_substream *substream,
 			       int channel, unsigned long hwoff,
-			       void *buf, unsigned long bytes,
+			       struct iov_iter *buf, unsigned long bytes,
 			       mtk_sp_copy_f sp_copy)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -3509,34 +3456,149 @@ static const struct mtk_audio_sram_ops mt6877_sram_ops = {
 	.set_sram_mode = mt6877_set_sram_mode,
 };
 
-static int mt6877_afe_pcm_platform_probe(struct snd_soc_component *platform)
+static u32 copy_from_buffer_request(void *dest, size_t destsize, const void *src,
+				    size_t srcsize, u32 offset, size_t request)
 {
-	mtk_afe_add_sub_dai_control(platform);
-	mt6877_add_misc_control(platform);
+	/* if request == -1, offset == 0, copy full srcsize */
+	if (offset + request > srcsize)
+		request = srcsize - offset;
+
+	/* if destsize == -1, don't check the request size */
+	if (!dest || destsize < request) {
+		pr_info("%s, buffer null or not enough space", __func__);
+		return 0;
+	}
+
+	memcpy(dest, src + offset, request);
+	return request;
+}
+
+/*
+ * sysfs bin_attribute node
+ */
+static ssize_t afe_sysfs_debug_read(struct file *filep, struct kobject *kobj,
+				    struct bin_attribute *attr,
+				    char *buf, loff_t offset, size_t size)
+{
+	size_t read_size, ceil_size, page_mask;
+	ssize_t ret;
+	struct mtk_base_afe *afe = (struct mtk_base_afe *)attr->private;
+	char *buffer = NULL; /* for reduce kernel stack */
+
+	buffer = kmalloc(AFE_SYS_DEBUG_SIZE, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+
+	// sys fs op align with page size
+	read_size = mt6877_debug_read_reg(buffer, AFE_SYS_DEBUG_SIZE, afe);
+	page_mask = ~(PAGE_SIZE-1);
+	ceil_size = (read_size&page_mask) + PAGE_SIZE;
+
+	ret = copy_from_buffer_request(buf, -1, buffer, ceil_size, offset, size);
+	kfree(buffer);
+
+	return ret;
+}
+
+/*
+ * sysfs bin_attribute node
+ */
+static ssize_t afe_sysfs_debug_write(struct file *filep, struct kobject *kobj,
+				     struct bin_attribute *attr,
+				     char *buf, loff_t offset, size_t size)
+{
+	struct mtk_base_afe *afe = (struct mtk_base_afe *)attr->private;
+
+	char input[MAX_DEBUG_WRITE_INPUT];
+	char *temp , *command, *str_begin;
+	char delim[] = " ,";
+
+	if (!size) {
+		dev_info(afe->dev, "%s(), count is 0, return directly\n",
+			 __func__);
+		goto exit;
+	}
+
+	if (size > MAX_DEBUG_WRITE_INPUT)
+		size = MAX_DEBUG_WRITE_INPUT;
+
+	memset((void *)input, 0, MAX_DEBUG_WRITE_INPUT);
+	memcpy(input, buf, size);
+
+	str_begin = kstrndup(input, MAX_DEBUG_WRITE_INPUT - 1,
+			     GFP_KERNEL);
+
+	if (!str_begin) {
+		dev_info(afe->dev, "%s(), kstrdup fail\n", __func__);
+		goto exit;
+	}
+	temp = str_begin;
+
+	command = strsep(&temp, delim);
+
+	if (strcmp("write_reg", command) == 0)
+		mtk_afe_write_reg(afe, (void *)temp);
+exit:
+
+	return size;
+}
+
+struct bin_attribute bin_attr_afe_dump = {
+	.attr = {
+		.name = "mtk_afe_node",
+		.mode = 0444,
+	},
+	.size = AFE_SYS_DEBUG_SIZE,
+	.read = afe_sysfs_debug_read,
+	.write = afe_sysfs_debug_write,
+};
+
+static struct bin_attribute *afe_bin_attrs[] = {
+	&bin_attr_afe_dump,
+	NULL,
+};
+
+struct attribute_group afe_bin_attr_group = {
+	.name = "mtk_afe_attrs",
+	.bin_attrs = afe_bin_attrs,
+};
+
+
+static int mt6877_afe_component_probe(struct snd_soc_component *component)
+{
+	struct mtk_base_afe *afe = snd_soc_component_get_drvdata(component);
+	struct snd_soc_card *sndcard = component->card;
+	struct snd_card *card = sndcard->snd_card;
+	int ret = 0;
+
+	mtk_afe_add_sub_dai_control(component);
+	mt6877_add_misc_control(component);
+
+	if (component) {
+		bin_attr_afe_dump.private = (void *)afe;
+		ret = snd_card_add_dev_attr(card, &afe_bin_attr_group);
+		if (ret)
+			pr_info("snd_card_add_dev_attr fail\n");
+	}
 	return 0;
 }
 
-const struct snd_soc_component_driver mt6877_afe_component = {
+static const struct snd_soc_component_driver mt6877_afe_component = {
 	.name = AFE_PCM_NAME,
-	.ops = &mtk_afe_pcm_ops,
-	.pcm_new = mtk_afe_pcm_new,
-	.pcm_free = mtk_afe_pcm_free,
-	.probe = mt6877_afe_pcm_platform_probe,
+	.pcm_construct = mtk_afe_pcm_new,
+	.pcm_destruct = mtk_afe_pcm_free,
+	.open = mtk_afe_pcm_open,
+	.pointer = mtk_afe_pcm_pointer,
+	.copy = mtk_afe_pcm_copy_user,
+	.probe = mt6877_afe_component_probe,
 };
 
-static ssize_t mt6877_debugfs_read(struct file *file, char __user *buf,
-				   size_t count, loff_t *pos)
+static ssize_t mt6877_debug_read_reg(char *buffer, int size, struct mtk_base_afe *afe)
 {
-	struct mtk_base_afe *afe = file->private_data;
-	struct mt6877_afe_private *afe_priv = afe->platform_priv;
-	const int size = 32768;
-	char *buffer = NULL; /* for reduce kernel stack */
-	int n = 0;
-	int ret = 0;
+	int n = 0, i = 0;
 	unsigned int value;
-	int i;
+	struct mt6877_afe_private *afe_priv = afe->platform_priv;
 
-	buffer = kmalloc(size, GFP_KERNEL);
 	if (!buffer)
 		return -ENOMEM;
 
@@ -3565,14 +3627,1882 @@ static ssize_t mt6877_debugfs_read(struct file *file, char __user *buf,
 		       "PERI_BUS_DCM_CTRL = 0x%x\n", value);
 
 	/* read afe registers */
-	for (i = 0; i <= AFE_MAX_REGISTER; i = i + 4) {
-		if (!mt6877_reg_str[i / 4])
-			continue;
+	regmap_read(afe->regmap, AUDIO_TOP_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AUDIO_TOP_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AUDIO_TOP_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AUDIO_TOP_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AUDIO_TOP_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AUDIO_TOP_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AUDIO_TOP_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AUDIO_TOP_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAC_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAC_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN5, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN5 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN_24BIT, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN_24BIT = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN6, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN6 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SRC2_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SRC2_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SRC2_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SRC2_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_UL_SRC_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_UL_SRC_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_UL_SRC_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_UL_SRC_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_TOP_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_TOP_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_UL_DL_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_UL_DL_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_SRC_DEBUG, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_SRC_DEBUG = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_SRC_DEBUG_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_SRC_DEBUG_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_SRC_DEBUG_MON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_SRC_DEBUG_MON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_UL_SRC_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_UL_SRC_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_UL_SRC_MON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_UL_SRC_MON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SRAM_BOUND, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SRAM_BOUND = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_END = 0x%x\n", value);
+	regmap_read(afe->regmap,
+		    AFE_ADDA_3RD_DAC_DL_SDM_AUTO_RESET_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SDM_AUTO_RESET_CON = 0x%x\n",
+		       value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SRC2_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SRC2_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SRC2_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SRC2_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_PREDIS_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_PREDIS_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_PREDIS_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_PREDIS_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_PREDIS_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_PREDIS_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_PREDIS_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_PREDIS_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SDM_DCCOMP_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SDM_DCCOMP_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SDM_TEST, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SDM_TEST = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_DC_COMP_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_DC_COMP_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_DC_COMP_CFG1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_DC_COMP_CFG1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SDM_FIFO_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SDM_FIFO_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SRC_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SRC_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SRC_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SRC_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SDM_OUT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SDM_OUT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SIDETONE_DEBUG, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SIDETONE_DEBUG = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SIDETONE_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SIDETONE_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_3RD_DAC_DL_SDM_DITHER_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_3RD_DAC_DL_SDM_DITHER_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SINEGEN_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SINEGEN_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SIDETONE_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SIDETONE_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SIDETONE_COEFF, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SIDETONE_COEFF = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SIDETONE_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SIDETONE_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SIDETONE_GAIN, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SIDETONE_GAIN = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SINEGEN_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SINEGEN_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TOP_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TOP_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_BUSY, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_BUSY = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_BUS_CFG, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_BUS_CFG = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_PREDIS_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_PREDIS_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_PREDIS_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_PREDIS_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_IIR_COEF_02_01, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_IIR_COEF_02_01 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_IIR_COEF_04_03, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_IIR_COEF_04_03 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_IIR_COEF_06_05, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_IIR_COEF_06_05 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_IIR_COEF_08_07, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_IIR_COEF_08_07 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_IIR_COEF_10_09, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_IIR_COEF_10_09 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAC_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAC_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CON4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CON4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT6, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT6 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT8, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT8 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_DSP2_EN, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_DSP2_EN = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ0_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ0_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ6_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ6_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ3_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ3_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ4_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ4_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_STATUS, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_STATUS = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CLR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CLR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_EN, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_EN = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_MON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_MON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT5, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT5 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ1_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ1_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ2_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ2_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ5_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ5_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_DSP_EN, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_DSP_EN = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_SCP_EN, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_SCP_EN = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT7, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT7 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ7_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ7_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT11, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT11 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_APLL1_TUNER_CFG, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_APLL1_TUNER_CFG = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_APLL2_TUNER_CFG, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_APLL2_TUNER_CFG = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_MISS_CLR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_MISS_CLR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN33, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN33 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT12, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT12 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN1_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN1_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN1_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN1_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN1_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN1_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN1_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN1_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN7, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN7 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN1_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN1_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN2_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN2_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN2_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN2_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN2_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN2_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN2_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN2_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN8, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN8 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GAIN2_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GAIN2_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN9, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN9 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN10, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN10 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN11, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN11 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN12, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN12 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN13, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN13 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN14, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN14 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN15, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN15 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN16, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN16 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN17, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN17 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN18, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN18 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN19, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN19 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN20, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN20 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN21, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN21 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN22, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN22 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN23, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN23 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN24, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN24 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN_RS, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN_RS = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN_DI, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN_DI = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN25, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN25 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN26, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN26 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN27, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN27 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN28, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN28 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN29, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN29 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN30, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN30 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN31, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN31 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN32, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN32 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SRAM_DELSEL_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SRAM_DELSEL_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN56, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN56 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN57, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN57 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN56_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN56_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN57_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN57_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TINY_CONN2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TINY_CONN2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TINY_CONN3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TINY_CONN3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TINY_CONN4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TINY_CONN4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TINY_CONN5, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TINY_CONN5 = 0x%x\n", value);
+	regmap_read(afe->regmap, PCM_INTF_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "PCM_INTF_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, PCM_INTF_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "PCM_INTF_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, PCM2_INTF_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "PCM2_INTF_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON6, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON6 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON7, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON7 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON8, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON8 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON9, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON9 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN34, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN34 = 0x%x\n", value);
+	regmap_read(afe->regmap, AUDIO_TOP_DBG_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AUDIO_TOP_DBG_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AUDIO_TOP_DBG_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AUDIO_TOP_DBG_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AUDIO_TOP_DBG_MON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AUDIO_TOP_DBG_MON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ8_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ8_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ11_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ11_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ12_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ12_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT9, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT9 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT10, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT10 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT13, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT13 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT14, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT14 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT15, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT15 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT16, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT16 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT17, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT17 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT18, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT18 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT19, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT19 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT20, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT20 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT21, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT21 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT22, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT22 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT23, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT23 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT24, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT24 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT25, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT25 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ_MCU_CNT26, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ_MCU_CNT26 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TINY_CONN6, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TINY_CONN6 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TINY_CONN7, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TINY_CONN7 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ9_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ9_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ10_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ10_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ13_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ13_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ14_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ14_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ15_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ15_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ16_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ16_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ17_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ17_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ18_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ18_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ19_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ19_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ20_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ20_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ21_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ21_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ22_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ22_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ23_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ23_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ24_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ24_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ25_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ25_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ26_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ26_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_IRQ31_MCU_CNT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_IRQ31_MCU_CNT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG5, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG5 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG6, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG6 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG7, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG7 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG8, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG8 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG9, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG9 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG10, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG10 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG11, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG11 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG12, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG12 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG13, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG13 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG14, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG14 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL_REG15, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL_REG15 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CBIP_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CBIP_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CBIP_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CBIP_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CBIP_SLV_MUX_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CBIP_SLV_MUX_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CBIP_SLV_DECODER_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CBIP_SLV_DECODER_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_MTKAIF_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_MTKAIF_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_MTKAIF_MON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_MTKAIF_MON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI2_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI2_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI2_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI2_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI2_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI2_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI2_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI2_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI2_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI2_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI2_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI2_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI2_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI2_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MEMIF_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MEMIF_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN0_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN0_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN1_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN1_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN2_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN2_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN3_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN3_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN4_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN4_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN5_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN5_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN6_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN6_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN7_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN7_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN8_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN8_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN9_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN9_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN10_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN10_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN11_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN11_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN12_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN12_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN13_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN13_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN14_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN14_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN15_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN15_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN16_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN16_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN17_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN17_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN18_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN18_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN19_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN19_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN20_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN20_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN21_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN21_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN22_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN22_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN23_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN23_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN24_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN24_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN25_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN25_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN26_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN26_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN27_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN27_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN28_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN28_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN29_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN29_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN30_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN30_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN31_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN31_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN32_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN32_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN33_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN33_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN34_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN34_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN_RS_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN_RS_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN_DI_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN_DI_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN_24BIT_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN_24BIT_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN_REG, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN_REG = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN35, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN35 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN36, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN36 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN37, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN37 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN38, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN38 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN35_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN35_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN36_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN36_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN37_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN37_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN38_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN38_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN39, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN39 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN40, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN40 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN41, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN41 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN42, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN42 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SGEN_CON_SGEN32, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SGEN_CON_SGEN32 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN39_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN39_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN40_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN40_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN41_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN41_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN42_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN42_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_I2S_CON4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_I2S_CON4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_TOP_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_TOP_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_UL_SRC_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_UL_SRC_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_UL_SRC_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_UL_SRC_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_SRC_DEBUG, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_SRC_DEBUG = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_SRC_DEBUG_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_SRC_DEBUG_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_02_01, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_02_01 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_04_03, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_04_03 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_06_05, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_06_05 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_08_07, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_08_07 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_10_09, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_10_09 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_12_11, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_12_11 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_14_13, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_14_13 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_16_15, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_16_15 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_18_17, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_18_17 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_20_19, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_20_19 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_22_21, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_22_21 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_24_23, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_24_23 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_26_25, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_26_25 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_28_27, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_28_27 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_ULCF_CFG_30_29, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_ULCF_CFG_30_29 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADD6A_UL_SRC_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADD6A_UL_SRC_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_UL_SRC_MON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_UL_SRC_MON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TINY_CONN0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TINY_CONN0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_TINY_CONN1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_TINY_CONN1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN43, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN43 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN43_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN43_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MOD_DAI_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MOD_DAI_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MOD_DAI_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MOD_DAI_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MOD_DAI_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MOD_DAI_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MOD_DAI_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MOD_DAI_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MOD_DAI_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MOD_DAI_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MOD_DAI_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MOD_DAI_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MOD_DAI_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MOD_DAI_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL12_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL12_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL2_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL2_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI_DATA_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI_DATA_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MOD_DAI_DATA_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MOD_DAI_DATA_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DAI2_DATA_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DAI2_DATA_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AWB2_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AWB2_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL3_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL3_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL4_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL4_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL1_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL1_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL2_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL2_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_RCH1_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_RCH1_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_LCH1_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_LCH1_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_RCH2_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_RCH2_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL12_LCH2_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL12_LCH2_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL3_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL3_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL4_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL4_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL5_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL5_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_VUL6_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_VUL6_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SDM_DCCOMP_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SDM_DCCOMP_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SDM_TEST, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SDM_TEST = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_DC_COMP_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_DC_COMP_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_DC_COMP_CFG1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_DC_COMP_CFG1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SDM_FIFO_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SDM_FIFO_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SRC_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SRC_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SRC_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SRC_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SDM_OUT_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SDM_OUT_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SDM_DITHER_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SDM_DITHER_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_SDM_AUTO_RESET_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_SDM_AUTO_RESET_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONNSYS_I2S_CON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONNSYS_I2S_CON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONNSYS_I2S_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONNSYS_I2S_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON5, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON5 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON6, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON6 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON7, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON7 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON8, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON8 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON9, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON9 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON10, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON10 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON12, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON12 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ASRC_2CH_CON13, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ASRC_2CH_CON13 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_IIR_COEF_02_01, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_IIR_COEF_02_01 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_IIR_COEF_04_03, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_IIR_COEF_04_03 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_IIR_COEF_06_05, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_IIR_COEF_06_05 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_IIR_COEF_08_07, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_IIR_COEF_08_07 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_IIR_COEF_10_09, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_IIR_COEF_10_09 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SE_PROT_SIDEBAND, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SE_PROT_SIDEBAND = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SE_DOMAIN_SIDEBAND0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SE_DOMAIN_SIDEBAND0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_PREDIS_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_PREDIS_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_PREDIS_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_PREDIS_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_MEMIF_CONN, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_MEMIF_CONN = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SE_DOMAIN_SIDEBAND1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SE_DOMAIN_SIDEBAND1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SE_DOMAIN_SIDEBAND2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SE_DOMAIN_SIDEBAND2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_SE_DOMAIN_SIDEBAND3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_SE_DOMAIN_SIDEBAND3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN44, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN44 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN45, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN45 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN46, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN46 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN47, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN47 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN44_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN44_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN45_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN45_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN46_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN46_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN47_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN47_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_HD_ENGEN_ENABLE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_HD_ENGEN_ENABLE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_DL_NLE_FIFO_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_DL_NLE_FIFO_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_MTKAIF_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_MTKAIF_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_MTKAIF_SYNCWORD_CFG, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_MTKAIF_SYNCWORD_CFG = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_MTKAIF_RX_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_MTKAIF_RX_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_MTKAIF_RX_CFG1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_MTKAIF_RX_CFG1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_MTKAIF_RX_CFG2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_MTKAIF_RX_CFG2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_MTKAIF_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_MTKAIF_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA_MTKAIF_MON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA_MTKAIF_MON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_AUD_PAD_TOP, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_AUD_PAD_TOP = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_R_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_R_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_R_CFG1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_R_CFG1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_L_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_L_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_L_CFG1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_L_CFG1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_R_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_R_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_R_MON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_R_MON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_R_MON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_R_MON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_L_MON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_L_MON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_L_MON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_L_MON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_L_MON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_L_MON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL_NLE_GAIN_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL_NLE_GAIN_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_MTKAIF_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_MTKAIF_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_MTKAIF_RX_CFG0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_MTKAIF_RX_CFG0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_MTKAIF_RX_CFG1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_MTKAIF_RX_CFG1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_ADDA6_MTKAIF_RX_CFG2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_ADDA6_MTKAIF_RX_CFG2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON5, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON5 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON6, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON6 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON7, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON7 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON8, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON8 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON9, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON9 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON10, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON10 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON12, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON12 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL1_ASRC_2CH_CON13, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL1_ASRC_2CH_CON13 = 0x%x\n", value);
+	regmap_read(afe->regmap, GENERAL_ASRC_MODE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "GENERAL_ASRC_MODE = 0x%x\n", value);
+	regmap_read(afe->regmap, GENERAL_ASRC_EN_ON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "GENERAL_ASRC_EN_ON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN48, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN48 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN49, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN49 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN50, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN50 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN51, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN51 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN52, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN52 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN53, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN53 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN54, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN54 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN55, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN55 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN48_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN48_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN49_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN49_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN50_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN50_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN51_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN51_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN52_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN52_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN53_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN53_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN54_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN54_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_CONN55_1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_CONN55_1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON1, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON1 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON2, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON2 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON3, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON3 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON4, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON4 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON5, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON5 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON6, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON6 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON7, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON7 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON8, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON8 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON9, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON9 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON10, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON10 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON12, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON12 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_GENERAL2_ASRC_2CH_CON13, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_GENERAL2_ASRC_2CH_CON13 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_RCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_RCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_LCH_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_LCH_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL5_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL5_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL6_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL6_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL7_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL7_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_CUR_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_CUR_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_CUR, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_CUR = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_END_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_END_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL8_END, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL8_END = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_CON0, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_CON0 = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_BASE_MSB, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_BASE_MSB = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DL9_BASE, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DL9_BASE = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_PROT_SIDEBAND_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_PROT_SIDEBAND_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DOMAIN_SIDEBAND0_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DOMAIN_SIDEBAND0_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DOMAIN_SIDEBAND1_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DOMAIN_SIDEBAND1_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DOMAIN_SIDEBAND2_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DOMAIN_SIDEBAND2_MON = 0x%x\n", value);
+	regmap_read(afe->regmap, AFE_DOMAIN_SIDEBAND3_MON, &value);
+	n += scnprintf(buffer + n, size - n,
+		       "AFE_DOMAIN_SIDEBAND3_MON = 0x%x\n", value);
+	return n;
+}
 
-		regmap_read(afe->regmap, i, &value);
-		n += scnprintf(buffer + n, size - n, "%s = 0x%x\n",
-			       mt6877_reg_str[i / 4], value);
-	}
+#ifdef CONFIG_DEBUG_FS
+static ssize_t mt6877_debugfs_read(struct file *file, char __user *buf,
+				   size_t count, loff_t *pos)
+{
+	struct mtk_base_afe *afe = file->private_data;
+	const int size = AFE_SYS_DEBUG_SIZE;
+	char *buffer = NULL; /* for reduce kernel stack */
+	int n = 0, ret =0;
+
+	buffer = kmalloc(size, GFP_KERNEL);
+	if (!buffer)
+		return -ENOMEM;
+
+	n = mt6877_debug_read_reg(buffer, size, afe);
 
 	ret = simple_read_from_buffer(buf, count, pos, buffer, n);
 	kfree(buffer);
@@ -3589,10 +5519,8 @@ static const struct file_operations mt6877_debugfs_ops = {
 	.write = mtk_afe_debugfs_write,
 	.read = mt6877_debugfs_read,
 };
+#endif
 
-static const struct snd_soc_component_driver mt6877_afe_pcm_component = {
-	.name = "mt6877-afe-pcm-dai",
-};
 
 static int mt6877_dai_memif_register(struct mtk_base_afe *afe)
 {
@@ -3630,14 +5558,16 @@ static const dai_register_cb dai_register_cbs[] = {
 static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 {
 	int ret, i;
-#if !defined(CONFIG_FPGA_EARLY_PORTING) || defined(FORCE_FPGA_ENABLE_IRQ)
+#if !IS_ENABLED(CONFIG_FPGA_EARLY_PORTING) || IS_ENABLED(FORCE_FPGA_ENABLE_IRQ)
 	int irq_id;
-	struct arm_smccc_res smccc_res;
 #endif
 	struct mtk_base_afe *afe;
 	struct mt6877_afe_private *afe_priv;
 	struct resource *res;
 	struct device *dev;
+	struct arm_smccc_res smccc_res;
+
+	pr_info("+%s()\n", __func__);
 
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(34));
 	if (ret)
@@ -3646,6 +5576,7 @@ static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 	afe = devm_kzalloc(&pdev->dev, sizeof(*afe), GFP_KERNEL);
 	if (!afe)
 		return -ENOMEM;
+
 	platform_set_drvdata(pdev, afe);
 	mt6877_set_local_afe(afe);
 
@@ -3653,23 +5584,29 @@ static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 					  GFP_KERNEL);
 	if (!afe->platform_priv)
 		return -ENOMEM;
+
 	afe_priv = afe->platform_priv;
 
 	afe->dev = &pdev->dev;
 	dev = afe->dev;
 
-	dev_info(dev, "%s(), mt6877_init_clock\n", __func__);
-
 	/* init audio related clock */
 	ret = mt6877_init_clock(afe);
 	if (ret) {
-		dev_err(dev, "init clock error\n");
+		dev_info(dev, "init clock error: %d\n", ret);
 		return ret;
 	}
 
 	pm_runtime_enable(&pdev->dev);
 	if (!pm_runtime_enabled(&pdev->dev))
 		goto err_pm_disable;
+
+	/* Audio device is part of genpd.
+	 * Set audio as syscore device to prevent
+	 * genpd automatically power off audio
+	 * device when suspend
+	 */
+	dev_pm_syscore_device(&pdev->dev, true);
 
 	/* regmap init */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -3681,7 +5618,7 @@ static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 	/* enable clock for regcache get default value from hw */
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret)
-		dev_err(dev, "get_ret:%d, rpm_error:%d\n",
+		dev_info(dev, "get_ret:%d, rpm_error:%d\n",
 			ret, dev->power.runtime_error);
 
 	afe->regmap = devm_regmap_init_mmio(&pdev->dev, afe->base_addr,
@@ -3691,15 +5628,16 @@ static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 
 	ret = pm_runtime_put_sync(&pdev->dev);
 	if (ret)
-		dev_err(dev, "put_ret:%d, rpm_error:%d\n",
+		dev_info(dev, "put_ret:%d, rpm_error:%d\n",
 			ret, dev->power.runtime_error);
 
-	dev_info(dev, "%s(), mt6877_afe_gpio_init\n", __func__);
+	regcache_cache_only(afe->regmap, true);
+	regcache_mark_dirty(afe->regmap);
 
 	/* init gpio */
 	ret = mt6877_afe_gpio_init(afe);
 	if (ret)
-		dev_err(dev, "init gpio error\n");
+		dev_info(dev, "init gpio error\n");
 
 	/* init sram */
 	afe->sram = devm_kzalloc(&pdev->dev, sizeof(struct mtk_audio_sram),
@@ -3707,13 +5645,12 @@ static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 	if (!afe->sram)
 		return -ENOMEM;
 
-	dev_info(dev, "%s(), mtk_audio_sram_init\n", __func__);
-
 	ret = mtk_audio_sram_init(dev, afe->sram, &mt6877_sram_ops);
 	if (ret)
 		return ret;
 
 	/* init memif */
+	afe->is_memif_bit_banding = 0;
 	afe->memif_32bit_supported = 1;
 	afe->memif_size = MT6877_MEMIF_NUM;
 	afe->memif = devm_kcalloc(dev, afe->memif_size, sizeof(*afe->memif),
@@ -3731,8 +5668,6 @@ static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 
 	mutex_init(&afe->irq_alloc_lock);	/* needed when dynamic irq */
 
-	dev_info(dev, "%s(), init irq\n", __func__);
-
 	/* init irq */
 	afe->irqs_size = MT6877_IRQ_NUM;
 	afe->irqs = devm_kcalloc(dev, afe->irqs_size, sizeof(*afe->irqs),
@@ -3744,50 +5679,45 @@ static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 	for (i = 0; i < afe->irqs_size; i++)
 		afe->irqs[i].irq_data = &irq_data[i];
 
-
-	dev_info(dev, "%s(), devm_request_irq\n", __func__);
-
-#if !defined(CONFIG_FPGA_EARLY_PORTING) || defined(FORCE_FPGA_ENABLE_IRQ)
+#if !IS_ENABLED(CONFIG_FPGA_EARLY_PORTING) || IS_ENABLED(FORCE_FPGA_ENABLE_IRQ)
 	/* request irq */
 	irq_id = platform_get_irq(pdev, 0);
 	if (irq_id <= 0) {
-		dev_err(dev, "%pOFn no irq found\n", dev->of_node);
+		dev_info(dev, "%pOFn no irq found\n", dev->of_node);
 		return irq_id < 0 ? irq_id : -ENXIO;
 	}
 	ret = devm_request_irq(dev, irq_id, mt6877_afe_irq_handler,
 			       IRQF_TRIGGER_NONE,
 			       "Afe_ISR_Handle", (void *)afe);
 	if (ret) {
-		dev_err(dev, "could not request_irq for Afe_ISR_Handle\n");
+		dev_info(dev, "could not request_irq for Afe_ISR_Handle\n");
 		return ret;
 	}
-
 	ret = enable_irq_wake(irq_id);
 	if (ret < 0)
-		dev_err(dev, "enable_irq_wake %d err: %d\n", irq_id, ret);
+		dev_info(dev, "enable_irq_wake %d err: %d\n", irq_id, ret);
+#endif
 
 	/* init arm_smccc_smc call */
 	arm_smccc_smc(MTK_SIP_AUDIO_CONTROL, MTK_AUDIO_SMC_OP_INIT,
 		      0, 0, 0, 0, 0, 0, &smccc_res);
-#endif
+
 	/* init sub_dais */
 	INIT_LIST_HEAD(&afe->sub_dais);
 
 	for (i = 0; i < ARRAY_SIZE(dai_register_cbs); i++) {
 		ret = dai_register_cbs[i](afe);
 		if (ret) {
-			dev_warn(afe->dev, "dai register i %d fail, ret %d\n",
+			dev_info(afe->dev, "dai register i %d fail, ret %d\n",
 				 i, ret);
 			goto err_pm_disable;
 		}
 	}
 
-	dev_info(dev, "%s(), mtk_afe_combine_sub_dai\n", __func__);
-
 	/* init dai_driver and component_driver */
 	ret = mtk_afe_combine_sub_dai(afe);
 	if (ret) {
-		dev_warn(afe->dev, "mtk_afe_combine_sub_dai fail, ret %d\n",
+		dev_info(afe->dev, "mtk_afe_combine_sub_dai fail, ret %d\n",
 			 ret);
 		goto err_pm_disable;
 	}
@@ -3807,49 +5737,30 @@ static int mt6877_afe_pcm_dev_probe(struct platform_device *pdev)
 
 	afe->copy = mt6877_afe_pcm_copy;
 
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	/* debugfs */
 	afe->debug_cmds = mt6877_debug_cmds;
 	afe->debugfs = debugfs_create_file("mtksocaudio",
 					   S_IFREG | 0444, NULL,
 					   afe, &mt6877_debugfs_ops);
-
-	dev_info(dev, "%s(), devm_snd_soc_register_platform\n", __func__);
-
-	/* register platform */
+#endif
+	/* register component */
 	ret = devm_snd_soc_register_component(&pdev->dev,
-					     &mt6877_afe_component, NULL, 0);
-	if (ret) {
-		dev_warn(dev, "err_platform\n");
-		goto err_pm_disable;
-	}
-
-	dev_info(dev, "%s(), devm_snd_soc_register_component\n", __func__);
-
-	ret = devm_snd_soc_register_component(&pdev->dev,
-					      &mt6877_afe_pcm_component,
+					      &mt6877_afe_component,
 					      afe->dai_drivers,
 					      afe->num_dai_drivers);
 	if (ret) {
-		dev_warn(dev, "err_dai_component\n");
-		goto err_dai_component;
+		dev_info(dev, "afe component err: %d\n", ret);
+		goto err_pm_disable;
 	}
 
-	dev_info(dev, "%s(), --\n", __func__);
-
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP) ||\
-	defined(CONFIG_SND_SOC_MTK_SCP_SMARTPA)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 	audio_set_dsp_afe(afe);
 #endif
-
-#if defined(CONFIG_MTK_ULTRASND_PROXIMITY)
-	ultra_set_afe_base(afe);
+#if IS_ENABLED(CONFIG_MTK_ULTRASND_PROXIMITY)
+	ultra_set_dsp_afe(afe);
 #endif
-
 	return 0;
-
-err_dai_component:
-	snd_soc_unregister_component(&pdev->dev);
-
 
 err_pm_disable:
 	pm_runtime_disable(&pdev->dev);
@@ -3885,7 +5796,7 @@ static struct platform_driver mt6877_afe_pcm_driver = {
 	.driver = {
 		   .name = "mt6877-audio",
 		   .of_match_table = mt6877_afe_pcm_dt_match,
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 		   .pm = &mt6877_afe_pm_ops,
 #endif
 	},
@@ -3895,6 +5806,6 @@ static struct platform_driver mt6877_afe_pcm_driver = {
 
 module_platform_driver(mt6877_afe_pcm_driver);
 
-MODULE_DESCRIPTION("Mediatek ALSA SoC AFE platform driver for 6833");
+MODULE_DESCRIPTION("Mediatek ALSA SoC AFE platform driver for 6877");
 MODULE_AUTHOR("Eason Yen <eason.yen@mediatek.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

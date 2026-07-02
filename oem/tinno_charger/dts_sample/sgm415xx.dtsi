@@ -1,0 +1,14 @@
+/*
+ * this is the dtsi sample for SGM41542.
+ * update date:2024.04.15
+ */
+
+sgm4154x_chg: sgm41542@3B {
+	status = "okay";
+	compatible = "sgm,sgm41542";
+	reg = <0x3B>;
+	io-channels = <&pmic_auxadc AUXADC_VCDT>;
+	io-channel-names = "pmic_vbus";
+	sgm,irq-gpio = <&pio 3 IRQ_TYPE_EDGE_FALLING>;     //irq num base on hardware design
+	sgm,chg-en-gpio = <&pio 150 0>;   //gpio num base on hardware design  1.MTK parent node name is pio  2.QUALCOMM parent node name is tlmm or other
+};

@@ -1,7 +1,5 @@
-ifeq ($(CONFIG_MACH_MT6833),y)
-MTK_PLATFORM := mt6833
-else
-MTK_PLATFORM := $(CONFIG_MTK_PLATFORM)
+ifneq (, $(filter $(strip $(CONFIG_MTK_PLAT_POWER_6893)),m y))
+    obj-y += v1/
+else ifneq (, $(filter $(strip $(CONFIG_MTK_TINYSYS_MCUPM_SUPPORT)),m y))
+    obj-$(CONFIG_MTK_TINYSYS_MCUPM_SUPPORT) += v2/
 endif
-obj-y += $(subst ",,$(MTK_PLATFORM))/
-

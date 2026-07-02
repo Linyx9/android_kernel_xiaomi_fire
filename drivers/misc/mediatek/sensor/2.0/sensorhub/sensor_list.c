@@ -17,7 +17,6 @@
 #include "share_memory.h"
 
 static DEFINE_MUTEX(bus_user_lock);
-static atomic_t sensor_list_sequence;
 static DECLARE_COMPLETION(sensor_list_done);
 static DEFINE_SPINLOCK(rx_notify_lock);
 static struct sensor_comm_notify rx_notify;
@@ -61,8 +60,6 @@ static int sensor_list_seq_get_list(struct sensor_info *list,
 	 */
 	reinit_completion(&sensor_list_done);
 
-	/* safe sequence given by atomic, round from 0 to 255 */
-	notify.sequence = atomic_inc_return(&sensor_list_sequence);
 	notify.sensor_type = SENSOR_TYPE_INVALID;
 	notify.command = SENS_COMM_NOTIFY_LIST_CMD;
 	notify.length = 0;
@@ -112,8 +109,8 @@ static int sensor_list_seq_get_list(struct sensor_info *list,
 		}
 		list[i].sensor_type = info.sensor_type;
 		list[i].gain = info.gain;
-		strlcpy(list[i].name, info.name, sizeof(list[i].name));
-		strlcpy(list[i].vendor, info.vendor, sizeof(list[i].vendor));
+		strscpy(list[i].name, info.name, sizeof(list[i].name));
+		strscpy(list[i].vendor, info.vendor, sizeof(list[i].vendor));
 		i++;
 	}
 	return i;
@@ -146,8 +143,6 @@ static int sensor_list_share_mem_cfg(struct share_mem_config *cfg,
 int sensor_list_init(void)
 {
 	unsigned long flags = 0;
-
-	atomic_set(&sensor_list_sequence, 0);
 
 	spin_lock_irqsave(&rx_notify_lock, flags);
 	memset(&rx_notify, 0, sizeof(rx_notify));

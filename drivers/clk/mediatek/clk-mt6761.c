@@ -384,93 +384,6 @@ int mtk_is_mtcmos_enable(void)
 }
 EXPORT_SYMBOL(mtk_is_mtcmos_enable);
 
-unsigned int mt_get_ckgen_freq(unsigned int ID)
-{
-	int output = 0, i = 0;
-	unsigned int temp, clk26cali_0, clk_dbg_cfg;
-	unsigned int clk_misc_cfg_0, clk26cali_1;
-
-	clk_dbg_cfg = readl(CLK_DBG_CFG);
-	/*sel ckgen_cksw[22] and enable freq meter
-	 * sel ckgen[21:16], 01:hd_faxi_ck
-	 */
-	writel((clk_dbg_cfg & 0xFFFFC0FC)|(ID << 8)|(0x1), CLK_DBG_CFG);
-
-	clk_misc_cfg_0 = readl(CLK_MISC_CFG_0);
-	/* select divider?dvt set zero */
-	writel((clk_misc_cfg_0 & 0x00FFFFFF), CLK_MISC_CFG_0);
-	clk26cali_0 = readl(CLK26CALI_0);
-	clk26cali_1 = readl(CLK26CALI_1);
-	writel(0x1000, CLK26CALI_0);
-	writel(0x1010, CLK26CALI_0);
-
-	/* wait frequency meter finish */
-	while (readl(CLK26CALI_0) & 0x10) {
-		udelay(10);
-		i++;
-		if (i > 10000)
-			break;
-	}
-
-	temp = readl(CLK26CALI_1) & 0xFFFF;
-
-	output = (temp * 26000) / 1024; /* Khz */
-
-	writel(clk_dbg_cfg, CLK_DBG_CFG);
-	writel(clk_misc_cfg_0, CLK_MISC_CFG_0);
-	writel(clk26cali_0, CLK26CALI_0);
-	writel(clk26cali_1, CLK26CALI_1);
-
-	/* print("ckgen meter[%d] = %d Khz\n", ID, output); */
-	if (i > 10000)
-		return 0;
-	else
-		return output;
-
-}
-EXPORT_SYMBOL(mt_get_ckgen_freq);
-
-unsigned int mt_get_abist_freq(unsigned int ID)
-{
-	int output = 0, i = 0;
-	unsigned int temp, clk26cali_0, clk_dbg_cfg;
-	unsigned int clk_misc_cfg_0, clk26cali_1;
-
-	clk_dbg_cfg = readl(CLK_DBG_CFG);
-	/* sel abist_cksw and enable freq meter sel abist */
-	writel((clk_dbg_cfg & 0xFFC0FFFC)|(ID << 16), CLK_DBG_CFG);
-	clk_misc_cfg_0 = readl(CLK_MISC_CFG_0);
-	/* select divider, WAIT CONFIRM */
-	writel((clk_misc_cfg_0 & 0x00FFFFFF) | (0x3 << 24), CLK_MISC_CFG_0);
-	clk26cali_0 = readl(CLK26CALI_0);
-	clk26cali_1 = readl(CLK26CALI_1);
-	writel(0x1000, CLK26CALI_0);
-	writel(0x1010, CLK26CALI_0);
-
-	/* wait frequency meter finish */
-	while (readl(CLK26CALI_0) & 0x10) {
-		udelay(10);
-		i++;
-		if (i > 10000)
-			break;
-	}
-
-	temp = readl(CLK26CALI_1) & 0xFFFF;
-	output = (temp * 26000) / 1024; /* Khz */
-
-	writel(clk_dbg_cfg, CLK_DBG_CFG);
-	writel(clk_misc_cfg_0, CLK_MISC_CFG_0);
-	writel(clk26cali_0, CLK26CALI_0);
-	writel(clk26cali_1, CLK26CALI_1);
-
-	/*pr_debug("%s = %d Khz\n", abist_array[ID-1], output);*/
-	if (i > 10000)
-		return 0;
-	else
-		return output * 4;
-}
-EXPORT_SYMBOL(mt_get_abist_freq);
-
 static const struct mtk_fixed_clk fixed_clks[] = {
 	FIXED_CLK(CLK_TOP_CLK32K, "f_frtc_ck", "clk32k", 32768),
 	FIXED_CLK(CLK_TOP_CLK26M, "f_f26m_ck", "clk26m", 26000000),
@@ -860,7 +773,7 @@ static const struct mtk_mux top_muxes[] = {
 		8, 2, 15, CLK_CFG_UPDATE, 29),
 };
 
-static const struct mtk_gate_regs top0_cg_regs = {
+static const struct mtk_gate_regs top0_cg_regs __maybe_unused = {
 	.set_ofs = 0x0,
 	.clr_ofs = 0x0,
 	.sta_ofs = 0x0,
@@ -941,13 +854,13 @@ static const struct mtk_gate top_clks[] = {
 	GATE_TOP2(CLK_TOP_APLL12_DIVB, "apll12_divb", "f_f26m_ck", 7),
 };
 
-static const struct mtk_gate_regs ifr0_cg_regs = {
+static const struct mtk_gate_regs ifr0_cg_regs __maybe_unused = {
 	.set_ofs = 0x200,
 	.clr_ofs = 0x200,
 	.sta_ofs = 0x200,
 };
 
-static const struct mtk_gate_regs ifr1_cg_regs = {
+static const struct mtk_gate_regs ifr1_cg_regs __maybe_unused = {
 	.set_ofs = 0x74,
 	.clr_ofs = 0x74,
 	.sta_ofs = 0x74,
@@ -1376,3 +1289,4 @@ postcore_initcall_sync(clk_mt6761_init);
 module_exit(clk_mt6761_exit);
 
 MODULE_LICENSE("GPL");
+

@@ -37,3 +37,6 @@ static void __exit mtk_thermal_platform_exit(void)
 
 module_init(mtk_thermal_platform_init);
 module_exit(mtk_thermal_platform_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");
+

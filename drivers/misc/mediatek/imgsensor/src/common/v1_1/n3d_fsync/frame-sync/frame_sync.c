@@ -186,7 +186,7 @@ static inline enum FS_STATUS get_fs_status(void)
 
 static inline unsigned int check_sensorIdx(unsigned int sensor_idx)
 {
-	if (sensor_idx >= 0 && sensor_idx < SENSOR_MAX_NUM)
+	if (sensor_idx < SENSOR_MAX_NUM)
 		return 1;
 
 	return 0;
@@ -1083,8 +1083,8 @@ static inline void fs_set_stream(unsigned int idx, unsigned int flag)
 static inline void fs_set_sync_status(unsigned int idx, unsigned int flag)
 {
 	struct SensorInfo info = {0}; // for log using
-	info = fs_get_reg_sensor_info(idx);
 
+	info = fs_get_reg_sensor_info(idx);
 
 	/* unset sync => reset pf_ctrl_bits data of this idx */
 	/* TODO: add a API for doing this */

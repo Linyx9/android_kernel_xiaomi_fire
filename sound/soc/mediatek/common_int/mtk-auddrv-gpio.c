@@ -42,6 +42,7 @@
 #include <linux/delay.h>
 #include <linux/of.h>
 #include <linux/of_fdt.h>
+#include <linux/module.h>
 
 struct pinctrl *pinctrlaud;
 
@@ -148,7 +149,6 @@ void AudDrv_GPIO_probe(void *dev)
 	int ret;
 	int i = 0;
 
-	pr_debug("%s\n", __func__);
 
 	pinctrlaud = devm_pinctrl_get(dev);
 	if (IS_ERR(pinctrlaud)) {
@@ -190,6 +190,7 @@ void AudDrv_GPIO_probe(void *dev)
 		}
 	}
 }
+EXPORT_SYMBOL(AudDrv_GPIO_probe);
 
 static int AudDrv_GPIO_Select(enum audio_system_gpio_type _type)
 {
@@ -197,7 +198,7 @@ static int AudDrv_GPIO_Select(enum audio_system_gpio_type _type)
 	int ret = 0;
 
 	if (_type < 0 || _type >= GPIO_NUM) {
-		pr_err("%s(), error, invaild gpio type %d\n", __func__, _type);
+		pr_err("%s(), error, invalid gpio type %d\n", __func__, _type);
 		return -EINVAL;
 	}
 
@@ -358,6 +359,7 @@ int AudDrv_GPIO_Request(bool _enable, enum soc_aud_digital_block _usage)
 	mutex_unlock(&gpio_request_mutex);
 	return 0;
 }
+EXPORT_SYMBOL(AudDrv_GPIO_Request);
 
 int AudDrv_GPIO_SMARTPA_Select(int mode)
 {
@@ -380,6 +382,7 @@ int AudDrv_GPIO_SMARTPA_Select(int mode)
 	mutex_unlock(&gpio_request_mutex);
 	return retval;
 }
+EXPORT_SYMBOL(AudDrv_GPIO_SMARTPA_Select);
 
 int AudDrv_GPIO_TDM_Select(int mode)
 {
@@ -456,6 +459,7 @@ int AudDrv_GPIO_I2S_Select(int bEnable)
 	mutex_unlock(&gpio_request_mutex);
 	return retval;
 }
+EXPORT_SYMBOL(AudDrv_GPIO_I2S_Select);
 
 int AudDrv_GPIO_EXTAMP_Select(int bEnable, int mode)
 {
@@ -503,6 +507,7 @@ int AudDrv_GPIO_EXTAMP_Select(int bEnable, int mode)
 #endif
 	return retval;
 }
+EXPORT_SYMBOL(AudDrv_GPIO_EXTAMP_Select);
 
 int AudDrv_GPIO_EXTAMP2_Select(int bEnable, int mode)
 {
@@ -578,6 +583,7 @@ int AudDrv_GPIO_RCVSPK_Select(int bEnable)
 #endif
 	return retval;
 }
+EXPORT_SYMBOL(AudDrv_GPIO_RCVSPK_Select);
 
 int AudDrv_GPIO_HPDEPOP_Select(int bEnable)
 {
@@ -607,35 +613,38 @@ int audio_drv_gpio_aud_clk_pull(bool high)
 	return retval;
 }
 
-static int __init dt_get_extbuck_info(unsigned long node, const char *uname,
-				      int depth, void *data)
-{
-	struct devinfo_extbuck_tag {
-		u32 size;
-		u32 tag;
-		u32 extbuck_fan53526_exist;
-	} *tags;
-	unsigned int size = 0;
-
-	if (depth != 1 ||
-	    (strcmp(uname, "chosen") != 0 && strcmp(uname, "chosen@0") != 0))
-		return 0;
-
-	tags = (struct devinfo_extbuck_tag *)of_get_flat_dt_prop(
-		node, "atag,extbuck_fan53526", &size);
-
-	if (tags) {
-		extbuck_fan53526_exist = tags->extbuck_fan53526_exist;
-		pr_info("[%s] fan53526_exist = %d\n", __func__,
-			extbuck_fan53526_exist);
-	}
-	return 0;
-}
+/* static int __init dt_get_extbuck_info(unsigned long node, const char *uname,
+ *				      int depth, void *data)
+ *{
+ *	struct devinfo_extbuck_tag {
+ *		u32 size;
+ *		u32 tag;
+ *		u32 extbuck_fan53526_exist;
+ *	} *tags;
+ *	unsigned int size = 0;
+ *
+ *	if (depth != 1 ||
+ *	    (strcmp(uname, "chosen") != 0 && strcmp(uname, "chosen@0") != 0))
+ *		return 0;
+ *
+ *	tags = (struct devinfo_extbuck_tag *)of_get_flat_dt_prop(
+ *		node, "atag,extbuck_fan53526", &size);
+ *
+ *	if (tags) {
+ *		extbuck_fan53526_exist = tags->extbuck_fan53526_exist;
+ *		pr_info("[%s] fan53526_exist = %d\n", __func__,
+ *			extbuck_fan53526_exist);
+ *	}
+ *	return 0;
+ *}
+ */
 
 static int __init audio_drv_gpio_init(void)
 {
-	of_scan_flat_dt(dt_get_extbuck_info, NULL);
+	/*of_scan_flat_dt(dt_get_extbuck_info, NULL);*/
 
 	return 0;
 }
 arch_initcall(audio_drv_gpio_init);
+
+MODULE_LICENSE("GPL");

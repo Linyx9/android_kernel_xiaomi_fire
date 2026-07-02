@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2020 MediaTek Inc.
  */
-
 #include <linux/types.h>
 #include <linux/io.h>
 
@@ -11,13 +10,6 @@
 
 #define __dbg(dbg, cfg, a) \
 	((dbg & cfg->vio_dbg_##a) >> cfg->vio_dbg_##a##_shift)
-
-/*
- * Platform devapc slaves
- *    {sys_idx, ctrl_idx, vio_idx, name, vio_irq_en}
- * Note: "vio_idx" must be aligned with array index,
- *    add paddings to make them continuous.
- */
 
 static struct dapc_slave dapc_slv_mt6885[] = {
 	{0, 0, 0, "apusys_ao-0", true},
@@ -390,4 +382,3 @@ struct dapc_config dapc_cfg_mt6877 = {
 
 	.ut_base = 0x19021000, /* reviser sysctrl */
 };
-

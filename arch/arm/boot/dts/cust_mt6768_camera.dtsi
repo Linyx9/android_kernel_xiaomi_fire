@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 /* CAMERA GPIO standardization */
 &pio {
 	camera0_mclk_2mA: camera0_mclk_2mA@gpio100 {
@@ -277,3 +277,12 @@
 
 };
 /* CAMERA GPIO end */
+
+/* CAMERA AF */
+&camera_af_hw_node {
+	camaf_m1_pmic-supply = <&mt_pmic_vldo28_ldo_reg>;
+	camaf_m2_pmic-supply = <&mt_pmic_vldo28_ldo_reg>;
+	camaf_m3_pmic-supply = <&mt_pmic_vldo28_ldo_reg>;
+	status = "okay";
+};
+/* CAMERA AF end */

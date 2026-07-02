@@ -259,17 +259,6 @@ struct SENSOR_ATR_INFO {
 	MUINT16 OverExp_Max_H;
 	MUINT16 OverExp_Max_L;
 };
-#if 0
-static struct SENSOR_ATR_INFO sensorATR_Info[4] = {	/* Strength Range Min */
-	{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-	/* Strength Range Std */
-	{0x00, 0x32, 0x00, 0x3c, 0x03, 0xff},
-	/* Strength Range Max */
-	{0x3f, 0xff, 0x3f, 0xff, 0x3f, 0xff},
-	/* Strength Range Custom */
-	{0x3F, 0xFF, 0x00, 0x0, 0x3F, 0xFF}
-};
-#endif
 
 #define IMX230MIPI_MaxGainIndex (115)
 kal_uint16 IMX230MIPI_sensorGainMapping[IMX230MIPI_MaxGainIndex][2] = {
@@ -411,101 +400,6 @@ static int write_cmos_sensor(kal_uint32 addr, kal_uint32 para)
 	return iWriteRegI2C(pu_send_cmd, 3, imgsensor.i2c_write_id);
 }
 
-#if 0
-static kal_uint32 imx230_ATR(UINT16 DarkLimit, UINT16 OverExp)
-{
-
-	write_cmos_sensor(0x6e50, sensorATR_Info[DarkLimit].DarkLimit_H);
-	write_cmos_sensor(0x6e51, sensorATR_Info[DarkLimit].DarkLimit_L);
-	write_cmos_sensor(0x9340, sensorATR_Info[OverExp].OverExp_Min_H);
-	write_cmos_sensor(0x9341, sensorATR_Info[OverExp].OverExp_Min_L);
-	write_cmos_sensor(0x9342, sensorATR_Info[OverExp].OverExp_Max_H);
-	write_cmos_sensor(0x9343, sensorATR_Info[OverExp].OverExp_Max_L);
-	write_cmos_sensor(0x9706, 0x10);
-	write_cmos_sensor(0x9707, 0x03);
-	write_cmos_sensor(0x9708, 0x03);
-	write_cmos_sensor(0x9e24, 0x00);
-	write_cmos_sensor(0x9e25, 0x8c);
-	write_cmos_sensor(0x9e26, 0x00);
-	write_cmos_sensor(0x9e27, 0x94);
-	write_cmos_sensor(0x9e28, 0x00);
-	write_cmos_sensor(0x9e29, 0x96);
-	pr_debug("DarkLimit 0x6e50(0x%x), 0x6e51(0x%x)\n",
-		sensorATR_Info[DarkLimit].DarkLimit_H,
-		sensorATR_Info[DarkLimit].DarkLimit_L);
-	pr_debug("OverExpMin 0x9340(0x%x), 0x9341(0x%x)\n",
-		sensorATR_Info[OverExp].OverExp_Min_H,
-		sensorATR_Info[OverExp].OverExp_Min_L);
-	pr_debug("OverExpMin 0x9342(0x%x), 0x9343(0x%x)\n",
-		sensorATR_Info[OverExp].OverExp_Max_H,
-		sensorATR_Info[OverExp].OverExp_Max_L);
-	return ERROR_NONE;
-}
-#endif
-
-#if 0
-static MUINT32 cur_startpos;
-static MUINT32 cur_size;
-
-static void imx230_set_pd_focus_area(MUINT32 startpos, MUINT32 size)
-{
-	UINT16 start_x_pos, start_y_pos, end_x_pos, end_y_pos;
-	UINT16 focus_width, focus_height;
-
-	if ((cur_startpos == startpos) && (cur_size == size)) {
-		pr_debug("Not to need update focus area!\n");
-		return;
-	}
-	cur_startpos = startpos;
-	cur_size = size;
-
-
-	start_x_pos = (startpos >> 16) & 0xFFFF;
-	start_y_pos = startpos & 0xFFFF;
-	focus_width = (size >> 16) & 0xFFFF;
-	focus_height = size & 0xFFFF;
-
-	end_x_pos = start_x_pos + focus_width;
-	end_y_pos = start_y_pos + focus_height;
-
-	if (imgsensor.pdaf_mode == 1) {
-		pr_debug("GC pre PDAF\n");
-		 /*PDAF*/
-		    /*PD_CAL_ENALBE */
-		    write_cmos_sensor(0x3121, 0x01);
-		/*AREA MODE */
-		write_cmos_sensor(0x31B0, 0x02);	/* 8x6 output */
-		write_cmos_sensor(0x31B4, 0x01);	/* 8x6 output */
-		/*PD_OUT_EN=1 */
-		write_cmos_sensor(0x3123, 0x01);
-
-		/*Fixed area mode */
-
-		write_cmos_sensor(0x3158, (start_x_pos >> 8) & 0xFF);
-		write_cmos_sensor(0x3159, start_x_pos & 0xFF);	/* X start */
-		write_cmos_sensor(0x315a, (start_y_pos >> 8) & 0xFF);
-		write_cmos_sensor(0x315b, start_y_pos & 0xFF);	/* Y start */
-		write_cmos_sensor(0x315c, (end_x_pos >> 8) & 0xFF);
-		write_cmos_sensor(0x315d, end_x_pos & 0xFF);	/* X end */
-		write_cmos_sensor(0x315e, (end_y_pos >> 8) & 0xFF);
-		write_cmos_sensor(0x315f, end_y_pos & 0xFF);	/* Y end */
-
-
-	}
-
-
-	pr_debug(
-	"start_x_pos:%d, start_y_pos:%d, focus_width:%d, focus_height:%d, end_x_pos:%d, end_y_pos:%d\n",
-	     start_x_pos,
-	     start_y_pos,
-	     focus_width,
-	     focus_height,
-	     end_x_pos,
-	     end_y_pos);
-
-}
-#endif
-
 static void imx230_get_pdaf_reg_setting(MUINT32 regNum, kal_uint16 *regDa)
 {
 	int i, idx;
@@ -546,14 +440,6 @@ static void imx230_apply_SPC(void)
 	    imgsensor.i2c_write_id,
 	    tosend,
 	    imgsensor_info.i2c_speed);
-
-#if 0
-    /* for verify */
-	for (i = 0x7c00; i < 0x7c00+352; i++)
-		pr_info(
-		"SPC read out : Addr[%3d] Data[%x], Ref[%x]",
-		i, read_cmos_sensor(i), imx230_SPC_data[i-0x7c00]);
-#endif
 }
 
 static void set_dummy(void)
@@ -956,75 +842,6 @@ static void hdr_write_shutter(kal_uint16 le, kal_uint16 se)
 
 }
 
-
-#if 0
-static void set_mirror_flip(kal_uint8 image_mirror)
-{
-	pr_debug("image_mirror = %d\n", image_mirror);
-
-    /********************************************************
-     *
-     *   0x3820[2] ISP Vertical flip
-     *   0x3820[1] Sensor Vertical flip
-     *
-     *   0x3821[2] ISP Horizontal mirror
-     *   0x3821[1] Sensor Horizontal mirror
-     *
-     *   ISP and Sensor flip or mirror register bit should be the same!!
-     *
-     ********************************************************/
-
-	switch (image_mirror) {
-	case IMAGE_NORMAL:
-		write_cmos_sensor(0x0101, 0x00);
-		write_cmos_sensor(0x3A27, 0x00);
-		write_cmos_sensor(0x3A28, 0x00);
-		write_cmos_sensor(0x3A29, 0x01);
-		write_cmos_sensor(0x3A2A, 0x00);
-		write_cmos_sensor(0x3A2B, 0x00);
-		write_cmos_sensor(0x3A2C, 0x00);
-		write_cmos_sensor(0x3A2D, 0x01);
-		write_cmos_sensor(0x3A2E, 0x01);
-		break;
-	case IMAGE_H_MIRROR:
-		write_cmos_sensor(0x0101, 0x01);
-		write_cmos_sensor(0x3A27, 0x01);
-		write_cmos_sensor(0x3A28, 0x01);
-		write_cmos_sensor(0x3A29, 0x00);
-		write_cmos_sensor(0x3A2A, 0x00);
-		write_cmos_sensor(0x3A2B, 0x01);
-		write_cmos_sensor(0x3A2C, 0x00);
-		write_cmos_sensor(0x3A2D, 0x00);
-		write_cmos_sensor(0x3A2E, 0x01);
-		break;
-	case IMAGE_V_MIRROR:
-		write_cmos_sensor(0x0101, 0x02);
-		write_cmos_sensor(0x3A27, 0x10);
-		write_cmos_sensor(0x3A28, 0x10);
-		write_cmos_sensor(0x3A29, 0x01);
-		write_cmos_sensor(0x3A2A, 0x01);
-		write_cmos_sensor(0x3A2B, 0x00);
-		write_cmos_sensor(0x3A2C, 0x01);
-		write_cmos_sensor(0x3A2D, 0x01);
-		write_cmos_sensor(0x3A2E, 0x00);
-		break;
-	case IMAGE_HV_MIRROR:
-		write_cmos_sensor(0x0101, 0x03);
-		write_cmos_sensor(0x3A27, 0x11);
-		write_cmos_sensor(0x3A28, 0x11);
-		write_cmos_sensor(0x3A29, 0x00);
-		write_cmos_sensor(0x3A2A, 0x01);
-		write_cmos_sensor(0x3A2B, 0x01);
-		write_cmos_sensor(0x3A2C, 0x01);
-		write_cmos_sensor(0x3A2D, 0x00);
-		write_cmos_sensor(0x3A2E, 0x00);
-		break;
-	default:
-		pr_debug("Error image_mirror setting\n");
-	}
-
-}
-#endif
 /*************************************************************************
  * FUNCTION
  *    night_mode
@@ -1058,9 +875,6 @@ static void night_mode(kal_bool enable)
 static kal_uint16 imx230_table_write_cmos_sensor(
 	kal_uint16 *para, kal_uint32 len)
 {
-
-
-
 	char puSendCmd[I2C_BUFFER_LEN];
 	kal_uint32 tosend, IDX;
 	kal_uint16 addr = 0, addr_last = 0, data;
@@ -1081,11 +895,9 @@ static kal_uint16 imx230_table_write_cmos_sensor(
 
 		}
 #if MULTI_WRITE
-
 		if ((I2C_BUFFER_LEN - tosend) < 3  ||
 		    len == IDX  ||
 		    addr != addr_last) {
-
 			if (iBurstWriteReg_multi(puSendCmd,
 				tosend,
 				imgsensor.i2c_write_id,

@@ -13,41 +13,6 @@
 #include "mt6885-afe-gpio.h"
 
 struct pinctrl *aud_pinctrl;
-
-enum mt6885_afe_gpio {
-	MT6885_AFE_GPIO_DAT_MISO_OFF,
-	MT6885_AFE_GPIO_DAT_MISO_ON,
-	MT6885_AFE_GPIO_DAT_MOSI_OFF,
-	MT6885_AFE_GPIO_DAT_MOSI_ON,
-	MT6885_AFE_GPIO_DAT_MISO_CH34_OFF,
-	MT6885_AFE_GPIO_DAT_MISO_CH34_ON,
-	MT6885_AFE_GPIO_DAT_MOSI_CH34_OFF,
-	MT6885_AFE_GPIO_DAT_MOSI_CH34_ON,
-	MT6885_AFE_GPIO_I2S0_OFF,
-	MT6885_AFE_GPIO_I2S0_ON,
-	MT6885_AFE_GPIO_I2S1_OFF,
-	MT6885_AFE_GPIO_I2S1_ON,
-	MT6885_AFE_GPIO_I2S2_OFF,
-	MT6885_AFE_GPIO_I2S2_ON,
-	MT6885_AFE_GPIO_I2S3_OFF,
-	MT6885_AFE_GPIO_I2S3_ON,
-	MT6885_AFE_GPIO_I2S5_OFF,
-	MT6885_AFE_GPIO_I2S5_ON,
-	MT6885_AFE_GPIO_I2S6_OFF,
-	MT6885_AFE_GPIO_I2S6_ON,
-	MT6885_AFE_GPIO_I2S7_OFF,
-	MT6885_AFE_GPIO_I2S7_ON,
-	MT6885_AFE_GPIO_I2S8_OFF,
-	MT6885_AFE_GPIO_I2S8_ON,
-	MT6885_AFE_GPIO_I2S9_OFF,
-	MT6885_AFE_GPIO_I2S9_ON,
-	MT6885_AFE_GPIO_VOW_DAT_OFF,
-	MT6885_AFE_GPIO_VOW_DAT_ON,
-	MT6885_AFE_GPIO_VOW_CLK_OFF,
-	MT6885_AFE_GPIO_VOW_CLK_ON,
-	MT6885_AFE_GPIO_GPIO_NUM
-};
-
 struct audio_gpio_attr {
 	const char *name;
 	bool gpio_prepare;
@@ -55,8 +20,12 @@ struct audio_gpio_attr {
 };
 
 static struct audio_gpio_attr aud_gpios[MT6885_AFE_GPIO_GPIO_NUM] = {
-	[MT6885_AFE_GPIO_DAT_MISO_OFF] = {"aud_dat_miso_off", false, NULL},
-	[MT6885_AFE_GPIO_DAT_MISO_ON] = {"aud_dat_miso_on", false, NULL},
+	[MT6885_AFE_GPIO_DAT_MISO0_OFF] = {"aud_dat_miso0_off", false, NULL},
+	[MT6885_AFE_GPIO_DAT_MISO0_ON] = {"aud_dat_miso0_on", false, NULL},
+	[MT6885_AFE_GPIO_DAT_MISO1_OFF] = {"aud_dat_miso1_off", false, NULL},
+	[MT6885_AFE_GPIO_DAT_MISO1_ON] = {"aud_dat_miso1_on", false, NULL},
+	[MT6885_AFE_GPIO_DAT_MISO2_OFF] = {"aud_dat_miso2_off", false, NULL},
+	[MT6885_AFE_GPIO_DAT_MISO2_ON] = {"aud_dat_miso2_on", false, NULL},
 	[MT6885_AFE_GPIO_DAT_MOSI_OFF] = {"aud_dat_mosi_off", false, NULL},
 	[MT6885_AFE_GPIO_DAT_MOSI_ON] = {"aud_dat_mosi_on", false, NULL},
 	[MT6885_AFE_GPIO_I2S0_OFF] = {"aud_gpio_i2s0_off", false, NULL},
@@ -81,10 +50,6 @@ static struct audio_gpio_attr aud_gpios[MT6885_AFE_GPIO_GPIO_NUM] = {
 	[MT6885_AFE_GPIO_VOW_DAT_ON] = {"vow_dat_miso_on", false, NULL},
 	[MT6885_AFE_GPIO_VOW_CLK_OFF] = {"vow_clk_miso_off", false, NULL},
 	[MT6885_AFE_GPIO_VOW_CLK_ON] = {"vow_clk_miso_on", false, NULL},
-	[MT6885_AFE_GPIO_DAT_MISO_CH34_OFF] = {"aud_dat_miso_ch34_off",
-					       false, NULL},
-	[MT6885_AFE_GPIO_DAT_MISO_CH34_ON] = {"aud_dat_miso_ch34_on",
-					      false, NULL},
 	[MT6885_AFE_GPIO_DAT_MOSI_CH34_OFF] = {"aud_dat_mosi_ch34_off",
 					       false, NULL},
 	[MT6885_AFE_GPIO_DAT_MOSI_CH34_ON] = {"aud_dat_mosi_ch34_on",
@@ -131,7 +96,7 @@ static int mt6885_afe_gpio_select(struct mtk_base_afe *afe,
 	int ret = 0;
 
 	if (type < 0 || type >= MT6885_AFE_GPIO_GPIO_NUM) {
-		dev_err(afe->dev, "%s(), error, invaild gpio type %d\n",
+		dev_err(afe->dev, "%s(), error, invalid gpio type %d\n",
 			__func__, type);
 		return -EINVAL;
 	}
@@ -144,56 +109,62 @@ static int mt6885_afe_gpio_select(struct mtk_base_afe *afe,
 
 	ret = pinctrl_select_state(aud_pinctrl,
 				   aud_gpios[type].gpioctrl);
-	if (ret) {
+	if (ret)
 		dev_err(afe->dev, "%s(), error, can not set gpio type %d\n",
-		       __func__, type);
-		AUDIO_AEE("can not set gpio type");
-	}
+			__func__, type);
+
 	return ret;
 }
 
 static int mt6885_afe_gpio_adda_dl(struct mtk_base_afe *afe, bool enable)
 {
-	if (enable) {
+	if (enable)
 		return mt6885_afe_gpio_select(afe,
 					      MT6885_AFE_GPIO_DAT_MOSI_ON);
-	} else {
+	else
 		return mt6885_afe_gpio_select(afe,
 					      MT6885_AFE_GPIO_DAT_MOSI_OFF);
-	}
 }
 
 static int mt6885_afe_gpio_adda_ul(struct mtk_base_afe *afe, bool enable)
 {
-	if (enable) {
-		return mt6885_afe_gpio_select(afe,
-					      MT6885_AFE_GPIO_DAT_MISO_ON);
-	} else {
-		return mt6885_afe_gpio_select(afe,
-					      MT6885_AFE_GPIO_DAT_MISO_OFF);
+	int ret = 0;
+
+	if (mt6885_afe_gpio_is_prepared(MT6885_AFE_GPIO_DAT_MISO0_ON)) {
+		ret = mt6885_afe_gpio_select(afe, enable ?
+					     MT6885_AFE_GPIO_DAT_MISO0_ON :
+					     MT6885_AFE_GPIO_DAT_MISO0_OFF);
+		/* if error happened, skip miso1 select */
+		if (ret)
+			return ret;
 	}
+
+	if (mt6885_afe_gpio_is_prepared(MT6885_AFE_GPIO_DAT_MISO1_ON))
+		ret = mt6885_afe_gpio_select(afe, enable ?
+					     MT6885_AFE_GPIO_DAT_MISO1_ON :
+					     MT6885_AFE_GPIO_DAT_MISO1_OFF);
+
+	return ret;
 }
 
 static int mt6885_afe_gpio_adda_ch34_dl(struct mtk_base_afe *afe, bool enable)
 {
-	if (enable) {
+	if (enable)
 		return mt6885_afe_gpio_select(afe,
 			MT6885_AFE_GPIO_DAT_MOSI_CH34_ON);
-	} else {
+	else
 		return mt6885_afe_gpio_select(afe,
 			MT6885_AFE_GPIO_DAT_MOSI_CH34_OFF);
-	}
 }
 
 static int mt6885_afe_gpio_adda_ch34_ul(struct mtk_base_afe *afe, bool enable)
 {
-	if (enable) {
+	if (enable)
 		return mt6885_afe_gpio_select(afe,
-			MT6885_AFE_GPIO_DAT_MISO_CH34_ON);
-	} else {
+			MT6885_AFE_GPIO_DAT_MISO2_ON);
+	else
 		return mt6885_afe_gpio_select(afe,
-			MT6885_AFE_GPIO_DAT_MISO_CH34_OFF);
-	}
+			MT6885_AFE_GPIO_DAT_MISO2_OFF);
 }
 
 int mt6885_afe_gpio_request(struct mtk_base_afe *afe, bool enable,
@@ -283,10 +254,16 @@ int mt6885_afe_gpio_request(struct mtk_base_afe *afe, bool enable,
 	default:
 		mutex_unlock(&gpio_request_mutex);
 		dev_warn(afe->dev, "%s(), invalid dai %d\n", __func__, dai);
-		AUDIO_AEE("invalid dai");
 		return -EINVAL;
 	}
 	mutex_unlock(&gpio_request_mutex);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mt6885_afe_gpio_request);
+
+bool mt6885_afe_gpio_is_prepared(enum mt6885_afe_gpio type)
+{
+	return aud_gpios[type].gpio_prepare;
+}
+EXPORT_SYMBOL(mt6885_afe_gpio_is_prepared);
 

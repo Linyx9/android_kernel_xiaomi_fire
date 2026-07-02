@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 //
-// Copyright (c) 2019 MediaTek Inc.
+// Copyright (c) 2020 MediaTek Inc.
 
 #include <linux/mfd/mt6397/core.h>
 #include <linux/module.h>
@@ -30,10 +30,9 @@ static ssize_t pmic_access_store(struct device *dev,
 				 size_t size)
 {
 	struct mt63xx_consumer_data *data;
+	unsigned int reg_val = 0, reg_adr = 0;
 	int ret = 0;
 	char *pvalue = NULL, *addr, *val;
-	unsigned int reg_val = 0;
-	unsigned int reg_adr = 0;
 
 	if (dev) {
 		data = dev_get_drvdata(dev);
@@ -49,15 +48,20 @@ static ssize_t pmic_access_store(struct device *dev,
 		pvalue = (char *)buf;
 		addr = strsep(&pvalue, " ");
 		val = strsep(&pvalue, " ");
-		if (addr)
+		if (addr) {
 			ret = kstrtou32(addr, 16, (unsigned int *)&reg_adr);
+			if (ret < 0)
+				pr_info("%s failed to use kstrtou32\n", __func__);
+		}
 		mutex_lock(&data->lock);
 		if (val) {
 			ret = kstrtou32(val, 16, (unsigned int *)&reg_val);
-			ret = regmap_write(data->regmap, reg_adr, reg_val);
+			if (ret < 0)
+				pr_info("%s failed to use kstrtou32\n", __func__);
+			regmap_write(data->regmap, reg_adr, reg_val);
 		} else {
-			ret = regmap_read(data->regmap,
-					  reg_adr, &data->reg_value);
+			regmap_read(data->regmap,
+				    reg_adr, &data->reg_value);
 		}
 		mutex_unlock(&data->lock);
 		pr_info("%s PMIC Reg[0x%x]=0x%x!\n",
@@ -83,6 +87,7 @@ static int mt63xx_debug_probe(struct platform_device *pdev)
 	drvdata->regmap = chip->regmap;
 	platform_set_drvdata(pdev, drvdata);
 
+	//regmap_write(chip->regmap, 0x910, 0xF);
 	/* Create sysfs entry */
 	ret = device_create_file(&pdev->dev, &dev_attr_pmic_access);
 	if (ret < 0)

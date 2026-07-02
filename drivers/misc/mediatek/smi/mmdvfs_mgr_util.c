@@ -4,7 +4,7 @@
  */
 
 #include <linux/uaccess.h>
-#include "mtk_smi.h"
+#include "mtk-smi-bwc.h"
 #include "mmdvfs_mgr.h"
 #include "mmdvfs_internal.h"
 
@@ -19,20 +19,14 @@ enum mmdvfs_lcd_size_enum mmdvfs_get_lcd_resolution(void)
 	long lcd_h = 0;
 	int convert_err = -EINVAL;
 
-#if defined(CONFIG_LCM_WIDTH) && defined(CONFIG_LCM_HEIGHT)
+#if IS_ENABLED(CONFIG_LCM_WIDTH) && IS_ENABLED(CONFIG_LCM_HEIGHT)
 	convert_err = kstrtoul(CONFIG_LCM_WIDTH, 10, &lcd_w);
 	if (!convert_err)
 		convert_err = kstrtoul(CONFIG_LCM_HEIGHT, 10, &lcd_h);
 #endif	/* CONFIG_LCM_WIDTH, CONFIG_LCM_HEIGHT */
 
-	if (convert_err) {
-#if !defined(CONFIG_FPGA_EARLY_PORTING) && defined(CONFIG_MTK_FB)
-		lcd_w = DISP_GetScreenWidth();
-		lcd_h = DISP_GetScreenHeight();
-#else
+	if (convert_err)
 		MMDVFSMSG("unable to get resolution\n");
-#endif
-	}
 
 	lcd_resolution = lcd_w * lcd_h;
 

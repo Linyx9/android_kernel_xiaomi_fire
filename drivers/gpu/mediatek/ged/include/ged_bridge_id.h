@@ -17,6 +17,15 @@ struct GED_BRIDGE_PACKAGE {
 	int32_t i32OutBufferSize;
 };
 
+struct GED_BRIDGE_PACKAGE_32 {
+	uint32_t ui32FunctionID;
+	int32_t i32Size;
+	uint32_t ui32ParamIn;
+	int32_t i32InBufferSize;
+	uint32_t ui32ParamOut;
+	int32_t i32OutBufferSize;
+};
+
 #define GPU_TUNER_BUF_NAME_LEN 128
 
 /*****************************************************************************
@@ -29,37 +38,43 @@ struct GED_BRIDGE_PACKAGE {
 #define GED_IOW(INDEX)   _IOW(GED_MAGIC, INDEX, struct GED_BRIDGE_PACKAGE)
 #define GED_IOR(INDEX)   _IOR(GED_MAGIC, INDEX, struct GED_BRIDGE_PACKAGE)
 #define GED_IOWR(INDEX)  _IOWR(GED_MAGIC, INDEX, struct GED_BRIDGE_PACKAGE)
+#define GED_IOWR_32(INDEX)  _IOWR(GED_MAGIC, INDEX, struct GED_BRIDGE_PACKAGE_32)
 #define GED_GET_BRIDGE_ID(X)  _IOC_NR(X)
 
 /******************************************************************************
  *  IOCTL Commands
  ******************************************************************************/
-#define GED_BRIDGE_COMMAND_LOG_BUF_GET            0
-#define GED_BRIDGE_COMMAND_LOG_BUF_WRITE          1
-#define GED_BRIDGE_COMMAND_LOG_BUF_RESET          2
-#define GED_BRIDGE_COMMAND_BOOST_GPU_FREQ         3
-#define GED_BRIDGE_COMMAND_MONITOR_3D_FENCE       4
-#define GED_BRIDGE_COMMAND_QUERY_INFO             5
-#define GED_BRIDGE_COMMAND_NOTIFY_VSYNC           6
-#define GED_BRIDGE_COMMAND_DVFS_PROBE             7
-#define GED_BRIDGE_COMMAND_DVFS_UM_RETURN         8
-#define GED_BRIDGE_COMMAND_EVENT_NOTIFY           9
-#define GED_BRIDGE_COMMAND_WAIT_HW_VSYNC          10
-#define GED_BRIDGE_COMMAND_QUERY_TARGET_FPS       11
-#define GED_BRIDGE_COMMAND_VSYNC_WAIT             12
-#define GED_BRIDGE_COMMAND_GPU_HINT_TO_CPU        13
-#define GED_BRIDGE_COMMAND_HINT_FORCE_MDP         14
+#define GED_BRIDGE_COMMAND_LOG_BUF_GET        0
+#define GED_BRIDGE_COMMAND_LOG_BUF_WRITE      1
+#define GED_BRIDGE_COMMAND_LOG_BUF_RESET      2
+#define GED_BRIDGE_COMMAND_BOOST_GPU_FREQ     3
+#define GED_BRIDGE_COMMAND_MONITOR_3D_FENCE   4
+#define GED_BRIDGE_COMMAND_QUERY_INFO         5
+#define GED_BRIDGE_COMMAND_NOTIFY_VSYNC       6
+#define GED_BRIDGE_COMMAND_DVFS_PROBE         7
+#define GED_BRIDGE_COMMAND_DVFS_UM_RETURN     8
+#define GED_BRIDGE_COMMAND_EVENT_NOTIFY       9
+#define GED_BRIDGE_COMMAND_WAIT_HW_VSYNC      10
+#define GED_BRIDGE_COMMAND_QUERY_TARGET_FPS   11
+#define GED_BRIDGE_COMMAND_VSYNC_WAIT         12
+#define GED_BRIDGE_COMMAND_GPU_HINT_TO_CPU    13
+#define GED_BRIDGE_COMMAND_HINT_FORCE_MDP     14
 #define GED_BRIDGE_COMMAND_QUERY_DVFS_FREQ_PRED   15
 #define GED_BRIDGE_COMMAND_QUERY_GPU_DVFS_INFO    16
+#define GED_BRIDGE_COMMAND_HINT_FRAME_INFO    17
 
-#define GED_BRIDGE_COMMAND_GE_ALLOC              100
-#define GED_BRIDGE_COMMAND_GE_GET                101
-#define GED_BRIDGE_COMMAND_GE_SET                102
-#define GED_BRIDGE_COMMAND_GPU_TIMESTAMP         103
-#define GED_BRIDGE_COMMAND_TARGET_FPS            104
-#define GED_BRIDGE_COMMAND_GE_INFO               105
-#define GED_BRIDGE_COMMAND_GPU_TUNER_STATUS      106
-#define GED_BRIDGE_COMMAND_ID                    int
+#define GED_BRIDGE_COMMAND_GE_ALLOC           100
+#define GED_BRIDGE_COMMAND_GE_GET             101
+#define GED_BRIDGE_COMMAND_GE_SET             102
+#define GED_BRIDGE_COMMAND_GPU_TIMESTAMP      103
+#define GED_BRIDGE_COMMAND_TARGET_FPS         104
+#define GED_BRIDGE_COMMAND_GE_INFO            105
+#define GED_BRIDGE_COMMAND_GPU_TUNER_STATUS   106
+#define GED_BRIDGE_COMMAND_DMABUF_SET_NAME    107
+
+#define GED_BRIDGE_COMMAND_CREATE_TIMELINE    200
+
+#define GED_BRIDGE_COMMAND_ID                 int
 
 #define GED_BRIDGE_IO_LOG_BUF_GET \
 	GED_IOWR(GED_BRIDGE_COMMAND_LOG_BUF_GET)
@@ -93,6 +108,9 @@ struct GED_BRIDGE_PACKAGE {
 	GED_IOWR(GED_BRIDGE_COMMAND_QUERY_DVFS_FREQ_PRED)
 #define GED_BRIDGE_IO_QUERY_GPU_DVFS_INFO \
 	GED_IOWR(GED_BRIDGE_COMMAND_QUERY_GPU_DVFS_INFO)
+#define GED_BRIDGE_IO_HINT_FRAME_INFO \
+	GED_IOWR(GED_BRIDGE_COMMAND_HINT_FRAME_INFO)
+
 #define GED_BRIDGE_IO_GE_ALLOC \
 	GED_IOWR(GED_BRIDGE_COMMAND_GE_ALLOC)
 #define GED_BRIDGE_IO_GE_GET \
@@ -107,6 +125,10 @@ struct GED_BRIDGE_PACKAGE {
 	GED_IOWR(GED_BRIDGE_COMMAND_GE_INFO)
 #define GED_BRIDGE_IO_GPU_TUNER_STATUS \
 	GED_IOWR(GED_BRIDGE_COMMAND_GPU_TUNER_STATUS)
+#define GED_BRIDGE_IO_DMABUF_SET_NAME \
+	GED_IOWR(GED_BRIDGE_COMMAND_DMABUF_SET_NAME)
+#define GED_BRIDGE_IO_CREATE_TIMELINE \
+	GED_IOWR(GED_BRIDGE_COMMAND_CREATE_TIMELINE)
 
 /******************************************************************************
  *  LOG_BUF_GET
@@ -177,6 +199,10 @@ struct GED_BRIDGE_OUT_BOOSTGPUFREQ {
 /* Bridge in structure for MONITOR3DFENCE */
 struct GED_BRIDGE_IN_MONITOR3DFENCE {
 	int fd;
+	int pid;
+	int timeouts;
+	int dump_flag; // 1:dump 0:not_dump
+	GED_SWD_FENCE_TYPE eType;
 };
 
 /* Bridge out structure for MONITOR3DFENCE */
@@ -343,7 +369,7 @@ struct GED_BRIDGE_IN_QUERY_DVFS_FREQ_PRED {
 };
 
 /*****************************************************************************
- *  Hint frequency calculated by DVFS to MEOW
+ *  Hint frequency calculated by DVFS
  *****************************************************************************/
 struct GED_BRIDGE_OUT_QUERY_DVFS_FREQ_PRED {
 	GED_ERROR eError;
@@ -362,7 +388,7 @@ struct GED_BRIDGE_IN_QUERY_GPU_DVFS_INFO {
 };
 
 /*****************************************************************************
- *  Hint DVFS related INFOs to MEOW
+ *  Hint DVFS related INFOs
  *****************************************************************************/
 struct GED_BRIDGE_OUT_QUERY_GPU_DVFS_INFO {
 	GED_ERROR eError;
@@ -373,6 +399,37 @@ struct GED_BRIDGE_OUT_QUERY_GPU_DVFS_INFO {
 	int target_fps_margin;
 	int eara_fps_margin;
 	int gpu_time;
+};
+
+/******************************************************************************
+ *  HINT FRAME_INFO
+ ******************************************************************************/
+struct GED_BRIDGE_IN_HINT_FRAME_INFO {
+	uint64_t BBQ_id;
+	int32_t target_fps;
+	int32_t target_fps_margin;
+	int32_t enable;
+	uint32_t cmd;
+	int32_t pid;
+	int32_t tid;
+	uint64_t core;
+	bool	 by_mask;
+	int32_t reserved1;
+	int32_t reserved2;
+	int32_t reserved3;
+	int32_t reserved4;
+};
+
+struct GED_BRIDGE_OUT_HINT_FRAME_INFO {
+	GED_ERROR eError;
+	int32_t mainHead_fps_v;
+	int32_t mainHead_fps_gpu;
+	uint64_t mainHead_BQ_ID;
+};
+
+enum {
+	GED_FRAME_INFO_TARGET_FPS,
+	GED_FRAME_INFO_MC,
 };
 
 /*****************************************************************************
@@ -444,6 +501,33 @@ struct GED_BRIDGE_IN_GPU_TUNER_STATUS {
 /* Bridge out structure for GPU_TUNER_STATUS */
 struct GED_BRIDGE_OUT_GPU_TUNER_STATUS {
 	int feature;
+};
+
+/* Bridge in structure for CREATE_TIMELINE */
+struct GED_BRIDGE_IN_CREATE_TIMELINE {
+	char name[GED_LOG_BUF_NAME_LENGTH];
+};
+
+/* Bridge out structure for CREATE_TIMELINE */
+struct GED_BRIDGE_OUT_CREATE_TIMELINE {
+	int timeline_fd;
+};
+
+/*****************************************************************************
+ *  DMABUF - dma-buf functions
+ *****************************************************************************/
+
+#define DMABUF_NAME_LEN 48
+
+/* Bridge in structure for DMABUF_SET_NAME */
+struct GED_BRIDGE_IN_DMABUF_SET_NAME {
+	int32_t share_fd;
+	char name[DMABUF_NAME_LEN];
+};
+
+/* Bridge out structure for DMABUF_SET_NAME */
+struct GED_BRIDGE_OUT_DMABUF_SET_NAME {
+	GED_ERROR eError;
 };
 
 #endif

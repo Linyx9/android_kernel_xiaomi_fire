@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
-
 #include "inc/pd_core.h"
 #include "inc/tcpci_event.h"
 #include "inc/pd_process_evt.h"
+
+#if CONFIG_USB_PD_DR_SWAP
 
 /* PD Control MSG reactions */
 
@@ -37,7 +38,7 @@ DECL_PE_STATE_REACTION(PD_DPM_MSG_NAK);
 
 
 /*
- * [BLOCK] Porcess PD Ctrl MSG
+ * [BLOCK] Process PD Ctrl MSG
  */
 
 static inline bool pd_process_ctrl_msg(
@@ -56,7 +57,7 @@ static inline bool pd_process_ctrl_msg(
 }
 
 /*
- * [BLOCK] Porcess DPM MSG
+ * [BLOCK] Process DPM MSG
  */
 
 static inline bool pd_process_dpm_msg(
@@ -90,3 +91,4 @@ bool pd_process_event_drs(struct pd_port *pd_port, struct pd_event *pd_event)
 		return false;
 	}
 }
+#endif	/* CONFIG_USB_PD_DR_SWAP */

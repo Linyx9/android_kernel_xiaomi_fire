@@ -2,8 +2,8 @@
 /*
  * mt6833-afe-clk.h  --  Mediatek 6833 afe clock ctrl definition
  *
- * Copyright (c) 2020 MediaTek Inc.
- * Author: Eason Yen <eason.yen@mediatek.com>
+ * Copyright (c) 2021 MediaTek Inc.
+ * Author: Yujie Xiao <yujie.xiao@mediatek.com>
  */
 
 #ifndef _MT6833_AFE_CLOCK_CTRL_H_

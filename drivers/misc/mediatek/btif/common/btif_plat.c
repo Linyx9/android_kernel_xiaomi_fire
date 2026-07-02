@@ -202,7 +202,6 @@ static int _btif_tx_fifo_reset(struct _MTK_BTIF_INFO_STR_ *p_btif_info)
 static void _btif_set_default_setting(void)
 {
 	struct device_node *node = NULL;
-	unsigned int irq_info[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 	unsigned int phy_base;
 
 	if (!g_btif[0].private_data) {
@@ -217,18 +216,13 @@ static void _btif_set_default_setting(void)
 		mtk_btif_info.base = (unsigned long)of_iomap(node, 0);
 		BTIF_INFO_FUNC("get btif irq(%d),register base(0x%lx)\n",
 			mtk_btif_info.p_irq->irq_id, mtk_btif_info.base);
-	} else {
-		BTIF_ERR_FUNC("get btif device node fail\n");
-	}
 
-	/* get the interrupt line behaviour */
-	if (of_property_read_u32_array(node, "interrupts", irq_info,
-			ARRAY_SIZE(irq_info))) {
-		BTIF_ERR_FUNC("get interrupt flag from DTS fail\n");
-	} else {
-		mtk_btif_info.p_irq->irq_flags = irq_info[2];
+		/* get the IRQ flags */
+		mtk_btif_info.p_irq->irq_flags = irq_get_trigger_type(mtk_btif_info.p_irq->irq_id);
 		BTIF_INFO_FUNC("get interrupt flag(0x%x)\n",
 				mtk_btif_info.p_irq->irq_flags);
+	} else {
+		BTIF_ERR_FUNC("get btif device node fail\n");
 	}
 
 	if (of_property_read_u32_index(node, "reg", 1, &phy_base))
@@ -1333,41 +1327,8 @@ int hal_btif_pm_ops(struct _MTK_BTIF_INFO_STR_ *p_btif_info,
 	case BTIF_PM_RESUME:
 		i_ret = 0;
 		break;
-	case BTIF_PM_RESTORE_NOIRQ:{
-			unsigned int flag = 0;
-			struct _MTK_BTIF_IRQ_STR_ *p_irq = p_btif_info->p_irq;
-
-#ifdef CONFIG_OF
-			flag = p_irq->irq_flags;
-#else
-			switch (p_irq->sens_type) {
-			case IRQ_SENS_EDGE:
-				if (p_irq->edge_type == IRQ_EDGE_FALL)
-					flag = IRQF_TRIGGER_FALLING;
-				else if (p_irq->edge_type == IRQ_EDGE_RAISE)
-					flag = IRQF_TRIGGER_RISING;
-				else if (p_irq->edge_type == IRQ_EDGE_BOTH)
-					flag = IRQF_TRIGGER_RISING |
-					    IRQF_TRIGGER_FALLING;
-				else
-					flag = IRQF_TRIGGER_FALLING;
-				break;
-			case IRQ_SENS_LVL:
-				if (p_irq->lvl_type == IRQ_LVL_LOW)
-					flag = IRQF_TRIGGER_LOW;
-				else if (p_irq->lvl_type == IRQ_LVL_HIGH)
-					flag = IRQF_TRIGGER_HIGH;
-				else
-					flag = IRQF_TRIGGER_LOW;
-				break;
-			default:
-				flag = IRQF_TRIGGER_LOW;
-				break;
-			}
-#endif
-/* irq_set_irq_type(p_irq->irq_id, flag); */
-			i_ret = 0;
-		}
+	case BTIF_PM_RESTORE_NOIRQ:
+		i_ret = 0;
 		break;
 	default:
 		i_ret = ERR_INVALID_PAR;

@@ -1,4 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-only
-obj-$(CONFIG_CDNS_I3C_MASTER)		+= i3c-master-cdns.o
-obj-$(CONFIG_DW_I3C_MASTER)		+= dw-i3c-master.o
-obj-$(CONFIG_MTK_I3C_MASTER)		+= i3c-master-mtk.o
+ccflags-y += -I$(srctree)/drivers/i3c/master
+
+obj-$(CONFIG_DEVICE_MODULES_MTK_I3C_MASTER_MT69XX)	+= mtk-i3c-master-mt69xx.o

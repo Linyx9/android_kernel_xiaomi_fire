@@ -15,7 +15,6 @@
  *    ecosystem, ex: M-TEE, Trusty, GlobalPlatform, ...)
  */
 
-
 #ifndef __GZ_SHMEM_UT_H__
 #define __GZ_SHMEM_UT_H__
 

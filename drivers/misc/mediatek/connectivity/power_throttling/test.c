@@ -26,6 +26,7 @@ static int conn_pwr_ut_notify(int par1, int par2, int par3);
 static int conn_pwr_ut_get_temp(int par1, int par2, int par3);
 static int conn_pwr_ut_get_plat_level(int par1, int par2, int par3);
 static int conn_pwr_ut_set_customer_level(int par1, int par2, int par3);
+static int conn_pwr_ut_set_thermal_level(int par1, int par2, int par3);
 static int conn_pwr_ut_set_battery_level(int par1, int par2, int par3);
 static int conn_pwr_ut_set_max_temp(int par1, int par2, int par3);
 static int conn_pwr_ut_update_thermal_status(int par1, int par2, int par3);
@@ -49,6 +50,7 @@ static const CONN_PWR_TEST_FUNC conn_pwr_test_func[] = {
 	[0x8] = conn_pwr_ut_set_max_temp,
 	[0x9] = conn_pwr_ut_set_battery_level,
 	[0xA] = conn_pwr_ut_update_thermal_status,
+	[0xB] = conn_pwr_ut_set_thermal_level,
 	[0x10] = conn_pwr_ut_enable_throttling,
 };
 
@@ -91,23 +93,26 @@ ssize_t conn_pwr_dev_write(struct file *filp, const char __user *buffer, size_t 
 	pBuf = buf;
 	pToken = strsep(&pBuf, pDelimiter);
 	if (pToken != NULL) {
-		kstrtol(pToken, 16, &res);
-		x = (int)res;
-	} else {
-		x = 0;
+		if (kstrtol(pToken, 16, &res) == 0)
+			x = (int)res;
+		else
+			pr_info("%s x kstrtol failed %s", __func__, pToken);
 	}
 
 	pToken = strsep(&pBuf, "\t\n ");
 	if (pToken != NULL) {
-		kstrtol(pToken, 16, &res);
-		y = (int)res;
-		pr_info("y = 0x%08x\n\r", y);
+		if (kstrtol(pToken, 16, &res) == 0)
+			y = (int)res;
+		else
+			pr_info("%s y kstrtol failed %s", __func__, pToken);
 	}
 
 	pToken = strsep(&pBuf, "\t\n ");
 	if (pToken != NULL) {
-		kstrtol(pToken, 16, &res);
-		z = (int)res;
+		if (kstrtol(pToken, 16, &res) == 0)
+			z = (int)res;
+		else
+			pr_info("%s z kstrtol failed %s", __func__, pToken);
 	}
 
 	pr_info("x(0x%08x), y(0x%08x), z(0x%08x)\n\r", x, y, z);
@@ -280,6 +285,12 @@ static int conn_pwr_ut_update_thermal_status(int par1, int par2, int par3)
 static int conn_pwr_ut_enable_throttling(int par1, int par2, int par3)
 {
 	conn_pwr_enable(par2);
+	return 0;
+}
+
+static int conn_pwr_ut_set_thermal_level(int par1, int par2, int par3)
+{
+	conn_pwr_set_thermal_level(par2);
 	return 0;
 }
 

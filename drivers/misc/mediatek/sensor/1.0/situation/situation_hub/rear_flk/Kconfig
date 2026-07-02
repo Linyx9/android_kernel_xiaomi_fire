@@ -1,0 +1,7 @@
+config MTK_REAR_FLK_HUB
+	bool "rearflkhub for MediaTek package"
+	help
+	  A flk is a device,
+	  usually portable and electronic
+	  or electromechanical,
+	  that detect distance between the body and device .

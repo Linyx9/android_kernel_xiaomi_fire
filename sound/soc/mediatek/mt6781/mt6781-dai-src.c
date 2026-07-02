@@ -126,7 +126,7 @@ static unsigned int mtk_get_src_freq_mode(struct mtk_base_afe *afe, int rate)
 	case 192000:
 		return 0x00780000;
 	default:
-		dev_warn(afe->dev, "%s(), rate %d invalid!!!\n",
+		dev_info(afe->dev, "%s(), rate %d invalid!!!\n",
 			 __func__, rate);
 		AUDIO_AEE("rate invalid");
 		return 0;
@@ -212,7 +212,7 @@ static int mtk_set_src_1_param(struct mtk_base_afe *afe, int id)
 							      &iir_coeff_num);
 
 		if (iir_coeff_num == 0 || !iir_coeff) {
-			dev_warn(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
+			dev_info(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
 				 __func__, iir_coeff_num, iir_coeff);
 			AUDIO_AEE("iir coeff error");
 			return -EINVAL;
@@ -308,7 +308,7 @@ static int mtk_set_src_2_param(struct mtk_base_afe *afe, int id)
 							      &iir_coeff_num);
 
 		if (iir_coeff_num == 0 || !iir_coeff) {
-			dev_warn(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
+			dev_info(afe->dev, "%s(), iir coeff error, num %d, coeff %p\n",
 				 __func__, iir_coeff_num, iir_coeff);
 			AUDIO_AEE("iir coeff error");
 			return -EINVAL;
@@ -732,7 +732,7 @@ int mt6781_dai_src_register(struct mtk_base_afe *afe)
 	struct mtk_base_afe_dai *dai;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

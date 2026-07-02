@@ -31,6 +31,8 @@
 #define PE2_CABLE_IMP_THRESHOLD 699
 #define PE2_VBAT_CABLE_IMP_THRESHOLD 3900000 /* uV */
 
+#define DISABLE_VBAT_THRESHOLD -1
+
 
 #define ECABLEOUT	1	/* cable out */
 #define EHAL		2	/* hal operation error */
@@ -92,6 +94,8 @@ struct mtk_pe20 {
 	int ta_vchr_org;
 	int idx;
 	int vbus;
+	int vbat_threshold; /* For checking Ready */
+	int ref_vbat; /* Vbat with cable in */
 	struct pe20_profile profile[10];
 
 	int vbat_orig; /* Measured VBAT before cable impedance measurement */
@@ -119,7 +123,11 @@ struct mtk_pe20 {
 	int cable_imp_threshold;
 	int vbat_cable_imp_threshold;
 
+	/* module parameters*/
 	int cv;
+	int old_cv;
+	int pe2_6pin_en;
+	int stop_6pin_re_en;
 	int input_current_limit1;
 	int input_current_limit2;
 	int charging_current_limit1;
@@ -179,8 +187,9 @@ extern int pe2_hal_get_min_input_current(struct chg_alg_device *alg,
 	enum chg_idx chgidx, u32 *uA);
 extern int pe2_hal_safety_check(struct chg_alg_device *alg,
 	int ieoc);
+extern int pe2_hal_vbat_mon_en(struct chg_alg_device *alg,
+	enum chg_idx chgidx, bool en);
 extern int pe2_hal_is_charger_enable(struct chg_alg_device *alg,
 	enum chg_idx chgidx, bool *en);
-
+extern int pe2_hal_get_log_level(struct chg_alg_device *alg);
 #endif /* __MTK_PE2_H */
-

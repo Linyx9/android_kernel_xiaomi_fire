@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2020 MediaTek Inc.
  */
 
 #include <linux/irq.h>
 #include <linux/irqnr.h>
 #include <linux/interrupt.h>
-#include "internal.h"
 
 long long msec_high(unsigned long long nsec)
 {

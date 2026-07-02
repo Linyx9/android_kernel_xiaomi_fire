@@ -11,40 +11,58 @@
 # GNU General Public License for more details.
 #
 
-MTK_GPU_VERSION := $(subst ",,$(CONFIG_MTK_GPU_VERSION))
-export MTK_GPU_VERSION
-MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
-export MTK_PLATFORM
+ifneq ($(CONFIG_MTK_GPU_VERSION),"")
+MTK_GPU_VERSION = $(subst ",,$(CONFIG_MTK_GPU_VERSION))
+
+$(info [MTK GPU] MTK_GPU_VERSION = $(MTK_GPU_VERSION))
+
+ifneq ($(CONFIG_MTK_PLATFORM),)
+export MTK_PLATFORM = $(subst ",,$(CONFIG_MTK_PLATFORM))
+else
+export MTK_PLATFORM = $(word 4,$(MTK_GPU_VERSION))
+endif
+
+ifeq ($(MTK_PLATFORM),mt6873)
+subdir-ccflags-y += -DCONFIG_GPU_MT6873
+else ifeq ($(MTK_PLATFORM),mt6893)
+subdir-ccflags-y += -DCONFIG_GPU_MT6893
+else ifeq ($(MTK_PLATFORM),mt6853)
+subdir-ccflags-y += -DCONFIG_GPU_MT6853
+else ifeq ($(MTK_PLATFORM),mt6768)
+subdir-ccflags-y += -DCONFIG_GPU_MT6768
+else ifeq ($(MTK_PLATFORM),mt6877)
+subdir-ccflags-y += -DCONFIG_GPU_MT6877
+else ifeq ($(MTK_PLATFORM),mt6761)
+subdir-ccflags-y += -DCONFIG_GPU_MT6761
+else ifeq ($(MTK_PLATFORM),mt6765)
+subdir-ccflags-y += -DCONFIG_GPU_MT6765
+else ifeq ($(MTK_PLATFORM),mt6781)
+subdir-ccflags-y += -DCONFIG_GPU_MT6781
+else ifeq ($(MTK_PLATFORM),mt6853)
+subdir-ccflags-y += -DCONFIG_GPU_MT6853
+else ifeq ($(MTK_PLATFORM),mt6833)
+subdir-ccflags-y += -DCONFIG_GPU_MT6833
+endif
+endif
 
 ifneq ($(CONFIG_MTK_GPU_SUPPORT),)
-	obj-y += hal/
-	obj-y += gpufreq/
-	obj-y += ged/
-ifneq (, $(findstring $(CONFIG_MTK_PLATFORM), "mt6779" "mt6785"))
-	obj-y += gpu_bm/
-$(info *GPU defined GPU BM QoS 2.0-419)
-endif
-ifneq (, $(findstring $(CONFIG_MTK_PLATFORM), "mt6885" "mt6873" "mt6853"))
-	obj-y += gpu_bm_k414/
-$(info *GPU defined GPU BM QoS 2.0-414)
-endif
+    obj-y += ged/
+    obj-y += hal/
+    obj-y += gpufreq/
+    obj-y += gpu_bm/
+    obj-y += gpu_iommu/
+    obj-y += gpueb/
+    obj-y += gpu_pdma/
 
+ifneq ($(CONFIG_MTK_GPU_VERSION),"")
 # GPU R5P0
 ifeq ($(CONFIG_MTK_GPU_R5P0),y)
     obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
-else ifeq ($(CONFIG_MACH_MT6781),y)
-    $(info *direct build mali-r32p1 for CONFIG_MACH_MT6781)
-    obj-y += gpu_mali/mali_valhall/mali-r32p1/drivers/gpu/arm/midgard/
 else ifneq ($(word 1,$(MTK_GPU_VERSION)),)
     obj-y += gpu_$(word 1,$(MTK_GPU_VERSION))/
-else
+else ifneq ($(CONFIG_MTK_PLATFORM),)
     obj-y += $(subst ",,$(CONFIG_MTK_PLATFORM))/
 endif
 endif
 
-ifeq ($(CONFIG_GPU_VERSION_MALI_MIDGARD_R26P0),y)
-ifneq ($(CONFIG_MTK_GPU_SUPPORT),m)
-	obj-y += hal/
-	obj-y += gpu_mali/
-endif
 endif

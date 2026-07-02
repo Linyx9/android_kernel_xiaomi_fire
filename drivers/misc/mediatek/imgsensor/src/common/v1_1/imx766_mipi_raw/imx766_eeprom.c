@@ -1,11 +1,10 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
 
 #define PFX "IMX766_pdafotp"
 #define LOG_INF(format, args...) pr_debug(PFX "[%s] " format, __func__, ##args)
-
 
 #include <linux/videodev2.h>
 #include <linux/i2c.h>
@@ -23,14 +22,12 @@
 #include "kd_imgsensor_errcode.h"
 #include "imx766mipiraw_Sensor.h"
 
-
 #define Sleep(ms) mdelay(ms)
 
 #define IMX766_EEPROM_READ_ID  0xA0
 #define IMX766_EEPROM_WRITE_ID 0xA1
 #define IMX766_I2C_SPEED       100
 #define IMX766_MAX_OFFSET      0xFFFF
-
 
 #define MTK_IDENTITY_VALUE 0x010B00FF
 #define LRC_SIZE 140
@@ -159,4 +156,3 @@ unsigned int read_imx766_DCC(BYTE *data)
 	memcpy(data, IMX766_DCC_data, pinfo->DCC_size);
 	return readed_size;
 }
-

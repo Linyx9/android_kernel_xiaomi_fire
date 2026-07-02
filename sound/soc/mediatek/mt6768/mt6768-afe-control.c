@@ -8,10 +8,9 @@
 #include "mt6768-afe-common.h"
 #include <linux/pm_runtime.h>
 
-#include "../common/mtk-sp-afe-external.h"
 #include "../common/mtk-sram-manager.h"
 
-#ifdef CONFIG_MTK_AUDIODSP_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_AUDIODSP_SUPPORT)
 #include "../audio_dsp/mtk-dsp-common.h"
 #endif
 
@@ -25,36 +24,8 @@ int mt6768_set_local_afe(struct mtk_base_afe *afe)
 }
 
 enum {
-	MTK_AFE_RATE_8K = 0,
-	MTK_AFE_RATE_11K = 1,
-	MTK_AFE_RATE_12K = 2,
-	MTK_AFE_RATE_384K = 3,
-	MTK_AFE_RATE_16K = 4,
-	MTK_AFE_RATE_22K = 5,
-	MTK_AFE_RATE_24K = 6,
 	MTK_AFE_RATE_130K = 7,
-	MTK_AFE_RATE_32K = 8,
-	MTK_AFE_RATE_44K = 9,
-	MTK_AFE_RATE_48K = 10,
-	MTK_AFE_RATE_88K = 11,
-	MTK_AFE_RATE_96K = 12,
 	MTK_AFE_RATE_174K = 13,
-	MTK_AFE_RATE_192K = 14,
-	MTK_AFE_RATE_260K = 15,
-};
-
-enum {
-	MTK_AFE_DAI_MEMIF_RATE_8K = 0,
-	MTK_AFE_DAI_MEMIF_RATE_16K = 1,
-	MTK_AFE_DAI_MEMIF_RATE_32K = 2,
-	MTK_AFE_DAI_MEMIF_RATE_48K = 3,
-};
-
-enum {
-	MTK_AFE_PCM_RATE_8K = 0,
-	MTK_AFE_PCM_RATE_16K = 1,
-	MTK_AFE_PCM_RATE_32K = 2,
-	MTK_AFE_PCM_RATE_48K = 3,
 };
 
 unsigned int mt6768_general_rate_transform(struct device *dev,
@@ -169,6 +140,7 @@ int mt6768_enable_dc_compensation(bool enable)
 	pm_runtime_put(local_afe->dev);
 	return 0;
 }
+EXPORT_SYMBOL(mt6768_enable_dc_compensation);
 
 int mt6768_set_lch_dc_compensation(int value)
 {
@@ -185,6 +157,7 @@ int mt6768_set_lch_dc_compensation(int value)
 	pm_runtime_put(local_afe->dev);
 	return 0;
 }
+EXPORT_SYMBOL(mt6768_set_lch_dc_compensation);
 
 int mt6768_set_rch_dc_compensation(int value)
 {
@@ -201,6 +174,7 @@ int mt6768_set_rch_dc_compensation(int value)
 	pm_runtime_put(local_afe->dev);
 	return 0;
 }
+EXPORT_SYMBOL(mt6768_set_rch_dc_compensation);
 
 int mt6768_adda_dl_gain_control(bool mute)
 {
@@ -230,6 +204,7 @@ int mt6768_adda_dl_gain_control(bool mute)
 	pm_runtime_put(local_afe->dev);
 	return 0;
 }
+EXPORT_SYMBOL(mt6768_adda_dl_gain_control);
 
 /* api for other modules */
 static int request_sram_count;
@@ -247,7 +222,7 @@ int mtk_audio_request_sram(dma_addr_t *phys_addr,
 
 	ret = mtk_audio_sram_allocate(local_afe->sram, phys_addr, virt_addr,
 				      length, user,
-				      SNDRV_PCM_FORMAT_S16_LE, true);
+				      SNDRV_PCM_FORMAT_S16_LE, true, false);
 	if (ret) {
 		dev_warn(local_afe->dev, "%s(), allocate sram fail, ret %d\n",
 			 __func__, ret);
@@ -285,7 +260,7 @@ bool mtk_audio_condition_enter_suspend(void)
 	if (afe_priv->dai_on[MT6768_DAI_CONNSYS_I2S])
 		return false;
 
-#ifdef CONFIG_MTK_AUDIODSP_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_AUDIODSP_SUPPORT)
 	if (is_adsp_feature_registered() || is_adsp_core_ready())
 		return false;
 #endif

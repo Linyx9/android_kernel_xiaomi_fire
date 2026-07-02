@@ -15,6 +15,7 @@
 struct mtk_afe_tdm_priv {
 	int bck_id;
 	int bck_rate;
+
 	int mclk_id;
 	int mclk_multiple; /* according to sample rate */
 	int mclk_rate;
@@ -193,7 +194,6 @@ enum {
 	SUPPLY_SEQ_APLL,
 	SUPPLY_SEQ_TDM_MCK_EN,
 	SUPPLY_SEQ_TDM_BCK_EN,
-	SUPPLY_SEQ_TDM_EN,
 };
 
 static int get_tdm_id_by_name(const char *name)
@@ -275,9 +275,6 @@ static const struct snd_soc_dapm_widget mtk_dai_tdm_widgets[] = {
 			 &hdmi_ch7_mux_control),
 
 	SND_SOC_DAPM_CLOCK_SUPPLY("aud_tdm_clk"),
-
-	SND_SOC_DAPM_SUPPLY_S("TDM_EN", SUPPLY_SEQ_TDM_EN,
-			      AFE_TDM_CON1, TDM_EN_SFT, 0, NULL, 0),
 
 	SND_SOC_DAPM_SUPPLY_S("TDM_BCK", SUPPLY_SEQ_TDM_BCK_EN,
 			      SND_SOC_NOPM, 0, 0,
@@ -391,7 +388,6 @@ static const struct snd_soc_dapm_route mtk_dai_tdm_routes[] = {
 
 	{"TDM", NULL, "aud_tdm_clk"},
 	{"TDM", NULL, "TDM_BCK"},
-	{"TDM", NULL, "TDM_EN"},
 	{"TDM_BCK", NULL, "TDM_MCK"},
 	{"TDM_MCK", NULL, APLL1_W_NAME, mtk_afe_tdm_apll_connect},
 	{"TDM_MCK", NULL, APLL2_W_NAME, mtk_afe_tdm_apll_connect},
@@ -409,14 +405,18 @@ static int mtk_dai_tdm_cal_mclk(struct mtk_base_afe *afe,
 	apll_rate = mt6853_get_apll_rate(afe, apll);
 
 	if (freq > apll_rate) {
-		AUDIO_AEE("freq > apll rate");
+		dev_info(afe->dev,
+			 "%s(), freq(%d Hz) invalid\n", __func__, freq);
 		return -EINVAL;
 	}
 
+
 	if (apll_rate % freq != 0) {
-		AUDIO_AEE("APLL cannot generate freq Hz");
+		dev_info(afe->dev,
+			 "%s(), APLL cannot generate %d Hz", __func__, freq);
 		return -EINVAL;
 	}
+
 
 	tdm_priv->mclk_rate = freq;
 	tdm_priv->mclk_apll = apll;
@@ -451,10 +451,12 @@ static int mtk_dai_tdm_hw_params(struct snd_pcm_substream *substream,
 			     snd_pcm_format_physical_width(format);
 
 	if (tdm_priv->bck_rate > tdm_priv->mclk_rate)
-		AUDIO_AEE("bck_rate > mclk_rate rate");
+		dev_info(afe->dev, "%s(), bck_rate > mclk_rate rate\n",
+			__func__);
 
 	if (tdm_priv->mclk_rate % tdm_priv->bck_rate != 0)
-		AUDIO_AEE("bck cannot generate");
+		dev_info(afe->dev, "%s(), bck cannot generate\n",
+			__func__);
 
 	dev_info(afe->dev, "%s(), id %d, rate %d, channels %d, format %d, mclk_rate %d, bck_rate %d\n",
 		 __func__,
@@ -512,6 +514,42 @@ static int mtk_dai_tdm_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+static int mtk_dai_tdm_trigger(struct snd_pcm_substream *substream,
+			       int cmd,
+			       struct snd_soc_dai *dai)
+{
+	struct mtk_base_afe *afe = snd_soc_dai_get_drvdata(dai);
+
+	dev_info(afe->dev, "%s(), cmd %d\n", __func__, cmd);
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+		/* enable Out control */
+		regmap_update_bits(afe->regmap, AFE_DAC_CON0,
+				   HDMI_OUT_ON_MASK_SFT,
+				   0x1 << HDMI_OUT_ON_SFT);
+		/* enable tdm */
+		regmap_update_bits(afe->regmap, AFE_TDM_CON1,
+				   TDM_EN_MASK_SFT, 0x1 << TDM_EN_SFT);
+		break;
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+		/* disable tdm */
+		regmap_update_bits(afe->regmap, AFE_TDM_CON1,
+				   TDM_EN_MASK_SFT, 0);
+		/* disable Out control */
+		regmap_update_bits(afe->regmap, AFE_DAC_CON0,
+				   HDMI_OUT_ON_MASK_SFT,
+				   0);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int mtk_dai_tdm_set_sysclk(struct snd_soc_dai *dai,
 				  int clk_id, unsigned int freq, int dir)
 {
@@ -520,12 +558,12 @@ static int mtk_dai_tdm_set_sysclk(struct snd_soc_dai *dai,
 	struct mtk_afe_tdm_priv *tdm_priv = afe_priv->dai_priv[dai->id];
 
 	if (!tdm_priv) {
-		AUDIO_AEE("tdm_priv == NULL");
+		dev_info(afe->dev, "%s(), tdm_priv == NULL\n", __func__);
 		return -EINVAL;
 	}
 
 	if (dir != SND_SOC_CLOCK_OUT) {
-		AUDIO_AEE("dir != SND_SOC_CLOCK_OUT");
+		dev_info(afe->dev, "%s(), dir != SND_SOC_CLOCK_OUT\n", __func__);
 		return -EINVAL;
 	}
 
@@ -536,6 +574,7 @@ static int mtk_dai_tdm_set_sysclk(struct snd_soc_dai *dai,
 
 static const struct snd_soc_dai_ops mtk_dai_tdm_ops = {
 	.hw_params = mtk_dai_tdm_hw_params,
+	.trigger = mtk_dai_tdm_trigger,
 	.set_sysclk = mtk_dai_tdm_set_sysclk,
 };
 
@@ -587,7 +626,7 @@ int mt6853_dai_tdm_register(struct mtk_base_afe *afe)
 	struct mtk_afe_tdm_priv *tdm_priv;
 	struct mtk_base_afe_dai *dai;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe %p\n", __func__, afe);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

@@ -1,7 +1,21 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Goodix GTx5 I2C Dirver
+ * Hardware interface layer of touchdriver architecture.
+ *
+ * Copyright (C) 2015 - 2016 Goodix, Inc.
+ * Authors:  Yulong Cai <caiyulong@goodix.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be a reference
+ * to you, when you are integrating the GOODiX's CTP IC into your system,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ */
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/delay.h>
@@ -13,6 +27,7 @@
 #include "goodix_cfg_bin.h"
 #include <linux/uaccess.h>
 #include <linux/miscdevice.h>
+#include <linux/compat.h>
 
 #define TS_DT_COMPATIBLE "goodix,gt9886"
 #define TS_DRIVER_NAME "GT9886"
@@ -23,15 +38,15 @@
 #define TS_WAIT_CFG_READY_RETRY_TIMES	30
 #define TS_WAIT_CMD_FREE_RETRY_TIMES	10
 
-#define TS_REG_COORDS_BASE	0x824E
-#define TS_REG_CMD		0x8040
-#define TS_REG_REQUEST		0x8044
-#define TS_REG_VERSION		0x8240
-#define TS_REG_CFG_BASE		0x8050
-#define TS_REG_DOZE_CTRL	0x30F0
-#define TS_REG_DOZE_STAT	0x3100
-#define TS_REG_ESD_TICK_R	0x3103
-#define TS_REG_PID		0x4535
+#define TS_REG_COORDS_BASE  0x824E
+#define TS_REG_CMD          0x8040
+#define TS_REG_REQUEST      0x8044
+#define TS_REG_VERSION      0x8240
+#define TS_REG_CFG_BASE     0x8050
+#define TS_REG_DOZE_CTRL    0x30F0
+#define TS_REG_DOZE_STAT    0x3100
+#define TS_REG_ESD_TICK_R   0x3103
+#define TS_REG_PID          0x4535
 
 #define CFG_XMAX_OFFSET	(0x8052 - 0x8050)
 #define CFG_YMAX_OFFSET	(0x8054 - 0x8050)
@@ -63,16 +78,80 @@
 #endif
 
 #define TAG_I2C ""
-#define TS_DOZE_DISABLE_DATA	0xAA
-#define TS_DOZE_CLOSE_OK_DATA	0xBB
-#define TS_DOZE_ENABLE_DATA	0xCC
-#define	TS_CMD_REG_READY	0xFF
+#define TS_DOZE_DISABLE_DATA    0xAA
+#define TS_DOZE_CLOSE_OK_DATA   0xBB
+#define TS_DOZE_ENABLE_DATA     0xCC
+#define	TS_CMD_REG_READY        0xFF
 
 /***********for config & firmware*************/
 const char *gt9886_firmware_buf;
 const char *gt9886_config_buf;
+const char *gt9886_lcm_buf;
+int gt9886_find_touch_node;
+char panel_firmware_buf[128];
+char panel_config_buf[128];
 
 static struct goodix_ts_board_data *touch_filter_bdata;
+static int goodix_i2c_probe(struct i2c_client *client);
+
+static int goodix_parse_dt_display(struct goodix_ts_board_data *board_data)
+{
+	int r;
+	struct device_node *node = NULL;
+
+	node = of_find_compatible_node(NULL, NULL, "mediatek,touch-panel");
+	if (node) {
+		r = of_property_read_u32(node, "lcm-is-fake",
+					 &board_data->fake_status);
+		if (r) {
+			ts_info("no lcm-is-fake, not find touch panel node!");
+			gt9886_find_touch_node = 0;
+			return 0;
+		}
+		ts_info("find touch panel node!");
+		r = of_property_read_u32(node, "lcm-width",
+				 &board_data->panel_max_x);
+		if (r)
+			ts_info("read lcm-width failed!");
+
+		r = of_property_read_u32(node, "lcm-height",
+					 &board_data->panel_max_y);
+		if (r)
+			ts_info("read lcm-height failed!");
+
+		r = of_property_read_u32(node, "lcm-fake-width",
+				 &board_data->input_max_x);
+		if (r)
+			ts_info("read lcm-fake-width failed!");
+
+		r = of_property_read_u32(node, "lcm-fake-height",
+					 &board_data->input_max_y);
+		if (r)
+			ts_info("read lcm-fake-height failed!");
+
+		r = of_property_read_string(node, "lcm-name",
+				&gt9886_lcm_buf);
+		if (r < 0) {
+			ts_info("read lcm-name failed!");
+		}
+		//check if the lcm-name is supported
+		if ((strcmp("td4330_fhdp_dphy_vdo_truly",
+			gt9886_lcm_buf) != 0) &&
+			(strcmp("td4330_fhdp_dphy_cmd_truly",
+			gt9886_lcm_buf) != 0) &&
+			(strcmp("r66451_fhdp_dphy_cmd_tianma_120hz",
+			gt9886_lcm_buf) != 0)) {
+			ts_info("lcm-name is not supported by gt9886!");
+			return -EINVAL;
+		}
+		gt9886_find_touch_node = 1;
+	} else {
+		ts_info("not find touch panel node!");
+		gt9886_find_touch_node = 0;
+	}
+	return 0;
+}
+
 static int tpd_misc_open(struct inode *inode, struct file *file)
 {
 	return nonseekable_open(inode, file);
@@ -117,18 +196,6 @@ static long tpd_unlocked_ioctl(struct file *file,
 	void __user *data;
 
 	long err = 0;
-
-	if (_IOC_DIR(cmd) & _IOC_READ)
-		err = !access_ok(VERIFY_WRITE,
-			(void __user *)arg, _IOC_SIZE(cmd));
-	else if (_IOC_DIR(cmd) & _IOC_WRITE)
-		err = !access_ok(VERIFY_READ,
-			(void __user *)arg, _IOC_SIZE(cmd));
-	if (err) {
-		pr_info("tpd: access error: %08X, (%2d, %2d)\n",
-			cmd, _IOC_DIR(cmd), _IOC_SIZE(cmd));
-		return -EFAULT;
-	}
 
 	switch (cmd) {
 	case TPD_GET_FILTER_PARA:
@@ -190,47 +257,49 @@ int gt9886_touch_filter_register(void)
 static int goodix_parse_dt_resolution(struct device_node *node,
 		struct goodix_ts_board_data *board_data)
 {
-	int r, err;
+	int r;
 
+	if (gt9886_find_touch_node != 1) {
+		r = of_property_read_u32(node, "goodix,panel-max-x",
+					 &board_data->panel_max_x);
+		if (r) {
+			ts_err("Invalid panel-max-x");
+			return -ENOENT;
+		}
+		r = of_property_read_u32(node, "goodix,panel-max-y",
+					 &board_data->panel_max_y);
+		if (r) {
+			ts_err("Invalid panel-max-y");
+			return -ENOENT;
+		}
+		/* For unreal lcm test */
+		r = of_property_read_u32(node, "goodix,input-max-x",
+					 &board_data->input_max_x);
+		if (r)
+			ts_err("Invalid input-max-x");
+		r = of_property_read_u32(node, "goodix,input-max-y",
+					&board_data->input_max_y);
+		if (r)
+			ts_err("Invalid input-max-y");
+	}
 	r = of_property_read_u32(node, "goodix,panel-max-id",
 				&board_data->panel_max_id);
 	if (r) {
-		err = -ENOENT;
+		ts_err("Invalid panel-max-id");
 	} else {
 		if (board_data->panel_max_id > GOODIX_MAX_TOUCH)
 			board_data->panel_max_id = GOODIX_MAX_TOUCH;
 	}
 
-	r = of_property_read_u32(node, "goodix,panel-max-x",
-				 &board_data->panel_max_x);
-	if (r)
-		err = -ENOENT;
-
-	r = of_property_read_u32(node, "goodix,panel-max-y",
-				&board_data->panel_max_y);
-	if (r)
-		err = -ENOENT;
-
-	ts_info("Set Default lcm-resolution!");
-	r = of_property_read_u32(node, "goodix,input-max-x",
-				 &board_data->input_max_x);
-	if (r)
-		err = -ENOENT;
-
-	r = of_property_read_u32(node, "goodix,input-max-y",
-				&board_data->input_max_y);
-	if (r)
-		err = -ENOENT;
-
 	r = of_property_read_u32(node, "goodix,panel-max-w",
 				&board_data->panel_max_w);
 	if (r)
-		err = -ENOENT;
+		ts_err("Invalid panel-max-w");
 
 	r = of_property_read_u32(node, "goodix,panel-max-p",
 				&board_data->panel_max_p);
 	if (r)
-		err = -ENOENT;
+		ts_err("Invalid panel-max-p");
 
 	board_data->swap_axis = of_property_read_bool(node,
 			"goodix,swap-axis");
@@ -240,6 +309,7 @@ static int goodix_parse_dt_resolution(struct device_node *node,
 
 	board_data->y2y = of_property_read_bool(node,
 			"goodix,y2y");
+
 	return 0;
 }
 
@@ -285,18 +355,17 @@ static int goodix_parse_dt(struct device_node *node,
 		return -EINVAL;
 	}
 
-	r = of_property_read_string(node,
-			"goodix,firmware-version",
-			&gt9886_firmware_buf);
-	if (r < 0)
-		ts_err("Invalid firmware version in dts : %d", r);
-
-	r = of_property_read_string(node,
-			"goodix,config-version",
-			&gt9886_config_buf);
-	if (r < 0) {
-		ts_err("Invalid config version in dts : %d", r);
-		return -EINVAL;
+	if (gt9886_find_touch_node != 1) {
+		r = of_property_read_string(node, "goodix,firmware-version",
+				&gt9886_firmware_buf);
+		if (r < 0)
+			ts_err("Invalid firmware version in dts : %d", r);
+		r = of_property_read_string(node, "goodix,config-version",
+				&gt9886_config_buf);
+		if (r < 0) {
+			ts_err("Invalid config version in dts : %d", r);
+			return -EINVAL;
+		}
 	}
 
 	board_data->avdd_name = "vtouch";
@@ -876,6 +945,8 @@ static int goodix_i2c_test(struct goodix_ts_device *dev)
 {
 #define TEST_ADDR  0x4100
 #define TEST_LEN   1
+	u8 write_test[4] = {0};
+	u8 read_test[4] = {0};
 	struct i2c_client *client = to_i2c_client(dev->dev);
 	unsigned char test_buf[TEST_LEN + 1], addr_buf[2];
 	struct i2c_msg msgs[] = {
@@ -895,8 +966,22 @@ static int goodix_i2c_test(struct goodix_ts_device *dev)
 	msgs[0].buf[0] = (TEST_ADDR >> 8) & 0xFF;
 	msgs[0].buf[1] = TEST_ADDR & 0xFF;
 
-	if (i2c_transfer(client->adapter, msgs, 2) == 2)
-		return 0;
+	write_test[0] = 0x55;
+	write_test[1] = 0xAA;
+	if (i2c_transfer(client->adapter, msgs, 2) == 2) {
+		goodix_i2c_write(dev, TEST_ADDR, write_test, 1);
+		goodix_i2c_read(dev, TEST_ADDR, read_test, 1);
+		ts_info("i2c write_test[0] = %d, read_test[0] = %d", write_test[0], read_test[0]);
+
+		goodix_i2c_write(dev, TEST_ADDR, &write_test[1], 1);
+		goodix_i2c_read(dev, TEST_ADDR, &read_test[1], 1);
+		ts_info("i2c write_test[1] = %d, read_test[1] = %d", write_test[1], read_test[1]);
+
+		if ((write_test[0] != read_test[0]) || (write_test[1] != read_test[1]))
+			return -EINVAL;
+		else
+			return 0;
+	}
 
 	/* test failed */
 	return -EINVAL;
@@ -1520,7 +1605,7 @@ static int goodix_read_config(struct goodix_ts_device *dev,
 		usleep_range(10000, 11000);
 	}
 	if (cmd_flag != TS_CMD_REG_READY) {
-		ts_err("Wait for IC ready IDEL state timeout:addr 0x%x\n",
+		ts_err("Wait for IC ready IDLE state timeout:addr 0x%x\n",
 		       cmd_reg);
 		r = -EAGAIN;
 		goto exit;
@@ -1617,7 +1702,7 @@ static int goodix_hw_init(struct goodix_ts_device *ts_dev)
 			ts_dev->board_data,
 			ts_dev->chip_version.sensor_id);
 	if (r < 0)
-		ts_info("Cann't find customized parameters");
+		ts_info("Can't find customized parameters");
 
 	ts_dev->normal_cfg->delay = 500;
 	/* send normal-cfg to firmware */
@@ -1862,16 +1947,16 @@ static int goodix_remap_trace_id(struct goodix_ts_device *dev,
 
 	}
 
-   /*
-	*for (i = 0; i < touch_num; i++) {
-	*	ts_info("remap data%d:0x%02x,0x%02x,0x%02x,0x%02x,"
-	*			"0x%02x,0x%02x,0x%02x,0x%02x",
-	*			i, coor_buf[i * 8], coor_buf[i * 8 + 1],
-	*			coor_buf[i * 8 + 2], coor_buf[i * 8 + 3],
-	*			coor_buf[i * 8 + 4], coor_buf[i * 8 + 5],
-	*			coor_buf[i * 8 + 6], coor_buf[i * 8 + 7]);
-	*}
-	*/
+/*
+ *for (i = 0; i < touch_num; i++) {
+ *ts_info("remap data%d:0x%02x,0x%02x,0x%02x,0x%02x,"
+ *"0x%02x,0x%02x,0x%02x,0x%02x",
+ *i, coor_buf[i * 8], coor_buf[i * 8 + 1],
+ *coor_buf[i * 8 + 2], coor_buf[i * 8 + 3],
+ *coor_buf[i * 8 + 4], coor_buf[i * 8 + 5],
+ *coor_buf[i * 8 + 6], coor_buf[i * 8 + 7]);
+ *}
+ */
 	/*realign coor data by new trace ID*/
 	for (i = 0; i < touch_num - 1; i++) {
 		small = &coor_buf[BYTES_PER_COORD * i];
@@ -1912,7 +1997,7 @@ static int goodix_touch_handler(struct goodix_ts_device *dev,
 	struct goodix_touch_data *touch_data = &ts_event->event_data.touch_data;
 	struct goodix_ts_coords *coords = &(touch_data->coords[0]);
 	int max_touch_num = dev->board_data->panel_max_id;
-	unsigned char buffer[4 + BYTES_PER_COORD * max_touch_num];
+	unsigned char buffer[4 + BYTES_PER_COORD * GOODIX_MAX_TOUCH];
 	unsigned char coord_sta;
 	int touch_num = 0, i;
 	int r = 0;
@@ -2250,13 +2335,53 @@ static const struct goodix_ts_hw_ops hw_i2c_ops = {
 
 static struct platform_device *goodix_pdev;
 
+static void goodix_i2c_remove(struct i2c_client *client)
+{
+	platform_device_unregister(goodix_pdev);
+}
+
+#ifdef CONFIG_OF
+static const struct of_device_id i2c_matches[] = {
+	{.compatible = TS_DT_COMPATIBLE,},
+	{},
+};
+MODULE_DEVICE_TABLE(of, i2c_matches);
+#endif
+
+#ifdef CONFIG_ACPI
+static const struct acpi_device_id acpi_matches[] = {
+	{.id = "PNPxxx"},
+	{},
+};
+MODULE_DEVICE_TABLE(acpi, acpi_matches);
+#endif
+
+static const struct i2c_device_id i2c_id_table[] = {
+	{TS_DRIVER_NAME, 0},
+	{},
+};
+MODULE_DEVICE_TABLE(i2c, i2c_id_table);
+
+static struct i2c_driver goodix_i2c_driver = {
+	.driver = {
+		.name = TS_DRIVER_NAME,
+		.owner = THIS_MODULE,
+		.of_match_table = of_match_ptr(i2c_matches),
+#ifdef CONFIG_ACPI
+		.acpi_match_table = acpi_matches,
+#endif
+	},
+	.probe = goodix_i2c_probe,
+	.remove = goodix_i2c_remove,
+	.id_table = i2c_id_table,
+};
+
 static void goodix_pdev_release(struct device *dev)
 {
 	kfree(goodix_pdev);
 }
 
-static int goodix_i2c_probe(struct i2c_client *client,
-	const struct i2c_device_id *dev_id)
+static int goodix_i2c_probe(struct i2c_client *client)
 {
 	struct goodix_ts_device *ts_device = NULL;
 	struct goodix_ts_board_data *ts_bdata = NULL;
@@ -2277,9 +2402,43 @@ static int goodix_i2c_probe(struct i2c_client *client,
 
 	if (IS_ENABLED(CONFIG_OF) && client->dev.of_node) {
 		/* parse devicetree property */
+		r = goodix_parse_dt_display(ts_bdata);
+		if (r < 0) {
+			ts_info("%s OUT, lcm not support", __func__);
+			return r;
+		}
 		r = goodix_parse_dt(client->dev.of_node, ts_bdata);
 		if (r < 0)
 			return r;
+
+		if (gt9886_find_touch_node == 1) {
+			if (strcmp("r66451_fhdp_dphy_cmd_tianma_120hz", gt9886_lcm_buf) == 0) {
+				if (ts_bdata->panel_max_x == 1080
+					&& ts_bdata->panel_max_y == 2340) {
+					strlcpy(panel_config_buf,
+						"gt9886_cfg_90hz6885", 20);
+					strlcpy(panel_firmware_buf,
+						"gt9886_firmware_6885af", 23);
+				} else {
+					ts_info("%s, fault firmware!", gt9886_lcm_buf);
+				}
+			} else if ((strcmp("td4330_fhdp_dphy_vdo_truly",
+					gt9886_lcm_buf) == 0) ||
+					(strcmp("td4330_fhdp_dphy_cmd_truly",
+					gt9886_lcm_buf) == 0)) {
+				if (ts_bdata->panel_max_x == 1080
+					&& ts_bdata->panel_max_y == 2280) {
+					strlcpy(panel_config_buf,
+						"gt9886_cfg_6877v01", 19);
+					strlcpy(panel_firmware_buf,
+						"gt9886_firmware_6877v01", 24);
+				} else {
+					ts_info("%s, fault firmware!", gt9886_lcm_buf);
+				}
+			} else {
+				ts_info("%s, fault firmware!", gt9886_lcm_buf);
+			}
+		}
 	}
 #ifdef CONFIG_ACPI
 	 else if (ACPI_COMPANION(&client->dev)) {
@@ -2356,48 +2515,6 @@ err_pdev:
 	return r;
 
 }
-
-static int goodix_i2c_remove(struct i2c_client *client)
-{
-	platform_device_unregister(goodix_pdev);
-	return 0;
-}
-
-#ifdef CONFIG_OF
-static const struct of_device_id i2c_matchs[] = {
-	{.compatible = TS_DT_COMPATIBLE,},
-	{},
-};
-MODULE_DEVICE_TABLE(of, i2c_matchs);
-#endif
-
-#ifdef CONFIG_ACPI
-static const struct acpi_device_id acpi_matchs[] = {
-	{.id = "PNPxxx"},
-	{},
-};
-MODULE_DEVICE_TABLE(acpi, acpi_matchs);
-#endif
-
-static const struct i2c_device_id i2c_id_table[] = {
-	{TS_DRIVER_NAME, 0},
-	{},
-};
-MODULE_DEVICE_TABLE(i2c, i2c_id_table);
-
-static struct i2c_driver goodix_i2c_driver = {
-	.driver = {
-		.name = TS_DRIVER_NAME,
-		.owner = THIS_MODULE,
-		.of_match_table = of_match_ptr(i2c_matchs),
-#ifdef CONFIG_ACPI
-		.acpi_match_table = acpi_matchs,
-#endif
-	},
-	.probe = goodix_i2c_probe,
-	.remove = goodix_i2c_remove,
-	.id_table = i2c_id_table,
-};
 
 static int __init goodix_i2c_init(void)
 {

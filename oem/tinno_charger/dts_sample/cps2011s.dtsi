@@ -1,0 +1,7 @@
+cps2011s_chg: chg@6E {
+	compatible = "CPS,cps2011s";
+	reg = <0x6E>;
+	chg_name = "primary_dvchg";
+	rm_name = "cps2011s";
+	cps2011s,intr = <&pio 4 IRQ_TYPE_EDGE_FALLING>;
+};

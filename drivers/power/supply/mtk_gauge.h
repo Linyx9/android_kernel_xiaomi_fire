@@ -46,6 +46,7 @@
 	.get	= info_get,	\
 }
 
+#define MAX_GAUGE_PROP_LEN 50
 enum gauge_property {
 	GAUGE_PROP_INITIAL,
 	GAUGE_PROP_BATTERY_CURRENT,
@@ -97,12 +98,18 @@ enum gauge_property {
 	GAUGE_PROP_IS_NVRAM_FAIL_MODE,
 	GAUGE_PROP_MONITOR_SOFF_VALIDTIME,
 	GAUGE_PROP_CON0_SOC,
+	GAUGE_PROP_CON1_UISOC,
+	GAUGE_PROP_CON1_VAILD,
 	GAUGE_PROP_SHUTDOWN_CAR,
 	GAUGE_PROP_CAR_TUNE_VALUE,
 	GAUGE_PROP_R_FG_VALUE,
 	GAUGE_PROP_VBAT2_DETECT_TIME,
 	GAUGE_PROP_VBAT2_DETECT_COUNTER,
 	GAUGE_PROP_BAT_TEMP_FROZE_EN,
+	GAUGE_PROP_BAT_EOC,
+	GAUGE_PROP_REGMAP_TYPE,
+	GAUGE_PROP_CIC2,
+	GAUGE_PROP_MAX,
 };
 
 struct gauge_hw_status {
@@ -118,6 +125,7 @@ struct gauge_hw_status {
 	int nafg_c_dltv;
 	int nafg_c_dltv_th;
 	int nafg_zcv;
+	int nafg_en;
 
 	/* ivag intr en/disable for hal */
 	int iavg_intr_flag;
@@ -153,6 +161,15 @@ enum gauge_hw_version {
 	GAUGE_HW_V2001 = 2001,
 
 	GAUGE_HW_MAX
+};
+
+#define MAX_REGMAP_TYPE_LEN 30
+enum gauge_regmap_type {
+	REGMAP_TYPE_I2C,
+	REGMAP_TYPE_SPMI,
+	RGEMAP_TYPE_MMIO,
+	REGMAP_TYPE_SPI,
+	REGMAP_TYPE_MAX
 };
 
 /* for gauge hal only */
@@ -207,6 +224,7 @@ enum gauge_irq {
 	VBAT_H_IRQ,
 	VBAT_L_IRQ,
 	NAFG_IRQ,
+	BAT_PLUGIN_IRQ,
 	BAT_PLUGOUT_IRQ,
 	ZCV_IRQ,
 	FG_N_CHARGE_L_IRQ,
@@ -222,6 +240,7 @@ struct mtk_gauge {
 	struct regmap *regmap;
 	struct platform_device *pdev;
 	struct mutex ops_lock;
+	char *name;
 
 	struct power_supply_desc psy_desc;
 	struct power_supply_config psy_cfg;
@@ -232,6 +251,8 @@ struct mtk_gauge {
 	struct gauge_hw_status hw_status;
 	struct gauge_hw_info_data fg_hw_info;
 	struct mutex fg_mutex;
+
+	bool efuse_cali_done;
 
 	int irq_no[GAUGE_IRQ_MAX];
 
@@ -246,6 +267,9 @@ struct mtk_gauge {
 
 	struct mtk_gauge_sysfs_field_info *attr;
 	struct zcv_data zcv_info;
+
+	/* regmap type */
+	int regmap_type;
 
 	/* hw nafg */
 	int nafg_corner;
@@ -278,7 +302,6 @@ struct mtk_gauge {
 	wait_queue_head_t  wait_que;
 	unsigned int gauge_update_flag;
 	struct hrtimer gauge_hrtimer;
-
 };
 
 struct mtk_gauge_sysfs_field_info {

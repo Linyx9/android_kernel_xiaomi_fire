@@ -1,3 +1,4 @@
+
 #
 # Copyright (C) 2018 MediaTek Inc.
 #
@@ -10,4 +11,4 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
-obj-y += spi_slave.o
+obj-$(CONFIG_MTK_MT6382_BDG) += spi_slave.o

@@ -13,7 +13,6 @@
 #include <linux/regmap.h>
 #include "mt6853-reg.h"
 #include "../common/mtk-base-afe.h"
-#include "../common/mtk-sp-common.h"
 
 enum {
 	MT6853_MEMIF_DL1,
@@ -83,15 +82,7 @@ enum {
 #define MT6853_VOIP_MEMIF MT6853_MEMIF_DL12
 #define MT6853_MMAP_DL_MEMIF MT6853_MEMIF_DL5
 #define MT6853_MMAP_UL_MEMIF MT6853_MEMIF_VUL5
-#define MT6853_BARGEIN_MEMIF MT6853_MEMIF_AWB
-
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
-#define MT6853_DSP_PRIMARY_MEMIF MT6853_MEMIF_DL1
-#define MT6853_DSP_DEEPBUFFER_MEMIF MT6853_MEMIF_DL3
-#define MT6853_DSP_VOIP_MEMIF MT6853_MEMIF_DL12
-#define MT6853_DSP_PLAYBACKDL_MEMIF MT6853_MEMIF_DL4
-#define MT6853_DSP_PLAYBACKUL_MEMIF MT6853_MEMIF_VUL4
-#endif
+#define MT6853_BARGE_IN_MEMIF MT6853_MEMIF_AWB
 
 enum {
 	MT6853_IRQ_0,
@@ -125,18 +116,6 @@ enum {
 	MT6853_IRQ_NUM,
 };
 
-enum {
-	MTKAIF_PROTOCOL_1 = 0,
-	MTKAIF_PROTOCOL_2,
-	MTKAIF_PROTOCOL_2_CLK_P2,
-};
-
-enum {
-	MTK_AFE_ADDA_DL_GAIN_MUTE = 0,
-	MTK_AFE_ADDA_DL_GAIN_NORMAL = 0xf74f,
-	/* SA suggest apply -0.3db to audio/speech path */
-};
-
 /* MCLK */
 enum {
 	MT6853_I2S0_MCK = 0,
@@ -149,18 +128,6 @@ enum {
 	MT6853_MCK_NUM,
 };
 
-/* SMC CALL Operations */
-enum mtk_audio_smc_call_op {
-	MTK_AUDIO_SMC_OP_INIT = 0,
-	MTK_AUDIO_SMC_OP_DRAM_REQUEST,
-	MTK_AUDIO_SMC_OP_DRAM_RELEASE,
-	MTK_AUDIO_SMC_OP_FM_REQUEST,
-	MTK_AUDIO_SMC_OP_FM_RELEASE,
-	MTK_AUDIO_SMC_OP_ADSP_REQUEST,
-	MTK_AUDIO_SMC_OP_ADSP_RELEASE,
-	MTK_AUDIO_SMC_OP_NUM
-};
-
 struct snd_pcm_substream;
 struct mtk_base_irq_data;
 struct clk;
@@ -169,7 +136,7 @@ struct mt6853_afe_private {
 	struct clk **clk;
 	struct regmap *topckgen;
 	struct regmap *apmixed;
-	struct regmap *infracfg_ao;
+	struct regmap *infracfg;
 	int irq_cnt[MT6853_MEMIF_NUM];
 	int stf_positive_gain_db;
 	int dram_resource_counter;
@@ -240,7 +207,7 @@ int mt6853_dai_tdm_register(struct mtk_base_afe *afe);
 
 int mt6853_dai_hostless_register(struct mtk_base_afe *afe);
 
-int mt6853_add_misc_control(struct snd_soc_component *platform);
+int mt6853_add_misc_control(struct snd_soc_component *component);
 
 int mt6853_set_local_afe(struct mtk_base_afe *afe);
 
@@ -248,11 +215,6 @@ unsigned int mt6853_general_rate_transform(struct device *dev,
 					   unsigned int rate);
 unsigned int mt6853_rate_transform(struct device *dev,
 				   unsigned int rate, int aud_blk);
-int mt6853_enable_dc_compensation(bool enable);
-int mt6853_set_lch_dc_compensation(int value);
-int mt6853_set_rch_dc_compensation(int value);
-int mt6853_adda_dl_gain_control(bool mute);
-
 int mt6853_dai_set_priv(struct mtk_base_afe *afe, int id,
 			int priv_size, const void *priv_data);
 #endif

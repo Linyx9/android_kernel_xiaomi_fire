@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
  */
 
 #ifndef ___MT_GPUFREQ_INTERNAL_PLAT_H___
@@ -79,9 +79,9 @@
 /**************************************************
  * Reference Power Setting
  **************************************************/
-#define GPU_ACT_REF_POWER               (3352)                /* mW  */
-#define GPU_ACT_REF_FREQ                (886000)              /* KHz */
-#define GPU_ACT_REF_VOLT                (80000)               /* mV x 100 */
+#define GPU_ACT_REF_POWER               (1285)                /* mW  */
+#define GPU_ACT_REF_FREQ                (900000)              /* KHz */
+#define GPU_ACT_REF_VOLT                (90000)               /* mV x 100 */
 #define PTPOD_DISABLE_VOLT              (75000)
 
 /**************************************************
@@ -105,7 +105,7 @@
 /**************************************************
  * DFD Dump
  **************************************************/
-#define MT_GPUFREQ_DFD_ENABLE 1
+#define MT_GPUFREQ_DFD_ENABLE 0
 #define MT_GPUFREQ_DFD_DEBUG 0
 
 /**************************************************
@@ -147,16 +147,15 @@
 		return single_open(	\
 				file,	\
 				mt_ ## name ## _proc_show,	\
-				PDE_DATA(inode));	\
+				pde_data(inode));	\
 	}	\
-	static const struct file_operations mt_ ## name ## _proc_fops =	\
+	static const struct proc_ops mt_ ## name ## _proc_fops =	\
 	{	\
-		.owner = THIS_MODULE,	\
-		.open = mt_ ## name ## _proc_open,	\
-		.read = seq_read,	\
-		.llseek = seq_lseek,	\
-		.release = single_release,	\
-		.write = mt_ ## name ## _proc_write,	\
+		.proc_open = mt_ ## name ## _proc_open,	\
+		.proc_read = seq_read,	\
+		.proc_lseek = seq_lseek,	\
+		.proc_release = single_release,	\
+		.proc_write = mt_ ## name ## _proc_write,	\
 	}
 #define PROC_FOPS_RO(name)	\
 	static int mt_ ## name ## _proc_open(	\
@@ -166,15 +165,14 @@
 		return single_open(	\
 				file,	\
 				mt_ ## name ## _proc_show,	\
-				PDE_DATA(inode));	\
+				pde_data(inode));	\
 	}	\
-	static const struct file_operations mt_ ## name ## _proc_fops =	\
+	static const struct proc_ops mt_ ## name ## _proc_fops =	\
 	{	\
-		.owner = THIS_MODULE,	\
-		.open = mt_ ## name ## _proc_open,	\
-		.read = seq_read,	\
-		.llseek = seq_lseek,	\
-		.release = single_release,	\
+		.proc_open = mt_ ## name ## _proc_open,	\
+		.proc_read = seq_read,	\
+		.proc_lseek = seq_lseek,	\
+		.proc_release = single_release,	\
 	}
 #define PROC_ENTRY(name) \
 	{__stringify(name), &mt_ ## name ## _proc_fops}
@@ -296,19 +294,6 @@ struct g_clk_info {
 	struct clk *clk_sub_parent;
 	/* clock gate, which has only two state with ON or OFF */
 	struct clk *subsys_mfg_cg;
-	struct clk *mtcmos_mfg_async;
-	/* mtcmos_mfg dependent on mtcmos_mfg_async */
-	struct clk *mtcmos_mfg;
-	/* mtcmos_mfg_core0 dependent on mtcmos_mfg0 */
-	struct clk *mtcmos_mfg_core0;
-	/* mtcmos_mfg_core1_2 dependent on mtcmos_mfg1/0 */
-	struct clk *mtcmos_mfg_core1_2;
-	/* mtcmos_mfg_core3_4 dependent on mtcmos_mfg1 */
-	struct clk *mtcmos_mfg_core3_4;
-	/* mtcmos_mfg_core5_6 dependent on mtcmos_mfg1 */
-	struct clk *mtcmos_mfg_core5_6;
-	/* mtcmos_mfg_core7_8 dependent on mtcmos_mfg1 */
-	struct clk *mtcmos_mfg_core7_8;
 };
 struct g_pmic_info {
 	struct regulator *reg_vgpu;

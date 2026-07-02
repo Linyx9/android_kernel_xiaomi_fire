@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: Andrew-CT Chen <andrew-ct.chen@mediatek.com>
  */
 
 #ifndef MTK_VCU_H
@@ -10,7 +11,7 @@
 #include <linux/fdtable.h>
 #include <linux/platform_device.h>
 
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 #define vcu_aee_print(string, args...) do {\
 	char vcu_name[100];\
 	int ret;\
@@ -22,9 +23,8 @@
 	pr_info("[VCU] error:"string, ##args);  \
 	} while (0)
 #else
-#define vcu_aee_print(string, args...) do {\
-		pr_info("[VCU] error:"string, ##args);  \
-	} while (0)
+#define vcu_aee_print(string, args...) \
+		pr_info("[VCU] error:"string, ##args)
 
 #endif
 
@@ -34,6 +34,8 @@
  * related to video codec, scaling and color format converting.
  * VCU interfaces with other blocks by share memory and interrupt.
  **/
+
+extern int mtk_vcodec_vcp;
 
 typedef int (*ipi_handler_t)(void *data,
 							 unsigned int len,
@@ -51,58 +53,8 @@ typedef int (*ipi_handler_t)(void *data,
  *                      to VCU to trigger the interrupt.
  * @IPI_VDEC_COMMON:    The interrupt from vcu is to notify kernel to
  *                      handle video codecs job, and vice versa.
- * @IPI_VDEC_H264:      The interrupt from vcu is to notify kernel to
- *                      handle H264 vidoe decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_H265:      The interrupt from vcu is to notify kernel to
- *                      handle H265 vidoe decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_VP8:       The interrupt from is to notify kernel to
- *                      handle VP8 video decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_VP9:       The interrupt from vcu is to notify kernel to
- *                      handle VP9 video decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_MPEG4:     The interrupt from vcu is to notify kernel to
- *                      handle MPEG4 video decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_MPEG12:    The interrupt from vcu is to notify kernel to
- *                      handle MPEG1/2 video decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_WMV:       The interrupt from vcu is to notify kernel to
- *                      handle WMV video decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_RV30:      The interrupt from vcu is to notify kernel to
- *                      handle RV30 video decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_RV40:      The interrupt from vcu is to notify kernel to
- *                      handle RV40 video decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
- * @IPI_VDEC_AV1:       The interrupt from vcu is to notify kernel to
- *                      handle AV1 video decoder job, and vice versa.
- *                      Decode output format is always MT21 no matter what
- *                      the input format is.
  * @IPI_VENC_COMMON:    The interrupt from vcu is to notify kernel to
  *                      handle video codecs job, and vice versa.
- * @IPI_VENC_H264:      The interrupt from vcu is to notify kernel to
- *                      handle H264 video encoder job, and vice versa.
- * @IPI_VENC_H265:      The interrupt from vcu is to notify kernel to
- *                      handle H265 video encoder job, and vice versa.
- * @IPI_VENC_VP8:       The interrupt fro vcu is to notify kernel to
- *                      handle VP8 video encoder job,, and vice versa.
- * @IPI_VENC_MPEG4 The interrupt from vcu is to notify kernel to
- *          handle MPEG4 video encoder job, and vice versa.
- * @IPI_VENC_HYBRID_H264:       The interrupt from vcu is to notify kernel
- *                      to handle hybrid H264 video encoder job, and vice versa.
  * @IPI_MDP:            The interrupt from vcu is to notify kernel to
  *                      handle MDP (Media Data Path) job, and vice versa.
  * @IPI_CAMERA: The interrupt from vcu is to notify kernel to
@@ -113,39 +65,68 @@ typedef int (*ipi_handler_t)(void *data,
 enum ipi_id {
 	IPI_VCU_INIT = 0,
 	IPI_VDEC_COMMON,
-	IPI_VDEC_H264,
-	IPI_VDEC_H265,
-	IPI_VDEC_HEIF,
-	IPI_VDEC_VP8,
-	IPI_VDEC_VP9,
-	IPI_VDEC_MPEG4,
-	IPI_VDEC_H263,
-	IPI_VDEC_MPEG12,
-	IPI_VDEC_WMV,
-	IPI_VDEC_RV30,
-	IPI_VDEC_RV40,
-	IPI_VDEC_AV1,
+	IPI_VDEC_RESOURCE,
 	IPI_VENC_COMMON,
-	IPI_VENC_H264,
-	IPI_VENC_H265,
-	IPI_VENC_HEIF,
-	IPI_VENC_VP8,
-	IPI_VENC_MPEG4,
-	IPI_VENC_HYBRID_H264,
-	IPI_VENC_H263,
 	IPI_MDP,
 	IPI_MDP_1,
 	IPI_MDP_2,
 	IPI_MDP_3,
 	IPI_CAMERA,
-	IPI_MAX = 50,
+	IPI_MAX = 20,
 };
 
-enum vcu_codec_type {
+enum vcu_codec_ipi_type {
 	VCU_VDEC = 0,
 	VCU_VENC,
+	VCU_RESOURCE,
 	VCU_CODEC_MAX
 };
+
+struct vcu_v4l2_callback_func {
+	void (*enc_prepare)(void *ctx_prepare,
+		unsigned int core_id, unsigned long *flags);
+	void (*enc_unprepare)(void *ctx_unprepare,
+		unsigned int core_id, unsigned long *flags);
+	void (*enc_pmqos_gce_begin)(void *ctx_begin,
+		unsigned int core_id, int job_cnt);
+	void (*enc_pmqos_gce_end)(void *ctx_end,
+		unsigned int core_id, int job_cnt);
+	void (*gce_timeout_dump)(void *ctx);
+	void (*vdec_realease_lock)(void *ctx);
+	int (*enc_lock)(void *ctx_lock, int core_id, bool sec);
+	void (*enc_unlock)(void *ctx_unlock, int core_id);
+};
+
+struct vcu_v4l2_func {
+	struct platform_device *(*vcu_get_plat_device)(struct platform_device *pdev);
+	int (*vcu_load_firmware)(struct platform_device *pdev);
+	int (*vcu_compare_version)(struct platform_device *pdev,
+				const char *expected_version);
+	void (*vcu_get_task)(struct task_struct **task, int reset);
+	void (*vcu_put_task)(void);
+	int (*vcu_set_v4l2_callback)(struct platform_device *pdev,
+		struct vcu_v4l2_callback_func *call_back);
+	int (*vcu_get_ctx_ipi_binding_lock)(struct platform_device *pdev,
+		struct mutex **mutex, unsigned long type);
+	int (*vcu_set_codec_ctx)(struct platform_device *pdev,
+			 void *codec_ctx, struct vb2_buffer *src_vb,
+			 struct vb2_buffer *dst_vb, unsigned long type);
+	int (*vcu_clear_codec_ctx)(struct platform_device *pdev,
+			 void *codec_ctx, unsigned long type);
+	void *(*vcu_mapping_dm_addr)(struct platform_device *pdev,
+				  uintptr_t dtcm_dmem_addr);
+	int (*vcu_ipi_register)(struct platform_device *pdev,
+				 enum ipi_id id, ipi_handler_t handler,
+				 const char *name, void *priv);
+	int (*vcu_ipi_send)(struct platform_device *pdev,
+			 enum ipi_id id, void *buf,
+			 unsigned int len, void *priv);
+	int (*vcu_set_log)(const char *val);
+	int (*vcu_get_log)(char *val, unsigned int val_len);
+	void (*vcu_get_gce_lock)(struct platform_device *pdev, unsigned long codec_type);
+	void (*vcu_put_gce_lock)(struct platform_device *pdev, unsigned long codec_type);
+};
+extern struct vcu_v4l2_func vcu_func;
 
 /**
  * vcu_ipi_register - register an ipi function
@@ -192,24 +173,6 @@ int vcu_ipi_send(struct platform_device *pdev,
  * otherwise it is VCU's platform device
  **/
 struct platform_device *vcu_get_plat_device(struct platform_device *pdev);
-
-/**
- * vcu_get_vdec_hw_capa - get video decoder hardware capability
- *
- * @pdev:       VCU platform device
- *
- * Return: video decoder hardware capability
- **/
-unsigned int vcu_get_vdec_hw_capa(struct platform_device *pdev);
-
-/**
- * vcu_get_venc_hw_capa - get video encoder hardware capability
- *
- * @pdev:       VCU platform device
- *
- * Return: video encoder hardware capability
- **/
-unsigned int vcu_get_venc_hw_capa(struct platform_device *pdev);
 
 /**
  * vcu_load_firmware - download VCU firmware and boot it
@@ -260,16 +223,10 @@ void *vcu_mapping_dm_addr(struct platform_device *pdev,
  * Get VCUD task information from mtk_vcu driver.
  *
  **/
-void vcu_get_task(struct task_struct **task, struct files_struct **f,
-		int reset);
-void vcu_get_file_lock(void);
-void vcu_put_file_lock(void);
-void vcu_get_gce_lock(struct platform_device *pdev, unsigned long codec_type);
-void vcu_put_gce_lock(struct platform_device *pdev, unsigned long codec_type);
-int vcu_get_sig_lock(unsigned long *flags);
-void vcu_put_sig_lock(unsigned long flags);
-int vcu_check_vpud_alive(void);
-extern void smp_inner_dcache_flush_all(void);
+void vcu_get_task(struct task_struct **task, int reset);
+void vcu_put_task(void);
+int vcu_set_v4l2_callback(struct platform_device *pdev,
+	struct vcu_v4l2_callback_func *call_back);
 int vcu_get_ctx_ipi_binding_lock(struct platform_device *pdev,
 	struct mutex **mutex, unsigned long type);
 int vcu_set_codec_ctx(struct platform_device *pdev,
@@ -277,6 +234,9 @@ int vcu_set_codec_ctx(struct platform_device *pdev,
 		 struct vb2_buffer *dst_vb, unsigned long type);
 int vcu_clear_codec_ctx(struct platform_device *pdev,
 		 void *codec_ctx, unsigned long type);
+void vcu_get_gce_lock(struct platform_device *pdev, unsigned long codec_type);
+void vcu_put_gce_lock(struct platform_device *pdev, unsigned long codec_type);
+
 extern void venc_encode_prepare(void *ctx_prepare,
 		unsigned int core_id, unsigned long *flags);
 extern void venc_encode_unprepare(void *ctx_prepare,
@@ -290,5 +250,6 @@ extern void venc_encode_pmqos_gce_end(void *ctx_end,
 extern void vdec_check_release_lock(void *ctx_check);
 extern void mtk_vcodec_gce_timeout_dump(void *ctx);
 int vcu_set_log(const char *val);
+int vcu_get_log(char *val, unsigned int val_len);
 
 #endif /* _MTK_VCU_H */

@@ -26,7 +26,7 @@
 #include <linux/uidgid.h>
 #include <linux/slab.h>
 
-#if defined(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
+#if IS_ENABLED(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
 #define MTK_TS_PA_THPUT_VIA_ATCMD   (1)
 #else
 #define MTK_TS_PA_THPUT_VIA_ATCMD   (0)
@@ -36,7 +36,7 @@
 #define mtk_mdm_dprintk(fmt, args...)   \
 do {                                    \
 	if (mtk_mdm_debug_log)                \
-		pr_debug("[Thermal/TZ/MDM_TxPower]" fmt, ##args); \
+		pr_info("[Thermal/TZ/MDM_TxPower]" fmt, ##args); \
 } while (0)
 
 #define DEFINE_MDM_CB(index)	\
@@ -58,7 +58,7 @@ static int fill_mdm_cb_##index(int md_id, int data)	\
 #define MTK_THERMAL_GET_RF_TEMP_2G	1
 #define MTK_THERMAL_GET_RF_TEMP_3G	2
 
-#if defined(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
+#if IS_ENABLED(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
 #define MAX_MDINFOEX_OPCODE (16)
 #endif
 
@@ -72,7 +72,7 @@ static int mtk_mdm_enable(void);
 static int mtk_mdm_disable(void);
 static int signal_period = 60;	/* 1s */
 
-#if defined(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
+#if IS_ENABLED(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
 static int mdinfoex[MAX_MDINFOEX_OPCODE] = { 0 };
 static int mdinfoex_threshold[MAX_MDINFOEX_OPCODE] = { 0 };
 #endif
@@ -114,7 +114,7 @@ int mtk_mdm_get_mdinfoex(int opcode, int *value)
 {
 	mtk_mdm_dprintk("%s\n", __func__);
 
-#if defined(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
+#if IS_ENABLED(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
 	if (opcode >= 0 && opcode < MAX_MDINFOEX_OPCODE && value != NULL) {
 		*value = mdinfoex[opcode];
 		return 0;
@@ -131,7 +131,7 @@ int mtk_mdm_set_mdinfoex_threshold(int opcode, int threshold)
 {
 	mtk_mdm_dprintk("%s\n", __func__);
 
-#if defined(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
+#if IS_ENABLED(CONFIG_MTK_THERMAL_PA_VIA_ATCMD)
 	if (opcode >= 0 && opcode < MAX_MDINFOEX_OPCODE) {
 		mdinfoex_threshold[opcode] = threshold;
 		return 0;
@@ -146,7 +146,7 @@ EXPORT_SYMBOL(mtk_mdm_set_mdinfoex_threshold);
 
 int mtk_mdm_start_query(void)
 {
-/* #if  defined(CONFIG_MTK_ENABLE_MD1) || defined(CONFIG_MTK_ENABLE_MD2) */
+/* #if  IS_ENABLED(CONFIG_MTK_ENABLE_MD1) || IS_ENABLED(CONFIG_MTK_ENABLE_MD2) */
 	mtk_mdm_dprintk("%s\n", __func__);
 
 	mdm_sw = true;
@@ -261,12 +261,11 @@ static int mtk_mdm_value_open(struct inode *inode, struct file *file)
 	return single_open(file, mtk_mdm_value_read, NULL);
 }
 
-static const struct file_operations mtk_mdm_value_fops = {
-	.owner = THIS_MODULE,
-	.open = mtk_mdm_value_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops mtk_mdm_value_fops = {
+	.proc_open = mtk_mdm_value_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 
 static int mtk_mdm_sw_read(struct seq_file *m, void *v)
@@ -333,13 +332,12 @@ static int mtk_mdm_sw_open(struct inode *inode, struct file *file)
 	return single_open(file, mtk_mdm_sw_read, NULL);
 }
 
-static const struct file_operations mtk_mdm_sw_fops = {
-	.owner = THIS_MODULE,
-	.open = mtk_mdm_sw_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtk_mdm_sw_write,
-	.release = single_release,
+static const struct proc_ops mtk_mdm_sw_fops = {
+	.proc_open = mtk_mdm_sw_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtk_mdm_sw_write,
+	.proc_release = single_release,
 };
 
 static int mtk_mdm_proc_timeout_read(struct seq_file *m, void *v)
@@ -376,13 +374,12 @@ static int mtk_mdm_proc_timeout_open(struct inode *inode, struct file *file)
 	return single_open(file, mtk_mdm_proc_timeout_read, NULL);
 }
 
-static const struct file_operations mtk_mdm_proc_timeout_fops = {
-	.owner = THIS_MODULE,
-	.open = mtk_mdm_proc_timeout_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtk_mdm_proc_timeout_write,
-	.release = single_release,
+static const struct proc_ops mtk_mdm_proc_timeout_fops = {
+	.proc_open = mtk_mdm_proc_timeout_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtk_mdm_proc_timeout_write,
+	.proc_release = single_release,
 };
 
 #if MTK_TS_PA_THPUT_VIA_ATCMD == 1
@@ -450,13 +447,12 @@ static int mtk_mdm_proc_mdinfo_open(struct inode *inode, struct file *file)
 	return single_open(file, mtk_mdm_proc_mdinfo_read, NULL);
 }
 
-static const struct file_operations mtk_mdm_proc_mdinfo_fops = {
-	.owner = THIS_MODULE,
-	.open = mtk_mdm_proc_mdinfo_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtk_mdm_proc_mdinfo_write,
-	.release = single_release,
+static const struct proc_ops mtk_mdm_proc_mdinfo_fops = {
+	.proc_open = mtk_mdm_proc_mdinfo_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtk_mdm_proc_mdinfo_write,
+	.proc_release = single_release,
 };
 
 static int mtk_mdm_proc_mdinfoex_read(struct seq_file *m, void *v)
@@ -506,13 +502,12 @@ static int mtk_mdm_proc_mdinfoex_open(struct inode *inode, struct file *file)
 	return single_open(file, mtk_mdm_proc_mdinfoex_read, NULL);
 }
 
-static const struct file_operations mtk_mdm_proc_mdinfoex_fops = {
-	.owner = THIS_MODULE,
-	.open = mtk_mdm_proc_mdinfoex_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtk_mdm_proc_mdinfoex_write,
-	.release = single_release,
+static const struct proc_ops mtk_mdm_proc_mdinfoex_fops = {
+	.proc_open = mtk_mdm_proc_mdinfoex_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtk_mdm_proc_mdinfoex_write,
+	.proc_release = single_release,
 };
 
 static int mtk_mdm_proc_mdinfoex_threshold_read(struct seq_file *m, void *v)
@@ -534,18 +529,17 @@ struct inode *inode, struct file *file)
 	return single_open(file, mtk_mdm_proc_mdinfoex_threshold_read, NULL);
 }
 
-static const struct file_operations mtk_mdm_proc_mdinfoex_threshold_fops = {
-	.owner = THIS_MODULE,
-	.open = mtk_mdm_proc_mdinfoex_threshold_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+static const struct proc_ops mtk_mdm_proc_mdinfoex_threshold_fops = {
+	.proc_open = mtk_mdm_proc_mdinfoex_threshold_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
 };
 #endif
 
-static int __init mtk_mdm_txpwr_init(void)
+int  mtk_mdm_txpwr_init(void)
 {
-	struct proc_dir_entry *entry = NULL;
+	struct proc_dir_entry *entry __maybe_unused = NULL;
 	struct proc_dir_entry *mdtxpwr_dir = NULL;
 
 	mtk_mdm_dprintk("[%s]\n", __func__);
@@ -588,9 +582,11 @@ static int __init mtk_mdm_txpwr_init(void)
 	return 0;
 }
 
-static void __exit mtk_mdm_txpwr_exit(void)
+void  mtk_mdm_txpwr_exit(void)
 {
 	mtk_mdm_dprintk("[%s]\n", __func__);
 }
-module_init(mtk_mdm_txpwr_init);
-module_exit(mtk_mdm_txpwr_exit);
+//module_init(mtk_mdm_txpwr_init);
+//module_exit(mtk_mdm_txpwr_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

@@ -13,6 +13,7 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
+#include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -120,6 +121,7 @@ struct tfa98xx_rate {
 
 static uint8_t g_tfa98xx_firmware_status;
 
+#if 0
 int tfa98xx_send_data_to_dsp(int8_t *buffer, int16_t DataLength)
 {
 	int result = 0;
@@ -144,6 +146,7 @@ int tfa98xx_receive_data_from_dsp(int8_t *buffer,
 
 	return result;
 }
+#endif
 
 static const struct tfa98xx_rate rate_to_fssel[] = {
 	{ 8000, 0 },
@@ -767,11 +770,12 @@ static ssize_t tfa98xx_dbgfs_rpc_read(struct file *file,
 	mutex_lock(&tfa98xx->dsp_lock);
 
 	if (tfa98xx->tfa->is_probus_device) {
-		uint32_t DataLength = 0;
+		//uint32_t DataLength = 0;
 
 		if (tfa98xx->dsp_init == TFA98XX_DSP_INIT_DONE) {
-			error = tfa98xx_receive_data_from_dsp(
-				buffer, count, &DataLength);
+			error = Tfa98xx_Error_Ok;
+			//error = tfa98xx_receive_data_from_dsp(
+			//	buffer, count, &DataLength);
 		} else {
 			error = -ENODEV;
 			pr_info("receive data fail as DSP NOT work\n");
@@ -826,8 +830,9 @@ static ssize_t tfa98xx_dbgfs_rpc_send(struct file *file,
 	if (tfa98xx->tfa->is_probus_device) {
 		mutex_lock(&tfa98xx->dsp_lock);
 		if (tfa98xx->dsp_init == TFA98XX_DSP_INIT_DONE) {
-			error = tfa98xx_send_data_to_dsp(msg_file->data,
-				msg_file->size);
+			error = Tfa98xx_Error_Ok;
+			//error = tfa98xx_send_data_to_dsp(msg_file->data,
+			//	msg_file->size);
 		} else {
 			error = -ENODEV;
 		}
@@ -1135,6 +1140,7 @@ static int tfa98xx_set_profile(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_component *codec = snd_soc_kcontrol_component(kcontrol);
 	struct tfa98xx *tfa98xx = snd_soc_component_get_drvdata(codec);
+
 	int change = 0;
 	int new_profile;
 	int prof_idx;
@@ -1172,7 +1178,7 @@ static int tfa98xx_set_profile(struct snd_kcontrol *kcontrol,
 
 	/* modified by jiangtao.zeng begin. */
 	/* we are updating profile index only if the device is not in
-	 * operating mode, and will be start in tfa98xx_mute() later.
+	 * operating mode, and will be start in tfa98xx_mute_stream() later.
 	 * if the device in operating mode, we will apply new
 	 * profile now.
 	 */
@@ -1471,8 +1477,8 @@ static int tfa98xx_create_controls(struct tfa98xx *tfa98xx)
 	}
 
 	ret = snd_soc_add_component_controls(tfa98xx->codec,
-		tfa98xx_controls,
-		mix_index);
+		tfa98xx_controls, mix_index);
+
 	pr_info("create default mixer control ret=%d", ret);
 
 	return ret;
@@ -2443,7 +2449,7 @@ static int tfa98xx_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 	int clk_id, unsigned int freq, int dir)
 {
 	struct tfa98xx *tfa98xx = snd_soc_component_get_drvdata(codec_dai->component);
-
+	
 	tfa98xx->sysclk = freq;
 	return 0;
 }
@@ -2586,8 +2592,9 @@ enum Tfa98xx_Error tfa98xx_adsp_send_calib_values(void)
 		bytes[2] = 0x81;
 		bytes[3] = 0x05;
 		if (tfa98xx->dsp_init == TFA98XX_DSP_INIT_DONE)
-			ret = tfa98xx_send_data_to_dsp(&bytes[1],
-			      sizeof(bytes) - 1);
+			ret = Tfa98xx_Error_Ok;
+			//ret = tfa98xx_send_data_to_dsp(&bytes[1],
+			//      sizeof(bytes) - 1);
 		else {
 			ret = -1;
 			pr_info(" send data fail as DSP NOT work\n");
@@ -2608,19 +2615,20 @@ enum Tfa98xx_Error tfa98xx_adsp_send_calib_values(void)
 
 static int tfa98xx_send_mute_cmd(void)
 {
-	uint8_t cmd[9] = {0x04, 0x81, 0x04, 0x00, 0x00, 0xff, 0x00, 0x00, 0xff};
+	//uint8_t cmd[9] = {0x04, 0x81, 0x04, 0x00, 0x00, 0xff, 0x00, 0x00, 0xff};
 
 	//pr_info("send mute command to host DSP.\n");
-	return tfa98xx_send_data_to_dsp(&cmd[0], sizeof(cmd));
+	//return tfa98xx_send_data_to_dsp(&cmd[0], sizeof(cmd));
+	return 0;
 }
 #endif
 
-static int tfa98xx_mute(struct snd_soc_dai *dai, int mute)
+static int tfa98xx_mute_stream(struct snd_soc_dai *dai, int mute, int direction)
 {
 	struct snd_soc_component *codec = dai->component;
 	struct tfa98xx *tfa98xx = snd_soc_component_get_drvdata(codec);
-
-	pr_info("mute:%d, dsp_init:%d\n", mute, tfa98xx->dsp_init);
+	
+	pr_info("%s :%d, dsp_init:%d\n", __func__, mute, tfa98xx->dsp_init);
 
 	if (tfa98xx_container == NULL) {
 		pr_err("The firmware have not yet loaded!!!\n");
@@ -2683,7 +2691,7 @@ static const struct snd_soc_dai_ops tfa98xx_dai_ops = {
 	.set_sysclk = tfa98xx_set_dai_sysclk,
 	.set_tdm_slot = tfa98xx_set_tdm_slot,
 	.hw_params = tfa98xx_hw_params,
-	.digital_mute = tfa98xx_mute,
+	.mute_stream = tfa98xx_mute_stream,
 };
 
 static struct snd_soc_dai_driver tfa98xx_dai[] = {
@@ -2734,6 +2742,7 @@ static int tfa98xx_probe(struct snd_soc_component *codec)
 
 	ret = tfa98xx_create_controls(tfa98xx);
 	pr_info("We created mixer control in probe  ret=%d\n", ret);
+
 
 	tfa98xx_add_widgets(tfa98xx);
 
@@ -2949,8 +2958,7 @@ inline void tfa98xx_initialize_staic_variant(void)
 	g_tfa98xx_firmware_status = 0;
 }
 
-int tfa98xx_i2c_probe(struct i2c_client *i2c,
-	const struct i2c_device_id *id)
+int tfa98xx_i2c_probe(struct i2c_client *i2c)
 {
 	struct snd_soc_dai_driver *dai;
 	struct tfa98xx *tfa98xx;
@@ -3146,11 +3154,9 @@ int tfa98xx_i2c_probe(struct i2c_client *i2c,
 		return ret;
 	}
 
-	ret = snd_soc_register_component(&i2c->dev,
-		&soc_codec_dev_tfa98xx,
-		dai,
-		ARRAY_SIZE(tfa98xx_dai));
-
+	ret = devm_snd_soc_register_component(&i2c->dev,
+				&soc_codec_dev_tfa98xx, dai,
+				ARRAY_SIZE(tfa98xx_dai));
 	if (ret < 0) {
 		pr_err("Failed to register TFA98xx  ret=%d\n", ret);
 		return ret;
@@ -3178,11 +3184,12 @@ int tfa98xx_i2c_probe(struct i2c_client *i2c,
 	tfa98xx_device_count++;
 	list_add(&tfa98xx->list, &tfa98xx_device_list);
 	mutex_unlock(&tfa98xx_mutex);
-
+	mtk_spk_set_type(MTK_SPK_GOODIX_TFA98XX);
 	return 0;
 }
+EXPORT_SYMBOL(tfa98xx_i2c_probe);
 
-int tfa98xx_i2c_remove(struct i2c_client *i2c)
+void tfa98xx_i2c_remove(struct i2c_client *i2c)
 {
 	struct tfa98xx *tfa98xx = i2c_get_clientdata(i2c);
 
@@ -3203,10 +3210,10 @@ int tfa98xx_i2c_remove(struct i2c_client *i2c)
 
 	snd_soc_unregister_component(&i2c->dev);
 
-	if (gpio_is_valid(tfa98xx->irq_gpio))
-		devm_gpio_free(&i2c->dev, tfa98xx->irq_gpio);
-	if (gpio_is_valid(tfa98xx->reset_gpio))
-		devm_gpio_free(&i2c->dev, tfa98xx->reset_gpio);
+	//if (gpio_is_valid(tfa98xx->irq_gpio))
+	//	devm_gpio_free(&i2c->dev, tfa98xx->irq_gpio);
+	//if (gpio_is_valid(tfa98xx->reset_gpio))
+	//	devm_gpio_free(&i2c->dev, tfa98xx->reset_gpio);
 
 	mutex_lock(&tfa98xx_mutex);
 	list_del(&tfa98xx->list);
@@ -3217,6 +3224,35 @@ int tfa98xx_i2c_remove(struct i2c_client *i2c)
 	}
 	mutex_unlock(&tfa98xx_mutex);
 
-	return 0;
 }
+EXPORT_SYMBOL(tfa98xx_i2c_remove);
+
+static const struct of_device_id __maybe_unused tfa98xx_of_id[] = {
+	{ .compatible = "goodix,tfa9874",},
+	{},
+};
+MODULE_DEVICE_TABLE(of, tfa98xx_of_id);
+
+static const struct i2c_device_id tfa98xx_i2c_id[] = {
+	{"tfa9874", 0 },
+	{},
+};
+MODULE_DEVICE_TABLE(i2c, tfa98xx_i2c_id);
+
+static struct i2c_driver tfa98xx_i2c_driver = {
+	.driver = {
+		.name = "tfa98xx",
+		.owner = THIS_MODULE,
+		.of_match_table = of_match_ptr(tfa98xx_of_id),
+	},
+	.probe = tfa98xx_i2c_probe,
+	.remove = tfa98xx_i2c_remove,
+	.id_table = tfa98xx_i2c_id,
+};
+module_i2c_driver(tfa98xx_i2c_driver);
+
+/* Module information */
+MODULE_DESCRIPTION("Goodix Speaker Amp Codec Driver");
+MODULE_AUTHOR("Pengliang Xiao <xiaopengliang@goodix.com>");
+MODULE_LICENSE("GPL v2");
 

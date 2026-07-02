@@ -66,11 +66,6 @@ static const struct net_device_ops *mddp_wan_netdev_ops_save;
 //------------------------------------------------------------------------------
 // Struct definition.
 // -----------------------------------------------------------------------------
-struct mddp_f_set_ct_timeout_req_t {
-	uint32_t                udp_ct_timeout;
-	uint32_t                tcp_ct_timeout;
-	uint8_t                 rsv[4];
-};
 
 struct mddp_f_set_ct_timeout_rsp_t {
 	uint32_t                udp_ct_timeout;
@@ -402,7 +397,7 @@ int32_t mddp_f_set_ct_value(uint8_t *buf, uint32_t buf_len)
 		return -EINVAL;
 	}
 
-	md_status = exec_ccci_kern_func_by_md_id(0, ID_GET_MD_STATE, NULL, 0);
+	md_status = exec_ccci_kern_func(ID_GET_MD_STATE, NULL, 0);
 
 	if (md_status != MD_STATE_READY) {
 		MDDP_F_LOG(MDDP_LL_NOTICE,
@@ -411,7 +406,7 @@ int32_t mddp_f_set_ct_value(uint8_t *buf, uint32_t buf_len)
 		return -ENODEV;
 	}
 
-	md_msg = kzalloc(sizeof(struct mddp_md_msg_t) + sizeof(ct_req),
+	md_msg = kzalloc(sizeof(struct mddp_md_msg_t),
 			GFP_ATOMIC);
 	if (unlikely(!md_msg))
 		return -EAGAIN;
@@ -424,7 +419,7 @@ int32_t mddp_f_set_ct_value(uint8_t *buf, uint32_t buf_len)
 
 	md_msg->msg_id = IPC_MSG_ID_DPFM_SET_CT_TIMEOUT_VALUE_REQ;
 	md_msg->data_len = sizeof(ct_req);
-	memcpy(md_msg->data, &ct_req, sizeof(ct_req));
+	memcpy(&md_msg->data, &ct_req, sizeof(ct_req));
 	app = mddp_get_app_inst(MDDP_APP_TYPE_WH);
 	mddp_ipc_send_md(app, md_msg, MDFPM_USER_ID_DPFM);
 
@@ -452,9 +447,9 @@ static netdev_tx_t mddp_netops_start_xmit(struct sk_buff *skb, struct net_device
 	return mddp_wan_netdev_ops_save->ndo_start_xmit(skb, dev);
 }
 
-static void mddp_netops_tx_timeout(struct net_device *dev)
+static void mddp_netops_tx_timeout(struct net_device *dev, unsigned int txqueue)
 {
-	mddp_wan_netdev_ops_save->ndo_tx_timeout(dev);
+	mddp_wan_netdev_ops_save->ndo_tx_timeout(dev, txqueue);
 }
 
 static int mddp_netops_do_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
@@ -468,9 +463,15 @@ static int mddp_netops_change_mtu(struct net_device *dev, int new_mtu)
 }
 
 static u16 mddp_netops_select_queue(struct net_device *dev, struct sk_buff *skb,
-				    struct net_device *sb_dev, select_queue_fallback_t fallback)
+				    struct net_device *sb_dev)
 {
-	return mddp_wan_netdev_ops_save->ndo_select_queue(dev, skb, sb_dev, fallback);
+	return mddp_wan_netdev_ops_save->ndo_select_queue(dev, skb, sb_dev);
+}
+
+static int mddp_netops_private_ioctl(struct net_device *dev, struct ifreq *ifr,
+					void __user *data, int cmd)
+{
+	return mddp_wan_netdev_ops_save->ndo_siocdevprivate(dev, ifr, data, cmd);
 }
 
 static const struct net_device_ops mddp_wan_netdev_ops = {
@@ -479,6 +480,7 @@ static const struct net_device_ops mddp_wan_netdev_ops = {
 	.ndo_start_xmit	= mddp_netops_start_xmit,
 	.ndo_tx_timeout	= mddp_netops_tx_timeout,
 	.ndo_do_ioctl	= mddp_netops_do_ioctl,
+	.ndo_siocdevprivate = mddp_netops_private_ioctl,
 	.ndo_change_mtu	= mddp_netops_change_mtu,
 	.ndo_select_queue = mddp_netops_select_queue,
 };

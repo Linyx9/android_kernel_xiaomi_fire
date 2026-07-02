@@ -95,14 +95,12 @@ static int mtk_routing_dev_probe(struct platform_device *pdev)
 
 static int mtk_routing_dev_remove(struct platform_device *pdev)
 {
-	pr_debug("%s:\n", __func__);
-
 	snd_soc_unregister_component(&pdev->dev);
 
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_dai_routing_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_dai_routing",
@@ -117,7 +115,7 @@ static struct platform_driver mtk_routing_driver = {
 
 			.name = MT_SOC_ROUTING_DAI_NAME,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_dai_routing_of_ids,
 #endif
 		},
@@ -129,7 +127,6 @@ static struct platform_device *soc_routing_dev;
 
 static int __init mtk_routing_init(void)
 {
-	pr_debug("%s:\n", __func__);
 #ifndef CONFIG_OF
 	int ret;
 
@@ -151,12 +148,10 @@ module_init(mtk_routing_init);
 
 static void __exit mtk_routing_exit(void)
 {
-	pr_debug("%s:\n", __func__);
-
 	platform_driver_unregister(&mtk_routing_driver);
 }
 module_exit(mtk_routing_exit);
 
 /* Module information */
 MODULE_DESCRIPTION("MTK Routing driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -6,7 +6,13 @@
 #ifndef __MTK_QOS_BOUND_H__
 #define __MTK_QOS_BOUND_H__
 
+#if IS_ENABLED(CONFIG_MTK_QOS_MT6877)
 #define QOS_BOUND_BUF_SIZE		64
+#else
+#define QOS_BOUND_BUF_SIZE		16
+#endif
+
+#define QOS_BOUND_VER_TAG		0xA3
 
 #define QOS_BOUND_BW_FREE		0x1
 #define QOS_BOUND_BW_CONGESTIVE		0x2
@@ -14,6 +20,8 @@
 
 #define QOS_BOUND_BW_CONGESTIVE_PCT	70
 #define QOS_BOUND_BW_FULL_PCT		95
+
+#define QOS_BOUND_EMI_CH		2
 
 enum qos_emibm_type {
 	QOS_EMIBM_TOTAL,
@@ -24,6 +32,9 @@ enum qos_emibm_type {
 
 	NR_QOS_EMIBM_TYPE
 };
+
+#if IS_ENABLED(CONFIG_MTK_QOS_MT6877)
+
 enum qos_smibm_type {
 	QOS_SMIBM_VENC,
 	QOS_SMIBM_CAM,
@@ -33,7 +44,9 @@ enum qos_smibm_type {
 	QOS_SMIBM_APU,
 	QOS_SMIBM_VPU0,
 	QOS_SMIBM_VPU1,
-	QOS_SMIBM_MDLA,
+	QOS_SMIBM_MDLA0,
+	QOS_SMIBM_EDMA0,
+	QOS_SMIBM_XPU,
 
 	NR_QOS_SMIBM_TYPE
 };
@@ -42,22 +55,41 @@ enum qos_lat_type {
 	QOS_LAT_CPU,
 	QOS_LAT_VPU0,
 	QOS_LAT_VPU1,
-	QOS_LAT_MDLA,
+	QOS_LAT_MDLA0,
+	QOS_LAT_EDMA0,
+	QOS_LAT_XPU,
 
 	NR_QOS_LAT_TYPE
 };
+
+#else
+
+enum qos_smibm_type {
+	QOS_SMIBM_GPU,
+	QOS_SMIBM_APU,
+
+	NR_QOS_SMIBM_TYPE
+};
+#endif
 
 struct qos_bound_stat {
 	unsigned short num;
 	unsigned short event;
 	unsigned short emibw_mon[NR_QOS_EMIBM_TYPE];
-	unsigned short emibw_req[NR_QOS_EMIBM_TYPE];
 	unsigned short smibw_mon[NR_QOS_SMIBM_TYPE];
+#if IS_ENABLED(CONFIG_MTK_QOS_MT6877)
+	unsigned short emibw_req[NR_QOS_EMIBM_TYPE];
 	unsigned short smibw_req[NR_QOS_SMIBM_TYPE];
 	unsigned short lat_mon[NR_QOS_LAT_TYPE];
+#endif
 };
 
+
 struct qos_bound {
+#if !IS_ENABLED(CONFIG_MTK_QOS_MT6877)
+	unsigned short ver;
+	unsigned short apu_num;
+#endif
 	unsigned short idx;
 	unsigned short state;
 	struct qos_bound_stat stats[QOS_BOUND_BUF_SIZE];
@@ -78,5 +110,8 @@ extern int is_qos_bound_log_enabled(void);
 extern void qos_bound_log_enable(int enable);
 extern unsigned int get_qos_bound_count(void);
 extern unsigned int *get_qos_bound_buf(void);
-
+extern unsigned short get_qos_bound_apubw_mon(int idx, int master);
+extern unsigned short get_qos_bound_apulat_mon(int idx, int master);
+extern unsigned short get_qos_bound_emibw_mon(int idx, int master);
+extern unsigned short get_qos_bound_smibw_mon(int idx, int master);
 #endif

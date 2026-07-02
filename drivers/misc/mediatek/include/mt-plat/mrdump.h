@@ -9,7 +9,7 @@
 #include <asm/ptrace.h>
 #include <linux/elf.h>
 #include <linux/elfcore.h>
-#include <stdarg.h>
+#include <linux/stdarg.h>
 #include <mt-plat/aee.h>
 
 #ifdef __aarch64__
@@ -24,10 +24,6 @@
 #define reg_ip	ARM_ip
 #define reg_fp	ARM_fp
 #endif
-
-#define MRDUMP_CPU_MAX 12
-
-#define MRDUMP_ENABLE_COOKIE 0x590d2ba3
 
 #define MRDUMP_GO_DUMP "MRDUMP11"
 
@@ -82,8 +78,13 @@ struct mrdump_crash_record {
 	union {
 		struct mrdump_arm32_reg arm32_reg;
 		struct mrdump_arm64_reg arm64_reg;
-	} cpu_reg[0];
+	} cpu_reg[];
 };
+
+/* mrdump_ksyms_param->flag */
+#define MKP_BIT_SHIFT_ARCH64		0
+#define MKP_BIT_SHIFT_ABS_PERCPU	1
+#define MKP_BIT_SHIFT_RELATIVE		31
 
 struct mrdump_ksyms_param {
 	char     tag[4];
@@ -103,17 +104,17 @@ struct mrdump_machdesc {
 	uint32_t nr_cpus;
 
 	uint64_t page_offset;
-	uint64_t high_memory;
+	uint64_t tcr_el1_t1sz;
 
 	uint64_t kimage_vaddr;
-	uint64_t dram_start;
-	uint64_t dram_end;
-	uint64_t kimage_stext;
-	uint64_t kimage_etext;
-	uint64_t kimage_stext_real;
+	uint64_t kimage_offset;
+	uint64_t dram_end; /* deprecated */
+	uint64_t kimage_stext; /* deprecated */
+	uint64_t kimage_etext; /* deprecated */
+	uint64_t kimage_stext_real; /* deprecated */
 	uint64_t kimage_voffset;
-	uint64_t kimage_sdata;
-	uint64_t kimage_edata;
+	uint64_t kernel_pac_mask;
+	uint64_t page_size;
 
 	uint64_t vmalloc_start;
 	uint64_t vmalloc_end;
@@ -128,7 +129,7 @@ struct mrdump_machdesc {
 	uint64_t pageflags;
 	uint32_t struct_page_size;
 
-	uint64_t dfdmem_pa;
+	uint64_t dfdmem_pa; /* deprecated */
 
 	struct mrdump_ksyms_param kallsyms;
 };
@@ -139,7 +140,7 @@ struct mrdump_control_block {
 	struct mrdump_machdesc machdesc;
 	uint32_t machdesc_crc;
 
-	uint32_t enabled;
+	uint32_t unused0;
 	uint32_t output_fs_lbaooo;
 
 	struct mrdump_crash_record crash_record;
@@ -164,7 +165,7 @@ struct mrdump_mini_header {
 #define MRDUMP_MINI_NR_SECTION 60
 #define MRDUMP_MINI_SECTION_SIZE (32 * 1024)
 #define NT_IPANIC_MISC 4095
-#define MRDUMP_MINI_NR_MISC 40
+#define MRDUMP_MINI_NR_MISC 80
 #define MRDUMP_MINI_MISC_LOAD "load"
 
 struct mrdump_mini_elf_misc {
@@ -210,14 +211,47 @@ struct mrdump_mini_elf_header {
 	(MRDUMP_MINI_NR_SECTION * MRDUMP_MINI_SECTION_SIZE)
 #define MRDUMP_MINI_BUF_SIZE (MRDUMP_MINI_HEADER_SIZE + MRDUMP_MINI_DATA_SIZE)
 
-int mrdump_init(void);
-void __mrdump_create_oops_dump(enum AEE_REBOOT_MODE reboot_mode,
-				struct pt_regs *regs, const char *msg, ...);
-int mrdump_common_die(u8 fiq_step, int reboot_reason, const char *msg,
-		      struct pt_regs *regs);
+enum AEE_EXTRA_FILE_ID {
+	AEE_EXTRA_FILE_UFS,
+	AEE_EXTRA_FILE_MMC,
+	AEE_EXTRA_FILE_BLOCKIO,
+	AEE_EXTRA_FILE_ADSP,
+	AEE_EXTRA_FILE_CCU,
+	AEE_EXTRA_FILE_IOMMU,
+	AEE_EXTRA_FILE_MME,
+	AEE_EXTRA_FILE_CMDQ,
+	AEE_EXTRA_FILE_NUM
+};
+
+int mrdump_common_die(int reboot_reason, const char *msg, struct pt_regs *regs);
 void mrdump_mini_add_hang_raw(unsigned long vaddr, unsigned long size);
 void mrdump_mini_add_extra_misc(void);
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
+int mrdump_mini_add_extra_file(unsigned long vaddr, unsigned long paddr,
+	unsigned long size, const char *name);
+extern void mrdump_set_extra_dump(enum AEE_EXTRA_FILE_ID id,
+		void (*fn)(unsigned long *vaddr, unsigned long *size));
+#else
+static inline int mrdump_mini_add_extra_file(unsigned long vaddr,
+	unsigned long paddr, unsigned long size, const char *name)
+{
+	return -1;
+}
+
+static inline void mrdump_set_extra_dump(enum AEE_EXTRA_FILE_ID id,
+		void (*fn)(unsigned long *vaddr, unsigned long *size))
+{
+}
+#endif
 extern void mlog_get_buffer(char **ptr, int *size)__attribute__((weak));
 extern void get_msdc_aee_buffer(unsigned long *buff,
 	unsigned long *size)__attribute__((weak));
+#if IS_ENABLED(CONFIG_MTK_AEE_HANGDET)
+void kwdt_regist_irq_info(void (*fn)(void));
+#else
+static inline void kwdt_regist_irq_info(void (*fn)(void))
+{
+}
 #endif
+#endif
+

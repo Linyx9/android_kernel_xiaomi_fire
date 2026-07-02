@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
  */
 
 #include <linux/kernel.h>
@@ -15,7 +15,7 @@
 #include <linux/nvmem-consumer.h>
 #include <linux/proc_fs.h>
 #include "mtk_spower_data.h"
-#include "mtk_common_spower.h"
+#include "mtk_common_static_power.h"
 
 #define SP_TAG     "[Power/spower] "
 #define SPOWER_LOG_NONE		0
@@ -31,8 +31,6 @@
 #elif (SPOWER_LOG_PRINT == SPOWER_LOG_WITH_PRINTK)
 #define SPOWER_DEBUG(fmt, args...)	 pr_debug(SP_TAG fmt, ##args)
 #endif
-/* charles add*/
-#define WITHOUT_LKG_EFUSE 1
 
 static struct sptab_s sptab[MTK_SPOWER_MAX];
 static char static_power_buf[128];
@@ -225,8 +223,10 @@ int mtk_spower_make_table(struct sptab_s *spt, int voltage, int degree,
 		/** occupy the free container**/
 		tspt = tab[spower_raw->table_size-3];
 #else /* #if defined(EXTER_POLATION) */
-		if (spower_raw->table_size - 1 > 0)
+		if (spower_raw->table_size - 1 >= 0)
 			tspt = tab1 = tab2 = tab[spower_raw->table_size-1];
+		else
+			tspt = tab1 = tab2 = tab[1];
 #endif /* #if defined(EXTER_POLATION) */
 
 		SPOWER_DEBUG("sptab max tab:%d/%d\n",  wat, c[i]);
@@ -259,6 +259,12 @@ int mtk_spower_make_table(struct sptab_s *spt, int voltage, int degree,
 		SPOWER_DEBUG("sptab interpolate: %d/%d, i:%d\n", wat, c[i], i);
 	}
 
+	if (wat == 0) {
+		/* force mc50 */
+		tab1 = tab2 = tab[1];
+		tspt = tab1;
+		SPOWER_INFO("@@~ force mc50\n");
+	}
 
 	/** sptab needs to interpolate 2 tables. **/
 	if (tab1 != tab2)
@@ -385,7 +391,7 @@ void mtk_spower_ut(void)
 #endif
 
 
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 static int static_power_show(struct seq_file *s, void *unused)
 {
 	seq_printf(s, "%s", static_power_buf);
@@ -410,14 +416,13 @@ static const struct file_operations static_power_operations = {
 		struct file *file)				\
 	{							\
 		return single_open(file, name ## _proc_show,	\
-			PDE_DATA(inode));			\
+			pde_data(inode));			\
 	}							\
-	static const struct file_operations name ## _proc_fops = {	\
-		.owner		  = THIS_MODULE,			\
-		.open		   = name ## _proc_open,		\
-		.read		   = seq_read,				\
-		.llseek		 = seq_lseek,				\
-		.release		= single_release,		\
+	static const struct proc_ops name ## _proc_fops = {	\
+		.proc_open		   = name ## _proc_open,		\
+		.proc_read		   = seq_read,				\
+		.proc_lseek		 = seq_lseek,				\
+		.proc_release		= single_release,		\
 	}
 
 #define PROC_ENTRY(name)	{__stringify(name), &name ## _proc_fops}
@@ -436,7 +441,7 @@ int spower_procfs_init(void)
 
 	struct pentry {
 		const char *name;
-		const struct file_operations *fops;
+		const struct proc_ops *fops;
 	};
 
 	const struct pentry entries[] = {
@@ -487,18 +492,38 @@ int mt_spower_init(void)
 	if (mtSpowerInited == 1)
 		return 0;
 
-	node = of_find_node_by_name(NULL, "eem_fsm");
+	node = of_find_node_by_name(NULL, "eem-fsm");
 	if (node == NULL) {
-		pr_notice("%s fail to get device node\n", __func__);
+		pr_notice("%s fail to get device node (eem-fsm)\n", __func__);
 		err_flag = 1;
 		goto efuse_end;
 	}
-	pdev = of_device_alloc(node, NULL, NULL);
+	pdev = of_find_device_by_node(node);
+	if (pdev == NULL) {
+		pr_notice("%s fail to create pdev 1 (eem-fsm)\n", __func__);
+		node = of_find_node_by_name(NULL, "lkg");
+		if (node == NULL) {
+			pr_notice("%s fail to get device node (lkg)\n", __func__);
+			err_flag = 1;
+			goto efuse_end;
+		}
+		pdev = of_find_device_by_node(node);
+		if (pdev == NULL) {
+			pr_notice("%s fail to create pdev 1 (lkg)\n", __func__);
+			pdev = of_find_device_by_node(node);
+			if (pdev == NULL) {
+				pr_notice("%s fail to create pdev 2 (lkg)\n", __func__);
+				err_flag = 2;
+				goto efuse_end;
+			}
+		}
+	}
+
 	nvmem_dev = nvmem_device_get(&pdev->dev, "mtk_efuse");
 	if (IS_ERR(nvmem_dev)) {
 		pr_notice("%s failed to get mtk_efuse device\n",
 			__func__);
-		err_flag = 1;
+		err_flag = 3;
 		goto efuse_end;
 	}
 
@@ -508,7 +533,7 @@ efuse_end:
 
 	/* avoid side effect from multiple invocation */
 	if (tab_validate(&sptab[0]))
-		return 0;
+		goto init_end;
 
 #ifndef WITHOUT_LKG_EFUSE
 	for (i = 0; i < MTK_LEAKAGE_MAX; i++) {
@@ -519,7 +544,7 @@ efuse_end:
 				&devinfo);
 		temp_lkg =
 			(devinfo >> spower_lkg_info[i].devinfo_offset) & 0xff;
-		SPOWER_DEBUG("[Efuse] %s => 0x%x\n", spower_lkg_info[i].name,
+		pr_notice("[Efuse] %s => 0x%x\n", spower_lkg_info[i].name,
 				temp_lkg);
 		/*
 		 * if has leakage info in efuse, get the final leakage
@@ -568,7 +593,7 @@ efuse_end:
 	/* print static_power_buf and generate debugfs node */
 	/* kernel49 migrate: change S_IFREG | S_IRUSR to 0400 */
 	SPOWER_INFO("%s", static_power_buf);
-#ifdef CONFIG_DEBUG_FS
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 	debugfs_create_file("static_power", 0400,
 				NULL, NULL,
 				&static_power_operations);
@@ -578,16 +603,26 @@ efuse_end:
 		kfree(tab[i]);
 
 	mtSpowerInited = 1;
+
+init_end:
+	if (err_flag != 1 && pdev != NULL) {
+		of_node_put(node);
+		platform_device_put(pdev);
+	}
+
 	return 0;
 }
 
-module_init(mt_spower_init);
+
 
 /* return 0, means sptab is not yet ready. */
 /* vol unit should be mv */
 int mt_spower_get_leakage(int dev, unsigned int vol, int deg)
 {
 	int ret;
+
+	if (dev < 0)
+		return 0;
 
 	if (!tab_validate(&sptab[dev]))
 		return 0;
@@ -614,22 +649,25 @@ int mt_spower_get_efuse_lkg(int dev)
 {
 	int id = 0;
 
-	if (dev >= MTK_SPOWER_MAX)
+	if (dev >= MTK_SPOWER_MAX || dev < 0)
 		return 0;
 
 	id = spower_raw[dev].leakage_id;
-#ifndef WITHOUT_LKG_EFUSE
-	int devinfo = 0, efuse_lkg = 0, efuse_lkg_mw = 0;
-	int leakage_id = spower_raw[dev].leakage_id;
 
-	devinfo = (int) get_devinfo_with_index(devinfo_idx[dev]);
-	efuse_lkg = (devinfo >> devinfo_offset[dev]) & 0xff;
-	efuse_lkg_mw = (efuse_lkg == 0) ? default_leakage[leakage_id] :
-			(int) (devinfo_table[efuse_lkg] * V_OF_FUSE / 1000);
+	if (id < 0) {
+		pr_notice("%s get error lkg id\n", __func__);
+		return 0;
+	}
 
-	return efuse_lkg_mw;
-#endif
 	return spower_lkg_info[id].value;
 }
 EXPORT_SYMBOL(mt_spower_get_efuse_lkg);
+static void __exit mt_spower_exit(void)
+{
 
+}
+module_init(mt_spower_init);
+module_exit(mt_spower_exit);
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("MediaTek spower Driver v0.3.1");
+MODULE_AUTHOR("Mediatek Inc");

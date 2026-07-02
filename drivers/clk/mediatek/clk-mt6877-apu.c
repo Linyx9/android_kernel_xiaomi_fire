@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/clk-provider.h>
 #include <linux/of_device.h>
@@ -18,10 +18,6 @@
 #define INV_OFS			-1
 #define INV_BIT			-1
 
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status apu0_pwr_stat = GATE_PWR_STAT(0x178,
-		0x178, INV_OFS, BIT(5), BIT(5));
-
 static const struct mtk_gate_regs apu0_cg_regs = {
 	.set_ofs = 0x104,
 	.clr_ofs = 0x108,
@@ -35,7 +31,6 @@ static const struct mtk_gate_regs apu0_cg_regs = {
 		.regs = &apu0_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &apu0_pwr_stat,			\
 	}
 
 static const struct mtk_gate apu0_clks[] = {
@@ -46,10 +41,6 @@ static const struct mtk_gate apu0_clks[] = {
 	GATE_APU0(CLK_APU0_JTAG, "apu0_jtag",
 			"dsp1_ck"/* parent */, 2),
 };
-
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status apu1_pwr_stat = GATE_PWR_STAT(0x178,
-		0x178, INV_OFS, BIT(5), BIT(5));
 
 static const struct mtk_gate_regs apu1_cg_regs = {
 	.set_ofs = 0x104,
@@ -64,7 +55,6 @@ static const struct mtk_gate_regs apu1_cg_regs = {
 		.regs = &apu1_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &apu1_pwr_stat,			\
 	}
 
 static const struct mtk_gate apu1_clks[] = {
@@ -75,10 +65,6 @@ static const struct mtk_gate apu1_clks[] = {
 	GATE_APU1(CLK_APU1_JTAG, "apu1_jtag",
 			"dsp2_ck"/* parent */, 2),
 };
-
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status apuv_pwr_stat = GATE_PWR_STAT(0x178,
-		0x178, INV_OFS, BIT(5), BIT(5));
 
 static const struct mtk_gate_regs apuv_cg_regs = {
 	.set_ofs = 0x4,
@@ -93,7 +79,6 @@ static const struct mtk_gate_regs apuv_cg_regs = {
 		.regs = &apuv_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &apuv_pwr_stat,			\
 	}
 
 static const struct mtk_gate apuv_clks[] = {
@@ -106,10 +91,6 @@ static const struct mtk_gate apuv_clks[] = {
 	GATE_APUV(CLK_APUV_QOS, "apuv_qos",
 			"clk_null"/* parent */, 3),
 };
-
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status apu_conn1_pwr_stat = GATE_PWR_STAT(0x178,
-		0x178, INV_OFS, BIT(5), BIT(5));
 
 static const struct mtk_gate_regs apu_conn1_cg_regs = {
 	.set_ofs = 0x4,
@@ -124,7 +105,6 @@ static const struct mtk_gate_regs apu_conn1_cg_regs = {
 		.regs = &apu_conn1_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &apu_conn1_pwr_stat,			\
 	}
 
 static const struct mtk_gate apu_conn1_clks[] = {
@@ -140,10 +120,6 @@ static const struct mtk_gate apu_conn1_clks[] = {
 			"dsp_ck"/* parent */, 5),
 };
 
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status apu_conn2_pwr_stat = GATE_PWR_STAT(0x178,
-		0x178, INV_OFS, BIT(5), BIT(5));
-
 static const struct mtk_gate_regs apu_conn2_cg_regs = {
 	.set_ofs = 0x4,
 	.clr_ofs = 0x8,
@@ -157,7 +133,6 @@ static const struct mtk_gate_regs apu_conn2_cg_regs = {
 		.regs = &apu_conn2_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &apu_conn2_pwr_stat,			\
 	}
 
 static const struct mtk_gate apu_conn2_clks[] = {
@@ -199,10 +174,6 @@ static const struct mtk_gate apu_conn2_clks[] = {
 			"dsp_ck"/* parent */, 18),
 };
 
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status apum0_pwr_stat = GATE_PWR_STAT(0x178,
-		0x178, INV_OFS, BIT(5), BIT(5));
-
 static const struct mtk_gate_regs apum0_cg_regs = {
 	.set_ofs = 0x4,
 	.clr_ofs = 0x8,
@@ -216,7 +187,6 @@ static const struct mtk_gate_regs apum0_cg_regs = {
 		.regs = &apum0_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &apum0_pwr_stat,			\
 	}
 
 static const struct mtk_gate apum0_clks[] = {
@@ -476,4 +446,4 @@ static int __init clk_mt6877_apu_init(void)
 	return platform_driver_register(&clk_mt6877_apu_drv);
 }
 arch_initcall(clk_mt6877_apu_init);
-
+MODULE_LICENSE("GPL");

@@ -31,7 +31,7 @@ struct thermal_cooling_device_ops_extra {
 
 extern
 struct thermal_zone_device *mtk_thermal_zone_device_register_wrapper
-(char *type, int trips, void *devdata,
+(char *type, struct thermal_trip *trips, int num_trip, void *devdata,
 const struct thermal_zone_device_ops *ops,
 int tc1, int tc2, int passive_delay, int polling_delay);
 
@@ -107,11 +107,11 @@ extern int mtk_thermal_get_temp(enum mtk_thermal_sensor_id id);
 extern struct proc_dir_entry *mtk_thermal_get_proc_drv_therm_dir_entry(void);
 
 /* This API function is implemented in mediatek/kernel/drivers/leds/leds.c */
-#if defined(CONFIG_LEDS_MTK_DISP) || defined(CONFIG_LEDS_MTK_PWM) || defined(CONFIG_LEDS_MTK_I2C)
-extern int setMaxBrightness(char *name, int percent, bool enable);
+#if IS_ENABLED(CONFIG_LEDS_MTK_DISP) || IS_ENABLED(CONFIG_LEDS_MTK_PWM) \
+	|| IS_ENABLED(CONFIG_LEDS_MTK_I2C)
+extern int setMaxBrightness(int connector_id, int percent, bool enable);
 #else
 extern int setMaxbrightness(int max_level, int enable);
-extern int thermal_set_brightness_percent(int percent, int enable);
 #endif
 
 extern void machine_power_off(void);

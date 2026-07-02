@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
 #include "mdp_ioctl_ex.h"
 #include "mdp_driver.h"
@@ -9,10 +9,11 @@
 #include "cmdq_virtual.h"
 #include "cmdq_reg.h"
 #include "mdp_common.h"
+#include "cmdq_device.h"
 
-#include "mdp_cmdq_helper_ext.h"
-#include "mdp_cmdq_record.h"
-#include "mdp_cmdq_device.h"
+#include "cmdq_helper_ext.h"
+#include "cmdq_record.h"
+#include "cmdq_device.h"
 
 #ifdef CMDQ_SECURE_PATH_SUPPORT
 #include <cmdq-sec.h>
@@ -34,7 +35,7 @@
 #include <linux/sched.h>
 #include <linux/pm.h>
 #include <linux/suspend.h>
-#include <linux/soc/mediatek/mtk-cmdq.h>
+#include <linux/soc/mediatek/mtk-cmdq-ext.h>
 #include <linux/sched/clock.h>
 #ifdef CMDQ_USE_LEGACY
 #include <mach/mt_boot.h>
@@ -54,67 +55,6 @@ static const struct of_device_id cmdq_of_ids[] = {
 static dev_t gMdpDevNo;
 static struct cdev *gMdpCDev;
 static struct class *gMDPClass;
-
-static ssize_t cmdq_driver_dummy_write(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	return -EACCES;
-}
-
-static DEVICE_ATTR(error, 0600, cmdq_core_print_error,
-	cmdq_driver_dummy_write);
-static DEVICE_ATTR(log_level, 0600, cmdq_core_print_log_level,
-	cmdq_core_write_log_level);
-static DEVICE_ATTR(profile_enable, 0600,
-	cmdq_core_print_profile_enable, cmdq_core_write_profile_enable);
-
-
-static int cmdq_proc_status_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, cmdq_core_print_status_seq, inode->i_private);
-}
-
-static int cmdq_proc_record_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, cmdq_core_print_record_seq, inode->i_private);
-}
-
-static const struct file_operations cmdqDebugStatusOp = {
-	.owner = THIS_MODULE,
-	.open = cmdq_proc_status_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-};
-
-static const struct file_operations cmdqDebugRecordOp = {
-	.owner = THIS_MODULE,
-	.open = cmdq_proc_record_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-};
-
-#ifdef CMDQ_INSTRUCTION_COUNT
-static DEVICE_ATTR(instruction_count_level, 0600,
-	cmdqCorePrintInstructionCountLevel,
-	cmdqCoreWriteInstructionCountLevel);
-
-static int cmdq_proc_instruction_count_open(struct inode *inode,
-	struct file *file)
-{
-	return single_open(file, cmdqCorePrintInstructionCountSeq,
-		inode->i_private);
-}
-
-static const struct file_operations cmdqDebugInstructionCountOp = {
-	.owner = THIS_MODULE,
-	.open = cmdq_proc_instruction_count_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
-};
-#endif
 
 static int cmdq_open(struct inode *pInode, struct file *pFile)
 {
@@ -177,7 +117,11 @@ static int cmdq_release(struct inode *pInode, struct file *pFile)
 	pFile->private_data = NULL;
 
 	mdp_ioctl_free_readback_slots_by_node(pFile);
-	cmdqCoreFreeWriteAddressByNode(pFile, CMDQ_CLT_MDP);
+
+	if (!cmdq_mdp_vcp_pq_readback_support())
+		cmdqCoreFreeWriteAddressByNode(pFile, CMDQ_CLT_MDP);
+	else
+		cmdqCoreWriteAddressVcpFreeByNode(pFile, CMDQ_CLT_MDP);
 
 	CMDQ_LOG("CMDQ driver release end\n");
 
@@ -257,10 +201,11 @@ static int cmdq_driver_create_reg_address_buffer(
 	return 0;
 }
 
-void cmdq_driver_dump_readback(u32 *ids, u32 *addrs, u32 count, u32 *values)
+void cmdq_driver_dump_readback(dma_addr_t *addrs, u32 count, u32 *values)
 {
 	u32 i, n, len, cur;
 	char buf[72];
+	int ret;
 
 	if (likely(!cmdq_core_profile_pqreadback_enabled() &&
 		!cmdq_core_profile_pqreadback_once_enabled()))
@@ -270,17 +215,24 @@ void cmdq_driver_dump_readback(u32 *ids, u32 *addrs, u32 count, u32 *values)
 
 	i = 0;
 	while (i < count) {
-		len = snprintf(buf, sizeof(buf), "%#x %#x:",
-			addrs[i], ids ? ids[i] : 0);
-		if (len >= sizeof(buf))
-			pr_debug("len:%d over buf size:%d\n", len, sizeof(buf));
+		ret = snprintf(buf, sizeof(buf), "%pa:", &addrs[i]);
+		if (ret < 0)
+			CMDQ_ERR("%s snprintf failed!!!\n", __func__);
+		else
+			len = ret;
+
 		cur = addrs[i] & 0xFFFFFFF0;
 
 		/* limit max num 4 in line */
 		for (n = 0; n < 4 && i < count &&
 			cur == (addrs[i] & 0xFFFFFFF0); n++) {
-			len += snprintf(buf + len, sizeof(buf) - len,
+			ret = snprintf(buf + len, sizeof(buf) - len,
 				" %#010x", values[i]);
+			if (ret < 0)
+				CMDQ_ERR("%s snprintf failed!!!\n", __func__);
+			else
+				len += ret;
+
 			i++;
 		}
 
@@ -294,7 +246,7 @@ static void cmdq_driver_process_read_address_request(
 	struct cmdqReadAddressStruct *req_user)
 {
 	/* create kernel-space buffer for working */
-	u32 *addrs = NULL;
+	dma_addr_t *addrs = NULL;
 	u32 *values = NULL;
 	void *dma_addr;
 	void *values_addr;
@@ -317,7 +269,7 @@ static void cmdq_driver_process_read_address_request(
 			break;
 		}
 
-		addrs = kcalloc(req_user->count, sizeof(u32), GFP_KERNEL);
+		addrs = kcalloc(req_user->count, sizeof(dma_addr_t), GFP_KERNEL);
 		if (!addrs) {
 			CMDQ_ERR("[READ_PA] fail to alloc addr buf\n");
 			break;
@@ -331,9 +283,9 @@ static void cmdq_driver_process_read_address_request(
 
 		/* copy from user */
 		if (copy_from_user(addrs, dma_addr,
-			req_user->count * sizeof(u32))) {
+			req_user->count * sizeof(dma_addr_t))) {
 			CMDQ_ERR(
-				"[READ_PA] fail to copy user dma addr:0x%p\n",
+				"[READ_PA] fail to copy user dma addr:0x%pa\n",
 				dma_addr);
 			break;
 		}
@@ -342,7 +294,7 @@ static void cmdq_driver_process_read_address_request(
 
 		/* actually read these PA write buffers */
 		cmdqCoreReadWriteAddressBatch(addrs, req_user->count, values);
-		cmdq_driver_dump_readback(NULL, addrs, req_user->count, values);
+		cmdq_driver_dump_readback(addrs, req_user->count, values);
 
 		/* copy value to user */
 		if (copy_to_user(values_addr, values,
@@ -625,9 +577,6 @@ static s32 cmdq_driver_copy_handle_prop_from_user(void *from, u32 size,
 {
 	void *task_prop = NULL;
 
-	/* considering backward compatible,
-	 * we won't return error when argument not available
-	 */
 	if (from && size && to) {
 		task_prop = kzalloc(size, GFP_KERNEL);
 		if (!task_prop) {
@@ -644,9 +593,6 @@ static s32 cmdq_driver_copy_handle_prop_from_user(void *from, u32 size,
 		}
 
 		*to = task_prop;
-	} else if (to) {
-		CMDQ_LOG("Initialize prop_addr to NULL...\n");
-		*to = NULL;
 	}
 
 	return 0;
@@ -666,7 +612,7 @@ static void cmdq_release_handle_property(void **prop_addr, u32 *prop_size)
 
 s32 cmdq_driver_ioctl_exec_command(struct file *pf, unsigned long param)
 {
-	struct cmdqCommandStruct command;
+	struct cmdqCommandStruct command = {0};
 	struct task_private desc_private = {0};
 	s32 status;
 
@@ -674,7 +620,8 @@ s32 cmdq_driver_ioctl_exec_command(struct file *pf, unsigned long param)
 		sizeof(struct cmdqCommandStruct)))
 		return -EFAULT;
 
-	if (command.regRequest.count > CMDQ_MAX_DUMP_REG_COUNT ||
+	if (!command.regRequest.count ||
+		command.regRequest.count > CMDQ_MAX_DUMP_REG_COUNT ||
 		!command.blockSize ||
 		command.blockSize > CMDQ_MAX_COMMAND_SIZE ||
 		command.prop_size > CMDQ_MAX_USER_PROP_SIZE) {
@@ -727,7 +674,7 @@ s32 cmdq_driver_ioctl_query_usage(struct file *pf, unsigned long param)
 s32 cmdq_driver_ioctl_async_job_exec(struct file *pf,
 	unsigned long param)
 {
-	struct cmdqJobStruct job;
+	struct cmdqJobStruct job = {0};
 	struct task_private desc_private = {0};
 	struct cmdqRecStruct *handle = NULL;
 	u32 userRegCount;
@@ -828,7 +775,7 @@ s32 cmdq_driver_ioctl_async_job_exec(struct file *pf,
 
 s32 cmdq_driver_ioctl_async_job_wait_and_close(unsigned long param)
 {
-	struct cmdqJobResultStruct jobResult;
+	struct cmdqJobResultStruct jobResult = {0};
 	struct cmdqRecStruct *handle;
 	u32 *userRegValue = NULL;
 	/* backup value after task release */
@@ -884,13 +831,13 @@ s32 cmdq_driver_ioctl_async_job_wait_and_close(unsigned long param)
 	 * which contains kernel + user space requests
 	 */
 	userRegValue = CMDQ_U32_PTR(jobResult.regValue.regValues);
-	jobResult.regValue.regValues = (cmdqU32Ptr_t)(unsigned long)(
-		kzalloc(handle->reg_count + sizeof(u32), GFP_KERNEL));
-	jobResult.regValue.count = handle->reg_count;
-	if (CMDQ_U32_PTR(jobResult.regValue.regValues) == NULL) {
+	if (!userRegValue) {
 		CMDQ_ERR("no reg value buffer\n");
 		return -ENOMEM;
 	}
+	jobResult.regValue.regValues = (cmdqU32Ptr_t)(unsigned long)(
+		kzalloc(handle->reg_count + sizeof(u32), GFP_KERNEL));
+	jobResult.regValue.count = handle->reg_count;
 
 	/* wait for task done */
 	status = cmdq_mdp_wait(handle, &jobResult.regValue);
@@ -1057,35 +1004,9 @@ static long cmdq_ioctl(struct file *pf, unsigned int code,
 	CMDQ_VERBOSE("%s code:0x%08x f:0x%p\n", __func__, code, pf);
 
 	switch (code) {
-#if 0
-	case CMDQ_IOCTL_EXEC_COMMAND:
-		status = cmdq_driver_ioctl_exec_command(pf, param);
-		break;
-#endif
 	case CMDQ_IOCTL_QUERY_USAGE:
 		status = cmdq_driver_ioctl_query_usage(pf, param);
 		break;
-#if 0
-	case CMDQ_IOCTL_ASYNC_JOB_EXEC:
-		CMDQ_SYSTRACE_BEGIN("%s_async_job_exec\n", __func__);
-		status = cmdq_driver_ioctl_async_job_exec(pf, param);
-		CMDQ_SYSTRACE_END();
-		break;
-	case CMDQ_IOCTL_ASYNC_JOB_WAIT_AND_CLOSE:
-		CMDQ_SYSTRACE_BEGIN("%s_async_job_wait_and_close\n", __func__);
-		status = cmdq_driver_ioctl_async_job_wait_and_close(param);
-		CMDQ_SYSTRACE_END();
-		break;
-	case CMDQ_IOCTL_ALLOC_WRITE_ADDRESS:
-		status = cmdq_driver_ioctl_alloc_write_address(pf, param);
-		break;
-	case CMDQ_IOCTL_FREE_WRITE_ADDRESS:
-		status = cmdq_driver_ioctl_free_write_address(param);
-		break;
-	case CMDQ_IOCTL_READ_ADDRESS_VALUE:
-		status = cmdq_driver_ioctl_read_address_value(param);
-		break;
-#endif
 	case CMDQ_IOCTL_QUERY_CAP_BITS:
 		status = cmdq_driver_ioctl_query_cap_bits(param);
 		break;
@@ -1210,26 +1131,11 @@ static struct notifier_block cmdq_pm_notifier_block = {
 	.priority = 5,
 };
 
-
-static int cmdq_create_debug_entries(void)
+void mdp_mme_init(void)
 {
-	struct proc_dir_entry *debugDirEntry = NULL;
-
-	debugDirEntry = proc_mkdir(MDP_DRIVER_DEVICE_NAME "_debug", NULL);
-	if (debugDirEntry) {
-		struct proc_dir_entry *entry = NULL;
-
-		entry = proc_create("status", 0440, debugDirEntry,
-			&cmdqDebugStatusOp);
-		entry = proc_create("record", 0440, debugDirEntry,
-			&cmdqDebugRecordOp);
-#ifdef CMDQ_INSTRUCTION_COUNT
-		entry = proc_create("instructionCount", 0440, debugDirEntry,
-			&cmdqDebugInstructionCountOp);
+#if IS_ENABLED(CONFIG_MTK_CMDQ_DEBUG) && IS_ENABLED(CONFIG_MTK_MME_SUPPORT)
+	MME_REGISTER_BUFFER(MME_MODULE_MMSYS, "MDP", MME_BUFFER_INDEX_0, MDP_LOG_SIZE);
 #endif
-	}
-
-	return 0;
 }
 
 static int cmdq_probe(struct platform_device *pDevice)
@@ -1237,7 +1143,10 @@ static int cmdq_probe(struct platform_device *pDevice)
 	int status;
 	struct device *object;
 
-	CMDQ_LOG("CMDQ driver probe begin\n");
+	/* mdp mme log init */
+	mdp_mme_init();
+
+	CMDQ_LOG("[MDP] MDP driver probe begin\n");
 
 	/* Function link */
 	cmdq_virtual_function_setting();
@@ -1249,10 +1158,8 @@ static int cmdq_probe(struct platform_device *pDevice)
 	cmdq_core_initialize();
 
 	/* init cmdq context */
+	CMDQ_LOG("call cmdq_mdp_init\n");
 	cmdq_mdp_init(pDevice);
-#if 0
-	cmdqCoreInitialize();
-#endif
 
 	status = alloc_chrdev_region(&gMdpDevNo, 0, 1,
 		MDP_DRIVER_DEVICE_NAME);
@@ -1273,34 +1180,38 @@ static int cmdq_probe(struct platform_device *pDevice)
 
 	status = cdev_add(gMdpCDev, gMdpDevNo, 1);
 
-	gMDPClass = class_create(THIS_MODULE, MDP_DRIVER_DEVICE_NAME);
+	gMDPClass = class_create(MDP_DRIVER_DEVICE_NAME);
 	object = device_create(gMDPClass, NULL, gMdpDevNo, NULL,
 		MDP_DRIVER_DEVICE_NAME);
+	if (IS_ERR(object)) {
+		CMDQ_ERR("Failed to create device %s(%pe)\n",
+			MDP_DRIVER_DEVICE_NAME, object);
+		return PTR_ERR(object);
+	}
 
 	/* mtk-cmdq-mailbox will register the irq */
 
-	/* proc debug access point */
-	cmdq_create_debug_entries();
-
-	/* device attributes for debugging */
-	status = device_create_file(&pDevice->dev, &dev_attr_error);
-	if (status != 0)
-		CMDQ_ERR("%s attr error create fail\n", __func__);
-	status = device_create_file(&pDevice->dev, &dev_attr_log_level);
-	if (status != 0)
-		CMDQ_ERR("%s attr log level create fail\n", __func__);
-	status = device_create_file(&pDevice->dev, &dev_attr_profile_enable);
-	if (status != 0)
-		CMDQ_ERR("%s attr profile create fail\n", __func__);
-#ifdef CMDQ_INSTRUCTION_COUNT
-	status = device_create_file(&pDevice->dev,
-		&dev_attr_instruction_count_level);
-	if (status != 0)
-		CMDQ_ERR("%s attr inst count create fail\n", __func__);
-#endif
-
 	mdp_limit_dev_create(pDevice);
-	CMDQ_LOG("CMDQ driver probe end\n");
+
+	/* Register PMQoS */
+	cmdq_core_register_task_cycle_cb(cmdq_mdp_get_func()->getGroupMdp(),
+		cmdq_mdp_get_func()->beginTask,
+		cmdq_mdp_get_func()->endTask);
+
+	if (cmdq_mdp_get_func()->mdpIsCaminSupport()) {
+		cmdq_core_register_task_cycle_cb(cmdq_mdp_get_func()->getGroupIsp(),
+			cmdq_mdp_get_func()->beginISPTask,
+			cmdq_mdp_get_func()->endISPTask);
+	}
+
+	/* register pm notifier */
+	status = register_pm_notifier(&cmdq_pm_notifier_block);
+	if (status != 0) {
+		CMDQ_ERR("Failed to register_pm_notifier(%d)\n", status);
+		return -ENODEV;
+	}
+
+	CMDQ_LOG("MDP driver probe end\n");
 
 	return 0;
 }
@@ -1308,14 +1219,8 @@ static int cmdq_probe(struct platform_device *pDevice)
 
 static int cmdq_remove(struct platform_device *pDevice)
 {
+	cmdq_core_remove();
 	disable_irq(cmdq_dev_get_irq_id());
-
-	device_remove_file(&pDevice->dev, &dev_attr_error);
-	device_remove_file(&pDevice->dev, &dev_attr_log_level);
-	device_remove_file(&pDevice->dev, &dev_attr_profile_enable);
-#ifdef CMDQ_INSTRUCTION_COUNT
-	device_remove_file(&pDevice->dev, &dev_attr_instruction_count_level);
-#endif
 	return 0;
 }
 
@@ -1359,36 +1264,15 @@ static struct platform_driver gCmdqDriver = {
 	}
 };
 
-static int __init mdp_late_init(void)
-{
-	int status;
-
-	CMDQ_LOG("%s begin\n", __func__);
-	status = mdp_limit_late_init();
-	CMDQ_LOG("%s end\n", __func__);
-
-	return 0;
-}
-late_initcall(mdp_late_init);
-
 static int __init cmdq_init(void)
 {
 	int status;
 
-	CMDQ_LOG("%s CMDQ driver init begin\n", __func__);
+	CMDQ_LOG("%s MDP driver init begin\n", __func__);
 
 	/* MDP function link */
 	cmdq_mdp_virtual_function_setting();
 	cmdq_mdp_platform_function_setting();
-
-	/* Register PMQoS */
-	cmdq_core_register_task_cycle_cb(CMDQ_GROUP_MDP,
-			cmdq_mdp_get_func()->beginTask,
-			cmdq_mdp_get_func()->endTask);
-
-	cmdq_core_register_task_cycle_cb(CMDQ_GROUP_ISP,
-			cmdq_mdp_get_func()->beginISPTask,
-			cmdq_mdp_get_func()->endISPTask);
 
 	status = platform_driver_register(&gCmdqDriver);
 	if (status != 0) {
@@ -1396,14 +1280,13 @@ static int __init cmdq_init(void)
 		return -ENODEV;
 	}
 
-	/* register pm notifier */
-	status = register_pm_notifier(&cmdq_pm_notifier_block);
-	if (status != 0) {
-		CMDQ_ERR("Failed to register_pm_notifier(%d)\n", status);
-		return -ENODEV;
-	}
+	mdpsyscon_init();
+	cmdq_core_late_init();
+	status = mdp_sync_device_init();
+	if (status != 0)
+		CMDQ_ERR("fence init fail:%d\n", status);
 
-	CMDQ_LOG("CMDQ driver init end\n");
+	CMDQ_LOG("MDP driver init end\n");
 
 	return 0;
 }
@@ -1412,7 +1295,7 @@ static void __exit cmdq_exit(void)
 {
 	s32 status;
 
-	CMDQ_LOG("CMDQ driver exit begin\n");
+	CMDQ_LOG("MDP driver exit begin\n");
 
 	device_destroy(gMDPClass, gMdpDevNo);
 
@@ -1434,7 +1317,8 @@ static void __exit cmdq_exit(void)
 	}
 
 	/* Unregister MDP callback */
-	cmdqCoreRegisterCB(CMDQ_GROUP_MDP, NULL, NULL, NULL, NULL);
+	cmdqCoreRegisterCB(cmdq_mdp_get_func()->getGroupMdp(),
+		NULL, NULL, NULL, NULL);
 
 	/* De-Initialize group callback */
 	cmdq_core_deinit_group_cb();
@@ -1444,12 +1328,12 @@ static void __exit cmdq_exit(void)
 
 	/* De-Initialize cmdq dev related data */
 	cmdq_dev_deinit();
-	mdp_limit_dev_destroy();
+	mdpsyscon_deinit();
 
-	CMDQ_LOG("CMDQ driver exit end\n");
+	CMDQ_LOG("MDP driver exit end\n");
 }
 
-subsys_initcall(cmdq_init);
+module_init(cmdq_init);
 module_exit(cmdq_exit);
 
 MODULE_DESCRIPTION("MTK CMDQ driver");

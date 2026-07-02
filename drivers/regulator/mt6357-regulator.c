@@ -21,6 +21,8 @@
 
 #define DEF_OC_IRQ_ENABLE_DELAY_MS	10
 
+static DEFINE_MUTEX(regulator_lock_mutex);
+
 /*
  * MT6357 regulators' information
  *
@@ -197,24 +199,24 @@ struct mt6357_regulator_info {
 	.qi = BIT(15),					\
 }
 
-static const struct regulator_linear_range mt_volt_range1[] = {
+static const struct linear_range mt_volt_range1[] = {
 	REGULATOR_LINEAR_RANGE(500000, 0, 0x7f, 6250),
 };
 
-static const struct regulator_linear_range mt_volt_range2[] = {
+static const struct linear_range mt_volt_range2[] = {
 	REGULATOR_LINEAR_RANGE(518750, 0, 0x7f, 6250),
 };
 
-static const struct regulator_linear_range mt_volt_range3[] = {
+static const struct linear_range mt_volt_range3[] = {
 	REGULATOR_LINEAR_RANGE(1200000, 0, 0x50, 12500),
 };
 
-static const struct regulator_linear_range mt_volt_range4[] = {
+static const struct linear_range mt_volt_range4[] = {
 	REGULATOR_LINEAR_RANGE(500000, 0, 0x3f, 50000),
 };
 
 /* for vmc voltage calibration: 1.86V, range 1.8 ~ 3.3V */
-static const struct regulator_linear_range mt_volt_range5[] = {
+static const struct linear_range mt_volt_range5[] = {
 	REGULATOR_LINEAR_RANGE(1800000, 0x400, 0x400, 0),
 	REGULATOR_LINEAR_RANGE(1810000, 0x401, 0x40a, 10000),
 	REGULATOR_LINEAR_RANGE(2900000, 0xa00, 0xa00, 0),
@@ -339,7 +341,7 @@ static const u32 vusb33_idx[] = {
 static int mt6357_regulator_enable(struct regulator_dev *rdev)
 {
 	struct mt6357_regulator_info *info = rdev_get_drvdata(rdev);
-	int ret = 0, ret2 = 0;
+	int ret = 0, ret2 __maybe_unused = 0;
 
 	ret = regulator_enable_regmap(rdev);
 	/* Unmask oc irq after enable regulator */
@@ -410,7 +412,7 @@ static int mt6357_get_voltage_sel(struct regulator_dev *rdev)
 
 	ret = regmap_read(rdev->regmap, info->desc.vsel_reg, &selector);
 	if (ret != 0) {
-		dev_err(&rdev->dev,
+		dev_notice(&rdev->dev,
 			"Failed to get mt6357 %s vsel reg: %d\n",
 			info->desc.name, ret);
 		return ret;
@@ -433,7 +435,7 @@ static int mt6357_get_linear_voltage_sel(struct regulator_dev *rdev)
 
 	ret = regmap_read(rdev->regmap, info->da_vsel_reg, &regval);
 	if (ret != 0) {
-		dev_err(&rdev->dev,
+		dev_notice(&rdev->dev,
 			"Failed to get mt6357 Buck %s vsel reg: %d\n",
 			info->desc.name, ret);
 		return ret;
@@ -452,7 +454,7 @@ static int mt6357_get_status(struct regulator_dev *rdev)
 
 	ret = regmap_read(rdev->regmap, info->status_reg, &regval);
 	if (ret != 0) {
-		dev_err(&rdev->dev, "Failed to get enable reg: %d\n", ret);
+		dev_notice(&rdev->dev, "Failed to get enable reg: %d\n", ret);
 		return ret;
 	}
 
@@ -466,7 +468,7 @@ static unsigned int mt6357_regulator_get_mode(struct regulator_dev *rdev)
 
 	ret = regmap_read(rdev->regmap, info->modeset_reg, &regval);
 	if (ret != 0) {
-		dev_err(&rdev->dev,
+		dev_notice(&rdev->dev,
 			"Failed to get mt6357 buck mode: %d\n", ret);
 		return ret;
 	}
@@ -776,10 +778,12 @@ static irqreturn_t mt6357_oc_irq(int irq, void *data)
 	disable_irq_nosync(info->irq);
 	if (!regulator_is_enabled_regmap(rdev))
 		goto delayed_enable;
-	mutex_lock(&rdev->mutex);
+	mutex_lock(&regulator_lock_mutex);
+	//mutex_lock(&rdev->mutex); // TODO
 	regulator_notifier_call_chain(rdev, REGULATOR_EVENT_OVER_CURRENT,
 				      NULL);
-	mutex_unlock(&rdev->mutex);
+	mutex_unlock(&regulator_lock_mutex);
+	//mutex_unlock(&rdev->mutex); //TODO
 delayed_enable:
 	schedule_delayed_work(&info->oc_work,
 			      msecs_to_jiffies(info->oc_irq_enable_delay_ms));
@@ -856,7 +860,7 @@ static int mt6357_regulator_probe(struct platform_device *pdev)
 					       &mt6357_regulators[i].desc,
 					       &config);
 		if (IS_ERR(rdev)) {
-			dev_err(&pdev->dev, "failed to register %s\n",
+			dev_notice(&pdev->dev, "failed to register %s\n",
 				mt6357_regulators[i].desc.name);
 			return PTR_ERR(rdev);
 		}
@@ -897,7 +901,15 @@ static struct platform_driver mt6357_regulator_driver = {
 	.id_table = mt6357_platform_ids,
 };
 
+#if IS_BUILTIN(CONFIG_DEVICE_MODULES_REGULATOR_MT6357)
+static int __init mt6357_regulator_init(void)
+{
+	return platform_driver_register(&mt6357_regulator_driver);
+}
+subsys_initcall(mt6357_regulator_init);
+#else
 module_platform_driver(mt6357_regulator_driver);
+#endif
 
 MODULE_AUTHOR("Wen Su <wen.su@mediatek.com>");
 MODULE_DESCRIPTION("Regulator Driver for MediaTek MT6357 PMIC");

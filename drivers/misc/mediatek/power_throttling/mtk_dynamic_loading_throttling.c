@@ -6,10 +6,14 @@
 #include <linux/device.h>
 #include <linux/iio/consumer.h>
 #include <linux/kthread.h>
+#include <linux/linear_range.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/mfd/mt6357/registers.h>
-#include <linux/mfd/mt6359/registers.h>
+#include <linux/mfd/mt6358/registers.h>
+#include <linux/mfd/mt6359p/registers.h>
+#include <linux/mfd/mt6363/registers.h>
+#include <linux/mfd/mt6377/registers.h>
 #include <linux/mfd/mt6397/core.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
@@ -36,19 +40,15 @@ struct reg_t {
 struct dlpt_regs_t {
 	struct reg_t rgs_chrdet;
 	struct reg_t uvlo_reg;
+	struct reg_t vbb_uvlo_reg;
+	const struct linear_range uvlo_range;
 };
 
-struct dlpt_regs_t mt6359_dlpt_regs = {
-	.rgs_chrdet = {
-		MT6359_RGS_CHRDET_ADDR,
-		MT6359_RGS_CHRDET_MASK << MT6359_RGS_CHRDET_SHIFT,
-		MT6359_RGS_CHRDET_SHIFT
-	},
-	.uvlo_reg = {
-		MT6359_RG_UVLO_VTHL_ADDR,
-		MT6359_RG_UVLO_VTHL_MASK << MT6359_RG_UVLO_VTHL_SHIFT,
-		MT6359_RG_UVLO_VTHL_SHIFT
-	},
+struct tag_bootmode {
+	u32 size;
+	u32 tag;
+	u32 bootmode;
+	u32 boottype;
 };
 
 struct dlpt_regs_t mt6357_dlpt_regs = {
@@ -61,6 +61,93 @@ struct dlpt_regs_t mt6357_dlpt_regs = {
 		MT6357_RG_UVLO_VTHL_ADDR,
 		MT6357_RG_UVLO_VTHL_MASK << MT6357_RG_UVLO_VTHL_SHIFT,
 		MT6357_RG_UVLO_VTHL_SHIFT
+	},
+	.uvlo_range = {
+		.min = 2500,
+		.min_sel = 0,
+		.max_sel = 8,
+		.step = 50,
+	},
+};
+
+struct dlpt_regs_t mt6358_dlpt_regs = {
+	.rgs_chrdet = {
+		MT6358_RGS_CHRDET_ADDR,
+		MT6358_RGS_CHRDET_MASK << MT6358_RGS_CHRDET_SHIFT,
+		MT6358_RGS_CHRDET_SHIFT
+	},
+	.uvlo_reg = {
+		MT6358_RG_UVLO_VTHL_ADDR,
+		MT6358_RG_UVLO_VTHL_MASK << MT6358_RG_UVLO_VTHL_SHIFT,
+		MT6358_RG_UVLO_VTHL_SHIFT
+	},
+	.uvlo_range = {
+		.min = 2500,
+		.min_sel = 0,
+		.max_sel = 8,
+		.step = 50,
+	},
+};
+
+struct dlpt_regs_t mt6359p_dlpt_regs = {
+	.rgs_chrdet = {
+		MT6359P_RGS_CHRDET_ADDR,
+		MT6359P_RGS_CHRDET_MASK << MT6359P_RGS_CHRDET_SHIFT,
+		MT6359P_RGS_CHRDET_SHIFT
+	},
+	.uvlo_reg = {
+		MT6359P_RG_UVLO_VTHL_ADDR,
+		MT6359P_RG_UVLO_VTHL_MASK << MT6359P_RG_UVLO_VTHL_SHIFT,
+		MT6359P_RG_UVLO_VTHL_SHIFT
+	},
+	.uvlo_range = {
+		.min = 2500,
+		.min_sel = 0,
+		.max_sel = 8,
+		.step = 50,
+	},
+};
+
+struct dlpt_regs_t mt6363_dlpt_regs = {
+	.rgs_chrdet = {
+		MT6363_CHRDET_DEB_ADDR,
+		MT6363_CHRDET_DEB_MASK << MT6363_CHRDET_DEB_SHIFT,
+		MT6363_CHRDET_DEB_SHIFT
+	},
+	.uvlo_reg = {
+		MT6363_RG_VSYS_UVLO_VTHL_ADDR,
+		MT6363_RG_VSYS_UVLO_VTHL_MASK << MT6363_RG_VSYS_UVLO_VTHL_SHIFT,
+		MT6363_RG_VSYS_UVLO_VTHL_SHIFT
+	},
+	.vbb_uvlo_reg = {
+		MT6363_RG_VBB_UVLO_VTHL_ADDR,
+		MT6363_RG_VBB_UVLO_VTHL_MASK << MT6363_RG_VBB_UVLO_VTHL_SHIFT,
+		MT6363_RG_VBB_UVLO_VTHL_SHIFT
+	},
+	.uvlo_range = {
+		.min = 2000,
+		.min_sel = 0,
+		.max_sel = 9,
+		.step = 100,
+	},
+};
+
+struct dlpt_regs_t mt6377_dlpt_regs = {
+	.rgs_chrdet = {
+		MT6377_CHRDET_DEB_ADDR,
+		MT6377_CHRDET_DEB_MASK << MT6377_CHRDET_DEB_SHIFT,
+		MT6377_CHRDET_DEB_SHIFT
+	},
+	.uvlo_reg = {
+		MT6377_RG_VSYS_UVLO_VTHL_ADDR,
+		MT6377_RG_VSYS_UVLO_VTHL_MASK << MT6377_RG_VSYS_UVLO_VTHL_SHIFT,
+		MT6377_RG_VSYS_UVLO_VTHL_SHIFT
+	},
+	.uvlo_range = {
+		.min = 2500,
+		.min_sel = 0,
+		.max_sel = 8,
+		.step = 50,
 	},
 };
 
@@ -84,15 +171,18 @@ struct dlpt_priv {
 	struct iio_channel *chan_ptim;
 	struct iio_channel *chan_imix_r;
 	struct iio_channel *chan_zcv;
+	bool suspend_flag;
+	struct tag_bootmode *tag;
 };
 
 struct dlpt_callback_table {
-	void (*dlptcb)(unsigned int value);
+	void (*dlptcb)(int value);
 };
 
 static struct dlpt_priv dlpt = {
 	.notify_lock	=  __MUTEX_INITIALIZER(dlpt.notify_lock),
 	.notify_waiter	= __WAIT_QUEUE_HEAD_INITIALIZER(dlpt.notify_waiter),
+	.suspend_flag = false,
 };
 #define DLPTCB_MAX_NUM 16
 static struct dlpt_callback_table dlptcb_tb[DLPTCB_MAX_NUM] = { {0} };
@@ -102,8 +192,15 @@ static struct dlpt_callback_table dlptcb_tb[DLPTCB_MAX_NUM] = { {0} };
  */
 static void update_dlpt_imix_r(void)
 {
-	if (!PTR_ERR_OR_ZERO(dlpt.chan_imix_r))
-		iio_read_channel_raw(dlpt.chan_imix_r, &dlpt.imix_r);
+	int ret = 0;
+
+	if (!PTR_ERR_OR_ZERO(dlpt.chan_imix_r)) {
+		ret = iio_read_channel_raw(dlpt.chan_imix_r, &dlpt.imix_r);
+		if (ret < 0) {
+			pr_notice("[%s] iio_read_channel_raw error\n", __func__);
+			return;
+		}
+	}
 	pr_info("[dlpt] imix_r=%d\n", dlpt.imix_r);
 }
 
@@ -149,7 +246,7 @@ static int dlpt_adc_chan_init(struct platform_device *pdev)
 void register_dlpt_notify(dlpt_callback dlpt_cb,
 			  enum DLPT_PRIO_TAG prio_val)
 {
-	if (prio_val >= DLPTCB_MAX_NUM || prio_val < 0) {
+	if (prio_val >= DLPTCB_MAX_NUM) {
 		pr_notice("[%s] prio_val=%d, out of boundary\n",
 			  __func__, prio_val);
 		return;
@@ -163,17 +260,7 @@ void register_dlpt_notify(dlpt_callback dlpt_cb,
 			dlpt_cb(dlpt.imix);
 	}
 }
-
-static void exec_dlpt_callback(int dlpt_val)
-{
-	int i = 0;
-
-	for (i = 0; i < ARRAY_SIZE(dlptcb_tb); i++) {
-		if (dlptcb_tb[i].dlptcb)
-			dlptcb_tb[i].dlptcb(dlpt_val);
-	}
-	pr_debug("[%s] dlpt imix_val=%d\n", __func__, dlpt_val);
-}
+EXPORT_SYMBOL(register_dlpt_notify);
 
 static int dlpt_get_rgs_chrdet(void)
 {
@@ -189,34 +276,6 @@ static int dlpt_get_rgs_chrdet(void)
 		ret = 1;
 
 	return ret;
-}
-
-static int dlpt_check_power_off(void)
-{
-	int ret = 0;
-	static int dlpt_power_off_cnt;
-
-	if (dlpt.lbat_level == LOW_BATTERY_LEVEL_2) {
-		if (dlpt_power_off_cnt == 0)
-			ret = 0; /* 1st time get VBAT < 3.1V, record it */
-		else
-			ret = 1; /* 2nd time get VBAT < 3.1V */
-		dlpt_power_off_cnt++;
-		pr_info("[%s] %d ret:%d\n", __func__, dlpt_power_off_cnt, ret);
-	} else
-		dlpt_power_off_cnt = 0;
-
-	if (dlpt_power_off_cnt >= 4 &&
-	    mutex_trylock(&system_transition_mutex)) {
-		kernel_restart("DLPT reboot system");
-		mutex_unlock(&system_transition_mutex);
-	}
-	return ret;
-}
-
-static void dlpt_low_battery_cb(enum LOW_BATTERY_LEVEL_TAG level)
-{
-	dlpt.lbat_level = level;
 }
 
 static struct power_supply *get_mtk_gauge_psy(void)
@@ -240,7 +299,7 @@ static struct power_supply *get_mtk_gauge_psy(void)
 	return NULL;
 }
 
-static void dlpt_set_shutdown_condition(void)
+static void dlpt_update_imix(int imix)
 {
 	struct power_supply *psy;
 	union power_supply_propval prop;
@@ -251,8 +310,8 @@ static void dlpt_set_shutdown_condition(void)
 	if (!psy)
 		return;
 
-	prop.intval = 1;
-	ret = power_supply_set_property(psy, POWER_SUPPLY_PROP_ENERGY_EMPTY,
+	prop.intval = imix;
+	ret = power_supply_set_property(psy, POWER_SUPPLY_PROP_ENERGY_EMPTY_DESIGN,
 					&prop);
 	if (ret)
 		pr_info("%s fail\n", __func__);
@@ -359,6 +418,8 @@ static int dlpt_notify_handler(void *unused)
 					 (dlpt.notify_flag == true));
 		__pm_stay_awake(dlpt.notify_ws);
 		mutex_lock(&dlpt.notify_lock);
+		if (dlpt.suspend_flag)
+			goto bypass;
 
 		cur_ui_soc = dlpt_get_uisoc();
 
@@ -374,21 +435,15 @@ static int dlpt_notify_handler(void *unused)
 
 			if (dlpt.imix > IMAX_MAX_VALUE)
 				dlpt.imix = IMAX_MAX_VALUE;
-			exec_dlpt_callback(dlpt.imix);
+			dlpt_update_imix(dlpt.imix);
 
 			pr_info("[DLPT_final] %d,%d,%d,%d\n"
 				, dlpt.imix, pre_ui_soc
 				, cur_ui_soc, IMAX_MAX_VALUE);
 		}
 		pre_ui_soc = cur_ui_soc;
+bypass:
 		dlpt.notify_flag = false;
-
-		/* Check low battery volt < 3.1V */
-		if (dlpt_check_power_off()) {
-			/* notify battery driver to power off by SOC=0 */
-			dlpt_set_shutdown_condition();
-			pr_info("[DLPT] notify battery SOC=0 to power off.\n");
-		}
 		mutex_unlock(&dlpt.notify_lock);
 		__pm_relax(dlpt.notify_ws);
 
@@ -422,73 +477,62 @@ static void dlpt_notify_init(void)
 					 "dlpt_notify_thread");
 	if (IS_ERR(dlpt.notify_thread))
 		pr_notice("Failed to create dlpt_notify_thread\n");
-
-	register_low_battery_notify(&dlpt_low_battery_cb,
-				    LOW_BATTERY_PRIO_DLPT);
 }
 
-static void pmic_uvlo_init(int uvlo_level)
+static int linear_range_get_selector(const struct linear_range *r,
+				     unsigned int val, unsigned int *selector)
 {
-	int val;
+	if ((r->min + (r->max_sel - r->min_sel) * r->step) < val)
+		return -EINVAL;
 
-	/*re-init UVLO volt */
-	switch (uvlo_level) {
-	case 2500:
-		val = 0;
-		break;
-	case 2550:
-		val = 1;
-		break;
-	case 2600:
-		val = 2;
-		break;
-	case 2650:
-		val = 3;
-		break;
-	case 2700:
-		val = 4;
-		break;
-	case 2750:
-		val = 5;
-		break;
-	case 2800:
-		val = 6;
-		break;
-	case 2850:
-		val = 7;
-		break;
-	case 2900:
-		val = 8;
-		break;
-	default:
-		val = 0;
-		pr_notice("[dlpt] Invalid uvlo_level (%d)\n", uvlo_level);
-		break;
+	if (r->min > val) {
+		*selector = r->min_sel;
+		return 0;
 	}
-	regmap_update_bits(dlpt.regmap, dlpt.regs->uvlo_reg.addr,
-			   dlpt.regs->uvlo_reg.mask,
-			   val << dlpt.regs->uvlo_reg.shift);
-	pr_info("[dlpt] UVLO_VOLT_LEVEL = %d, RG_UVLO_VTHL = 0x%x\n"
-		, uvlo_level, val);
+	if (r->step == 0)
+		*selector = r->max_sel;
+	else
+		*selector = DIV_ROUND_UP(val - r->min, r->step) + r->min_sel;
+
+	return 0;
+}
+
+static void pmic_uvlo_init(int uvlo_level, int vbb_uvlo_level)
+{
+	int ret, val = 0;
+
+	ret = linear_range_get_selector(&dlpt.regs->uvlo_range, uvlo_level, &val);
+	if (!ret) {
+		regmap_update_bits(dlpt.regmap, dlpt.regs->uvlo_reg.addr,
+				   dlpt.regs->uvlo_reg.mask,
+				   val << dlpt.regs->uvlo_reg.shift);
+		pr_info("[dlpt] UVLO_VOLT_LEVEL = %d, RG_UVLO_VTHL = 0x%x\n",
+			uvlo_level, val);
+	} else
+		pr_notice("[dlpt] Invalid uvlo_level (%d)\n", uvlo_level);
+
+	if (vbb_uvlo_level) {
+		ret = linear_range_get_selector(&dlpt.regs->uvlo_range, vbb_uvlo_level, &val);
+		if (!ret) {
+			regmap_update_bits(dlpt.regmap, dlpt.regs->vbb_uvlo_reg.addr,
+					   dlpt.regs->vbb_uvlo_reg.mask,
+					   val << dlpt.regs->vbb_uvlo_reg.shift);
+			pr_info("[dlpt] VBB_UVLO_VOLT_LEVEL = %d, RG_VBB_UVLO_VTHL = 0x%x\n",
+				vbb_uvlo_level, val);
+		} else
+			pr_notice("[dlpt] Invalid vbb_uvlo_level (%d)\n", vbb_uvlo_level);
+	}
 }
 
 static void dlpt_parse_dt(struct platform_device *pdev)
 {
-	struct device_node *np;
-	int uvlo_level;
+	struct device_node *np, *rt6160_np;
+	int uvlo_level = 0, vbb_uvlo_level;
+	int bob_check_flag = 0, bob_exist = 0;
 	int ret;
 
-	/* get power_path_support */
-	np = of_parse_phandle(pdev->dev.of_node, "mediatek,charger", 0);
-	if (!np)
-		dev_notice(&pdev->dev, "get charger node fail\n");
-	else
-		dlpt.is_power_path_supported =
-			of_property_read_bool(np, "power_path_support");
-
 	/* get dlpt device node */
-	np = of_find_node_by_name(pdev->dev.parent->of_node,
-				  "mtk_dynamic_loading_throttling");
+	np = pdev->dev.of_node;
 	if (!np)
 		dev_notice(&pdev->dev, "get dlpt node fail\n");
 	else {
@@ -499,7 +543,49 @@ static void dlpt_parse_dt(struct platform_device *pdev)
 		ret = of_property_read_u32(np, "uvlo-level", &uvlo_level);
 		if (ret)
 			uvlo_level = POWER_UVLO_VOLT_LEVEL;
-		pmic_uvlo_init(uvlo_level);
+		/* get vbb-uvlo-level */
+		ret = of_property_read_u32(np, "vbb-uvlo-level", &vbb_uvlo_level);
+		if (ret)
+			vbb_uvlo_level = 0;
+
+		ret = of_property_read_u32(np, "bob-check-flag", &bob_check_flag);
+		if (ret)
+			bob_check_flag = 0;
+		if (bob_check_flag) {
+			rt6160_np = of_find_node_by_name(NULL, "rt6160");
+			if (rt6160_np) {
+				ret = of_property_read_u32(rt6160_np, "is-existed", &bob_exist);
+				if (ret)
+					bob_exist = 0;
+				dev_notice(&pdev->dev, "bob_exist:%d\n", bob_exist);
+				if (!bob_exist) {
+					uvlo_level = 2600;
+					vbb_uvlo_level = 2500;
+				}
+			} else {
+				dev_notice(&pdev->dev, "get rt6160 node fail\n");
+			}
+		}
+		pmic_uvlo_init(uvlo_level, vbb_uvlo_level);
+
+		/* get power_path_support */
+		np = of_parse_phandle(pdev->dev.of_node, "mediatek,charger", 0);
+		if (!np)
+			dev_notice(&pdev->dev, "get charger node fail\n");
+		else
+			dlpt.is_power_path_supported =
+				of_property_read_bool(np, "power_path_support");
+
+		np = of_parse_phandle(pdev->dev.of_node, "bootmode", 0);
+		if (!np)
+			dev_notice(&pdev->dev, "get bootmode fail\n");
+		else {
+			dlpt.tag = (struct tag_bootmode *)of_get_property(np, "atag,boot", NULL);
+			if (!dlpt.tag)
+				dev_notice(&pdev->dev, "failed to get atag,boot\n");
+			else
+				dev_notice(&pdev->dev, "bootmode:0x%x\n", dlpt.tag->bootmode);
+		}
 	}
 	dev_notice(&pdev->dev, "power_path_support:%d isense_support:%d\n"
 		   , dlpt.is_power_path_supported, dlpt.is_isense_supported);
@@ -507,13 +593,17 @@ static void dlpt_parse_dt(struct platform_device *pdev)
 
 static int dlpt_probe(struct platform_device *pdev)
 {
-	struct mt6397_chip *chip = dev_get_drvdata(pdev->dev.parent);
+	struct mt6397_chip *chip;
 	int ret;
 
-	dlpt.regmap = chip->regmap;
+	dlpt.regmap = dev_get_regmap(pdev->dev.parent, NULL);
 	if (!dlpt.regmap) {
-		dev_notice(&pdev->dev, "%s: invalid regmap.\n", __func__);
-		return -EINVAL;
+		chip = dev_get_drvdata(pdev->dev.parent);
+		if (!chip || !chip->regmap) {
+			dev_notice(&pdev->dev, "%s: invalid regmap.\n", __func__);
+			return -ENODEV;
+		}
+		dlpt.regmap = chip->regmap;
 	}
 	dlpt.regs = of_device_get_match_data(&pdev->dev);
 	dlpt_parse_dt(pdev);
@@ -526,14 +616,27 @@ static int dlpt_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static int __maybe_unused dlpt_suspend(struct device *d)
+{
+	if (!mutex_trylock(&dlpt.notify_lock))
+		return -EAGAIN;
+	dlpt.suspend_flag = true;
+	mutex_unlock(&dlpt.notify_lock);
+	return 0;
+}
+
 static int __maybe_unused dlpt_resume(struct device *d)
 {
+	mutex_lock(&dlpt.notify_lock);
+	dlpt.suspend_flag = false;
+	mutex_unlock(&dlpt.notify_lock);
 	update_dlpt_imix_r();
+	wake_up_interruptible(&dlpt.notify_waiter);
 	return 0;
 }
 
 static SIMPLE_DEV_PM_OPS(dlpt_pm_ops,
-			 NULL,
+			 dlpt_suspend,
 			 dlpt_resume);
 
 static const struct of_device_id dynamic_loading_throttling_of_match[] = {
@@ -541,8 +644,17 @@ static const struct of_device_id dynamic_loading_throttling_of_match[] = {
 		.compatible = "mediatek,mt6357-dynamic_loading_throttling",
 		.data = &mt6357_dlpt_regs,
 	}, {
-		.compatible = "mediatek,mt6359-dynamic_loading_throttling",
-		.data = &mt6359_dlpt_regs,
+		.compatible = "mediatek,mt6358-dynamic_loading_throttling",
+		.data = &mt6358_dlpt_regs,
+	}, {
+		.compatible = "mediatek,mt6359p-dynamic_loading_throttling",
+		.data = &mt6359p_dlpt_regs,
+	}, {
+		.compatible = "mediatek,mt6363-dynamic_loading_throttling",
+		.data = &mt6363_dlpt_regs,
+	}, {
+		.compatible = "mediatek,mt6377-dynamic_loading_throttling",
+		.data = &mt6377_dlpt_regs,
 	}, {
 		/* sentinel */
 	}

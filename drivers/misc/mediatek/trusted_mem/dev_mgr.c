@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -33,7 +32,7 @@
 #include "private/tmem_priv.h"
 #include "private/tmem_utils.h"
 
-#ifdef TCORE_UT_TESTS_SUPPORT
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
 #include "tests/ut_api.h"
 #endif
 
@@ -51,7 +50,7 @@ static inline void run_ut_with_memory_leak_check(u64 cmd, u64 param1,
 	size_t start_size = mld_stamp();
 #endif
 
-#ifdef TCORE_UT_TESTS_SUPPORT
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
 	invoke_ut_cases(cmd, param1, param2, param3);
 #else
 	pr_err("TCORE_UT_TESTS_SUPPORT option is not enabled\n");

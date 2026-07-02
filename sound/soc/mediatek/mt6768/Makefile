@@ -26,3 +26,12 @@ endif
 # spm
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
 
+subdir-ccflags-y += -Werror -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/mt-plat
+subdir-ccflags-y += -Werror -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include
+
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/spm
+
+# adsp include path
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/audio_ipi/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/sound/soc/mediatek/audio_dsp
+

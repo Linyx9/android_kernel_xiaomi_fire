@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2014 Goodix Technology.
+ * Copyright (C) 2019 MediaTek Inc.
  */
 
 #include <linux/interrupt.h>
@@ -157,6 +157,8 @@ s32 gt1x_check_fs_mounted(char *path_name)
 	path_put(&root_path);
 	return err;
 }
+
+MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
 
 int gt1x_i2c_write_with_readback(u16 addr, u8 *buffer, int length)
 {
@@ -755,7 +757,6 @@ int gt1x_check_subsystem_in_flash(struct fw_subsystem_info *subsystem)
 	u32 length = subsystem->length;
 	int ret;
 	int check_state = 0;
-	int retry = 5;
 	u8 *fw;
 
 	GTP_INFO("Subsystem: %d", subsystem->type);
@@ -785,7 +786,6 @@ int gt1x_check_subsystem_in_flash(struct fw_subsystem_info *subsystem)
 
 		length -= block_len;
 		checked_len += block_len;
-		retry = 5;
 	}
 	if (check_state)
 		GTP_ERROR("Subsystem in flash is broken!");

@@ -44,7 +44,6 @@
 
 #include <linux/delay.h>
 #include <linux/spinlock.h>
-
 #ifndef ASOC_TEMP_BYPASS
 #if defined(_MT_IDLE_HEADER) && !defined(CONFIG_FPGA_EARLY_PORTING)
 #include <mtk_idle.h>
@@ -52,13 +51,12 @@
 #endif
 #include <linux/err.h>
 #include <linux/platform_device.h>
-
 #ifndef ASOC_TEMP_BYPASS
 #define _MT_SPM_RESOURCE
 #if defined(_MT_SPM_RESOURCE) && !defined(CONFIG_FPGA_EARLY_PORTING)
 #include "mtk_spm_resource_req.h"
 bool spm_resource_req(unsigned int user, unsigned int req_mask)
-	__attribute__((weak));
+	__weak;
 #endif
 #endif
 /*****************************************************************************
@@ -71,7 +69,6 @@ static int Aud_APLL_DIV_APLL1_cntr;
 static int Aud_APLL_DIV_APLL2_cntr;
 static unsigned int MCLKFS = 128;
 static unsigned int MCLKFS_HDMI = 256;
-
 int Aud_Core_Clk_cntr;
 int Aud_AFE_Clk_cntr;
 int Aud_I2S_Clk_cntr;
@@ -175,10 +172,10 @@ static struct audio_clock_attr aud_clks[CLOCK_NUM] = {
 	[CLOCK_CLK26M] = {"top_clk26m_clk", false, false, NULL}
 };
 
+#if !defined(CONFIG_FPGA_EARLY_PORTING)
 static int apll1_mux_setting(bool enable);
 static int apll2_mux_setting(bool enable);
 
-#if !defined(CONFIG_FPGA_EARLY_PORTING)
 static int aud_clk_enable(const struct audio_clock_attr *clk)
 {
 	int ret;
@@ -206,7 +203,6 @@ int AudDrv_Clk_probe(void *dev)
 
 	Aud_EMI_cntr = 0;
 
-	pr_debug("%s\n", __func__);
 
 	for (i = 0; i < ARRAY_SIZE(aud_clks); i++) {
 		aud_clks[i].clock = devm_clk_get(dev, aud_clks[i].name);
@@ -224,10 +220,12 @@ int AudDrv_Clk_probe(void *dev)
 
 	return ret;
 }
+EXPORT_SYMBOL(AudDrv_Clk_probe);
 
 void AudDrv_Clk_Deinit(void *dev)
 {
 }
+EXPORT_SYMBOL(AudDrv_Clk_Deinit);
 #ifndef ASOC_TEMP_BYPASS
 #if defined(_MT_IDLE_HEADER) && !defined(CONFIG_FPGA_EARLY_PORTING)
 static int audio_idle_notify_call(struct notifier_block *nfb,
@@ -292,11 +290,11 @@ void AudDrv_Clk_Global_Variable_Init(void)
 #endif
 #endif
 }
-
 void AudDrv_Bus_Init(void)
 {
 	/* No need on 6759, system default set bit14 to 1 */
 }
+EXPORT_SYMBOL(AudDrv_Bus_Init);
 void AudDrv_AUDINTBUS_Sel(int parentidx)
 {
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
@@ -315,6 +313,7 @@ EXIT:
 	return;
 #endif /* #if !defined(CONFIG_FPGA_EARLY_PORTING) */
 }
+EXPORT_SYMBOL(AudDrv_AUDINTBUS_Sel);
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
 static int apll1_mux_setting(bool enable)
 {
@@ -479,8 +478,8 @@ void AudDrv_Clk_On(void)
 	int ret = 0;
 	size_t i;
 
-	pr_debug("AudDrv_Clk_On, Aud_AFE_Clk_cntr:%d\n",
-		 Aud_AFE_Clk_cntr);
+	pr_debug("%s, Aud_AFE_Clk_cntr:%d\n", __func__,
+		Aud_AFE_Clk_cntr);
 	mutex_lock(&auddrv_clk_mutex);
 	Aud_AFE_Clk_cntr++;
 	if (Aud_AFE_Clk_cntr == 1) {
@@ -559,10 +558,9 @@ EXPORT_SYMBOL(AudDrv_Clk_On);
 void AudDrv_Clk_Off(void)
 {
 	size_t i;
-
 #if !defined(CONFIG_FPGA_EARLY_PORTING)
-	pr_debug("!! AudDrv_Clk_Off, Aud_AFE_Clk_cntr:%d\n",
-		 Aud_AFE_Clk_cntr);
+	pr_debug("!! %s, Aud_AFE_Clk_cntr:%d\n",
+		__func__,Aud_AFE_Clk_cntr);
 	mutex_lock(&auddrv_clk_mutex);
 
 	Aud_AFE_Clk_cntr--;
@@ -612,8 +610,8 @@ void AudDrv_Clk_Off(void)
 		}
 
 	} else if (Aud_AFE_Clk_cntr < 0) {
-		pr_debug("!! AudDrv_Clk_Off, Aud_AFE_Clk_cntr<0 (%d)\n",
-			 Aud_AFE_Clk_cntr);
+		pr_debug("!! %s, Aud_AFE_Clk_cntr<0 (%d)\n",
+			__func__, Aud_AFE_Clk_cntr);
 		Aud_AFE_Clk_cntr = 0;
 	}
 	mutex_unlock(&auddrv_clk_mutex);
@@ -681,6 +679,7 @@ void AudDrv_ADC_Clk_On(void)
 EXIT:
 	spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
 }
+EXPORT_SYMBOL(AudDrv_ADC_Clk_On);
 
 void AudDrv_ADC_Clk_Off(void)
 {
@@ -705,6 +704,7 @@ void AudDrv_ADC_Clk_Off(void)
 	}
 	spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
 }
+EXPORT_SYMBOL(AudDrv_ADC_Clk_Off);
 
 /*****************************************************************************
  * FUNCTION
@@ -719,10 +719,12 @@ void AudDrv_ADC_Clk_Off(void)
 void AudDrv_ADC2_Clk_On(void)
 {
 }
+EXPORT_SYMBOL(AudDrv_ADC2_Clk_On);
 
 void AudDrv_ADC2_Clk_Off(void)
 {
 }
+EXPORT_SYMBOL(AudDrv_ADC2_Clk_Off);
 /*****************************************************************************
  * FUNCTION
  *  AudDrv_ADC3_Clk_On / AudDrv_ADC3_Clk_Off
@@ -754,10 +756,12 @@ void AudDrv_ADC3_Clk_Off(void)
 void AudDrv_ADC_Hires_Clk_On(void)
 {
 }
+EXPORT_SYMBOL(AudDrv_ADC_Hires_Clk_On);
 
 void AudDrv_ADC_Hires_Clk_Off(void)
 {
 }
+EXPORT_SYMBOL(AudDrv_ADC_Hires_Clk_Off);
 
 /*****************************************************************************
  * FUNCTION
@@ -772,10 +776,12 @@ void AudDrv_ADC_Hires_Clk_Off(void)
 void AudDrv_ADC2_Hires_Clk_On(void)
 {
 }
+EXPORT_SYMBOL(AudDrv_ADC2_Hires_Clk_On);
 
 void AudDrv_ADC2_Hires_Clk_Off(void)
 {
 }
+EXPORT_SYMBOL(AudDrv_ADC2_Hires_Clk_Off);
 
 /*****************************************************************************
  * FUNCTION
@@ -982,8 +988,8 @@ void AudDrv_I2S_Clk_Off(void)
 	if (Aud_I2S_Clk_cntr == 0) {
 		aud_top_con_pdn_i2s(true);
 	} else if (Aud_I2S_Clk_cntr < 0) {
-		pr_debug("!! AudDrv_I2S_Clk_Off, Aud_I2S_Clk_cntr<0 (%d)\n",
-			 Aud_I2S_Clk_cntr);
+		pr_debug("!! %s, Aud_I2S_Clk_cntr<0 (%d)\n",
+			 __func__, Aud_I2S_Clk_cntr);
 		Aud_I2S_Clk_cntr = 0;
 	}
 	spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
@@ -1209,6 +1215,7 @@ void AudDrv_Emi_Clk_On(void)
 	mutex_unlock(&auddrv_pmic_mutex);
 #endif
 }
+EXPORT_SYMBOL(AudDrv_Emi_Clk_On);
 
 void AudDrv_Emi_Clk_Off(void)
 {
@@ -1232,6 +1239,7 @@ void AudDrv_Emi_Clk_Off(void)
 	mutex_unlock(&auddrv_pmic_mutex);
 #endif
 }
+EXPORT_SYMBOL(AudDrv_Emi_Clk_Off);
 
 /*****************************************************************************
  * FUNCTION
@@ -1262,6 +1270,7 @@ unsigned int GetApllbySampleRate(unsigned int SampleRate)
 	else
 		return Soc_Aud_APLL2;
 }
+EXPORT_SYMBOL(GetApllbySampleRate);
 
 void SetckSel(unsigned int I2snum, unsigned int SampleRate)
 {
@@ -1316,6 +1325,7 @@ void EnableALLbySampleRate(unsigned int SampleRate)
 		break;
 	}
 }
+EXPORT_SYMBOL(EnableALLbySampleRate);
 
 void DisableALLbySampleRate(unsigned int SampleRate)
 {
@@ -1350,6 +1360,7 @@ void DisableALLbySampleRate(unsigned int SampleRate)
 		break;
 	}
 }
+EXPORT_SYMBOL(DisableALLbySampleRate);
 
 void EnableI2SDivPower(unsigned int Diveder_name, bool bEnable)
 {
@@ -1369,6 +1380,7 @@ void EnableI2SCLKDiv(unsigned int I2snum, bool bEnable)
 		 mI2SAPLLDivSelect[I2snum], I2snum);
 	EnableI2SDivPower(mI2SAPLLDivSelect[I2snum], bEnable);
 }
+EXPORT_SYMBOL(EnableI2SCLKDiv);
 
 void EnableApll1(bool enable)
 {
@@ -1378,7 +1390,9 @@ void EnableApll1(bool enable)
 		if (Aud_APLL_DIV_APLL1_cntr == 0) {
 			clksys_set_reg(CLK_AUDDIV_0, 7 << 24, 0xf << 24);
 			AudDrv_APLL22M_Clk_On();
+#if !defined(CONFIG_FPGA_EARLY_PORTING)
 			apll1_mux_setting(true);
+#endif
 			Afe_Set_Reg(AFE_HD_ENGEN_ENABLE, 0x1 << 0, 0x1 << 0);
 		}
 		Aud_APLL_DIV_APLL1_cntr++;
@@ -1386,7 +1400,9 @@ void EnableApll1(bool enable)
 		Aud_APLL_DIV_APLL1_cntr--;
 		if (Aud_APLL_DIV_APLL1_cntr == 0) {
 			Afe_Set_Reg(AFE_HD_ENGEN_ENABLE, 0x0 << 0, 0x1 << 0);
+#if !defined(CONFIG_FPGA_EARLY_PORTING)
 			apll1_mux_setting(false);
+#endif
 			AudDrv_APLL22M_Clk_Off();
 		}
 	}
@@ -1400,7 +1416,9 @@ void EnableApll2(bool enable)
 		if (Aud_APLL_DIV_APLL2_cntr == 0) {
 			clksys_set_reg(CLK_AUDDIV_0, 7 << 24, 0xf << 24);
 			AudDrv_APLL24M_Clk_On();
+#if !defined(CONFIG_FPGA_EARLY_PORTING)
 			apll2_mux_setting(true);
+#endif
 			Afe_Set_Reg(AFE_HD_ENGEN_ENABLE, 0x1 << 1, 0x1 << 1);
 		}
 		Aud_APLL_DIV_APLL2_cntr++;
@@ -1408,7 +1426,9 @@ void EnableApll2(bool enable)
 		Aud_APLL_DIV_APLL2_cntr--;
 		if (Aud_APLL_DIV_APLL2_cntr == 0) {
 			Afe_Set_Reg(AFE_HD_ENGEN_ENABLE, 0x0 << 1, 0x1 << 1);
+#if !defined(CONFIG_FPGA_EARLY_PORTING)
 			apll2_mux_setting(false);
+#endif
 			AudDrv_APLL24M_Clk_Off();
 		}
 	}
@@ -1444,8 +1464,8 @@ unsigned int SetCLkMclk(unsigned int I2snum, unsigned int SampleRate)
 		clksys_set_reg(CLK_AUDDIV_1, I2s_ck_div << 24, 0xff << 24);
 		break;
 	default:
-		pr_debug("[AudioWarn] SetCLkMclk: I2snum = %d not recognized\n",
-			 I2snum);
+		pr_debug("[AudioWarn] %s: I2snum = %d not recognized\n",
+			 __func__, I2snum);
 		break;
 	}
 
@@ -1454,6 +1474,7 @@ unsigned int SetCLkMclk(unsigned int I2snum, unsigned int SampleRate)
 
 	return I2s_ck_div;
 }
+EXPORT_SYMBOL(SetCLkMclk);
 
 void SetCLkBclk(unsigned int MckDiv, unsigned int SampleRate,
 		unsigned int Channels, unsigned int Wlength)
@@ -1467,4 +1488,5 @@ void PowerDownAllI2SDiv(void)
 	for (i = AUDIO_APLL1_DIV0; i < AUDIO_APLL_DIV_NUM; i++)
 		EnableI2SDivPower(i, false);
 }
-
+EXPORT_SYMBOL(PowerDownAllI2SDiv);
+MODULE_LICENSE("GPL");

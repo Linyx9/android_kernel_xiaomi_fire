@@ -11,7 +11,7 @@
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/tracepoint.h>
-#include <perf_tracker.h>
+#include <perf_tracker_internal.h>
 
 TRACE_EVENT(perf_index_s,
 	TP_PROTO(
@@ -19,25 +19,23 @@ TRACE_EVENT(perf_index_s,
 		unsigned int sf1,
 		unsigned int sf2,
 		int dram_freq,
-		int bw_c,
-		int bw_g,
-		int bw_mm,
-		int bw_total,
-		int vcore_uv
+		int vcore_uv,
+		unsigned int cf0,
+		unsigned int cf1,
+		unsigned int cf2
 	),
 
-	TP_ARGS(sf0, sf1, sf2, dram_freq, bw_c, bw_g, bw_mm, bw_total, vcore_uv),
+	TP_ARGS(sf0, sf1, sf2, dram_freq, vcore_uv, cf0, cf1, cf2),
 
 	TP_STRUCT__entry(
 		__field(unsigned int, sf0)
 		__field(unsigned int, sf1)
 		__field(unsigned int, sf2)
 		__field(int, dram_freq)
-		__field(int, bw_c)
-		__field(int, bw_g)
-		__field(int, bw_mm)
-		__field(int, bw_total)
 		__field(int, vcore_uv)
+		__field(unsigned int, cf0)
+		__field(unsigned int, cf1)
+		__field(unsigned int, cf2)
 	),
 
 	TP_fast_assign(
@@ -45,24 +43,21 @@ TRACE_EVENT(perf_index_s,
 		__entry->sf1       =  sf1;
 		__entry->sf2       =  sf2;
 		__entry->dram_freq = dram_freq;
-		__entry->bw_c      = bw_c;
-		__entry->bw_g      = bw_g;
-		__entry->bw_mm     = bw_mm;
-		__entry->bw_total  = bw_total;
 		__entry->vcore_uv  = vcore_uv;
+		__entry->cf0       =  cf0;
+		__entry->cf1       =  cf1;
+		__entry->cf2       =  cf2;
 	),
 
-	TP_printk("sched_freq=%d|%d|%d dram_freq=%d bw=%d|%d|%d|%d vcore=%d",
+	TP_printk("sched_freq=%u|%u|%u dram_freq=%d vcore=%d cpu_mcupm_freq=%u|%u|%u",
 		__entry->sf0,
 		__entry->sf1,
 		__entry->sf2,
 		__entry->dram_freq,
-		__entry->bw_c,
-		__entry->bw_g,
-		__entry->bw_mm,
-		__entry->bw_total,
-		__entry->vcore_uv
-		)
+		__entry->vcore_uv,
+		__entry->cf0,
+		__entry->cf1,
+		__entry->cf2)
 );
 
 TRACE_EVENT(perf_index_l,
@@ -94,7 +89,14 @@ TRACE_EVENT(perf_index_l,
 		__field(int, io_reqc_w)
 		__field(int, io_dur)
 		__field(int, io_q_dept)
-		__array(int, stall, 8)
+		__field(int, stall_0)
+		__field(int, stall_1)
+		__field(int, stall_2)
+		__field(int, stall_3)
+		__field(int, stall_4)
+		__field(int, stall_5)
+		__field(int, stall_6)
+		__field(int, stall_7)
 	),
 
 	TP_fast_assign(
@@ -111,7 +113,14 @@ TRACE_EVENT(perf_index_l,
 		__entry->io_reqc_w  = iostatptr->reqcnt_w;
 		__entry->io_dur     = iostatptr->duration;
 		__entry->io_q_dept  = iostatptr->q_depth;
-		memcpy(__entry->stall, stall, sizeof(int)*8);
+		__entry->stall_0    = stall[0];
+		__entry->stall_1    = stall[1];
+		__entry->stall_2    = stall[2];
+		__entry->stall_3    = stall[3];
+		__entry->stall_4    = stall[4];
+		__entry->stall_5    = stall[5];
+		__entry->stall_6    = stall[6];
+		__entry->stall_7    = stall[7];
 	),
 
 	TP_printk(
@@ -129,32 +138,157 @@ TRACE_EVENT(perf_index_l,
 		__entry->io_reqc_w,
 		__entry->io_dur,
 		__entry->io_q_dept,
-		__entry->stall[0],
-		__entry->stall[1],
-		__entry->stall[2],
-		__entry->stall[3],
-		__entry->stall[4],
-		__entry->stall[5],
-		__entry->stall[6],
-		__entry->stall[7]
+		__entry->stall_0,
+		__entry->stall_1,
+		__entry->stall_2,
+		__entry->stall_3,
+		__entry->stall_4,
+		__entry->stall_5,
+		__entry->stall_6,
+		__entry->stall_7
 		)
 );
 
-TRACE_EVENT(perf_index_sbin,
-	TP_PROTO(u32 *raw_data, u32 lens),
-	TP_ARGS(raw_data, lens),
+TRACE_EVENT(fuel_gauge,
+	TP_PROTO(
+		int cur,
+		int volt,
+		int uisoc
+	),
+
+	TP_ARGS(cur, volt, uisoc),
+
 	TP_STRUCT__entry(
-		__dynamic_array(u32, raw_data, lens)
+		__field(int, cur)
+		__field(int, volt)
+		__field(int, uisoc)
+	),
+
+	TP_fast_assign(
+		__entry->cur = cur;
+		__entry->volt = volt;
+		__entry->uisoc = uisoc;
+	),
+
+	TP_printk("cur=%d vol=%d UISOC=%d",
+		__entry->cur,
+		__entry->volt,
+		__entry->uisoc
+	)
+);
+
+TRACE_EVENT(charger,
+	TP_PROTO(
+		int temp,
+		int volt
+	),
+
+	TP_ARGS(temp, volt),
+
+	TP_STRUCT__entry(
+		__field(int, temp)
+		__field(int, volt)
+	),
+
+	TP_fast_assign(
+		__entry->temp = temp;
+		__entry->volt = volt;
+	),
+
+	TP_printk("ICHG=%d IBUS=%d",
+		__entry->temp,
+		__entry->volt
+	)
+);
+
+TRACE_EVENT(perf_index_sbin,
+	TP_PROTO(char *raw_data, u32 lens, u32 controls),
+	TP_ARGS(raw_data, lens, controls),
+	TP_STRUCT__entry(
+		__string(data, raw_data)
 		__field(u32, lens)
+		__field(u32, ctl)
 	),
 	TP_fast_assign(
-		memcpy(__get_dynamic_array(raw_data), raw_data,
-			lens * sizeof(u32));
+		__assign_str(data, raw_data);
 		__entry->lens = lens;
+		__entry->ctl = controls;
 	),
-	TP_printk("data=%s", __print_array(__get_dynamic_array(raw_data),
-		__entry->lens, sizeof(u32)))
+	TP_printk("raw_data=%s lens=%d ctl=%d", __get_str(data), __entry->lens, __entry->ctl)
 );
+
+TRACE_EVENT(freq_qos_user_setting,
+	TP_PROTO(
+		int cid,
+		int type,
+		int value,
+		const char *caller,
+		const char *caller2
+	),
+
+	TP_ARGS(cid, type, value, caller, caller2),
+
+	TP_STRUCT__entry(
+		__field(int, cid)
+		__field(int, type)
+		__field(int, value)
+		__string(caller, caller)
+		__string(caller2, caller2)
+	),
+
+	TP_fast_assign(
+		__entry->cid = cid;
+		__entry->type = type;
+		__entry->value = value;
+		__assign_str(caller, caller);
+		__assign_str(caller2, caller2);
+	),
+
+	TP_printk("cid=%d type=%d value=%d caller=%s caller2=%s",
+		__entry->cid,
+		__entry->type,
+		__entry->value,
+		__get_str(caller),
+		__get_str(caller2)
+	)
+);
+
+TRACE_EVENT(cpu_pmu_debug,
+	TP_PROTO(
+		int cpu,
+		const char *pmu_name,
+		int valid,
+		u64 cur,
+		u64 diff
+	),
+
+	TP_ARGS(cpu, pmu_name, valid, cur, diff),
+
+	TP_STRUCT__entry(
+		__field(int, cpu)
+		__string(pmu_name, pmu_name)
+		__field(int, valid)
+		__field(u64, cur)
+		__field(u64, diff)
+	),
+
+	TP_fast_assign(
+		__entry->cpu = cpu;
+		__assign_str(pmu_name, pmu_name);
+		__entry->valid = valid;
+		__entry->cur = cur;
+		__entry->diff = diff;
+	),
+
+	TP_printk("cpu_%d%s valid = %d, cur = %llu diff = %llu",
+		__entry->cpu,
+		__get_str(pmu_name),
+		__entry->valid,
+		__entry->cur,
+		__entry->diff
+	)
+);
+
 #endif /*_PERF_TRACKER_TRACE_H */
 
 #undef TRACE_INCLUDE_PATH

@@ -50,7 +50,6 @@ struct auddrv_i2s_attribute *GetI2SSetting(uint32_t I2S_Number,
 
 void Auddrv_Devtree_Init(void)
 {
-	pr_debug("%s\n", __func__);
 	if (bAuddrv_Dev_Tree_Init == false) {
 		/* do some init routine */
 		bAuddrv_Dev_Tree_Init = true;
@@ -389,7 +388,6 @@ void Auddrv_DevTree_I2S_Setting(const char *DevTreeName)
 {
 	struct device_node *node = NULL;
 
-	pr_debug("%s\n", __func__);
 	node = of_find_compatible_node(NULL, NULL, DevTreeName);
 
 	if (node != NULL) {

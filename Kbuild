@@ -1,84 +1,120 @@
 # SPDX-License-Identifier: GPL-2.0
-#
-# Kbuild for top-level directory of the kernel
-# This file takes care of the following:
-# 1) Generate bounds.h
-# 2) Generate timeconst.h
-# 3) Generate asm-offsets.h (may need bounds.h and timeconst.h)
-# 4) Check for missing system calls
-# 5) Generate constants.py (may need bounds.h)
 
-#####
-# 1) Generate bounds.h
+ifneq ($(CONFIG_DEVICE_MODULES_ALLOW_BUILTIN),y)
 
-bounds-file := include/generated/bounds.h
+LINUXINCLUDE := $(DEVCIE_MODULES_INCLUDE) $(LINUXINCLUDE)
 
-always  := $(bounds-file)
-targets := kernel/bounds.s
+subdir-ccflags-y += -Werror \
+		-I$(srctree)/$(src)/include \
+		-I$(srctree)/$(src)/include/uapi \
 
-# We use internal kbuild rules to avoid the "is up to date" message from make
-kernel/bounds.s: kernel/bounds.c FORCE
-	$(call if_changed_dep,cc_s_c)
+obj-y += drivers/memory/
 
-$(obj)/$(bounds-file): kernel/bounds.s FORCE
-	$(call filechk,offsets,__LINUX_BOUNDS_H__)
+obj-y += drivers/iio/adc/
 
-#####
-# 2) Generate timeconst.h
+obj-y += drivers/mfd/
 
-timeconst-file := include/generated/timeconst.h
+obj-y += drivers/nvmem/
 
-targets += $(timeconst-file)
+obj-y += drivers/dma/mediatek/
 
-quiet_cmd_gentimeconst = GEN     $@
-define cmd_gentimeconst
-	(echo $(CONFIG_HZ) | bc -q $< ) > $@
-endef
-define filechk_gentimeconst
-	(echo $(CONFIG_HZ) | bc -q $< )
-endef
+obj-y += drivers/ufs/
 
-$(obj)/$(timeconst-file): kernel/time/timeconst.bc FORCE
-	$(call filechk,gentimeconst)
+obj-y += drivers/char/
 
-#####
-# 3) Generate asm-offsets.h
-#
+obj-y += drivers/clk/mediatek/
 
-offsets-file := include/generated/asm-offsets.h
+obj-y += drivers/clocksource/
 
-always  += $(offsets-file)
-targets += arch/$(SRCARCH)/kernel/asm-offsets.s
+obj-y += drivers/cpufreq/
 
-# We use internal kbuild rules to avoid the "is up to date" message from make
-arch/$(SRCARCH)/kernel/asm-offsets.s: arch/$(SRCARCH)/kernel/asm-offsets.c \
-                                      $(obj)/$(timeconst-file) $(obj)/$(bounds-file) FORCE
-	$(call if_changed_dep,cc_s_c)
+obj-y += drivers/soc/mediatek/
 
-$(obj)/$(offsets-file): arch/$(SRCARCH)/kernel/asm-offsets.s FORCE
-	$(call filechk,offsets,__ASM_OFFSETS_H__)
+obj-y += drivers/watchdog/
 
-#####
-# 4) Check for missing system calls
-#
+obj-y += drivers/dma-buf/heaps/
 
-always += missing-syscalls
-targets += missing-syscalls
+obj-y += drivers/regulator/
 
-quiet_cmd_syscalls = CALL    $<
-      cmd_syscalls = $(CONFIG_SHELL) $< $(CC) $(c_flags) $(missing_syscalls_flags)
+obj-y += drivers/leds/
 
-missing-syscalls: scripts/checksyscalls.sh $(offsets-file) FORCE
-	$(call cmd,syscalls)
+obj-y += drivers/pinctrl/mediatek/
 
-#####
-# 5) Generate constants for Python GDB integration
-#
+obj-y += drivers/power/supply/
 
-extra-$(CONFIG_GDB_SCRIPTS) += build_constants_py
+obj-y += drivers/rtc/
 
-build_constants_py: $(obj)/$(timeconst-file) $(obj)/$(bounds-file)
-	@$(MAKE) $(build)=scripts/gdb/linux $@
+obj-y += drivers/remoteproc/
 
-# Keep these three files during make clean
-no-clean-files := $(bounds-file) $(offsets-file) $(timeconst-file)
+obj-y += drivers/rpmsg/
+
+obj-y += drivers/input/keyboard/
+
+obj-y += drivers/phy/mediatek/
+
+obj-y += drivers/thermal/mediatek/
+
+obj-y += drivers/spmi/
+
+obj-y += drivers/tty/serial/8250/
+
+obj-y += drivers/reset/
+
+obj-y += drivers/mailbox/
+
+obj-y += drivers/interconnect/
+
+obj-y += drivers/i2c/busses/
+
+obj-y += drivers/i3c/master/
+
+obj-y += drivers/pwm/
+
+obj-y += drivers/spi/
+
+obj-y += drivers/iommu/
+
+obj-y += drivers/mmc/host/
+
+obj-y += drivers/tee/
+
+obj-y += drivers/gpu/drm/mediatek/
+
+obj-y += drivers/input/touchscreen/
+
+obj-y += drivers/gpu/drm/panel/
+
+obj-y += drivers/gpu/drm/bridge/
+
+obj-y += drivers/gpu/mediatek/
+
+obj-y += drivers/media/platform/
+
+obj-y += drivers/usb/
+
+obj-y += drivers/net/ethernet/stmicro/
+
+obj-y += drivers/net/phy/
+
+obj-y += drivers/devfreq/
+
+obj-y += drivers/misc/mediatek/
+
+obj-y += sound/soc/codecs/
+
+obj-y += sound/soc/mediatek/
+
+obj-y += sound/virtio/
+
+obj-y += drivers/pci/controller/
+
+obj-y += drivers/video/backlight/
+
+#TN Begin modified by yang.chen1/860621 20240605 CR/EKLAMU-4
+obj-y += oem/
+#TN End modified by yang.chen1/860621 20240605 CR/EKLAMU-4
+
+#TN Begin modified by hao.jia/809321 20240702 CR/EKLAMU-202
+obj-y += oem/tinno_charger/
+#TN End modified by hao.jia/809321 20240702 CR/EKLAMU-202
+endif

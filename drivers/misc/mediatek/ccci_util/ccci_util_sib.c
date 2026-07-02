@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
  */
+
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
@@ -27,7 +28,12 @@ static ssize_t ccci_sib_read(struct file *file, char __user *buf,
 	read_len = size < available ? size : available;
 	if (read_len == 0)
 		return 0;
+#ifndef mtk09077
+	/* #ifdef CONFIG_ARCH_HAS_PMEM_API */
+	//arch_invalidate_pmem(ccci_sib.base_ap_view_vir + read_pos, read_len);
+#else
 	__inval_dcache_area(ccci_sib.base_ap_view_vir + read_pos, read_len);
+#endif
 	if (copy_to_user(buf,
 			ccci_sib.base_ap_view_vir + read_pos,
 			read_len)) {
@@ -76,11 +82,11 @@ static int ccci_sib_close(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static const struct file_operations ccci_sib_fops = {
-	.read = ccci_sib_read,
-	.open = ccci_sib_open,
-	.release = ccci_sib_close,
-	.poll = ccci_sib_poll,
+static const struct proc_ops ccci_sib_fops = {
+	.proc_read = ccci_sib_read,
+	.proc_open = ccci_sib_open,
+	.proc_release = ccci_sib_close,
+	.proc_poll = ccci_sib_poll,
 };
 
 static void ccci_sib_smem_remap(void)

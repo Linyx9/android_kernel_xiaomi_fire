@@ -1,14 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  * Author: Ming-Fan Chen <ming-fan.chen@mediatek.com>
  */
-
 
 #ifndef __DT_BINDINGS_INTERCONNECT_MTK_MMQOS_H
 #define __DT_BINDINGS_INTERCONNECT_MTK_MMQOS_H
 
-#define MTK_MMQOS_MAX_BW	(0x10000000)
+#define MTK_MMQOS_MAX_SMI_FREQ_BW	(15000) /* unit: MB/s */
 
 #define MTK_MMQOS_NODE_COMMON		(0x1)
 #define MTK_MMQOS_NODE_COMMON_PORT	(0x2)

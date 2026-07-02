@@ -16,7 +16,17 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/debugfs.h>
-#include <memory/mediatek/emi.h>
+#include <soc/mediatek/emi.h>
+
+struct emiisu_dev_t {
+	unsigned int buf_size;
+	void __iomem *buf_addr;
+	void __iomem *ver_addr;
+	void __iomem *con_addr;
+	struct dentry *dump_dir;
+	struct dentry *dump_buf;
+	unsigned int ctrl_intf;
+};
 
 static struct platform_device *emiisu_pdev;
 
@@ -279,4 +289,4 @@ module_init(emiisu_drv_init);
 module_exit(emiisu_drv_exit);
 
 MODULE_DESCRIPTION("MediaTek EMIISU Driver v0.1");
-
+MODULE_LICENSE("GPL v2");

@@ -3,6 +3,7 @@
  * Copyright (c) 2015 MediaTek Inc.
  */
 
+
 #include <linux/types.h>
 #include <linux/stddef.h>
 #include <linux/vmalloc.h>
@@ -15,6 +16,7 @@
 /*
  * module control
  */
+#define TODO
 MODULE_DESCRIPTION("Stand Alone Engine Request");
 MODULE_AUTHOR("MM3SW5");
 MODULE_LICENSE("GPL");
@@ -92,7 +94,7 @@ signed int dpe_init_frame(struct frame *frame)
 /*
  * single request init
  */
-signed int dpe_init_request(struct request *req)
+signed int dpe_init_request(struct request_dpe *req)
 {
 	int f;
 
@@ -131,7 +133,7 @@ signed int dpe_set_frame_data(struct frame *f, void *engine)
  * Size Limitaion: eng_reqs : [MAX_REQUEST_SIZE_PER_ENGINE]
  *	     data : [MAX_REQUEST_SIZE_PER_ENGINE][MAX_FRAMES_PER_REQUEST]
  */
-signed int dpe_register_requests(struct engine_requests *eng, size_t size)
+signed int dpe_register_requests_isp6(struct engine_requests *eng, size_t size)
 {
 	int f, r, d;
 	char *_data;
@@ -177,8 +179,9 @@ signed int dpe_register_requests(struct engine_requests *eng, size_t size)
 
 	return 0;
 }
+EXPORT_SYMBOL(dpe_register_requests_isp6);
 
-signed int dpe_unregister_requests(struct engine_requests *eng)
+signed int dpe_unregister_requests_isp6(struct engine_requests *eng)
 {
 	int f, r;
 
@@ -202,9 +205,9 @@ signed int dpe_unregister_requests(struct engine_requests *eng)
 
 	return 0;
 }
+EXPORT_SYMBOL(dpe_unregister_requests_isp6);
 
-
-int dpe_set_engine_ops(struct engine_requests *eng,
+int dpe_set_engine_ops_isp6(struct engine_requests *eng,
 	const struct engine_ops *ops)
 {
 	if (eng == NULL || ops == NULL)
@@ -214,8 +217,9 @@ int dpe_set_engine_ops(struct engine_requests *eng,
 
 	return 0;
 }
+EXPORT_SYMBOL(dpe_set_engine_ops_isp6);
 
-bool dpe_request_running(struct engine_requests *eng)
+bool dpe_request_running_isp6(struct engine_requests *eng)
 {
 	unsigned int seq;
 	seqlock_t *lock;
@@ -231,9 +235,10 @@ bool dpe_request_running(struct engine_requests *eng)
 
 	return running;
 }
+EXPORT_SYMBOL(dpe_request_running_isp6);
 
 /*TODO: called in ENQUE_REQ */
-signed int dpe_enque_request(struct engine_requests *eng, unsigned int fcnt,
+signed int dpe_enque_request_isp6(struct engine_requests *eng, unsigned int fcnt,
 						void *req, pid_t pid)
 {
 	unsigned int r;
@@ -295,11 +300,12 @@ signed int dpe_enque_request(struct engine_requests *eng, unsigned int fcnt,
 ERROR:
 	return -1;
 }
+EXPORT_SYMBOL(dpe_enque_request_isp6);
 
 /* ConfigWMFERequest / ConfigOCCRequest abstraction
  * TODO: locking should be here NOT camera_owe.c
  */
-signed int dpe_request_handler(struct engine_requests *eng, spinlock_t *lock)
+signed int dpe_request_handler_isp6(struct engine_requests *eng, spinlock_t *lock)
 {
 	unsigned int f, fn;
 	unsigned int r;
@@ -459,9 +465,9 @@ signed int dpe_request_handler(struct engine_requests *eng, spinlock_t *lock)
 	return 1;
 
 }
+EXPORT_SYMBOL(dpe_request_handler_isp6);
 
-
-int dpe_update_request(struct engine_requests *eng, pid_t *pid)
+int dpe_update_request_isp6(struct engine_requests *eng, pid_t *pid)
 {
 	unsigned int i, f, n;
 	int req_jobs = -1;
@@ -524,9 +530,10 @@ NO_FEEDBACK:
 
 	return req_jobs;
 }
+EXPORT_SYMBOL(dpe_update_request_isp6);
 
 /*TODO: called in DEQUE_REQ */
-signed int dpe_deque_request(
+signed int dpe_deque_request_isp6(
 	struct engine_requests *eng, unsigned int *fcnt, void *req)
 {
 	unsigned int r;
@@ -544,17 +551,17 @@ signed int dpe_deque_request(
 		LOG_ERR("[%s]Request(%d) NOT finished", __func__, r);
 		goto ERROR;
 	}
-#if 0
-	for (f = 0; f < fcnt; f++)
-		if (eng->reqs[r].frames[f].state != FRAME_STATUS_FINISHED) {
-			LOG_ERR("Frame(%d) NOT finised", f);
-			goto ERROR;
-		}
-#else
+//#if 0
+//	for (f = 0; f < fcnt; f++)
+//		if (eng->reqs[r].frames[f].state != FRAME_STATUS_FINISHED) {
+//			LOG_ERR("Frame(%d) NOT finised", f);
+//			goto ERROR;
+//		}
+//#else
 	*fcnt = eng->reqs[r].fctl.size;
 	m_real_ReqNum = eng->reqs[r].fctl.size;
 	LOG_DBG("[%s]deque request(%d) has %d frames", __func__, r, *fcnt);
-#endif
+//#endif
 	if (eng->ops->req_deque_cb == NULL || req == NULL) {
 		LOG_ERR("[%s]NULL req_deque_cb/req", __func__);
 		goto ERROR;
@@ -583,8 +590,9 @@ signed int dpe_deque_request(
 ERROR:
 	return -1;
 }
+EXPORT_SYMBOL(dpe_deque_request_isp6);
 
-signed int dpe_request_dump(struct engine_requests *eng)
+signed int dpe_request_dump_isp6(struct engine_requests *eng)
 {
 	unsigned int r;
 	unsigned int f;
@@ -625,7 +633,9 @@ signed int dpe_request_dump(struct engine_requests *eng)
 
 	return 0;
 }
+EXPORT_SYMBOL(dpe_request_dump_isp6);
 
+#ifndef TODO
 static int __init egnreq_init(void)
 {
 	int ret = 0;
@@ -642,3 +652,4 @@ static void __exit egnreq_exit(void)
 
 module_init(egnreq_init);
 module_exit(egnreq_exit);
+#endif

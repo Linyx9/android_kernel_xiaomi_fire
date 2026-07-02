@@ -15,13 +15,13 @@
  *    ecosystem, ex: M-TEE, Trusty, GlobalPlatform, ...)
  */
 
-
 #include "gz_vreg_ut.h"
 #include <linux/io.h>
 #include <linux/printk.h>
 #include <linux/string.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
+#include "unittest.h"
 
 #define KREE_DEBUG(fmt...) pr_info("[SM_kUT]" fmt)
 #define KREE_INFO(fmt...) pr_info("[SM_kUT]" fmt)
@@ -38,7 +38,6 @@
 DEFINE_MUTEX(vreg_ut_mutex);
 
 #define fg_test 0
-
 int gz_test_vreg_main(void)
 {
 #if fg_test

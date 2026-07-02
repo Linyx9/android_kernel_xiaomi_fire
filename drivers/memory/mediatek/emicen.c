@@ -15,10 +15,108 @@
 #include <linux/io.h>
 #include <linux/arm-smccc.h>
 #include <linux/soc/mediatek/mtk_sip_svc.h>
-#include <memory/mediatek/emi.h>
+#include <soc/mediatek/emi.h>
 
 DEFINE_SPINLOCK(emidbg_lock);
 static struct platform_device *emicen_pdev;
+
+struct emicen_dev_t {
+	unsigned int emi_cen_cnt;
+	unsigned int ch_cnt;
+	unsigned int rk_cnt;
+	unsigned long long *rk_size;
+	void __iomem **emi_cen_base;
+	void __iomem **emi_chn_base;
+};
+
+/*
+ * mtk_emicen_get_ch_cnt - get the channel count
+ *
+ * Returns the channel count
+ */
+unsigned int mtk_emicen_get_ch_cnt(void)
+{
+	struct emicen_dev_t *emicen_dev_ptr;
+
+	if (!emicen_pdev)
+		return 0;
+
+	emicen_dev_ptr =
+		(struct emicen_dev_t *)platform_get_drvdata(emicen_pdev);
+
+	return emicen_dev_ptr->ch_cnt;
+}
+EXPORT_SYMBOL(mtk_emicen_get_ch_cnt);
+
+/*
+ * mtk_emicen_get_rk_cnt - get the rank count
+ *
+ * Returns the rank count
+ */
+unsigned int mtk_emicen_get_rk_cnt(void)
+{
+	struct emicen_dev_t *emicen_dev_ptr;
+
+	if (!emicen_pdev)
+		return 0;
+
+	emicen_dev_ptr =
+		(struct emicen_dev_t *)platform_get_drvdata(emicen_pdev);
+
+	return emicen_dev_ptr->rk_cnt;
+}
+EXPORT_SYMBOL(mtk_emicen_get_rk_cnt);
+
+/*
+ * mtk_emicen_get_rk_size - get the rank size of target rank
+ * @rk_id:	the id of target rank
+ *
+ * Returns the rank size of target rank
+ */
+unsigned long long mtk_emicen_get_rk_size(unsigned int rk_id)
+{
+	struct emicen_dev_t *emicen_dev_ptr;
+
+	if (!emicen_pdev)
+		return 0;
+
+	emicen_dev_ptr =
+		(struct emicen_dev_t *)platform_get_drvdata(emicen_pdev);
+
+	if (rk_id < emicen_dev_ptr->rk_cnt)
+		return emicen_dev_ptr->rk_size[rk_id];
+
+	return 0;
+}
+EXPORT_SYMBOL(mtk_emicen_get_rk_size);
+
+/*
+ * mtk_emidbg_dump - dump emi full status to atf log
+ *
+ */
+void mtk_emidbg_dump(void)
+{
+	unsigned long spinlock_save_flags;
+	struct arm_smccc_res smc_res;
+
+	spin_lock_irqsave(&emidbg_lock, spinlock_save_flags);
+
+	arm_smccc_smc(MTK_SIP_EMIMPU_CONTROL, MTK_EMIDBG_DUMP,
+		0, 0, 0, 0, 0, 0, &smc_res);
+	while (smc_res.a0 > 0) {
+		arm_smccc_smc(MTK_SIP_EMIMPU_CONTROL, MTK_EMIDBG_MSG,
+		0, 0, 0, 0, 0, 0, &smc_res);
+
+		pr_info("%s: %d, 0x%x, 0x%x, 0x%x\n", __func__,
+			(int)smc_res.a0,
+			(unsigned int)smc_res.a1,
+			(unsigned int)smc_res.a2,
+			(unsigned int)smc_res.a3);
+	}
+
+	spin_unlock_irqrestore(&emidbg_lock, spinlock_save_flags);
+}
+EXPORT_SYMBOL(mtk_emidbg_dump);
 
 static int emicen_probe(struct platform_device *pdev)
 {
@@ -133,94 +231,5 @@ static void __exit emicen_drv_exit(void)
 module_init(emicen_drv_init);
 module_exit(emicen_drv_exit);
 
-/*
- * mtk_emicen_get_ch_cnt - get the channel count
- *
- * Returns the channel count
- */
-unsigned int mtk_emicen_get_ch_cnt(void)
-{
-	struct emicen_dev_t *emicen_dev_ptr;
-
-	if (!emicen_pdev)
-		return 0;
-
-	emicen_dev_ptr =
-		(struct emicen_dev_t *)platform_get_drvdata(emicen_pdev);
-
-	return emicen_dev_ptr->ch_cnt;
-}
-EXPORT_SYMBOL(mtk_emicen_get_ch_cnt);
-
-/*
- * mtk_emicen_get_rk_cnt - get the rank count
- *
- * Returns the rank count
- */
-unsigned int mtk_emicen_get_rk_cnt(void)
-{
-	struct emicen_dev_t *emicen_dev_ptr;
-
-	if (!emicen_pdev)
-		return 0;
-
-	emicen_dev_ptr =
-		(struct emicen_dev_t *)platform_get_drvdata(emicen_pdev);
-
-	return emicen_dev_ptr->rk_cnt;
-}
-EXPORT_SYMBOL(mtk_emicen_get_rk_cnt);
-
-/*
- * mtk_emicen_get_rk_size - get the rank size of target rank
- * @rk_id:	the id of target rank
- *
- * Returns the rank size of target rank
- */
-unsigned int mtk_emicen_get_rk_size(unsigned int rk_id)
-{
-	struct emicen_dev_t *emicen_dev_ptr;
-
-	if (!emicen_pdev)
-		return 0;
-
-	emicen_dev_ptr =
-		(struct emicen_dev_t *)platform_get_drvdata(emicen_pdev);
-
-	if (rk_id < emicen_dev_ptr->rk_cnt)
-		return emicen_dev_ptr->rk_size[rk_id];
-
-	return 0;
-}
-EXPORT_SYMBOL(mtk_emicen_get_rk_size);
-
-/*
- * mtk_emidbg_dump - dump emi full status to atf log
- *
- */
-void mtk_emidbg_dump(void)
-{
-	unsigned long spinlock_save_flags;
-	struct arm_smccc_res smc_res;
-
-	spin_lock_irqsave(&emidbg_lock, spinlock_save_flags);
-
-	arm_smccc_smc(MTK_SIP_EMIMPU_CONTROL, MTK_EMIDBG_DUMP,
-		0, 0, 0, 0, 0, 0, &smc_res);
-	while (smc_res.a0 > 0) {
-		arm_smccc_smc(MTK_SIP_EMIMPU_CONTROL, MTK_EMIDBG_MSG,
-		0, 0, 0, 0, 0, 0, &smc_res);
-
-		pr_info("%s: %d, 0x%x, 0x%x, 0x%x\n", __func__,
-			(int)smc_res.a0,
-			(unsigned int)smc_res.a1,
-			(unsigned int)smc_res.a2,
-			(unsigned int)smc_res.a3);
-	}
-
-	spin_unlock_irqrestore(&emidbg_lock, spinlock_save_flags);
-}
-EXPORT_SYMBOL(mtk_emidbg_dump);
-
 MODULE_DESCRIPTION("MediaTek EMICEN Driver v0.1");
-
+MODULE_LICENSE("GPL v2");

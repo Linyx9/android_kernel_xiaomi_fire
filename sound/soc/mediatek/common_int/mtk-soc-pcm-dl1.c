@@ -82,7 +82,7 @@
 #include <sound/pcm_params.h>
 #include <sound/soc-dapm.h>
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -104,7 +104,8 @@ static struct device *mDev;
 /*void StartAudioPcmHardware(void);*/
 /*void StopAudioPcmHardware(void);*/
 static int mtk_soc_dl1_probe(struct platform_device *pdev);
-static int mtk_soc_pcm_dl1_close(struct snd_pcm_substream *substream);
+static int mtk_soc_pcm_dl1_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream);
 static int mtk_asoc_dl1_component_probe(struct snd_soc_component *component);
 
 static bool mPrepareDone;
@@ -135,7 +136,6 @@ static struct snd_pcm_hardware mtk_pcm_dl1_hardware = {
 
 static int mtk_pcm_dl1_stop(struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 
 	irq_remove_user(substream,
 			irq_request_number(Soc_Aud_Digital_Block_MEM_DL1));
@@ -153,13 +153,15 @@ static int mtk_pcm_dl1_stop(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static snd_pcm_uframes_t mtk_pcm_pointer(struct snd_pcm_substream *substream)
+static snd_pcm_uframes_t mtk_pcm_pointer(struct snd_soc_component *component,
+					 struct snd_pcm_substream *substream)
 {
 	return get_mem_frame_index(substream, pMemControl,
 				   Soc_Aud_Digital_Block_MEM_DL1);
 }
 
-static int mtk_pcm_dl1_params(struct snd_pcm_substream *substream,
+static int mtk_pcm_dl1_params(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream,
 			      struct snd_pcm_hw_params *hw_params)
 {
 	/* struct snd_dma_buffer *dma_buf = &substream->dma_buffer; */
@@ -195,7 +197,8 @@ static int mtk_pcm_dl1_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int mtk_pcm_dl1_hw_free(struct snd_pcm_substream *substream)
+static int mtk_pcm_dl1_hw_free(struct snd_soc_component *component,
+			       struct snd_pcm_substream *substream)
 {
 	pr_debug("%s substream = %p\n", __func__, substream);
 	if (mPlaybackDramState == true) {
@@ -212,7 +215,8 @@ static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 	.mask = 0,
 };
 
-static int mtk_pcm_dl1_open(struct snd_pcm_substream *substream)
+static int mtk_pcm_dl1_open(struct snd_soc_component *component,
+			    struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -235,16 +239,16 @@ static int mtk_pcm_dl1_open(struct snd_pcm_substream *substream)
 
 	if (ret < 0) {
 		pr_err("ret < 0 mtk_soc_pcm_dl1_close\n");
-		mtk_soc_pcm_dl1_close(substream);
+		mtk_soc_pcm_dl1_close(component, substream);
 		return ret;
 	}
 
 	return 0;
 }
 
-static int mtk_soc_pcm_dl1_close(struct snd_pcm_substream *substream)
+static int mtk_soc_pcm_dl1_close(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 
 	if (mPrepareDone == true) {
 		/* stop DAC output */
@@ -260,7 +264,8 @@ static int mtk_soc_pcm_dl1_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_prepare(struct snd_pcm_substream *substream)
+static int mtk_pcm_prepare(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream)
 {
 	bool mI2SWLen;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -311,7 +316,6 @@ static int mtk_pcm_dl1_start(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	pr_debug("%s\n", __func__);
 	/* here start digital part */
 
 	SetIntfConnection(Soc_Aud_InterCon_Connection,
@@ -335,7 +339,8 @@ static int mtk_pcm_dl1_start(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_pcm_trigger(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream, int cmd)
 {
 #if defined(DL1_DEBUG_LOG)
 	pr_debug("%s(), cmd = %d\n", __func__, cmd);
@@ -351,7 +356,8 @@ static int mtk_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	return -EINVAL;
 }
 
-static int mtk_pcm_copy(struct snd_pcm_substream *substream,
+static int mtk_pcm_copy(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream,
 			int channel,
 			unsigned long pos,
 			void __user *buf,
@@ -413,7 +419,7 @@ static int mtk_pcm_copy(struct snd_pcm_substream *substream,
 		/* copy once */
 		if (Afe_WriteIdx_tmp + copy_size < Afe_Block->u4BufferSize) {
 
-			if (!access_ok(VERIFY_READ, data_w_ptr, copy_size)) {
+			if (!access_ok(data_w_ptr, copy_size)) {
 #if defined(DL1_DEBUG_LOG)
 				pr_debug(
 					"AudDrv_write 0ptr invalid data_w_ptr=%p, size=%d u4BufferSize=%d, u4DataRemained=%d",
@@ -465,7 +471,7 @@ static int mtk_pcm_copy(struct snd_pcm_substream *substream,
 			pr_debug("size_1=0x%x, size_2=0x%x\n", size_1,
 				       size_2);
 #endif
-			if (!access_ok(VERIFY_READ, data_w_ptr, size_1)) {
+			if (!access_ok(data_w_ptr, size_1)) {
 				pr_err("AudDrv_write 1ptr invalid data_w_ptr=%p, size_1=%d u4BufferSize=%d, u4DataRemained=%d",
 				       data_w_ptr, size_1,
 				       Afe_Block->u4BufferSize,
@@ -496,7 +502,7 @@ static int mtk_pcm_copy(struct snd_pcm_substream *substream,
 			Afe_WriteIdx_tmp = Afe_Block->u4WriteIdx;
 			spin_unlock_irqrestore(&auddrv_DLCtl_lock, flags);
 
-			if (!access_ok(VERIFY_READ, data_w_ptr + size_1,
+			if (!access_ok(data_w_ptr + size_1,
 				       size_2)) {
 #if defined(DL1_DEBUG_LOG)
 				pr_debug(
@@ -546,46 +552,31 @@ static int mtk_pcm_copy(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int mtk_pcm_silence(struct snd_pcm_substream *substream,
-			   int channel,
-			   unsigned long pos,
-			   unsigned long bytes)
-{
-#if defined(DL1_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
-#endif
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
 
-static struct page *mtk_pcm_page(struct snd_pcm_substream *substream,
+static struct page *mtk_pcm_page(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream,
 				 unsigned long offset)
 {
 #if defined(DL1_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static struct snd_pcm_ops mtk_afe_ops = {
+static const struct snd_soc_component_driver mtk_soc_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_asoc_dl1_component_probe,
 	.open = mtk_pcm_dl1_open,
 	.close = mtk_soc_pcm_dl1_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_pcm_dl1_params,
 	.hw_free = mtk_pcm_dl1_hw_free,
 	.prepare = mtk_pcm_prepare,
 	.trigger = mtk_pcm_trigger,
 	.pointer = mtk_pcm_pointer,
-	.copy_user = mtk_pcm_copy,
-	.fill_silence = mtk_pcm_silence,
+	.copy = mtk_pcm_copy,
 	.page = mtk_pcm_page,
-};
 
-static const struct snd_soc_component_driver mtk_soc_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_afe_ops,
-	.probe = mtk_asoc_dl1_component_probe,
 };
 
 static int mtk_asoc_dl1_component_probe(struct snd_soc_component *component)
@@ -605,7 +596,6 @@ static int mtk_asoc_dl1_component_probe(struct snd_soc_component *component)
 static int mtk_afe_remove(struct platform_device *pdev)
 {
 #if defined(DL1_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	AudDrv_Clk_Deinit(&pdev->dev);
 
@@ -614,7 +604,7 @@ static int mtk_afe_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 /*extern void *AFE_BASE_ADDRESS;*/
 u32 afe_irq_number;
 
@@ -667,7 +657,6 @@ static int mtk_soc_dl1_probe(struct platform_device *pdev)
 
 	mDev = &pdev->dev;
 #if defined(DL1_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 
@@ -686,7 +675,7 @@ static int mtk_soc_dl1_probe(struct platform_device *pdev)
 
 	DL1GlobalVarInit();
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 	AudDrv_Clk_probe(&pdev->dev);
 
 #ifndef CONFIG_MTK_LEGACY
@@ -699,7 +688,7 @@ static int mtk_soc_dl1_probe(struct platform_device *pdev)
 	if (ret != 0)
 		return ret;
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 	auddrv_get_irqline(&pdev->dev);
 	ret = Register_Aud_Irq(&pdev->dev, afe_irq_number);
 #else
@@ -723,7 +712,7 @@ static struct platform_driver mtk_afe_driver = {
 
 			.name = MT_SOC_DL1_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_dl1_of_ids,
 #endif
 		},
@@ -739,7 +728,6 @@ static int __init mtk_soc_platform_init(void)
 {
 	int ret;
 #if defined(DL1_DEBUG_LOG)
-	pr_debug("%s\n", __func__);
 #endif
 #ifndef CONFIG_OF
 

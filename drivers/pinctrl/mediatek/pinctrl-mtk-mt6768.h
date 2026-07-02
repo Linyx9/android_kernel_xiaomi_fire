@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
+/* SPDX-License-Identifier: GPL-2.0
+ *
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef __PINCTRL_MTK_MT6768_H
 #define __PINCTRL_MTK_MT6768_H

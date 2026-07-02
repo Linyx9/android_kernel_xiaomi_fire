@@ -52,7 +52,7 @@
 #include <sound/pcm.h>
 #include <sound/soc.h>
 #include <audio_task_manager.h>
-#if defined(CONFIG_SND_SOC_MTK_AUDIO_DSP)
+#if IS_ENABLED(CONFIG_SND_SOC_MTK_AUDIO_DSP)
 #include "mtk-dsp-mem-control.h"
 #include "mtk-base-dsp.h"
 #include "mtk-dsp-common.h"

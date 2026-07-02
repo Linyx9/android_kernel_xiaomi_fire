@@ -10,16 +10,14 @@
 
 /* scp platform configs*/
 #define SCP_BOOT_TIME_OUT_MONITOR	(1)
-#ifdef CONFIG_MTK_TINYSYS_SCP_LOGGER_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_LOGGER_SUPPORT)
 #define SCP_LOGGER_ENABLE		(1)
 #else
 #define SCP_LOGGER_ENABLE		(0)
 #endif
-#ifdef CONFIG_MACH_MT6785
-#define SCP_DVFS_INIT_ENABLE		(0)
-#else
+
 #define SCP_DVFS_INIT_ENABLE		(1)
-#endif
+
 #define SCP_RESERVED_MEM		(1)
 /* scp rescovery feature option*/
 #define SCP_RECOVERY_SUPPORT		(1)

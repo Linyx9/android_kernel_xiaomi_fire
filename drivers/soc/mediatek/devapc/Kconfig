@@ -1,152 +1,209 @@
-config MTK_DEVAPC
+config DEVICE_MODULES_MTK_DEVAPC
 	tristate "Mediatek Device APC Support"
-	default y
 	help
 	  Device APC is a kernel driver controlling internal device security.
 	  If someone tries to access a device, which is not allowed by the
 	  device, it cannot access the device and will get a violation
 	  interrupt. Device APC prevents malicious access to internal devices.
 
-config DEVAPC_LEGACY
-	bool "Mediatek Device APC driver for legacy platform"
-	default y
-	select MTK_DEVAPC
-	help
-	  Say yes here to enable support Mediatek legacy
-	  Device APC driver.
-	  This driver do not split common handle flow
-	  into different files.
-
-config DEVAPC_ARCH_V1
-	bool "Mediatek Device APC driver architecture v1"
+config DEVAPC_ARCH_COMMON
+	tristate "Mediatek Device APC driver architecture common"
 	help
 	  Say yes here to enable support Mediatek
 	  Device APC driver which is based on HW
 	  architecture version 1.
-	  This architecture supports 1 Infra-peri.
+	  This architecture supports common Infra-peri.
 
-config DEVAPC_ARCH_V2
-	bool "Mediatek Device APC driver architecture v2"
+config DEVAPC_ARCH_MULTI
+	tristate "Mediatek Device APC driver architecture multi"
 	help
 	  Say yes here to enable support Mediatek
 	  Device APC driver which is based on HW
 	  architecture version 2.
 	  This architecture supports multiple Infra AO.
 
-config DEVAPC_MMAP_DEBUG
-	bool "Mediatek Device APC memory map debug mode"
+config MTK_SERROR_HOOK
+	bool "Mediatek Slave Error Dump Hook Support"
 	help
 	  Say yes here to enable support Mediatek
-	  Device APC driver to debug violation
-	  through catching illegal memory mapped
-	  range.
+	  slave error dump which can see Device APC driver
+	  violation log in case of slave error happened.
+	  This is for debug purpose.
 
-config DEVAPC_SWP_SUPPORT
-	bool "Mediatek Device APC software watchpoint support"
-	help
-	  Say yes here to enable support Mediatek
-	  Device APC driver to debug violation
-	  through software watchpoint.
-	  Support read/write transaction separately.
-
-config DEVAPC_MT6833
-	bool "Mediatek MT6833 Device APC driver"
-	depends on MACH_MT6833 || COMPILE_TEST
-	select DEVAPC_ARCH_V2
-	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
-	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
-	help
-	  Say yes here to enable support Mediatek MT6833
+config DEVAPC_MT6761
+	 tristate "Mediatek MT6761 Device APC driver"
+	 select DEVICE_MODULES_MTK_DEVAPC
+	 help
+	  say yes here to enable support Mediatek MT6761
 	  Device APC driver.
-	  This driver is combined with DEVAPC_ARCH_V2 for
-	  common handle flow.
+	  This is no need co-work with DEVAPC_ARCH_COMMON
+	  and DEVAPC_ARCH_MULTI common handle flow.
 
-config DEVAPC_MT6853
-	bool "Mediatek MT6853 Device APC driver"
-	depends on MACH_MT6853 || COMPILE_TEST
-	select DEVAPC_ARCH_V2
-	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
-	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
-	help
-	  Say yes here to enable support Mediatek MT6853
+config DEVAPC_MT6765
+	 tristate "Mediatek MT6765 Device APC driver"
+	 select DEVICE_MODULES_MTK_DEVAPC
+	 help
+	  say yes here to enable support Mediatek MT6765
 	  Device APC driver.
-	  This driver is combined with DEVAPC_ARCH_V2 for
-	  common handle flow.
-
-config DEVAPC_MT6873
-	bool "Mediatek MT6873 Device APC driver"
-	depends on MACH_MT6873 || COMPILE_TEST
-	select DEVAPC_ARCH_V2
-	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
-	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
-	help
-	  Say yes here to enable support Mediatek MT6873
-	  Device APC driver.
-	  This driver is combined with DEVAPC_ARCH_V2 for
-	  common handle flow.
-
-config DEVAPC_MT6877
-	bool "Mediatek MT6877 Device APC driver"
-	depends on MACH_MT6877 || COMPILE_TEST
-	select DEVAPC_ARCH_V2
-	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
-	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
-	help
-	  Say yes here to enable support Mediatek MT6877
-	  Device APC driver.
-	  This driver is combined with DEVAPC_ARCH_V2 for
-	  common handle flow.
-
-config DEVAPC_MT6885
-	bool "Mediatek MT6885 Device APC driver"
-	depends on MACH_MT6885 || MACH_MT6893 || COMPILE_TEST
-	select DEVAPC_ARCH_V2
-	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
-	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
-	help
-	  Say yes here to enable support Mediatek MT6885
-	  Device APC driver.
-	  This driver is combined with DEVAPC_ARCH_V2 for
-	  common handle flow.
-
-config DEVAPC_MT6781
-        bool "Mediatek MT6781 Device APC driver"
-        depends on MACH_MT6781 || COMPILE_TEST
-        select DEVAPC_ARCH_V1
-        select MTK_DEVAPC
-        select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
-        help
-          Say yes here to enable support Mediatek MT6781
-          Device APC driver.
-          This driver is combined with DEVAPC_ARCH_V1 for
-          common handle flow.
+	  This is no need co-work with DEVAPC_ARCH_COMMON
+	  and DEVAPC_ARCH_MULTI common handle flow.
 
 config DEVAPC_MT6768
-	bool "Mediatek MT6768 Device APC driver"
-	depends on MACH_MT6768 || COMPILE_TEST
-	select DEVAPC_ARCH_V1
-	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
-	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
+	tristate "Mediatek MT6768 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_COMMON
 	help
 	  Say yes here to enable support Mediatek MT6768
 	  Device APC driver.
-	  This driver is combined with DEVAPC_ARCH_V1 for
-	  common handle flow.
-config DEVAPC_MT6785
-	bool "Mediatek MT6785 Device APC driver"
-	depends on MACH_MT6785 || COMPILE_TEST
-	select DEVAPC_ARCH_V1
-	select MTK_DEVAPC
-	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
-	help
-	  Say yes here to enable support Mediatek MT6785
-	  Device APC driver.
-	  This driver is combined with DEVAPC_ARCH_V1 for
+	  This driver is combined with DEVAPC_ARCH_COMMON for
 	  common handle flow.
 
+config DEVAPC_MT6781
+	tristate "Mediatek MT6781 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_COMMON
+	help
+	  Say yes here to enable support Mediatek MT6781
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_COMMON for
+	  common handle flow.
+
+config DEVAPC_MT6833
+	tristate "Mediatek MT6833 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6833
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6853
+	tristate "Mediatek MT6853 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6853
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6873
+	tristate "Mediatek MT6873 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6873
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6877
+	tristate "Mediatek MT6877 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6877
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6879
+	tristate "Mediatek MT6879 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6879
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6886
+	tristate "Mediatek MT6886 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6886
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6893
+	tristate "Mediatek MT6893 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6893
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6895
+	tristate "Mediatek MT6895 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6895
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6897
+	tristate "Mediatek MT6897 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6897
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6899
+	tristate "Mediatek MT6899 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6899
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6983
+	tristate "Mediatek MT6983 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6983
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6985
+	tristate "Mediatek MT6985 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6985
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6989
+	tristate "Mediatek MT6989 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6989
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.
+
+config DEVAPC_MT6991
+	tristate "Mediatek MT6991 Device APC driver"
+	select DEVICE_MODULES_MTK_DEVAPC
+	select DEVAPC_ARCH_MULTI
+	help
+	  Say yes here to enable support Mediatek MT6991
+	  Device APC driver.
+	  This driver is combined with DEVAPC_ARCH_MULTI for
+	  common handle flow.

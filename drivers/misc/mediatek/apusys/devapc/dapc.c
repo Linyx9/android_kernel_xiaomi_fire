@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2020 MediaTek Inc.
  */
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
@@ -16,24 +15,45 @@
 #include <linux/debugfs.h>
 #include <linux/random.h>
 #include <linux/slab.h>
-#if defined(CONFIG_MTK_AEE_FEATURE)
+#include <linux/uaccess.h>
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 #include <mt-plat/aee.h>
 #endif
+#include "apusys_core.h"
 #include "dapc.h"
 #include "dapc_cfg.h"
 #include "apusys_power.h"
 
 struct dapc_driver *dapc_drv;
 
-#ifdef CONFIG_MTK_ENG_BUILD
+static void dapc_drv_release(struct kref *ref)
+{
+	kfree(dapc_drv);
+	dapc_drv = NULL;
+}
+
+static void dapc_drv_get(void)
+{
+	kref_get(&dapc_drv->ref);
+}
+
+static void dapc_drv_put(void)
+{
+	if (!dapc_drv)
+		return;
+
+	kref_put(&dapc_drv->ref, dapc_drv_release);
+}
+
+#if IS_ENABLED(CONFIG_MTK_APUSYS_DEBUG)
 /* apusys devapc debug file operations */
-static int apusys_devapc_open(struct inode *inode, struct file *file)
+static int dapc_debug_open(struct inode *inode, struct file *file)
 {
 	file->private_data = inode->i_private;
 	return nonseekable_open(inode, file);
 }
 
-static int apusys_devapc_release(struct inode *inode, struct file *file)
+static int dapc_debug_release(struct inode *inode, struct file *file)
 {
 	return 0;
 }
@@ -85,7 +105,7 @@ static int trigger_vio_test(struct dapc_driver *drv, int round)
 	return 0;
 }
 
-static ssize_t apusys_devapc_read(struct file *file, char __user *buf,
+static ssize_t dapc_debug_read(struct file *file, char __user *buf,
 				  size_t size, loff_t *offset)
 {
 	struct dapc_driver *drv = (struct dapc_driver *)file->private_data;
@@ -120,7 +140,7 @@ static ssize_t apusys_devapc_read(struct file *file, char __user *buf,
 
 static void apusys_devapc_start(void *data);
 
-static ssize_t apusys_devapc_write(struct file *file, const char __user *buf,
+static ssize_t dapc_debug_write(struct file *file, const char __user *buf,
 				   size_t size, loff_t *ppos)
 {
 	struct dapc_driver *drv = (struct dapc_driver *)file->private_data;
@@ -188,9 +208,6 @@ static ssize_t apusys_devapc_write(struct file *file, const char __user *buf,
 			disable_irq(drv->irq);
 		pr_info("APUSYS devapc %s IRQ\n",
 			drv->enable_irq ? "enable" : "disable");
-	} else if (!strncmp(cmd_str, "restart", sizeof("restart"))) {
-		apusys_devapc_start(NULL);
-		pr_info("APUSYS devapc restarted\n");
 	} else if (!strncmp(cmd_str, "trigger_vio", sizeof("trigger_vio"))) {
 		pr_info("APUSYS devapc trigger vio test %d +\n", param);
 		trigger_vio_test(drv, param);
@@ -203,40 +220,42 @@ static ssize_t apusys_devapc_write(struct file *file, const char __user *buf,
 	return len;
 }
 
-static const struct file_operations apusys_devapc_fops = {
+static const struct file_operations dapc_debug_fops = {
 	.owner = THIS_MODULE,
-	.open = apusys_devapc_open,
-	.read = apusys_devapc_read,
-	.write = apusys_devapc_write,
-	.release = apusys_devapc_release,
+	.open = dapc_debug_open,
+	.read = dapc_debug_read,
+	.write = dapc_debug_write,
+	.release = dapc_debug_release,
 };
 /* apusys devapc debug file operations */
 
 static int apusys_devapc_debug_init(struct dapc_driver *drv)
 {
-	struct dentry *droot = NULL;
+	struct dentry *ddevapc = NULL;
 	int ret = 0;
 
-	droot = debugfs_create_dir("apusys_devapc", NULL);
-	if (IS_ERR_OR_NULL(droot)) {
-		ret = PTR_ERR(droot);
+	if (IS_ERR_OR_NULL(drv->droot))
+		return 0;
+
+	ddevapc = debugfs_create_dir("devapc", drv->droot);
+	if (IS_ERR_OR_NULL(ddevapc)) {
+		ret = PTR_ERR(ddevapc);
 		pr_info("%s: unable to create debugfs folder: %d\n",
 			__func__, ret);
 		return ret;
 	}
-	debugfs_create_u32("debug",
-		0644, droot, &drv->debug_log);
-	debugfs_create_file("apusys_devapc", 0644,
-		droot, drv, &apusys_devapc_fops);
+	debugfs_create_u32("log",
+		0644, ddevapc, &drv->debug_log);
+	debugfs_create_file("debug", 0644,
+		ddevapc, drv, &dapc_debug_fops);
 
-	drv->droot = droot;
+	drv->ddevapc = ddevapc;
 	return ret;
 }
 
 static void apusys_devapc_debug_exit(struct dapc_driver *drv)
 {
-	debugfs_remove_recursive(drv->droot);
-	drv->droot = NULL;
+	debugfs_remove_recursive(drv->ddevapc);
 }
 #else
 static int apusys_devapc_debug_init(struct dapc_driver *drv)
@@ -258,7 +277,7 @@ static void slv_irq(unsigned int slv, bool enable)
 
 	if (slv > cfg->slv_cnt) {
 		pr_info("%s: slv: %d is out of index, max: %d\n",
-			slv, cfg->slv_cnt);
+			__func__, slv, cfg->slv_cnt);
 		return;
 	}
 
@@ -283,7 +302,7 @@ static void do_kernel_exception(struct dapc_driver *drv, unsigned int i,
 		goto out;
 	}
 
-#if defined(CONFIG_MTK_AEE_FEATURE)
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	if (drv->enable_aee) {
 		aee_kernel_exception("APUSYS_DEVAPC",
 			"Violation Slave: %s (%s%s): transaction ID:0x%x, Addr:0x%x, HighAddr: %x, Domain: 0x%x\n",
@@ -311,7 +330,7 @@ static uint32_t check_vio_status(unsigned int slv)
 
 	if (slv > cfg->slv_cnt) {
 		pr_info("%s: slv: %d is out of index, max: %d\n",
-			slv, cfg->slv_cnt);
+			__func__, slv, cfg->slv_cnt);
 		return -EINVAL;
 	}
 
@@ -330,7 +349,7 @@ static void clear_vio_status(unsigned int slv)
 
 	if (slv > cfg->slv_cnt) {
 		pr_info("%s: slv: %d is out of index, max: %d\n",
-			slv, cfg->slv_cnt);
+			__func__, slv, cfg->slv_cnt);
 		return;
 	}
 
@@ -362,7 +381,7 @@ static int shift_vio_dbg(int shift_bit)
 		dapc_reg_r(d, sel), dapc_reg_r(d, con));
 
 	if ((dapc_reg_r(d, con) & mask) != mask) {
-		pr_info("%s: shift bit %d failed\n", shift_bit);
+		pr_info("%s: shift bit %d failed\n", __func__, shift_bit);
 		return -EFAULT;
 	}
 
@@ -511,11 +530,10 @@ static int apusys_devapc_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct device_node *devapc_node;
-	struct dapc_driver *drv;
+	struct dapc_driver *drv = dapc_drv;
 	struct dapc_config *cfg;
 
-	dev_info(&pdev->dev, "%s +\n", __func__);
-
+	dev_info(&pdev->dev, "%s\n", __func__);
 	if (!apusys_power_check())
 		return 0;
 
@@ -525,7 +543,7 @@ static int apusys_devapc_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	if (dapc_drv) {
+	if (drv->cfg) {
 		dev_info(&pdev->dev, "duplicated device node\n");
 		return -ENODEV;
 	}
@@ -535,13 +553,6 @@ static int apusys_devapc_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "unsupported device: %s\n", pdev->name);
 		return -ENODEV;
 	}
-
-	drv = kzalloc(sizeof(struct dapc_driver), GFP_KERNEL);
-	if (!drv) {
-		ret = -ENOMEM;
-		goto err_allocate;
-	}
-	dapc_drv = drv;
 
 	drv->cfg = cfg;
 	drv->reg = of_iomap(devapc_node, 0);
@@ -569,26 +580,25 @@ static int apusys_devapc_probe(struct platform_device *pdev)
 		disable_irq(drv->irq);
 	}
 
-	apusys_devapc_start(NULL);
 	ret = apu_power_callback_device_register(DEVAPC,
 		apusys_devapc_start, NULL);
-	if (ret)
+	if (ret) {
 		dev_info(&pdev->dev,
 			"unable to register to apu power: %d\n", ret);
-
+		goto err_power;
+	}
 	drv->debug_log = 0;
 	apusys_devapc_debug_init(drv);
 	platform_set_drvdata(pdev, drv);
-	dev_info(&pdev->dev, "%s -\n", __func__);
+	dapc_drv_get();
 
 	return 0;
-
+err_power:
+	free_irq(drv->irq, drv);
 err_request_irq:
 	iounmap(drv->reg);
 err_iomap:
-	kfree(drv);
-err_allocate:
-	dapc_drv = NULL;
+	drv->cfg = NULL;
 	return ret;
 }
 
@@ -596,15 +606,13 @@ static int apusys_devapc_remove(struct platform_device *pdev)
 {
 	struct dapc_driver *drv = platform_get_drvdata(pdev);
 
-	dev_dbg(&pdev->dev, "%s +\n", __func__);
-
+	dev_info(&pdev->dev, "%s\n", __func__);
 	free_irq(drv->irq, drv);
 	iounmap(drv->reg);
 	apusys_devapc_debug_exit(drv);
 	apu_power_callback_device_unregister(DEVAPC);
-	kfree(drv);
-	dev_dbg(&pdev->dev, "%s -\n", __func__);
-	dapc_drv = NULL;
+	dapc_drv_put();
+
 	return 0;
 }
 
@@ -617,6 +625,8 @@ static const struct of_device_id apusys_devapc_of_match[] = {
 	{},
 };
 
+MODULE_DEVICE_TABLE(of, apusys_devapc_of_match);
+
 static struct platform_driver apusys_devapc_driver = {
 	.probe = apusys_devapc_probe,
 	.remove = apusys_devapc_remove,
@@ -627,20 +637,19 @@ static struct platform_driver apusys_devapc_driver = {
 	},
 };
 
-static int __init apusys_devapc_init(void)
+int devapc_init(struct apusys_core_info *info)
 {
-	dapc_drv = NULL;
+	dapc_drv = kzalloc(sizeof(struct dapc_driver), GFP_KERNEL);
+	if (!dapc_drv)
+		return -ENOMEM;
+	dapc_drv->droot = info->dbg_root;
+	kref_init(&dapc_drv->ref);
 	return platform_driver_register(&apusys_devapc_driver);
 }
 
-static void __exit apusys_devapc_exit(void)
+void devapc_exit(void)
 {
 	platform_driver_unregister(&apusys_devapc_driver);
+	dapc_drv_put();
 }
 
-late_initcall(apusys_devapc_init);
-module_exit(apusys_devapc_exit);
-
-MODULE_DESCRIPTION("Mediatek APUSYS DEVAPC Driver");
-MODULE_AUTHOR("Mediatek");
-MODULE_LICENSE("GPL");

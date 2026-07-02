@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_LAMU_PANEL
+	PANEL_TM_TD4376_OBJS += dsi-panel-tm-td4376-672-1080x2400-vdo-60hz.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_PANEL) += dsi_panel_tm_td4376_672_1080x2400_vdo_60hz.o
+dsi_panel_tm_td4376_672_1080x2400_vdo_60hz-y := $(PANEL_TM_TD4376_OBJS)
+

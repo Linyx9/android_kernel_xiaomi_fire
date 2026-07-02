@@ -1,0 +1,8 @@
+ccflags-y += -I$(srctree)/drivers/mmc/core/
+
+ifdef CONFIG_OEM_QLC
+	QLC_OBJS += mmc_hcgc.o
+endif
+
+obj-$(CONFIG_OEM_QLC) += oem_qlc.o
+oem_qlc-y := $(QLC_OBJS)

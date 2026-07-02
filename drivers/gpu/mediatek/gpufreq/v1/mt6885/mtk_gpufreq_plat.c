@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 /**
  * @file    mtk_gpufreq_plat.c
@@ -17,24 +17,19 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
-#include <linux/file.h>
 #include <linux/proc_fs.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
-#include <linux/fs.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/uaccess.h>
 #include <linux/random.h>
-#include <linux/seq_file.h>
 
-#include "mtk_gpufreq.h"
+#include "mtk_gpufreq_v1.h"
 #include "mtk_gpufreq_internal.h"
 #include "mtk_gpufreq_common.h"
-#include <linux/proc_fs.h>
 
 #include "clk-fmeter.h"
-#include "clk-mt6885-fmeter.h"
 
 #include "mtk_pmic_wrap.h"
 #include "mtk_devinfo.h"
@@ -44,7 +39,7 @@
 #ifdef CONFIG_THERMAL
 #include "mtk_thermal.h"
 #endif
-#ifdef CONFIG_MTK_FREQ_HOPPING
+#if IS_ENABLED(CONFIG_MTK_FREQ_HOPPING)
 #include "mtk_freqhopping_drv.h"
 #endif
 #if MT_GPUFREQ_KICKER_PBM_READY
@@ -53,16 +48,11 @@
 #if MT_GPUFREQ_STATIC_PWR_READY2USE
 #include "mtk_static_power.h"
 #endif
-#ifdef CONFIG_MTK_GPU_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_GPU_SUPPORT)
 #include "ged_log.h"
 #include "ged_base.h"
 #endif
 #include "mtk_gpu_utility.h"
-
-#ifdef CONFIG_MTK_GPU_SUPPORT
-/* adb pull "/d/ged/logbufs/gfreq" */
-extern GED_LOG_BUF_HANDLE gpufreq_ged_log;
-#endif
 
 #if MT_GPUFREQ_DFD_ENABLE
 #include "dbgtop.h"
@@ -88,33 +78,33 @@ enum gpu_dvfs_vgpu_step {
 
 static inline void gpu_dvfs_vgpu_footprint(enum gpu_dvfs_vgpu_step step)
 {
-//	aee_rr_rec_gpu_dvfs_vgpu(step |
-//				(aee_rr_curr_gpu_dvfs_vgpu() & 0xF0));
+	aee_rr_rec_gpu_dvfs_vgpu(step |
+				(aee_rr_curr_gpu_dvfs_vgpu() & 0xF0));
 }
 
 static inline void gpu_dvfs_vgpu_reset_footprint(void)
 {
-//	aee_rr_rec_gpu_dvfs_vgpu(0);
+	aee_rr_rec_gpu_dvfs_vgpu(0);
 }
 
 static inline void gpu_dvfs_oppidx_footprint(unsigned int idx)
 {
-//	aee_rr_rec_gpu_dvfs_oppidx(idx);
+	aee_rr_rec_gpu_dvfs_oppidx(idx);
 }
 
 static inline void gpu_dvfs_oppidx_reset_footprint(void)
 {
-//	aee_rr_rec_gpu_dvfs_oppidx(0xFF);
+	aee_rr_rec_gpu_dvfs_oppidx(0xFF);
 }
 
 static inline void gpu_dvfs_power_count_footprint(int count)
 {
-//	aee_rr_rec_gpu_dvfs_power_count(count);
+	aee_rr_rec_gpu_dvfs_power_count(count);
 }
 
 static inline void gpu_dvfs_power_count_reset_footprint(void)
 {
-//	aee_rr_rec_gpu_dvfs_power_count(0);
+	aee_rr_rec_gpu_dvfs_power_count(0);
 }
 
 /**
@@ -270,7 +260,6 @@ u64 mt_gpufreq_get_shader_present(void)
 	return shader_present;
 }
 
-#define hf_fmfg_ck 1 // Qoo for build pass
 void mt_gpufreq_dump_infra_status(void)
 {
 	unsigned int start, offset;
@@ -641,13 +630,9 @@ void mt_gpufreq_set_timestamp(void)
 {
 	gpufreq_pr_debug("@%s\n", __func__);
 
-	/* timestamp will be used by clGetEventProfilingInfo
-	 * 0x13fb_f130
-	 * [0] : write 1 to enable timestamp register
-	 * [1] : 0: timer from internal module
-	 *     : 1: timer from soc
-	 */
-	writel(0x00000003, g_mfg_base + 0x130);
+	/* write 1 into 0x13fb_f130 bit 0 to enable timestamp register */
+	/* timestamp will be used by clGetEventProfilingInfo*/
+	writel(0x00000001, g_mfg_base + 0x130);
 }
 
 void mt_gpufreq_check_bus_idle(void)
@@ -941,7 +926,7 @@ static void __mt_gpufreq_config_dfd(bool enable)
 		// [8] enable
 		writel(0x0F101100, g_mfg_base + 0xA00);
 
-		mtk_dbgtop_dfd_timeout(0x3E8); // 500 ms
+		mtk_dbgtop_dfd_timeout(0x3E8, 0); // 500 ms
 
 	} else {
 		writel(0x00000000, g_mfg_base + 0xA00);
@@ -1274,10 +1259,6 @@ unsigned int mt_gpufreq_get_dvfs_en(void)
 
 unsigned int mt_gpufreq_not_ready(void)
 {
-	if (g_pmic == NULL) {
-		gpufreq_pr_info("g_pmic not initialized\n");
-		return -ENOMEM;
-	}
 	if (IS_ERR(g_pmic->reg_vgpu) || IS_ERR(g_pmic->reg_vsram_gpu)) {
 		gpufreq_pr_info("VGPU: %lu, VSRAM_GPU: %ld not initialized\n",
 			PTR_ERR(g_pmic->reg_vgpu),
@@ -1913,7 +1894,7 @@ static int mt_gpufreq_var_dump_proc_show(struct seq_file *m, void *v)
 	int i;
 	unsigned int gpu_loading = 0;
 
-#ifdef CONFIG_MTK_GPU_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_GPU_SUPPORT)
 	mtk_get_gpu_loading(&gpu_loading);
 #endif
 
@@ -2361,7 +2342,7 @@ static int __mt_gpufreq_create_procfs(void)
 	}
 
 	for (i = 0; i < ARRAY_SIZE(entries); i++) {
-		if (!proc_create(entries[i].name, 0660, dir, entries[i].fops))
+		if (!proc_create(entries[i].name, 0664, dir, entries[i].fops))
 			gpufreq_pr_info("create /proc/gpufreq/%s failed\n",
 					entries[i].name);
 	}
@@ -2467,18 +2448,9 @@ static void __mt_gpufreq_set(
 		__mt_gpufreq_clock_switch(freq_new);
 		g_cur_opp_freq = __mt_gpufreq_get_cur_freq();
 
-		gpu_assert(g_cur_opp_freq == freq_new,
-			GPU_FREQ_EXCEPTION,
-			"Clock switch failing: %d -> %d (target: %d)\n",
-			freq_old, g_cur_opp_freq, freq_new);
 	} else {
 		__mt_gpufreq_clock_switch(freq_new);
 		g_cur_opp_freq = __mt_gpufreq_get_cur_freq();
-
-		gpu_assert(g_cur_opp_freq == freq_new,
-			GPU_FREQ_EXCEPTION,
-			"Clock switch failing: %d -> %d (target: %d)\n",
-			freq_old, g_cur_opp_freq, freq_new);
 
 		while (g_cur_opp_vgpu != vgpu_new) {
 			sb_idx = g_opp_sb_idx_down[g_cur_opp_idx] > idx_new ?
@@ -2615,14 +2587,14 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 	dds = __mt_gpufreq_calculate_dds(freq_new, posdiv_power);
 	pll = (0x80000000) | (posdiv_power << POSDIV_SHIFT) | dds;
 
-#if (!defined(CONFIG_MTK_FREQ_HOPPING)) || !MT_GPUFREQ_DVFS_HOPPING_ENABLE
-	/* force parking if FHCTL not ready */
-	parking = true;
-#else
+#if IS_ENABLED(CONFIG_MTK_FREQ_HOPPING)
 	if (posdiv_power != real_posdiv_power)
 		parking = true;
 	else
 		parking = false;
+#else
+	/* force parking if FHCTL not ready */
+	parking = true;
 #endif
 
 	if (parking) {
@@ -2642,7 +2614,7 @@ static void __mt_gpufreq_clock_switch(unsigned int freq_new)
 		/* univpll_d3(416MHz) to mfgpll_ck */
 		__mt_gpufreq_switch_to_clksrc(CLOCK_MAIN);
 	} else {
-#ifdef CONFIG_MTK_FREQ_HOPPING
+#if IS_ENABLED(CONFIG_MTK_FREQ_HOPPING)
 		mt_dfs_general_pll(MFGPLL_FH_PLL, dds);
 #endif
 	}
@@ -3010,7 +2982,7 @@ static void __mt_gpufreq_kick_pbm(int enable)
 	unsigned int power;
 	unsigned int cur_freq;
 	unsigned int cur_vgpu;
-	bool found = 0;
+	unsigned int found = 0;
 	int tmp_idx = -1;
 	int i;
 
@@ -3572,10 +3544,6 @@ static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev)
 	int ret;
 
 	gpufreq_pr_info("@%s start\n", __func__);
-	if (!pdev) {
-		gpufreq_pr_info("platform_device missed\n");
-		return EPROBE_DEFER;
-	}
 
 	node = of_find_matching_node(NULL, g_gpufreq_of_match);
 	if (!node)
@@ -3615,14 +3583,27 @@ static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev)
 
 	__mt_gpufreq_init_power();
 
-#if defined(AGING_LOAD)
-	gpufreq_pr_info("@%s: AGING load\n", __func__);
-	g_aging_enable = 1;
+#if defined(CONFIG_ARM64) && defined(CONFIG_BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES)
+	if (strstr(CONFIG_BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES,
+						"aging") != NULL) {
+		gpufreq_pr_info("@%s: AGING flavor name: %s\n",
+			__func__, CONFIG_BUILD_ARM64_DTB_OVERLAY_IMAGE_NAMES);
+		g_aging_enable = 1;
+	}
 #endif
 
 #if MT_GPUFREQ_DFD_DEBUG
 	// for debug only. simulate gpu dfd trigger state
 	//__mt_gpufreq_gpu_dfd_trigger_simulate();
+#endif
+
+#if MT_GPUFREQ_DFD_ENABLE
+	/* if dfd is triggered, power off BUCK to cleare it */
+	if (__mt_gpufreq_is_dfd_triggered()) {
+		//__mt_gpufreq_dfd_debug_exception();
+		gpufreq_pr_info("[GPU_DFD] gpu dfd is triggered, clear it.\n");
+		__mt_gpufreq_gpu_dfd_clear();
+	}
 #endif
 
 	g_probe_done = true;
@@ -3637,6 +3618,8 @@ static int __mt_gpufreq_pdrv_probe(struct platform_device *pdev)
 static int __init __mt_gpufreq_init(void)
 {
 	int ret = 0;
+
+	ged_kpi_get_limit_user_fp = mt_gpufreq_get_limit_user;
 
 	if (mt_gpufreq_bringup()) {
 		gpufreq_pr_info("skip driver init: clock ID: %d\n", hf_fmfg_ck);

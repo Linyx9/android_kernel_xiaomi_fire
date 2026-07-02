@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -19,6 +18,8 @@
 #include <linux/moduleparam.h>
 #include <linux/sizes.h>
 #include <linux/mod_devicetable.h>
+#include <linux/of.h>
+#include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-direct.h>
@@ -31,9 +32,18 @@
 
 #include "private/ut_cmd.h"
 #include "tee_impl/tee_invoke.h"
+#include "public/mtee_regions.h"
+#include "mtee_impl/tmem_ffa.h"
 
 #include "memory_ssmr.h"
+#include "memory_ssheap.h"
 
+#if IS_ENABLED(CONFIG_ALLOC_TMEM_WITH_HIGH_FREQ)
+u32 tmem_high_freq;
+u32 cpu_map;
+#endif
+
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
 static int tmem_open(struct inode *inode, struct file *file)
 {
 	UNUSED(inode);
@@ -43,16 +53,16 @@ static int tmem_open(struct inode *inode, struct file *file)
 	return TMEM_OK;
 }
 
-static int tmem_release(struct inode *inode, struct file *file)
+static int tmem_release(struct inode *ino, struct file *file)
 {
-	UNUSED(inode);
+	UNUSED(ino);
 	UNUSED(file);
 
 	pr_info("%s:%d\n", __func__, __LINE__);
 	return TMEM_OK;
 }
 
-static u32 g_common_mem_handle[TRUSTED_MEM_MAX];
+static u64 g_common_mem_handle[TRUSTED_MEM_MAX];
 static void trusted_mem_device_chunk_alloc(enum TRUSTED_MEM_TYPE mem_type)
 {
 	int ret = TMEM_OK;
@@ -64,7 +74,7 @@ static void trusted_mem_device_chunk_alloc(enum TRUSTED_MEM_TYPE mem_type)
 			mem_type, alignment, min_chunk_sz, &ref_count,
 			&g_common_mem_handle[mem_type], NULL, 0, 0);
 	else
-		pr_info("%d chunk is already allocated, handle:0x%x\n",
+		pr_info("%d chunk is already allocated, handle:0x%llx\n",
 			mem_type, g_common_mem_handle[mem_type]);
 
 	if (ret)
@@ -85,11 +95,6 @@ static void trusted_mem_device_chunk_free(enum TRUSTED_MEM_TYPE mem_type)
 		g_common_mem_handle[mem_type] = 0;
 }
 
-static void trusted_mem_device_ion_alloc_free(enum TRUSTED_MEM_TYPE mem_type)
-{
-	pr_info("%d ion interface is not supported!\n", mem_type);
-}
-
 static void trusted_mem_device_common_operations(u64 cmd, u64 param1,
 						 u64 param2, u64 param3)
 {
@@ -104,40 +109,28 @@ static void trusted_mem_device_common_operations(u64 cmd, u64 param1,
 
 	switch (device_cmd) {
 	case TMEM_DEVICE_COMMON_OPERATION_SSMR_ALLOC:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_SSMR_ALLOC\n");
 		tmem_core_ssmr_allocate(device_mem_type);
 		break;
 	case TMEM_DEVICE_COMMON_OPERATION_SSMR_RELEASE:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_SSMR_RELEASE\n");
 		tmem_core_ssmr_release(device_mem_type);
 		break;
 	case TMEM_DEVICE_COMMON_OPERATION_SESSION_OPEN:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_SESSION_OPEN\n");
 		tmem_core_session_open(device_mem_type);
 		break;
 	case TMEM_DEVICE_COMMON_OPERATION_SESSION_CLOSE:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_SESSION_CLOSE\n");
 		tmem_core_session_close(device_mem_type);
 		break;
 	case TMEM_DEVICE_COMMON_OPERATION_REGION_ON:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_REGION_ON\n");
 		tmem_core_regmgr_online(device_mem_type);
 		break;
 	case TMEM_DEVICE_COMMON_OPERATION_REGION_OFF:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_REGION_OFF\n");
 		tmem_core_regmgr_offline(device_mem_type);
 		break;
 	case TMEM_DEVICE_COMMON_OPERATION_CHUNK_ALLOC:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_CHUNK_ALLOC\n");
 		trusted_mem_device_chunk_alloc(device_mem_type);
 		break;
 	case TMEM_DEVICE_COMMON_OPERATION_CHUNK_FREE:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_CHUNK_FREE\n");
 		trusted_mem_device_chunk_free(device_mem_type);
-		break;
-	case TMEM_DEVICE_COMMON_OPERATION_ION_ALLOC_FREE:
-		pr_info("TMEM_DEVICE_COMMON_OPERATION_ION_ALLOC_FREE\n");
-		trusted_mem_device_ion_alloc_free(device_mem_type);
 		break;
 	default:
 		pr_err("unsupported device cmd: %d, mem type: %d (user cmd:%lld)\n",
@@ -173,43 +166,36 @@ static void trusted_mem_manual_cmd_invoke(u64 cmd, u64 param1, u64 param2,
 
 	switch (cmd) {
 	case TMEM_REGION_STATUS_DUMP:
-		pr_info("TMEM_REGION_STATUS_DUMP\n");
 		trusted_mem_region_status_dump();
 		break;
 	case TMEM_SECMEM_SVP_DUMP_INFO:
-		pr_info("TMEM_SECMEM_SVP_DUMP_INFO\n");
-#if defined(CONFIG_MTK_SECURE_MEM_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_SECURE_MEM_SUPPORT)
 		secmem_svp_dump_info();
 #endif
 		break;
 	case TMEM_SECMEM_FR_DUMP_INFO:
-		pr_info("TMEM_SECMEM_FR_DUMP_INFO\n");
-#if defined(CONFIG_MTK_SECURE_MEM_SUPPORT)                                     \
-	&& defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
+#if IS_ENABLED(CONFIG_TRUSTONIC_TEE_SUPPORT) || \
+	IS_ENABLED(CONFIG_MICROTRUST_TEE_SUPPORT)
 		secmem_fr_dump_info();
 #endif
 		break;
 	case TMEM_SECMEM_WFD_DUMP_INFO:
-		pr_info("TMEM_SECMEM_WFD_DUMP_INFO\n");
-#if defined(CONFIG_MTK_WFD_SMEM_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_WFD_SMEM_SUPPORT)
 		wfd_smem_dump_info();
 #endif
 		break;
 	case TMEM_SECMEM_DYNAMIC_DEBUG_ENABLE:
-		pr_info("TMEM_SECMEM_DYNAMIC_DEBUG_ENABLE\n");
-#if defined(CONFIG_MTK_SECURE_MEM_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_SECURE_MEM_SUPPORT)
 		secmem_dynamic_debug_control(true);
 #endif
 		break;
 	case TMEM_SECMEM_DYNAMIC_DEBUG_DISABLE:
-		pr_info("TMEM_SECMEM_DYNAMIC_DEBUG_DISABLE\n");
-#if defined(CONFIG_MTK_SECURE_MEM_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_SECURE_MEM_SUPPORT)
 		secmem_dynamic_debug_control(false);
 #endif
 		break;
 	case TMEM_SECMEM_FORCE_HW_PROTECTION:
-		pr_info("TMEM_SECMEM_FORCE_HW_PROTECTION\n");
-#if defined(CONFIG_MTK_SECURE_MEM_SUPPORT)
+#if IS_ENABLED(CONFIG_MTK_SECURE_MEM_SUPPORT)
 		secmem_force_hw_protection();
 #endif
 		break;
@@ -222,7 +208,7 @@ static ssize_t tmem_write(struct file *file, const char __user *buffer,
 			  size_t count, loff_t *data)
 {
 	char desc[32];
-	unsigned int len = 0;
+	int len = 0;
 	long cmd;
 
 	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
@@ -246,30 +232,25 @@ static ssize_t tmem_write(struct file *file, const char __user *buffer,
 	return count;
 }
 
-static const struct file_operations tmem_fops = {
-	.owner = THIS_MODULE,
-	.open = tmem_open,
-	.release = tmem_release,
-	.unlocked_ioctl = NULL,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl = NULL,
+static const struct proc_ops tmem_fops = {
+	.proc_open = tmem_open,
+	.proc_release = tmem_release,
+	.proc_ioctl = NULL,
+#if IS_ENABLED(CONFIG_COMPAT)
+	.proc_compat_ioctl = NULL,
 #endif
-	.write = tmem_write,
+	.proc_write = tmem_write,
 };
 
 static void trusted_mem_create_proc_entry(void)
 {
 	proc_create("tmem0", 0664, NULL, &tmem_fops);
 }
-
-#ifdef TCORE_UT_TESTS_SUPPORT
-#ifdef CONFIG_MTK_ENG_BUILD
-#define UT_MULTITHREAD_TEST_DEFAULT_WAIT_COMPLETION_TIMEOUT_MS (900000)
-#define UT_SATURATION_STRESS_PMEM_MIN_CHUNK_SIZE (SIZE_8M)
-#else
-#define UT_MULTITHREAD_TEST_DEFAULT_WAIT_COMPLETION_TIMEOUT_MS (5000)
-#define UT_SATURATION_STRESS_PMEM_MIN_CHUNK_SIZE (SIZE_2M)
 #endif
+
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
+#define UT_MULTITHREAD_TEST_DEFAULT_WAIT_COMPLETION_TIMEOUT_MS (900000)
+#define UT_SATURATION_STRESS_PMEM_MIN_CHUNK_SIZE (SZ_8M)
 
 static unsigned int ut_multithread_wait_completion_timeout_ms =
 	UT_MULTITHREAD_TEST_DEFAULT_WAIT_COMPLETION_TIMEOUT_MS;
@@ -298,13 +279,31 @@ MODULE_PARM_DESC(ut_saturation_stress_pmem_min_chunk_size,
 
 static int trusted_mem_init(struct platform_device *pdev)
 {
+#if IS_ENABLED(CONFIG_ALLOC_TMEM_WITH_HIGH_FREQ)
+	struct device_node *node = pdev->dev.of_node;
+	int ret = 0;
+
+	tmem_high_freq = 1;
+#endif
+
 	pr_info("%s:%d\n", __func__, __LINE__);
 
-	ssmr_probe(pdev);
+#if WITH_SSHEAP_PROC
+	if (strncmp(dev_name(&pdev->dev), "ssheap", 6) == 0)
+		return ssheap_init(pdev);
+#endif
+
+	if (strncmp(dev_name(&pdev->dev), "apmd_ssmr", 10) == 0)
+		return apmd_ssmr_init(pdev);
+
+	if (strncmp(dev_name(&pdev->dev), "apscp_ssmr", 10) == 0)
+		return apscp_ssmr_init(pdev);
+
+	sec_ssmr_init(pdev);
 
 	trusted_mem_subsys_init();
 
-#ifdef TCORE_UT_TESTS_SUPPORT
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
 	tmem_ut_server_init();
 	tmem_ut_cases_init();
 #endif
@@ -317,11 +316,26 @@ static int trusted_mem_init(struct platform_device *pdev)
 	mtee_mchunks_init();
 #endif
 
-#if IS_ENABLED(CONFIG_MTK_GZ_KREE)
-	tmem_mpu_vio_init();
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
+	trusted_mem_create_proc_entry();
 #endif
 
-	trusted_mem_create_proc_entry();
+	if (is_ffa_enabled()) {
+		tmem_register_ffa_module();
+	}
+
+#if IS_ENABLED(CONFIG_ALLOC_TMEM_WITH_HIGH_FREQ)
+	if (IS_ERR(node)) {
+		pr_info("ALLOC_TMEM_WITH_HIGH_FREQ: cannot find device node\n");
+		tmem_high_freq = 0;
+	}
+
+	ret = of_property_read_u32(node, "cpu-map", &cpu_map);
+	if (ret || !cpu_map) {
+		pr_info("ALLOC_TMEM_WITH_HIGH_FREQ: invalid cpu map\n");
+		tmem_high_freq = 0;
+	}
+#endif
 
 	pr_info("%s:%d (end)\n", __func__, __LINE__);
 	return TMEM_OK;
@@ -329,8 +343,9 @@ static int trusted_mem_init(struct platform_device *pdev)
 
 static int trusted_mem_exit(struct platform_device *pdev)
 {
-#if IS_ENABLED(CONFIG_MTK_GZ_KREE)
-	tmem_mpu_vio_exit();
+#if WITH_SSHEAP_PROC
+	if (strncmp(dev_name(&pdev->dev), "ssheap", 6) == 0)
+		return ssheap_exit(pdev);
 #endif
 
 #ifdef MTEE_DEVICES_SUPPORT
@@ -341,7 +356,7 @@ static int trusted_mem_exit(struct platform_device *pdev)
 	tee_smem_devs_exit();
 #endif
 
-#ifdef TCORE_UT_TESTS_SUPPORT
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
 	tmem_ut_cases_exit();
 	tmem_ut_server_exit();
 #endif
@@ -353,6 +368,7 @@ static int trusted_mem_exit(struct platform_device *pdev)
 
 static const struct of_device_id tm_of_match_table[] = {
 	{ .compatible = "mediatek,trusted_mem"},
+	{ .compatible = "mediatek,trusted_mem_ssheap"},
 	{},
 };
 
@@ -367,5 +383,5 @@ static struct platform_driver trusted_mem_driver = {
 module_platform_driver(trusted_mem_driver);
 
 MODULE_AUTHOR("MediaTek Inc.");
-MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MediaTek Trusted Memory Driver");
+MODULE_LICENSE("GPL v2");

@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #define DEBUG 1
 #include <linux/version.h>
@@ -24,7 +24,7 @@
 #include "mach/mtk_thermal.h"
 #include "mtk_thermal_timer.h"
 
-#if defined(CONFIG_MTK_CLKMGR)
+#if IS_ENABLED(CONFIG_MTK_CLKMGR)
 #include <mach/mtk_clkmgr.h>
 #else
 #include <linux/clk.h>
@@ -43,7 +43,7 @@
 #include <mtk_vcorefs_manager.h>
 #endif
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
@@ -79,25 +79,19 @@ static kgid_t gid = KGIDT_INIT(1000);
 static DEFINE_SEMAPHORE(sem_mutex);
 static int isTimerCancelled;
 
-#if !defined(CONFIG_MTK_CLKMGR)
+#if !IS_ENABLED(CONFIG_MTK_CLKMGR)
 struct clk *therm_main;		/* main clock for Thermal */
 #endif
 
 void __iomem  *therm_clk_infracfg_ao_base;
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 u32 thermal_irq_number;
 void __iomem *thermal_base;
 void __iomem *auxadc_ts_base;
 void __iomem *infracfg_ao_base;
 
-
-#if defined(CONFIG_MACH_MT6755) || defined(CONFIG_MACH_MT6757)	\
-|| defined(CONFIG_MACH_KIBOPLUS)
-void __iomem *th_apmixed_base;
-#else
 void __iomem *apmixed_base;
-#endif
 void __iomem *INFRACFG_AO_base;
 
 int thermal_phy_base;
@@ -117,13 +111,7 @@ int tscpu_g_curr_temp;
 int tscpu_g_prev_temp;
 static int g_max_temp = 50000;	/* default=50 deg */
 
-#if defined(CONFIG_ARCH_MT6753)
-/*For MT6753 PMIC 5A throttle patch*/
-static int thermal5A_TH = 55000;
-static int thermal5A_status;
-#endif
-
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6353)
+#if IS_ENABLED(CONFIG_MTK_PMIC_CHIP_MT6353)
 int thermal_6353_5A_status;
 int thermal_5A_limit_H = 85000; /*85C*/
 int thermal_5A_limit_L = 83000; /*83C*/
@@ -197,30 +185,26 @@ static char g_bind9[20] = "";
 struct mt_gpufreq_power_table_info *mtk_gpu_power;
 /* max GPU opp idx from GPU DVFS driver, default is 0 */
 int gpu_max_opp;
-#if 0
-int Num_of_GPU_OPP = 1;		/* Set this value =1 for non-DVS GPU */
-#else				/* DVFS GPU */
 int Num_of_GPU_OPP;
-#endif
 
 /*=============================================================
  * Local function definition
  *=============================================================
  */
-#if (CONFIG_THERMAL_AEE_RR_REC == 1)
-static void _mt_thermal_aee_init(void)
-{
-	int i;
+//#if (CONFIG_THERMAL_AEE_RR_REC == 1)
+//static void _mt_thermal_aee_init(void)
+//{
+//	int i;
 
-	aee_rr_init_thermal_temp(TS_ENUM_MAX);
-	for (i = 0; i < TS_ENUM_MAX; i++)
-		aee_rr_rec_thermal_temp(i, 0xFFFF);
+//	aee_rr_init_thermal_temp(TS_ENUM_MAX);
+//	for (i = 0; i < TS_ENUM_MAX; i++)
+//		aee_rr_rec_thermal_temp(i, 0xFFFF);
 
-	aee_rr_rec_thermal_status(0xFF);
-	aee_rr_rec_thermal_ATM_status(0xFF);
-	aee_rr_rec_thermal_ktime(0xFFFFFFFFFFFFFFFF);
-}
-#endif
+//	aee_rr_rec_thermal_status(0xFF);
+//	aee_rr_rec_thermal_ATM_status(0xFF);
+//	aee_rr_rec_thermal_ktime(0xFFFFFFFFFFFFFFFF);
+//}
+//#endif
 static int tscpu_thermal_probe(struct platform_device *dev);
 static int tscpu_register_thermal(void);
 static void tscpu_unregister_thermal(void);
@@ -258,6 +242,12 @@ static void temp_valid_unlock(unsigned long *flags);
  *=============================================================
  */
 
+void set_taklking_flag(bool flag)
+{
+	talking_flag = flag;
+	tscpu_printk("talking_flag=%d\n", talking_flag);
+}
+
 unsigned int  __attribute__((weak))
 mt_gpufreq_get_max_power(void)
 {
@@ -271,26 +261,11 @@ IMM_IsAdcInitReady(void)
 	pr_notice("E_WF: %s doesn't exist\n", __func__);
 	return 0;
 }
-#if 0
-#if defined(ATM_USES_PPM)
-	void __attribute__ ((weak))
-mt_ppm_cpu_thermal_protect(unsigned int limited_power)
-{
-	pr_notice("E_WF: %s doesn't exist\n", __func__);
-}
-#else
-	void __attribute__ ((weak))
-mt_cpufreq_thermal_protect(unsigned int limited_power)
-{
-	pr_notice("E_WF: %s doesn't exist\n", __func__);
-}
-#endif
-#endif
 
 	bool __attribute__ ((weak))
 mtk_get_gpu_loading(unsigned int *pLoading)
 {
-#ifdef CONFIG_MTK_GPU_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_GPU_SUPPORT)
 	pr_notice("E_WF: %s doesn't exist\n", __func__);
 #endif
 	return 0;
@@ -458,11 +433,6 @@ void tscpu_print_all_temperature(int isDprint)
 
 }
 
-void set_taklking_flag(bool flag)
-{
-	talking_flag = flag;
-	tscpu_printk("talking_flag=%d\n", talking_flag);
-}
 
 int mtk_gpufreq_register(struct mt_gpufreq_power_table_info *freqs, int num)
 {
@@ -720,10 +690,10 @@ static int tscpu_get_temp(struct thermal_zone_device *thermal, int *t)
 		/* it means next timeout will be in
 		 * interval/fast_polling_factor
 		 */
-		thermal->polling_delay = interval / fast_polling_factor;
+		thermal->polling_delay_jiffies = interval / fast_polling_factor;
 	} else {
 		tscpu_next_fp_factor = 1;
-		thermal->polling_delay = interval;
+		thermal->polling_delay_jiffies = interval;
 	}
 #endif
 
@@ -731,12 +701,12 @@ static int tscpu_get_temp(struct thermal_zone_device *thermal, int *t)
 	if ((int)*t >= tscpu_polling_trip_temp1)
 		;
 	else if ((int)*t < tscpu_polling_trip_temp2)
-		thermal->polling_delay = interval * tscpu_polling_factor2;
+		thermal->polling_delay_jiffies = interval * tscpu_polling_factor2;
 	else
-		thermal->polling_delay = interval * tscpu_polling_factor1;
+		thermal->polling_delay_jiffies = interval * tscpu_polling_factor1;
 
-	/* tscpu_dprintk("tscpu_get_temp:thermal->polling_delay=%d\n",
-	 * thermal->polling_delay);
+	/* tscpu_dprintk("tscpu_get_temp:thermal->polling_delay_jiffies=%d\n",
+	 * thermal->polling_delay_jiffies);
 	 */
 #if CPT_ADAPTIVE_AP_COOLER
 	tscpu_g_prev_temp = tscpu_g_curr_temp;
@@ -748,19 +718,7 @@ static int tscpu_get_temp(struct thermal_zone_device *thermal, int *t)
 	tscpu_set_GPIO_toggle_for_monitor();
 #endif
 
-#if defined(CONFIG_ARCH_MT6753)
-	/*For MT6753 PMIC 5A throttle patch*/
-	if (curr_temp >= thermal5A_TH && thermal5A_status == 0) {
-		mt_cpufreq_thermal_5A_limit(1);
-		thermal5A_status = 1;
-	} else if (curr_temp < thermal5A_TH && thermal5A_status == 1) {
-		mt_cpufreq_thermal_5A_limit(0);
-		thermal5A_status = 0;
-	}
-#endif
-
-
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6353)
+#if IS_ENABLED(CONFIG_MTK_PMIC_CHIP_MT6353)
 	if (curr_temp >= thermal_5A_limit_H && thermal_6353_5A_status == 0) {
 		mt_ppm_set_5A_limit_throttle(1);
 		thermal_6353_5A_status = 1;
@@ -1070,7 +1028,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 	return -EINVAL;
 }
 
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6353)
+#if IS_ENABLED(CONFIG_MTK_PMIC_CHIP_MT6353)
 static int tscpu_pmic_current_limit_read(struct seq_file *m, void *v)
 {
 	seq_printf(m, "H:%d L:%d T:%d\n",
@@ -1365,16 +1323,12 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		 * for getting temperature
 		 */
 
-#if defined(CONFIG_ARCH_MT6797)
-		apthermolmt_set_general_cpu_power_limit(900);
-#endif
-
 		down(&sem_mutex);
 		tscpu_dprintk("%s tscpu_unregister_thermal\n", __func__);
 		tscpu_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 						DB_OPT_DEFAULT, "tscpu_write",
 						"Bad argument");
@@ -1560,16 +1514,13 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		tscpu_register_thermal();
 		up(&sem_mutex);
 
-#if defined(CONFIG_ARCH_MT6797)
-		apthermolmt_set_general_cpu_power_limit(0);
-#endif
 		proc_write_flag = 1;
 		kfree(ptr_mtktscpu_data);
 		return count;
 	}
 
 	tscpu_dprintk("%s bad argument\n", __func__);
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 							"tscpu_write",
 							"Bad argument");
@@ -1727,24 +1678,10 @@ struct platform_device *dev, pm_message_t state)
 	if (talking_flag == false) {
 		tscpu_dprintk("%s no talking\n", __func__);
 
-#if (CONFIG_THERMAL_AEE_RR_REC == 1)
-		aee_rr_rec_thermal_status(TSCPU_SUSPEND);
-#endif
+//#if (CONFIG_THERMAL_AEE_RR_REC == 1)
+//		aee_rr_rec_thermal_status(TSCPU_SUSPEND);
+//#endif
 
-#if defined(CONFIG_ARCH_MT6797)
-		/* disable periodic temp measurement on sensor 0~2 */
-		thermal_disable_all_periodoc_temp_sensing(); /* TEMPMONCTL0 */
-
-		do {
-			temp = (readl(THAHBST0) >> 16);
-			if ((cnt + 1) % 10 == 0)
-				pr_notice("THAHBST0 = 0x%x, cnt = %d, %d\n",
-							temp, cnt, __LINE__);
-
-			udelay(50);
-			cnt++;
-		} while (temp != 0x0 && cnt < 50);
-#else
 		thermal_pause_all_periodoc_temp_sensing(); /* TEMPMSRCTL1 */
 
 		do {
@@ -1759,7 +1696,7 @@ struct platform_device *dev, pm_message_t state)
 
 		/* disable periodic temp measurement on sensor 0~2 */
 		thermal_disable_all_periodoc_temp_sensing(); /* TEMPMONCTL0 */
-#endif
+
 		/* tscpu_thermal_clock_off(); */
 
 		/*TSCON1[5:4]=2'b11, Buffer off */
@@ -1789,9 +1726,9 @@ static int tscpu_thermal_resume(struct platform_device *dev)
 	g_tc_resume = 1; /* set "1", don't read temp during start resume */
 
 	if (talking_flag == false) {
-#if (CONFIG_THERMAL_AEE_RR_REC == 1)
-		aee_rr_rec_thermal_status(TSCPU_RESUME);
-#endif
+//#if (CONFIG_THERMAL_AEE_RR_REC == 1)
+//		aee_rr_rec_thermal_status(TSCPU_RESUME);
+//#endif
 
 		tscpu_reset_thermal();
 		/*
@@ -1817,20 +1754,6 @@ static int tscpu_thermal_resume(struct platform_device *dev)
 		 */
 		tscpu_fast_initial_sw_workaround();
 
-#if defined(CONFIG_ARCH_MT6797)
-		/* disable periodic temp measurement on sensor 0~2 */
-		thermal_disable_all_periodoc_temp_sensing(); /* TEMPMONCTL0 */
-
-		do {
-			temp = (readl(THAHBST0) >> 16);
-			if ((cnt + 1) % 10 == 0)
-				pr_notice("THAHBST0 = 0x%x, cnt = %d, %d\n",
-							temp, cnt, __LINE__);
-
-			udelay(50);
-			cnt++;
-		} while (temp != 0x0 && cnt < 50);
-#else
 		thermal_pause_all_periodoc_temp_sensing(); /* TEMPMSRCTL1 */
 
 		do {
@@ -1844,7 +1767,7 @@ static int tscpu_thermal_resume(struct platform_device *dev)
 		} while (temp != 0x0 && cnt < 50);
 
 		thermal_disable_all_periodoc_temp_sensing(); /* TEMPMONCTL0 */
-#endif
+
 		tscpu_thermal_initial_all_bank();
 
 		/* must release before start */
@@ -1868,7 +1791,7 @@ static struct platform_driver mtk_thermal_driver = {
 	.resume = tscpu_thermal_resume,
 	.driver = {
 		.name = THERMAL_NAME,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 		.of_match_table = mt_thermal_of_match,
 #endif
 	},
@@ -2059,52 +1982,6 @@ static const struct file_operations mtktscpu_fops = {
 	.release = single_release,
 };
 
-#if defined(CONFIG_ARCH_MT6753)
-/*For MT6753 PMIC 5A throttle patch*/
-static int tzcpu_cpufreq5A_read(struct seq_file *m, void *v)
-{
-	seq_printf(m, "Thermal 5A threshold= %d\n", thermal5A_TH);
-
-	return 0;
-}
-
-static ssize_t tzcpu_cpufreq5A_write(
-struct file *file, const char __user *buffer, size_t count, loff_t *data)
-{
-	char desc[32];
-	int th;
-	int len = 0;
-
-
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
-	if (copy_from_user(desc, buffer, len))
-		return 0;
-	desc[len] = '\0';
-
-	if (kstrtoint(desc, 10, &th) == 0) {
-		thermal5A_TH = th;
-		return count;
-	}
-
-	tscpu_printk(" bad argument\n");
-	return -EINVAL;
-}
-
-static int tzcpu_cpufreq5A_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, tzcpu_cpufreq5A_read, NULL);
-}
-
-static const struct file_operations tzcpu_cpufreq5A_fops = {
-	.owner = THIS_MODULE,
-	.open = tzcpu_cpufreq5A_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = tzcpu_cpufreq5A_write,
-	.release = single_release,
-};
-#endif
-
 static int tscpu_cal_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, tscpu_read_cal, NULL);
@@ -2133,7 +2010,7 @@ static const struct file_operations mtktscpu_read_temperature_fops = {
 	.release = single_release,
 };
 
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6353)
+#if IS_ENABLED(CONFIG_MTK_PMIC_CHIP_MT6353)
 static int tscpu_pmic_current_limit_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, tscpu_pmic_current_limit_read, NULL);
@@ -2266,30 +2143,6 @@ int tscpu_get_cpu_temp_met(enum mtk_thermal_sensor_cpu_id_met id)
 EXPORT_SYMBOL(tscpu_get_cpu_temp_met);
 #endif
 
-#if defined(CONFIG_MACH_MT6755)
-#if 0
-static int thermal_auxadc_get_data(int times, int channel)
-{
-	int ret = 0, data[4], i, ret_value = 0, ret_temp = 0;
-
-	pr_notice("Thermal_auxadc_get_data\n");
-
-	if (IMM_IsAdcInitReady() == 0) {
-		pr_notice("[%s]: AUXADC is not ready\n", __func__);
-		return 0;
-	}
-
-	for (i = 0; i < times; i++) {
-		ret_value = IMM_GetOneChannelValue(channel, data, &ret_temp);
-		pr_notice("[%s]: raw%d= %d\n", __func__, i,
-								ret_temp);
-		ret += ret_temp;
-	}
-
-	ret = ret / times;
-	return ret;
-}
-#endif
 /*Patch to pause thermal controller and turn off auxadc GC.
  *For mt6755 only
  */
@@ -2298,22 +2151,8 @@ static void tscpu_thermal_pause(void)
 	int cnt = 0;
 	int temp = 0;
 
-	aee_rr_rec_thermal_status(TSCPU_PAUSE);
+//	aee_rr_rec_thermal_status(TSCPU_PAUSE);
 
-#if defined(CONFIG_ARCH_MT6797)
-	/* disable periodic temp measurement on sensor 0~2 */
-	thermal_disable_all_periodoc_temp_sensing();	/* TEMPMONCTL0 */
-
-	do {
-		temp = (readl(THAHBST0) >> 16);
-		if ((cnt + 1) % 10 == 0)
-			pr_notice("THAHBST0 = 0x%x, cnt = %d, %d\n", temp, cnt,
-								__LINE__);
-
-		udelay(50);
-		cnt++;
-	} while (temp != 0x0 && cnt < 50);
-#else
 	thermal_pause_all_periodoc_temp_sensing();	/* TEMPMSRCTL1 */
 
 	do {
@@ -2325,7 +2164,7 @@ static void tscpu_thermal_pause(void)
 		udelay(2);
 		cnt++;
 	} while (temp != 0x0 && cnt < 50);
-#endif
+
 	/* disable periodic temp measurement on sensor 0~2 */
 	thermal_disable_all_periodoc_temp_sensing();	/* TEMPMONCTL0 */
 }
@@ -2335,7 +2174,7 @@ static void tscpu_thermal_release(void)
 	int temp = 0;
 	int cnt = 0;
 
-	aee_rr_rec_thermal_status(TSCPU_RELEASE);
+	//aee_rr_rec_thermal_status(TSCPU_RELEASE);
 
 	WARN_ON_ONCE((~__raw_readl((infracfg_ao_base + 0x0094)) & 0x400)
 								!= 0x400);
@@ -2363,20 +2202,6 @@ static void tscpu_thermal_release(void)
 
 	tscpu_fast_initial_sw_workaround();
 
-#if defined(CONFIG_ARCH_MT6797)
-	/* disable periodic temp measurement on sensor 0~2 */
-	thermal_disable_all_periodoc_temp_sensing();	/* TEMPMONCTL0 */
-
-	do {
-		temp = (readl(THAHBST0) >> 16);
-		if ((cnt + 1) % 10 == 0)
-			pr_notice("THAHBST0 = 0x%x, cnt = %d, %d\n", temp, cnt,
-								__LINE__);
-
-		udelay(50);
-		cnt++;
-	} while (temp != 0x0 && cnt < 50);
-#else
 	thermal_pause_all_periodoc_temp_sensing();	/* TEMPMSRCTL1 */
 
 	do {
@@ -2390,7 +2215,6 @@ static void tscpu_thermal_release(void)
 	} while (temp != 0x0 && cnt < 50);
 
 	thermal_disable_all_periodoc_temp_sensing();	/* TEMPMONCTL0 */
-#endif
 
 	tscpu_thermal_initial_all_bank();
 
@@ -2472,12 +2296,12 @@ void tscpu_update_tempinfo(void)
 	else if (g_tc_resume == 2) /* resume ready */
 		g_tc_resume = 0;
 
-#if (CONFIG_THERMAL_AEE_RR_REC == 1)
-	for (i = 0; i < TS_ENUM_MAX; i++)
-		aee_rr_rec_thermal_temp(i, get_immediate_tsX[i]() / 1000);
-	aee_rr_rec_thermal_status(TSCPU_NORMAL);
-	aee_rr_rec_thermal_ktime(ktime_to_us(now));
-#endif
+//#if (CONFIG_THERMAL_AEE_RR_REC == 1)
+	//for (i = 0; i < TS_ENUM_MAX; i++)
+		//aee_rr_rec_thermal_temp(i, get_immediate_tsX[i]() / 1000);
+	//aee_rr_rec_thermal_status(TSCPU_NORMAL);
+	//aee_rr_rec_thermal_ktime(ktime_to_us(now));
+//#endif
 
 #if THERMAL_DRV_UPDATE_TEMP_DIRECT_TO_MET
 
@@ -2495,19 +2319,6 @@ void tscpu_update_tempinfo(void)
 #endif
 
 
-#if 0
-	pr_debug("\n\n");
-	tscpu_printk("\n %s, T=%d,%d,%d,%d,%d,%d\n", __func__,
-				CPU_TS_MCU1_T, CPU_TS_MCU2_T, GPU_TS_MCU3_T,
-				SOC_TS_MCU4_T, SOC_TS_MCU2_T, SOC_TS_MCU3_T);
-
-	pr_debug("Bank 0 : CPU  (TS_MCU1 = %d,TS_MCU2 = %d)\n", CPU_TS_MCU1_T,
-			CPU_TS_MCU2_T);
-	pr_debug("Bank 1 : GPU  (TS_MCU3 = %d)\n", GPU_TS_MCU3_T);
-	pr_debug("Bank 2 : SOC  (TS_MCU4 = %d,TS_MCU2 = %d,TS_MCU3 = %d)\n",
-				SOC_TS_MCU4_T, SOC_TS_MCU2_T, SOC_TS_MCU3_T);
-
-#endif
 }
 
 #if defined(FAST_RESPONSE_ATM)
@@ -2594,13 +2405,6 @@ static void tscpu_cancel_thermal_timer(void)
 	atm_cancel_hrtimer();
 #endif
 	tscpu_workqueue_cancel_timer();
-
-#if defined(CONFIG_MACH_MT6755)
-	/*Patch to pause thermal controller and turn off auxadc GC.
-	 *For mt6755 only
-	 */
-	tscpu_thermal_pause();
-#endif
 }
 
 
@@ -2612,38 +2416,26 @@ static void tscpu_start_thermal_timer(void)
 #else
 	tscpu_workqueue_start_timer();
 #endif
-
-#if defined(CONFIG_MACH_MT6755)
-	/*Patch to pause thermal controller and turn off auxadc GC.
-	 * For mt6755 only
-	 */
-	tscpu_thermal_release();
-#endif
 }
 
-static void init_thermal(void)
+static void init_thermal(struct platform_device *dev))
 {
 	int temp = 0;
 	int cnt = 0;
 
-#if (CONFIG_THERMAL_AEE_RR_REC == 1)
-	_mt_thermal_aee_init();
+//#if (CONFIG_THERMAL_AEE_RR_REC == 1)
+//	_mt_thermal_aee_init();
 
-	aee_rr_rec_thermal_status(TSCPU_INIT);
-#endif
+//	aee_rr_rec_thermal_status(TSCPU_INIT);
+//#endif
 
-	tscpu_thermal_cal_prepare();
+	tscpu_thermal_cal_prepare(dev);
 	tscpu_thermal_cal_prepare_2(0);
 
 	tscpu_reset_thermal();
 
 	/* thermal spm verification */
-#if 0
-	/* unmask bit21 for thermal wake up source */
-	spm_write(SPM_SLEEP_WAKEUP_EVENT_MASK, ~(1U << 21));
-	tscpu_printk("SPM_SLEEP_WAKEUP_EVENT_MASK =0x%08x\n",
-			spm_read(SPM_SLEEP_WAKEUP_EVENT_MASK));
-#endif
+
 	/*
 	 *  TS_CON1 default is 0x30, this is buffer off
 	 *   we should turn on this buffer berore we use thermal sensor,
@@ -2714,14 +2506,6 @@ static void tscpu_create_fs(void)
 		if (entry)
 			proc_set_user(entry, uid, gid);
 
-#if defined(CONFIG_ARCH_MT6753)
-		/*For MT6753 PMIC 5A throttle patch*/
-		entry = proc_create("tzcpu_cpufreq5A", 0664,
-					mtktscpu_dir, &tzcpu_cpufreq5A_fops);
-		if (entry)
-			proc_set_user(entry, uid, gid);
-#endif
-
 		entry = proc_create("tzcpu_log", 0644, mtktscpu_dir,
 							&mtktscpu_log_fops);
 
@@ -2758,7 +2542,7 @@ static void tscpu_create_fs(void)
 		if (entry)
 			proc_set_user(entry, uid, gid);
 #endif
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6353)
+#if IS_ENABLED(CONFIG_MTK_PMIC_CHIP_MT6353)
 
 		entry = proc_create("pmic_current_limit", 0644, mtktscpu_dir,
 					&mtktscpu_pmic_current_limit_fops);
@@ -2793,7 +2577,7 @@ static int tscpu_thermal_probe(struct platform_device *dev)
 	if (get_io_reg_base() == 0)
 		return 0;
 
-#if !defined(CONFIG_MTK_CLKMGR)
+#if !IS_ENABLED(CONFIG_MTK_CLKMGR)
 	therm_main = devm_clk_get(&dev->dev, "therm-main");
 	if (IS_ERR(therm_main)) {
 		tscpu_printk("cannot get thermal clock.\n");
@@ -2803,7 +2587,7 @@ static int tscpu_thermal_probe(struct platform_device *dev)
 #endif
 
 	tscpu_thermal_clock_on();
-	init_thermal();
+	init_thermal(dev);
 
 #if MTK_TS_CPU_RT
 	{
@@ -2820,7 +2604,7 @@ static int tscpu_thermal_probe(struct platform_device *dev)
 	}
 #endif
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 	err = request_irq(thermal_irq_number,
 				tscpu_thermal_all_bank_interrupt_handler,
 				IRQF_TRIGGER_LOW, THERMAL_NAME, NULL);
@@ -2847,32 +2631,6 @@ static int tscpu_thermal_probe(struct platform_device *dev)
 	return err;
 }
 
-#if defined(CONFIG_ARCH_MT6753)
-/*For MT6753 PMIC 5A throttle patch*/
-int isMT6753T(void)
-{
-	unsigned int cpu_spd_bond, efuse_spare2, is53T = 0;
-
-	cpu_spd_bond = (get_devinfo_with_index(3) & _BITMASK_(2:0));
-	efuse_spare2 = (get_devinfo_with_index(5) & _BITMASK_(21:20)) >> 20;
-
-	switch (cpu_spd_bond) {
-	case 0:
-		if (efuse_spare2 == 3)
-			is53T = 1;
-		break;
-	case 1:
-	case 2:
-		is53T = 1;
-		break;
-	default:
-		break;
-	}
-
-	return is53T;
-}
-#endif
-
 static int __init tscpu_init(void)
 {
 	int err = 0;
@@ -2881,7 +2639,7 @@ static int __init tscpu_init(void)
 	/*set init val*/
 	tscpu_g_curr_temp = 0;
 	tscpu_g_prev_temp = 0;
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6353)
+#if IS_ENABLED(CONFIG_MTK_PMIC_CHIP_MT6353)
 	thermal_6353_5A_status = 0;
 #endif
 	err = platform_driver_register(&mtk_thermal_driver);
@@ -2896,11 +2654,6 @@ static int __init tscpu_init(void)
 		goto err_unreg;
 	}
 
-#if defined(CONFIG_ARCH_MT6753)
-	/*For MT6753 PMIC 5A throttle patch*/
-	if (isMT6753T() == 0)
-		fast_polling_trip_temp = 40000;
-#endif
 	tscpu_create_fs();
 
 
@@ -2931,3 +2684,5 @@ static void __exit tscpu_exit(void)
 }
 module_init(tscpu_init);
 module_exit(tscpu_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

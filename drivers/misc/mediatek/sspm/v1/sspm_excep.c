@@ -35,7 +35,7 @@ void sspm_log_coredump_recv(unsigned int exists)
 	sspm_cd_exists = exists;
 }
 
-static ssize_t sspm_aee_read(struct device *kobj, struct device_attribute *attr,
+static ssize_t sspm_aee_show(struct device *kobj, struct device_attribute *attr,
 	char *buf)
 {
 	unsigned int ret;
@@ -51,7 +51,7 @@ static ssize_t sspm_aee_read(struct device *kobj, struct device_attribute *attr,
 	return ret;
 }
 
-DEVICE_ATTR(sspm_aee, 0444, sspm_aee_read, NULL);
+DEVICE_ATTR_RO(sspm_aee);
 
 static ssize_t sspm_coredump_read(struct file *filep, struct kobject *kobj,
 	struct bin_attribute *attr, char *buf, loff_t offset, size_t size)

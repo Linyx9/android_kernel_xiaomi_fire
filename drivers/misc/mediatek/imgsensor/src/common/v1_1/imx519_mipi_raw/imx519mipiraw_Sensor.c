@@ -230,33 +230,33 @@ static struct imgsensor_info_struct imgsensor_info = {
 		.mipi_data_lp2hs_settle_dc = 85,
 		.max_framerate = 600,
 	},
-#if 0
-	.custom1 = {
-		.pclk = 556000000,
-		.linelength = 6400,
-		.framelength = 3619,
-		.startx = 0,
-		.starty = 0,
-		.grabwindow_width = 4656,
-		.grabwindow_height = 3496,
-		.mipi_data_lp2hs_settle_dc = 85,
-		.mipi_pixel_rate = 440230000,
-		.max_framerate = 240,
-	},
-
-	.custom2 = {
-		.pclk = 508000000,
-		.linelength = 8320,
-		.framelength = 2544,
-		.startx = 0,
-		.starty = 0,
-		.grabwindow_width = 3264,
-		.grabwindow_height = 2488,
-		.mipi_pixel_rate = 221140000,
-		.mipi_data_lp2hs_settle_dc = 85,
-		.max_framerate = 240,
-	},
-#endif
+	/*
+	 * .custom1 = {
+	 *	.pclk = 556000000,
+	 *	.linelength = 6400,
+	 *	.framelength = 3619,
+	 *	.startx = 0,
+	 *	.starty = 0,
+	 *	.grabwindow_width = 4656,
+	 *	.grabwindow_height = 3496,
+	 *	.mipi_data_lp2hs_settle_dc = 85,
+	 *	.mipi_pixel_rate = 440230000,
+	 *	.max_framerate = 240,
+	 * },
+	 *
+	 * .custom2 = {
+	 *	.pclk = 508000000,
+	 *	.linelength = 8320,
+	 *	.framelength = 2544,
+	 *	.startx = 0,
+	 *	.starty = 0,
+	 *	.grabwindow_width = 3264,
+	 *	.grabwindow_height = 2488,
+	 *	.mipi_pixel_rate = 221140000,
+	 *	.mipi_data_lp2hs_settle_dc = 85,
+	 *	.max_framerate = 240,
+	 * },
+	 */
 
 	.margin = 32,		/* sensor framelength & shutter margin */
 	.min_shutter = 1,	/* min shutter */
@@ -339,12 +339,12 @@ static struct SENSOR_WINSIZE_INFO_STRUCT imgsensor_winsize_info[8] = {
 	  524,    2, 1280,  720,    0,	  0, 1280,  720}, /*custom2*/
 	{4656, 3496,    0,    0, 4656, 3496, 2328, 1748,
 	    0,    0, 2328, 1748,    0,    0, 2328, 1748}, /* custom3 */
-#if 0
-	{4656, 3496, 000, 000, 4656, 3496, 4656, 3496,
-	0000, 0000, 4656, 3496, 0, 0, 4656, 3496}, /*  custom1 */
-	{4656, 3496, 696, 504, 3264, 2488, 3264, 2488,
-	0000, 0000, 3264, 2488, 0, 0, 3264, 2488}, /* custom2 */
-#endif
+// #if 0
+	// {4656, 3496, 000, 000, 4656, 3496, 4656, 3496,
+	// 0000, 0000, 4656, 3496, 0, 0, 4656, 3496}, /*  custom1 */
+	// {4656, 3496, 696, 504, 3264, 2488, 3264, 2488,
+	// 0000, 0000, 3264, 2488, 0, 0, 3264, 2488}, /* custom2 */
+// #endif
 };
  /*VC1 for HDR(DT=0X35), VC2 for PDAF(DT=0X36), unit : 10bit */
 static struct SENSOR_VC_INFO_STRUCT SENSOR_VC_INFO[3] = {
@@ -362,24 +362,24 @@ static struct SENSOR_VC_INFO_STRUCT SENSOR_VC_INFO[3] = {
 	 0x00, 0x36, 0x16BC, 0x0001, 0x00, 0x00, 0x0000, 0x0000}
 };
 
-#if 0
-/* If mirror flip */
-static struct SET_PD_BLOCK_INFO_T imgsensor_pd_info = {
-	.i4OffsetX = 0,
-	.i4OffsetY = 4,
-	.i4PitchX = 64,
-	.i4PitchY = 64,
-	.i4PairNum = 16,
-	.i4SubBlkW = 16,
-	.i4SubBlkH = 16,
-.i4PosL = {{3, 0}, {55, 0}, {19, 4}, {39, 4}, {7, 20}, {51, 20},
-	   {23, 24}, {35, 24}, {23, 32}, {35, 32}, {7, 36}, {51, 36},
-	   {19, 52}, {39, 52}, {3, 56}, {55, 56} },
-.i4PosR = {{3, 4}, {55, 4}, {19, 8}, {39, 8}, {7, 16}, {51, 16},
-	   {23, 20}, {35, 20}, {23, 36}, {35, 36}, {7, 40}, {51, 40},
-	   {19, 48}, {39, 48}, {3, 52}, {55, 52} },
-};
-#endif
+/*
+ * // If mirror flip
+ * static struct SET_PD_BLOCK_INFO_T imgsensor_pd_info = {
+ *	.i4OffsetX = 0,
+ *	.i4OffsetY = 4,
+ *	.i4PitchX = 64,
+ *	.i4PitchY = 64,
+ *	.i4PairNum = 16,
+ *	.i4SubBlkW = 16,
+ *	.i4SubBlkH = 16,
+ * .i4PosL = {{3, 0}, {55, 0}, {19, 4}, {39, 4}, {7, 20}, {51, 20},
+ *	{23, 24}, {35, 24}, {23, 32}, {35, 32}, {7, 36}, {51, 36},
+ *	{19, 52}, {39, 52}, {3, 56}, {55, 56} },
+ * .i4PosR = {{3, 4}, {55, 4}, {19, 8}, {39, 8}, {7, 16}, {51, 16},
+ *	 {23, 20}, {35, 20}, {23, 36}, {35, 36}, {7, 40}, {51, 40},
+ *	 {19, 48}, {39, 48}, {3, 52}, {55, 52} },
+ * };
+ */
 
 static kal_uint16 read_cmos_sensor(kal_uint32 addr)
 {
@@ -450,11 +450,11 @@ static kal_uint16 imx519_table_write_cmos_sensor(kal_uint16 *para,
 #endif
 	}
 
-#if 0 /*for debug*/
-	for (int i = 0; i < len/2; i++)
-		LOG_INF("readback addr(0x%x)=0x%x\n",
-			para[2*i], read_cmos_sensor_8(para[2*i]));
-#endif
+// #if 0 /*for debug*/
+	// for (int i = 0; i < len/2; i++)
+		// LOG_INF("readback addr(0x%x)=0x%x\n",
+			// para[2*i], read_cmos_sensor_8(para[2*i]));
+// #endif
 	return 0;
 }
 
@@ -470,15 +470,14 @@ static void imx519_get_pdaf_reg_setting(MUINT32 regNum, kal_uint16 *regDa)
 }
 static void imx519_set_pdaf_reg_setting(MUINT32 regNum, kal_uint16 *regDa)
 {
-#if 0 /*for debug*/
-	int i, idx;
+// #if 0 /*for debug*/
+	// int i, idx;
 
-	for (i = 0; i < regNum; i++) {
-		idx = 2 * i;
-		LOG_INF("%x %x", regDa[idx], regDa[idx+1]);
-	}
-#endif
-
+	// for (i = 0; i < regNum; i++) {
+		// idx = 2 * i;
+		// LOG_INF("%x %x", regDa[idx], regDa[idx+1]);
+	// }
+// #endif
 	imx519_table_write_cmos_sensor(regDa, regNum*2);
 }
 
@@ -521,8 +520,6 @@ static void set_dummy(void)
 
 	write_cmos_sensor_8(0x0340, imgsensor.frame_length >> 8);
 	write_cmos_sensor_8(0x0341, imgsensor.frame_length & 0xFF);
-	write_cmos_sensor_8(0x0342, imgsensor.line_length >> 8);
-	write_cmos_sensor_8(0x0343, imgsensor.line_length & 0xFF);
 
 	write_cmos_sensor_8(0x0104, 0x00);
 
@@ -592,10 +589,10 @@ static void write_shutter(kal_uint32 shutter)
 	kal_uint16 l_shift = 1;
 
 	spin_lock(&imgsensor_drv_lock);
-	if (shutter > imgsensor.min_frame_length - imgsensor_info.margin)
-		imgsensor.frame_length = shutter + imgsensor_info.margin;
-	else
-		imgsensor.frame_length = imgsensor.min_frame_length;
+	// if (shutter > imgsensor.min_frame_length - imgsensor_info.margin)
+		// imgsensor.frame_length = shutter + imgsensor_info.margin;
+	// else
+	imgsensor.frame_length = imgsensor.min_frame_length;
 	if (imgsensor.frame_length > imgsensor_info.max_frame_length)
 		imgsensor.frame_length = imgsensor_info.max_frame_length;
 	spin_unlock(&imgsensor_drv_lock);
@@ -631,7 +628,7 @@ static void write_shutter(kal_uint32 shutter)
 			l_shift = MAX_CIT_LSHIFT;
 		}
 		shutter = shutter >> l_shift;
-		imgsensor.frame_length = shutter + imgsensor_info.margin;
+		// imgsensor.frame_length = shutter + imgsensor_info.margin;
 		LOG_INF("enter long exposure mode, time is %d", l_shift);
 		write_cmos_sensor_8(0x3100,
 			read_cmos_sensor(0x3100) | (l_shift & 0x7));
@@ -642,8 +639,6 @@ static void write_shutter(kal_uint32 shutter)
 	} else {
 		write_cmos_sensor_8(0x0104, 0x01);
 		write_cmos_sensor_8(0x3100, read_cmos_sensor(0x3100) & 0xf8);
-		write_cmos_sensor_8(0x0340, imgsensor.frame_length >> 8);
-		write_cmos_sensor_8(0x0341, imgsensor.frame_length & 0xFF);
 		write_cmos_sensor_8(0x0104, 0x00);
 		imgsensor.current_ae_effective_frame = 2;
 		LOG_INF("set frame_length\n");
@@ -651,22 +646,22 @@ static void write_shutter(kal_uint32 shutter)
 
 	/* Update Shutter */
 	write_cmos_sensor_8(0x0104, 0x01);
-	write_cmos_sensor_8(0x0350, 0x01); /* Enable auto extend */
 	write_cmos_sensor_8(0x0202, (shutter >> 8) & 0xFF);
 	write_cmos_sensor_8(0x0203, shutter  & 0xFF);
 	write_cmos_sensor_8(0x0104, 0x00);
 
 	LOG_INF("shutter =%d, framelength =%d\n",
 		shutter, imgsensor.frame_length);
-#if 0
-	LOG_INF(
-		"shift 0x3100=0x%x, Shutter 0x0340=0x%x, 0x0341=0x%x, FL 0x0340=0x%x, 0x0341=0x%x\n",
-		read_cmos_sensor_8(0x3100),
-		read_cmos_sensor_8(0x0202),
-		read_cmos_sensor_8(0x0203),
-		read_cmos_sensor_8(0x0340),
-		read_cmos_sensor_8(0x0341));
-#endif
+// #if 0
+	// LOG_INF(
+		// "shift 0x3100=0x%x, Shutter 0x0340=0x%x,
+		// 0x0341=0x%x, FL 0x0340=0x%x, 0x0341=0x%x\n",
+		// read_cmos_sensor_8(0x3100),
+		// read_cmos_sensor_8(0x0202),
+		// read_cmos_sensor_8(0x0203),
+		// read_cmos_sensor_8(0x0340),
+		// read_cmos_sensor_8(0x0341));
+// #endif
 }	/*	write_shutter  */
 
 /*************************************************************************
@@ -733,10 +728,10 @@ static void set_shutter_frame_length(kal_uint16 shutter,
 	imgsensor.frame_length = imgsensor.frame_length + dummy_line;
 	imgsensor.min_frame_length = imgsensor.frame_length;
 
-	if (shutter > imgsensor.min_frame_length - imgsensor_info.margin)
-		imgsensor.frame_length = shutter + imgsensor_info.margin;
-	else
-		imgsensor.frame_length = imgsensor.min_frame_length;
+	// if (shutter > imgsensor.min_frame_length - imgsensor_info.margin)
+		// imgsensor.frame_length = shutter + imgsensor_info.margin;
+	// else
+	imgsensor.frame_length = imgsensor.min_frame_length;
 	if (imgsensor.frame_length > imgsensor_info.max_frame_length)
 		imgsensor.frame_length = imgsensor_info.max_frame_length;
 	spin_unlock(&imgsensor_drv_lock);
@@ -789,7 +784,7 @@ static void set_shutter_frame_length(kal_uint16 shutter,
 
 static kal_uint16 gain2reg(const kal_uint16 gain)
 {
-	 kal_uint16 reg_gain = 0x0;
+	kal_uint16 reg_gain = 0x0;
 
 	reg_gain = 1024 - (1024*64)/gain;
 	return (kal_uint16) reg_gain;
@@ -858,9 +853,13 @@ static kal_uint32 streaming_control(kal_bool enable)
 {
 	LOG_INF("streaming_enable(0=Sw Standby,1=streaming): %d\n",
 		enable);
-	if (enable)
+	if (enable) {
+		if (read_cmos_sensor_8(0x0350) != 0x01) {
+			pr_info("single cam scenario enable auto-extend");
+			write_cmos_sensor_8(0x0350, 0x01);
+		}
 		write_cmos_sensor_8(0x0100, 0X01);
-	else
+	} else
 		write_cmos_sensor_8(0x0100, 0x00);
 	return ERROR_NONE;
 }
@@ -1606,7 +1605,7 @@ static kal_uint16 imx519_capture_60_setting[] = {
 	0x30AC, 0x00,
 };
 #else
-	#if READOUT_TIME_DECREASE
+#if READOUT_TIME_DECREASE
 static kal_uint16 imx519_capture_30_setting[] = {
 	0x0111, 0x03,
 	0x0112, 0x0A,
@@ -1692,7 +1691,7 @@ static kal_uint16 imx519_capture_30_setting[] = {
 	0x3E20, 0x01,
 	0x3E37, 0x01,
 };
-	#else
+#else
 static kal_uint16 imx519_capture_30_setting[] = {
 	0x0111, 0x03,
 	0x0112, 0x0A,
@@ -1778,7 +1777,7 @@ static kal_uint16 imx519_capture_30_setting[] = {
 	0x3E20, 0x01,
 	0x3E37, 0x01,
 };
-	#endif
+#endif
 #endif
 #endif /*IMX519_CAP_2TRIO*/
 
@@ -2337,279 +2336,279 @@ static kal_uint16 imx519_custom3_setting[] = {
 	0x3E37, 0x00,
 };
 
-#if 0
-static kal_uint16 imx519_custom1_setting[] = {
-	0x0111, 0x03,
-	0x0112, 0x0A,
-	0x0113, 0x0A,
-	0x0114, 0x02,
-	0x0342, 0x19,
-	0x0343, 0x00,
-	0x0340, 0x0E,
-	0x0341, 0x23,
-	0x0344, 0x00,
-	0x0345, 0x00,
-	0x0346, 0x00,
-	0x0347, 0x00,
-	0x0348, 0x12,
-	0x0349, 0x2F,
-	0x034A, 0x0D,
-	0x034B, 0xA7,
-	0x0220, 0x01,
-	0x0221, 0x11,
-	0x0222, 0x01,
-	0x0900, 0x00,
-	0x0901, 0x11,
-	0x0902, 0x0A,
-	0x3F4C, 0x01,
-	0x3F4D, 0x01,
-	0x4254, 0x7F,
-	0x0401, 0x00,
-	0x0404, 0x00,
-	0x0405, 0x10,
-	0x0408, 0x00,
-	0x0409, 0x00,
-	0x040A, 0x00,
-	0x040B, 0x00,
-	0x040C, 0x12,
-	0x040D, 0x30,
-	0x040E, 0x0D,
-	0x040F, 0xA8,
-	0x034C, 0x12,
-	0x034D, 0x30,
-	0x034E, 0x0D,
-	0x034F, 0xA8,
-	0x38A3, 0x02,
-	0x38B4, 0x05,
-	0x38B5, 0xBB,
-	0x38B6, 0x04,
-	0x38B7, 0x2A,
-	0x38B8, 0x0C,
-	0x38B9, 0x75,
-	0x38BA, 0x09,
-	0x38BB, 0x7D,
-	0x38AC, 0x01,
-	0x38AD, 0x00,
-	0x38AE, 0x00,
-	0x38AF, 0x00,
-	0x38B0, 0x00,
-	0x38B1, 0x00,
-	0x38B2, 0x00,
-	0x38B3, 0x00,
-	0x0301, 0x06,
-	0x0303, 0x04,
-	0x0305, 0x04,
-	0x0306, 0x01,
-	0x0307, 0x16,
-	0x0309, 0x0A,
-	0x030B, 0x02,
-	0x030D, 0x04,
-	0x030E, 0x00,
-	0x030F, 0xD6,
-	0x0310, 0x01,
-	0x0820, 0x07,
-	0x0821, 0x86,
-	0x0822, 0x00,
-	0x0823, 0x00,
-	0x3E20, 0x01,
-	0x3E37, 0x01,
-	0x3E3B, 0x00,
-	0x0106, 0x00,
-	0x0B00, 0x00,
-	0x3230, 0x00,
-	0x3F14, 0x00,
-	0x3F3C, 0x03,
-	0x3F0D, 0x0A,
-	0x3FBC, 0x00,
-	0x3C06, 0x00,
-	0x3C07, 0x80,
-	0x3C0A, 0x00,
-	0x3C0B, 0x00,
-	0x3F78, 0x01,
-	0x3F79, 0x54,
-	0x3F7C, 0x00,
-	0x3F7D, 0x00,
-	0x0202, 0x03,
-	0x0203, 0xE8,
-	0x0224, 0x03,
-	0x0225, 0xE8,
-	0x0204, 0x00,
-	0x0205, 0x00,
-	0x0216, 0x00,
-	0x0217, 0x00,
-	0x020E, 0x01,
-	0x020F, 0x00,
-	0x0218, 0x01,
-	0x0219, 0x00,
-	0x3614, 0x00,
-	0x3616, 0x0D,
-	0x3617, 0x56,
-	0xB612, 0x20,
-	0xB613, 0x20,
-	0xB614, 0x20,
-	0xB615, 0x20,
-	0xB616, 0x0A,
-	0xB617, 0x0A,
-	0xB618, 0x20,
-	0xB619, 0x20,
-	0xB61A, 0x20,
-	0xB61B, 0x20,
-	0xB61C, 0x0A,
-	0xB61D, 0x0A,
-	0xB666, 0x30,
-	0xB667, 0x30,
-	0xB668, 0x30,
-	0xB669, 0x30,
-	0xB66A, 0x14,
-	0xB66B, 0x14,
-	0xB66C, 0x20,
-	0xB66D, 0x20,
-	0xB66E, 0x20,
-	0xB66F, 0x20,
-	0xB670, 0x10,
-	0xB671, 0x10,
-	0x3900, 0x00,
-	0x3901, 0x00,
-	0x3237, 0x00,
-	0x30AC, 0x00,
-};
-
-static kal_uint16 imx519_custom2_setting[] = {
-	0x0111, 0x03,
-	0x0112, 0x0A,
-	0x0113, 0x0A,
-	0x0114, 0x02,
-	0x0342, 0x20,
-	0x0343, 0x80,
-	0x0340, 0x09,
-	0x0341, 0xF0,
-	0x0344, 0x00,
-	0x0345, 0x00,
-	0x0346, 0x02,
-	0x0347, 0x00,
-	0x0348, 0x12,
-	0x0349, 0x2F,
-	0x034A, 0x0B,
-	0x034B, 0x97,
-	0x0220, 0x01,
-	0x0221, 0x11,
-	0x0222, 0x01,
-	0x0900, 0x00,
-	0x0901, 0x11,
-	0x0902, 0x0A,
-	0x3F4C, 0x01,
-	0x3F4D, 0x01,
-	0x4254, 0x7F,
-	0x0401, 0x00,
-	0x0404, 0x00,
-	0x0405, 0x10,
-	0x0408, 0x02,
-	0x0409, 0xB8,
-	0x040A, 0x00,
-	0x040B, 0x04,
-	0x040C, 0x0C,
-	0x040D, 0xC0,
-	0x040E, 0x09,
-	0x040F, 0x90,
-	0x034C, 0x0C,
-	0x034D, 0xC0,
-	0x034E, 0x09,
-	0x034F, 0x90,
-	0x38A3, 0x02,
-	0x38B4, 0x05,
-	0x38B5, 0xBB,
-	0x38B6, 0x04,
-	0x38B7, 0x2A,
-	0x38B8, 0x0C,
-	0x38B9, 0x75,
-	0x38BA, 0x09,
-	0x38BB, 0x7D,
-	0x38AC, 0x01,
-	0x38AD, 0x00,
-	0x38AE, 0x00,
-	0x38AF, 0x00,
-	0x38B0, 0x00,
-	0x38B1, 0x00,
-	0x38B2, 0x00,
-	0x38B3, 0x00,
-	0x0301, 0x06,
-	0x0303, 0x04,
-	0x0305, 0x04,
-	0x0306, 0x00,
-	0x0307, 0xFE,
-	0x0309, 0x0A,
-	0x030B, 0x04,
-	0x030D, 0x04,
-	0x030E, 0x00,
-	0x030F, 0xD7,
-	0x0310, 0x01,
-	0x0820, 0x03,
-	0x0821, 0xC7,
-	0x0822, 0x80,
-	0x0823, 0x00,
-	0x3E20, 0x01,
-	0x3E37, 0x01,
-	0x3E3B, 0x00,
-	0x0106, 0x00,
-	0x0B00, 0x00,
-	0x3230, 0x00,
-	0x3F14, 0x00,
-	0x3F3C, 0x03,
-	0x3F0D, 0x0A,
-	0x3FBC, 0x00,
-	0x3C06, 0x01,
-	0x3C07, 0xA1,
-	0x3C0A, 0x00,
-	0x3C0B, 0x00,
-	0x3F78, 0x00,
-	0x3F79, 0x00,
-	0x3F7C, 0x00,
-	0x3F7D, 0x00,
-	0x0202, 0x03,
-	0x0203, 0xE8,
-	0x0224, 0x03,
-	0x0225, 0xE8,
-	0x0204, 0x00,
-	0x0205, 0x00,
-	0x0216, 0x00,
-	0x0217, 0x00,
-	0x020E, 0x01,
-	0x020F, 0x00,
-	0x0218, 0x01,
-	0x0219, 0x00,
-	0x3614, 0x00,
-	0x3616, 0x0D,
-	0x3617, 0x56,
-	0xB612, 0x20,
-	0xB613, 0x20,
-	0xB614, 0x20,
-	0xB615, 0x20,
-	0xB616, 0x0A,
-	0xB617, 0x0A,
-	0xB618, 0x20,
-	0xB619, 0x20,
-	0xB61A, 0x20,
-	0xB61B, 0x20,
-	0xB61C, 0x0A,
-	0xB61D, 0x0A,
-	0xB666, 0x30,
-	0xB667, 0x30,
-	0xB668, 0x30,
-	0xB669, 0x30,
-	0xB66A, 0x14,
-	0xB66B, 0x14,
-	0xB66C, 0x20,
-	0xB66D, 0x20,
-	0xB66E, 0x20,
-	0xB66F, 0x20,
-	0xB670, 0x10,
-	0xB671, 0x10,
-	0x3900, 0x01,
-	0x3901, 0x01,
-	0x3237, 0x00,
-	0x30AC, 0x00,
-};
-#endif
+/*
+ * static kal_uint16 imx519_custom1_setting[] = {
+ *	0x0111, 0x03,
+ *	0x0112, 0x0A,
+ *	0x0113, 0x0A,
+ *	0x0114, 0x02,
+ *	0x0342, 0x19,
+ *	0x0343, 0x00,
+ *	0x0340, 0x0E,
+ *	0x0341, 0x23,
+ *	0x0344, 0x00,
+ *	0x0345, 0x00,
+ *	0x0346, 0x00,
+ *	0x0347, 0x00,
+ *	0x0348, 0x12,
+ *	0x0349, 0x2F,
+ *	0x034A, 0x0D,
+ *	0x034B, 0xA7,
+ *	0x0220, 0x01,
+ *	0x0221, 0x11,
+ *	0x0222, 0x01,
+ *	0x0900, 0x00,
+ *	0x0901, 0x11,
+ *	0x0902, 0x0A,
+ *	0x3F4C, 0x01,
+ *	0x3F4D, 0x01,
+ *	0x4254, 0x7F,
+ *	0x0401, 0x00,
+ *	0x0404, 0x00,
+ *	0x0405, 0x10,
+ *	0x0408, 0x00,
+ *	0x0409, 0x00,
+ *	0x040A, 0x00,
+ *	0x040B, 0x00,
+ *	0x040C, 0x12,
+ *	0x040D, 0x30,
+ *	0x040E, 0x0D,
+ *	0x040F, 0xA8,
+ *	0x034C, 0x12,
+ *	0x034D, 0x30,
+ *	0x034E, 0x0D,
+ *	0x034F, 0xA8,
+ *	0x38A3, 0x02,
+ *	0x38B4, 0x05,
+ *	0x38B5, 0xBB,
+ *	0x38B6, 0x04,
+ *	0x38B7, 0x2A,
+ *	0x38B8, 0x0C,
+ *	0x38B9, 0x75,
+ *	0x38BA, 0x09,
+ *	0x38BB, 0x7D,
+ *	0x38AC, 0x01,
+ *	0x38AD, 0x00,
+ *	0x38AE, 0x00,
+ *	0x38AF, 0x00,
+ *	0x38B0, 0x00,
+ *	0x38B1, 0x00,
+ *	0x38B2, 0x00,
+ *	0x38B3, 0x00,
+ *	0x0301, 0x06,
+ *	0x0303, 0x04,
+ *	0x0305, 0x04,
+ *	0x0306, 0x01,
+ *	0x0307, 0x16,
+ *	0x0309, 0x0A,
+ *	0x030B, 0x02,
+ *	0x030D, 0x04,
+ *	0x030E, 0x00,
+ *	0x030F, 0xD6,
+ *	0x0310, 0x01,
+ *	0x0820, 0x07,
+ *	0x0821, 0x86,
+ *	0x0822, 0x00,
+ *	0x0823, 0x00,
+ *	0x3E20, 0x01,
+ *	0x3E37, 0x01,
+ *	0x3E3B, 0x00,
+ *	0x0106, 0x00,
+ *	0x0B00, 0x00,
+ *	0x3230, 0x00,
+ *	0x3F14, 0x00,
+ *	0x3F3C, 0x03,
+ *	0x3F0D, 0x0A,
+ *	0x3FBC, 0x00,
+ *	0x3C06, 0x00,
+ *	0x3C07, 0x80,
+ *	0x3C0A, 0x00,
+ *	0x3C0B, 0x00,
+ *	0x3F78, 0x01,
+ *	0x3F79, 0x54,
+ *	0x3F7C, 0x00,
+ *	0x3F7D, 0x00,
+ *	0x0202, 0x03,
+ *	0x0203, 0xE8,
+ *	0x0224, 0x03,
+ *	0x0225, 0xE8,
+ *	0x0204, 0x00,
+ *	0x0205, 0x00,
+ *	0x0216, 0x00,
+ *	0x0217, 0x00,
+ *	0x020E, 0x01,
+ *	0x020F, 0x00,
+ *	0x0218, 0x01,
+ *	0x0219, 0x00,
+ *	0x3614, 0x00,
+ *	0x3616, 0x0D,
+ *	0x3617, 0x56,
+ *	0xB612, 0x20,
+ *	0xB613, 0x20,
+ *	0xB614, 0x20,
+ *	0xB615, 0x20,
+ *	0xB616, 0x0A,
+ *	0xB617, 0x0A,
+ *	0xB618, 0x20,
+ *	0xB619, 0x20,
+ *	0xB61A, 0x20,
+ *	0xB61B, 0x20,
+ *	0xB61C, 0x0A,
+ *	0xB61D, 0x0A,
+ *	0xB666, 0x30,
+ *	0xB667, 0x30,
+ *	0xB668, 0x30,
+ *	0xB669, 0x30,
+ *	0xB66A, 0x14,
+ *	0xB66B, 0x14,
+ *	0xB66C, 0x20,
+ *	0xB66D, 0x20,
+ *	0xB66E, 0x20,
+ *	0xB66F, 0x20,
+ *	0xB670, 0x10,
+ *	0xB671, 0x10,
+ *	0x3900, 0x00,
+ *	0x3901, 0x00,
+ *	0x3237, 0x00,
+ *	0x30AC, 0x00,
+ * };
+ *
+ * static kal_uint16 imx519_custom2_setting[] = {
+ *	0x0111, 0x03,
+ *	0x0112, 0x0A,
+ *	0x0113, 0x0A,
+ *	0x0114, 0x02,
+ *	0x0342, 0x20,
+ *	0x0343, 0x80,
+ *	0x0340, 0x09,
+ *	0x0341, 0xF0,
+ *	0x0344, 0x00,
+ *	0x0345, 0x00,
+ *	0x0346, 0x02,
+ *	0x0347, 0x00,
+ *	0x0348, 0x12,
+ *	0x0349, 0x2F,
+ *	0x034A, 0x0B,
+ *	0x034B, 0x97,
+ *	0x0220, 0x01,
+ *	0x0221, 0x11,
+ *	0x0222, 0x01,
+ *	0x0900, 0x00,
+ *	0x0901, 0x11,
+ *	0x0902, 0x0A,
+ *	0x3F4C, 0x01,
+ *	0x3F4D, 0x01,
+ *	0x4254, 0x7F,
+ *	0x0401, 0x00,
+ *	0x0404, 0x00,
+ *	0x0405, 0x10,
+ *	0x0408, 0x02,
+ *	0x0409, 0xB8,
+ *	0x040A, 0x00,
+ *	0x040B, 0x04,
+ *	0x040C, 0x0C,
+ *	0x040D, 0xC0,
+ *	0x040E, 0x09,
+ *	0x040F, 0x90,
+ *	0x034C, 0x0C,
+ *	0x034D, 0xC0,
+ *	0x034E, 0x09,
+ *	0x034F, 0x90,
+ *	0x38A3, 0x02,
+ *	0x38B4, 0x05,
+ *	0x38B5, 0xBB,
+ *	0x38B6, 0x04,
+ *	0x38B7, 0x2A,
+ *	0x38B8, 0x0C,
+ *	0x38B9, 0x75,
+ *	0x38BA, 0x09,
+ *	0x38BB, 0x7D,
+ *	0x38AC, 0x01,
+ *	0x38AD, 0x00,
+ *	0x38AE, 0x00,
+ *	0x38AF, 0x00,
+ *	0x38B0, 0x00,
+ *	0x38B1, 0x00,
+ *	0x38B2, 0x00,
+ *	0x38B3, 0x00,
+ *	0x0301, 0x06,
+ *	0x0303, 0x04,
+ *	0x0305, 0x04,
+ *	0x0306, 0x00,
+ *	0x0307, 0xFE,
+ *	0x0309, 0x0A,
+ *	0x030B, 0x04,
+ *	0x030D, 0x04,
+ *	0x030E, 0x00,
+ *	0x030F, 0xD7,
+ *	0x0310, 0x01,
+ *	0x0820, 0x03,
+ *	0x0821, 0xC7,
+ *	0x0822, 0x80,
+ *	0x0823, 0x00,
+ *	0x3E20, 0x01,
+ *	0x3E37, 0x01,
+ *	0x3E3B, 0x00,
+ *	0x0106, 0x00,
+ *	0x0B00, 0x00,
+ *	0x3230, 0x00,
+ *	0x3F14, 0x00,
+ *	0x3F3C, 0x03,
+ *	0x3F0D, 0x0A,
+ *	0x3FBC, 0x00,
+ *	0x3C06, 0x01,
+ *	0x3C07, 0xA1,
+ *	0x3C0A, 0x00,
+ *	0x3C0B, 0x00,
+ *	0x3F78, 0x00,
+ *	0x3F79, 0x00,
+ *	0x3F7C, 0x00,
+ *	0x3F7D, 0x00,
+ *	0x0202, 0x03,
+ *	0x0203, 0xE8,
+ *	0x0224, 0x03,
+ *	0x0225, 0xE8,
+ *	0x0204, 0x00,
+ *	0x0205, 0x00,
+ *	0x0216, 0x00,
+ *	0x0217, 0x00,
+ *	0x020E, 0x01,
+ *	0x020F, 0x00,
+ *	0x0218, 0x01,
+ *	0x0219, 0x00,
+ *	0x3614, 0x00,
+ *	0x3616, 0x0D,
+ *	0x3617, 0x56,
+ *	0xB612, 0x20,
+ *	0xB613, 0x20,
+ *	0xB614, 0x20,
+ *	0xB615, 0x20,
+ *	0xB616, 0x0A,
+ *	0xB617, 0x0A,
+ *	0xB618, 0x20,
+ *	0xB619, 0x20,
+ *	0xB61A, 0x20,
+ *	0xB61B, 0x20,
+ *	0xB61C, 0x0A,
+ *	0xB61D, 0x0A,
+ *	0xB666, 0x30,
+ *	0xB667, 0x30,
+ *	0xB668, 0x30,
+ *	0xB669, 0x30,
+ *	0xB66A, 0x14,
+ *	0xB66B, 0x14,
+ *	0xB66C, 0x20,
+ *	0xB66D, 0x20,
+ *	0xB66E, 0x20,
+ *	0xB66F, 0x20,
+ *	0xB670, 0x10,
+ *	0xB671, 0x10,
+ *	0x3900, 0x01,
+ *	0x3901, 0x01,
+ *	0x3237, 0x00,
+ *	0x30AC, 0x00,
+ * };
+ */
 #endif
 
 #if IMX519_CAP_2TRIO
@@ -2853,8 +2852,8 @@ static kal_uint32 get_imgsensor_id(UINT32 *sensor_id)
 			*sensor_id = ((read_cmos_sensor_8(0x0016) << 8)
 					| read_cmos_sensor_8(0x0017));
 			if (*sensor_id == imgsensor_info.sensor_id) {
-				LOG_INF("i2c write id: 0x%x, sensor id: 0x%x\n",
-					imgsensor.i2c_write_id, *sensor_id);
+				pr_info("[%s] i2c write id: 0x%x, sensor id: 0x%x\n",
+					__func__, imgsensor.i2c_write_id, *sensor_id);
 				return ERROR_NONE;
 			}
 
@@ -3036,37 +3035,39 @@ static kal_uint32 capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 	LOG_INF("E\n");
 	spin_lock(&imgsensor_drv_lock);
 	imgsensor.sensor_mode = IMGSENSOR_MODE_CAPTURE;
-#if 0
-	if (imgsensor.current_fps == imgsensor_info.cap1.max_framerate) {
-	/* PIP capture: 24fps for less than 13M, 20fps for 16M,15fps for 20M */
-		imgsensor.pclk = imgsensor_info.cap1.pclk;
-		imgsensor.line_length = imgsensor_info.cap1.linelength;
-		imgsensor.frame_length = imgsensor_info.cap1.framelength;
-		imgsensor.min_frame_length = imgsensor_info.cap1.framelength;
-		imgsensor.autoflicker_en = KAL_FALSE;
-	} else if (imgsensor.current_fps == imgsensor_info.cap2.max_framerate) {
-		if (imgsensor.current_fps != imgsensor_info.cap.max_framerate)
-			LOG_INF(
-			"Warning: current_fps %d fps is not support, so use cap1's setting: %d fps!\n",
-		imgsensor.current_fps, imgsensor_info.cap1.max_framerate/10);
-		imgsensor.pclk = imgsensor_info.cap2.pclk;
-		imgsensor.line_length = imgsensor_info.cap2.linelength;
-		imgsensor.frame_length = imgsensor_info.cap2.framelength;
-		imgsensor.min_frame_length = imgsensor_info.cap2.framelength;
-		imgsensor.autoflicker_en = KAL_FALSE;
-	} else {
-		if (imgsensor.current_fps != imgsensor_info.cap.max_framerate)
-			LOG_INF(
-			"Warning: current_fps %d fps is not support, so use cap's setting: %d fps!\n",
-			imgsensor.current_fps,
-			imgsensor_info.cap.max_framerate / 10);
-		imgsensor.pclk = imgsensor_info.cap.pclk;
-		imgsensor.line_length = imgsensor_info.cap.linelength;
-		imgsensor.frame_length = imgsensor_info.cap.framelength;
-		imgsensor.min_frame_length = imgsensor_info.cap.framelength;
-		imgsensor.autoflicker_en = KAL_FALSE;
-	}
-#else
+// #if 0
+	/*
+	 * if (imgsensor.current_fps == imgsensor_info.cap1.max_framerate) {
+	 * // PIP capture: 24fps for less than 13M, 20fps for 16M,15fps for 20M
+	 *	imgsensor.pclk = imgsensor_info.cap1.pclk;
+	 *	imgsensor.line_length = imgsensor_info.cap1.linelength;
+	 *	imgsensor.frame_length = imgsensor_info.cap1.framelength;
+	 *	imgsensor.min_frame_length = imgsensor_info.cap1.framelength;
+	 *	imgsensor.autoflicker_en = KAL_FALSE;
+	 * } else if (imgsensor.current_fps == imgsensor_info.cap2.max_framerate) {
+	 *	if (imgsensor.current_fps != imgsensor_info.cap.max_framerate)
+	 *		LOG_INF(
+	 *	"Warning: current_fps %d fps is not support, so use cap1's setting: %d fps!\n",
+	 *	imgsensor.current_fps, imgsensor_info.cap1.max_framerate/10);
+	 *	imgsensor.pclk = imgsensor_info.cap2.pclk;
+	 *	imgsensor.line_length = imgsensor_info.cap2.linelength;
+	 *	imgsensor.frame_length = imgsensor_info.cap2.framelength;
+	 *	imgsensor.min_frame_length = imgsensor_info.cap2.framelength;
+	 *	imgsensor.autoflicker_en = KAL_FALSE;
+	 * } else {
+	 *	if (imgsensor.current_fps != imgsensor_info.cap.max_framerate)
+	 *		LOG_INF(
+	 *	"Warning: current_fps %d fps is not support, so use cap's setting: %d fps!\n",
+	 *	imgsensor.current_fps,
+	 *	imgsensor_info.cap.max_framerate / 10);
+	 *	imgsensor.pclk = imgsensor_info.cap.pclk;
+	 *	imgsensor.line_length = imgsensor_info.cap.linelength;
+	 *	imgsensor.frame_length = imgsensor_info.cap.framelength;
+	 *	imgsensor.min_frame_length = imgsensor_info.cap.framelength;
+	 *	imgsensor.autoflicker_en = KAL_FALSE;
+	 * }
+	 */
+// #else
 	if (imgsensor.current_fps != imgsensor_info.cap.max_framerate)
 		LOG_INF(
 			"Warning: current_fps %d fps is not support, so use cap's setting: %d fps!\n",
@@ -3077,7 +3078,7 @@ static kal_uint32 capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 	imgsensor.frame_length = imgsensor_info.cap.framelength;
 	imgsensor.min_frame_length = imgsensor_info.cap.framelength;
 	imgsensor.autoflicker_en = KAL_FALSE;
-#endif
+// #endif
 
 	spin_unlock(&imgsensor_drv_lock);
 
@@ -3760,7 +3761,6 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	/* unsigned long long *feature_return_para
 	 *  = (unsigned long long *) feature_para;
 	 */
-	struct SET_PD_BLOCK_INFO_T *PDAFinfo;
 	struct SENSOR_WINSIZE_INFO_STRUCT *wininfo;
 	struct SENSOR_VC_INFO_STRUCT *pvcinfo;
 	/* SET_SENSOR_AWB_GAIN *pSetSensorAWB
@@ -3921,11 +3921,11 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 		break;
 	case SENSOR_FEATURE_GET_PDAF_DATA:
 		LOG_INF("SENSOR_FEATURE_GET_PDAF_DATA\n");
-		#if 0
-		read_3P8_eeprom((kal_uint16)(*feature_data),
-				(char *)(uintptr_t)(*(feature_data+1)),
-				(kal_uint32)(*(feature_data+2)));
-		#endif
+		// #if 0
+		// read_3P8_eeprom((kal_uint16)(*feature_data),
+				// (char *)(uintptr_t)(*(feature_data+1)),
+				// (kal_uint32)(*(feature_data+2)));
+		// #endif
 		break;
 	case SENSOR_FEATURE_SET_TEST_PATTERN:
 		set_test_pattern_mode((UINT32)*feature_data,
@@ -4001,23 +4001,21 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	case SENSOR_FEATURE_GET_PDAF_INFO:
 		LOG_INF("SENSOR_FEATURE_GET_PDAF_INFO scenarioId:%d\n",
 			(UINT16) *feature_data);
-		PDAFinfo =
-		  (struct SET_PD_BLOCK_INFO_T *)(uintptr_t)(*(feature_data+1));
 		switch (*feature_data) {
 		case MSDK_SCENARIO_ID_CAMERA_CAPTURE_JPEG:
 		case MSDK_SCENARIO_ID_CAMERA_PREVIEW:
-			#if 0
-			memcpy((void *)PDAFinfo,
-				(void *)&imgsensor_pd_info,
-				sizeof(struct SET_PD_BLOCK_INFO_T));
-			#endif
+			// #if 0
+			// memcpy((void *)PDAFinfo,
+				// (void *)&imgsensor_pd_info,
+				// sizeof(struct SET_PD_BLOCK_INFO_T));
+			// #endif
 			break;
 		case MSDK_SCENARIO_ID_VIDEO_PREVIEW:
-			#if 0
-			memcpy((void *)PDAFinfo,
-				(void *)&imgsensor_pd_info_16_9,
-				sizeof(struct SET_PD_BLOCK_INFO_T));
-			#endif
+			// #if 0
+			// memcpy((void *)PDAFinfo,
+				// (void *)&imgsensor_pd_info_16_9,
+				// sizeof(struct SET_PD_BLOCK_INFO_T));
+			// #endif
 			break;
 		case MSDK_SCENARIO_ID_HIGH_SPEED_VIDEO:
 		case MSDK_SCENARIO_ID_SLIM_VIDEO:
@@ -4102,10 +4100,10 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	case SENSOR_FEATURE_SET_HDR_SHUTTER:
 		LOG_INF("SENSOR_FEATURE_SET_HDR_SHUTTER LE=%d, SE=%d\n",
 			(UINT16)*feature_data, (UINT16)*(feature_data+1));
-		#if 0
-		ihdr_write_shutter((UINT16)*feature_data,
-				   (UINT16)*(feature_data+1));
-		#endif
+		// #if 0
+		// ihdr_write_shutter((UINT16)*feature_data,
+				//    (UINT16)*(feature_data+1));
+		// #endif
 		break;
 	case SENSOR_FEATURE_SET_STREAMING_SUSPEND:
 		LOG_INF("SENSOR_FEATURE_SET_STREAMING_SUSPEND\n");
@@ -4192,12 +4190,13 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 				sizeof(struct SENSOR_VC_INFO_STRUCT));
 			break;
 		default:
-			#if 0
-			memcpy((void *)pvcinfo, (void *)&SENSOR_VC_INFO[0],
-				sizeof(struct SENSOR_VC_INFO_STRUCT));
-			#endif
+			// #if 0
+			// memcpy((void *)pvcinfo, (void *)&SENSOR_VC_INFO[0],
+				// sizeof(struct SENSOR_VC_INFO_STRUCT));
+			// #endif
 			break;
 		}
+		break;
 	default:
 		break;
 	}

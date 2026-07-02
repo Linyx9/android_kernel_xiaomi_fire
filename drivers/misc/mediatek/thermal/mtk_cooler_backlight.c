@@ -14,6 +14,7 @@
 #include <linux/printk.h>
 #include <linux/types.h>
 #include <linux/kobject.h>
+#include <linux/leds-mtk.h>
 
 #include "mt-plat/mtk_thermal_monitor.h"
 
@@ -26,7 +27,6 @@ static struct thermal_cooling_device
 *cl_backlight_dev[BACKLIGHT_COOLER_NR] = { 0 };
 
 static unsigned int g_cl_backlight_state[BACKLIGHT_COOLER_NR] = { 0 };
-extern int mt_leds_max_brightness_set(char *name, int percent, bool enable);
 
 /* static unsigned int g_cl_backlight_last_state[BACKLIGHT_COOLER_NR] = {0}; */
 static unsigned int g_cl_id[BACKLIGHT_COOLER_NR];
@@ -43,77 +43,22 @@ static void mtk_cl_backlight_set_max_brightness_limit(void)
 		switch (g_backlight_level) {
 		case 0:
 			/* 100% */
-			#if defined(CONFIG_MTK_LEDS) && \
-				(defined(CONFIG_LEDS_MTK_DISP) || \
-				defined(CONFIG_LEDS_MTK_PWM) || \
-				defined(CONFIG_LEDS_MTK_I2C))
-			mt_leds_max_brightness_set("lcd-backlight", 100, 0);
-			#elif defined(CONFIG_LEDS_MTK_DISP) || \
-				  defined(CONFIG_LEDS_MTK_PWM) || \
-				  defined(CONFIG_LEDS_MTK_I2C)
-			setMaxBrightness("lcd-backlight", 100, 0);
-			#else
-			setMaxbrightness(2047, 0); //255
-			#endif
+			setMaxBrightness(-1, 100, 0);
 			break;
 		case 1:
 			/* 70% */
-			#if defined(CONFIG_MTK_LEDS) && \
-				(defined(CONFIG_LEDS_MTK_DISP) || \
-				defined(CONFIG_LEDS_MTK_PWM) || \
-				defined(CONFIG_LEDS_MTK_I2C))
-			mt_leds_max_brightness_set("lcd-backlight", 70, 0);
-			#elif defined(CONFIG_LEDS_MTK_DISP) || \
-				  defined(CONFIG_LEDS_MTK_PWM) || \
-				  defined(CONFIG_LEDS_MTK_I2C)
-			setMaxBrightness("lcd-backlight", 70, 0);
-			#else
-			setMaxbrightness(1432, 1); //178
-			#endif
+			setMaxBrightness(-1, 95, 0);
 			break;
 		case 2:
 			/* 40% */
-			#if defined(CONFIG_MTK_LEDS) && \
-				(defined(CONFIG_LEDS_MTK_DISP) || \
-				defined(CONFIG_LEDS_MTK_PWM) || \
-				defined(CONFIG_LEDS_MTK_I2C))
-			mt_leds_max_brightness_set("lcd-backlight", 40, 1);
-			#elif defined(CONFIG_LEDS_MTK_DISP) || \
-				  defined(CONFIG_LEDS_MTK_PWM) || \
-				  defined(CONFIG_LEDS_MTK_I2C)
-			setMaxBrightness("lcd-backlight", 40, 1);
-			#else
-			setMaxbrightness(818, 1); //102
-			#endif
+			setMaxBrightness(-1, 90, 1);
 			break;
 		case 3:
 			/* 10% */
-			#if defined(CONFIG_MTK_LEDS) && \
-				(defined(CONFIG_LEDS_MTK_DISP) || \
-				defined(CONFIG_LEDS_MTK_PWM) || \
-				defined(CONFIG_LEDS_MTK_I2C))
-			mt_leds_max_brightness_set("lcd-backlight", 10, 1);
-			#elif defined(CONFIG_LEDS_MTK_DISP) || \
-				  defined(CONFIG_LEDS_MTK_PWM) || \
-				  defined(CONFIG_LEDS_MTK_I2C)
-			setMaxBrightness("lcd-backlight", 10, 1);
-			#else
-			setMaxbrightness(204, 1); //25
-			#endif
+			setMaxBrightness(-1, 80, 1);
 			break;
 		default:
-			#if defined(CONFIG_MTK_LEDS) && \
-				(defined(CONFIG_LEDS_MTK_DISP) || \
-				defined(CONFIG_LEDS_MTK_PWM) || \
-				defined(CONFIG_LEDS_MTK_I2C))
-			mt_leds_max_brightness_set("lcd-backlight", 100, 0);
-			#elif defined(CONFIG_LEDS_MTK_DISP) || \
-				  defined(CONFIG_LEDS_MTK_PWM) || \
-				  defined(CONFIG_LEDS_MTK_I2C)
-			setMaxBrightness("lcd-backlight", 100, 0);
-			#else
-			setMaxbrightness(2047, 0); //255
-			#endif
+			setMaxBrightness(-1, 100, 0);
 			break;
 		}
 	}
@@ -239,7 +184,7 @@ static void mtk_cooler_backlight_unregister_ltf(void)
 }
 
 
-static int __init mtk_cooler_backlight_init(void)
+int mtk_cooler_backlight_init(void)
 {
 	int err = 0;
 
@@ -256,11 +201,13 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtk_cooler_backlight_exit(void)
+void mtk_cooler_backlight_exit(void)
 {
 	mtk_cooler_backlight_dprintk("exit\n");
 
 	mtk_cooler_backlight_unregister_ltf();
 }
-module_init(mtk_cooler_backlight_init);
-module_exit(mtk_cooler_backlight_exit);
+// module_init(mtk_cooler_backlight_init);
+// module_exit(mtk_cooler_backlight_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

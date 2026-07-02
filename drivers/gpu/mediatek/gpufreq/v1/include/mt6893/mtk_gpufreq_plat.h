@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
  */
 
 #ifndef ___MT_GPUFREQ_PLAT_H___
@@ -10,14 +10,9 @@
 #include <linux/clk.h>
 
 #define MT_GPUFREQ_BRINGUP                      0
-#ifdef CONFIG_MTK_PBM
-#define MT_GPUFREQ_KICKER_PBM_READY             1
-#else
 #define MT_GPUFREQ_KICKER_PBM_READY             0
-#endif
-
 #define MT_GPUFREQ_STATIC_PWR_READY2USE         0
-#define MT_GPUFREQ_DYNAMIC_POWER_TABLE_UPDATE   1
+#define MT_GPUFREQ_DYNAMIC_POWER_TABLE_UPDATE   0
 
 #define GPUFERQ_TAG	"[GPU/DVFS] "
 #define gpufreq_pr_info(fmt, args...)	pr_info(GPUFERQ_TAG fmt, ##args)
@@ -154,8 +149,6 @@ extern unsigned int mt_gpufreq_get_min_power(void);
 extern unsigned int mt_gpufreq_get_thermal_limit_index(void);
 extern unsigned int mt_gpufreq_get_thermal_limit_freq(void);
 extern void mt_gpufreq_set_power_limit_by_pbm(unsigned int limited_power);
-extern int mt_gpufreq_get_opp_idx_by_freq(unsigned int freq);
-extern unsigned int mt_gpufreq_get_power_by_idx(int idx);
 extern unsigned int mt_gpufreq_get_leakage_mw(void);
 extern unsigned int mt_gpufreq_get_leakage_no_lock(void);
 extern int mt_gpufreq_get_cur_ceiling_idx(void);
@@ -168,6 +161,10 @@ extern u64 mt_gpufreq_get_shader_present(void);
 extern void mt_gpufreq_dump_infra_status(void);
 extern int mt_gpufreq_is_dfd_force_dump(void);
 extern void mt_gpufreq_software_trigger_dfd(void);
+extern int mt_gpufreq_get_opp_idx_by_freq(unsigned int freq);
+extern unsigned int mt_gpufreq_get_dyn_power(unsigned int freq_khz, unsigned int volt);
+extern unsigned int mt_gpufreq_get_min_power(void);
+extern unsigned int mt_gpufreq_get_power_by_idx(int idx);
 
 /**
  * power limit notification

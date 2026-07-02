@@ -11,9 +11,19 @@
 #include <sound/soc.h>
 #include <linux/list.h>
 #include <linux/regmap.h>
+#include <mt-plat/aee.h>
 #include "mt6781-reg.h"
 #include "../common/mtk-base-afe.h"
-#include "../common/mtk-sp-common.h"
+
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
+#define AUDIO_AEE(message) \
+	(aee_kernel_exception_api(__FILE__, \
+				  __LINE__, \
+				  DB_OPT_FTRACE, message, \
+				  "audio assert"))
+#else
+#define AUDIO_AEE(message) WARN_ON(true)
+#endif
 
 enum {
 	MT6781_MEMIF_DL1,
@@ -118,18 +128,6 @@ enum {
 	MT6781_IRQ_NUM,
 };
 
-enum {
-	MTKAIF_PROTOCOL_1 = 0,
-	MTKAIF_PROTOCOL_2,
-	MTKAIF_PROTOCOL_2_CLK_P2,
-};
-
-enum {
-	MTK_AFE_ADDA_DL_GAIN_MUTE = 0,
-	MTK_AFE_ADDA_DL_GAIN_NORMAL = 0xf74f,
-	/* SA suggest apply -0.3db to audio/speech path */
-};
-
 /* MCLK */
 enum {
 	MT6781_I2S0_MCK = 0,
@@ -140,18 +138,6 @@ enum {
 	MT6781_I2S4_BCK,
 	MT6781_I2S5_MCK,
 	MT6781_MCK_NUM,
-};
-
-/* SMC CALL Operations */
-enum mtk_audio_smc_call_op {
-	MTK_AUDIO_SMC_OP_INIT = 0,
-	MTK_AUDIO_SMC_OP_DRAM_REQUEST,
-	MTK_AUDIO_SMC_OP_DRAM_RELEASE,
-	MTK_AUDIO_SMC_OP_FM_REQUEST,
-	MTK_AUDIO_SMC_OP_FM_RELEASE,
-	MTK_AUDIO_SMC_OP_ADSP_REQUEST,
-	MTK_AUDIO_SMC_OP_ADSP_RELEASE,
-	MTK_AUDIO_SMC_OP_NUM
 };
 
 struct snd_pcm_substream;

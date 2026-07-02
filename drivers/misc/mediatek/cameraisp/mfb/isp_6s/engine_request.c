@@ -16,6 +16,7 @@
 /*
  * module control
  */
+#define TODO
 MODULE_DESCRIPTION("Stand Alone Engine Request");
 MODULE_AUTHOR("MM3SW5");
 MODULE_LICENSE("GPL");
@@ -58,7 +59,7 @@ MODULE_PARM_DESC(mfb_egn_debug, " activates debug info");
  */
 signed int mfb_init_ring_ctl(struct ring_ctrl *rctl)
 {
-	if (rctl == NULL)
+	if (!rctl)
 		return -1;
 
 	rctl->wcnt = 0;
@@ -72,7 +73,7 @@ signed int mfb_init_ring_ctl(struct ring_ctrl *rctl)
 
 signed int mfb_set_ring_size(struct ring_ctrl *rctl, unsigned int size)
 {
-	if (rctl == NULL)
+	if (!rctl)
 		return -1;
 
 	rctl->size = size;
@@ -82,7 +83,7 @@ signed int mfb_set_ring_size(struct ring_ctrl *rctl, unsigned int size)
 
 signed int mfb_init_frame(struct frame *frame)
 {
-	if (frame == NULL)
+	if (!frame)
 		return -1;
 
 	frame->state = FRAME_STATUS_EMPTY;
@@ -93,11 +94,11 @@ signed int mfb_init_frame(struct frame *frame)
 /*
  * single request init
  */
-signed int mfb_init_request(struct request *req)
+signed int mfb_init_request(struct request_mfb *req)
 {
 	int f;
 
-	if (req == NULL)
+	if (!req)
 		return -1;
 
 	req->state = REQUEST_STATE_EMPTY;
@@ -117,7 +118,7 @@ signed int mfb_init_request(struct request *req)
  */
 signed int mfb_set_frame_data(struct frame *f, void *engine)
 {
-	if (f == NULL) {
+	if (!f) {
 		LOG_ERR("NULL frame(%p)", (void *)f);
 		return -1;
 	}
@@ -138,7 +139,7 @@ signed int mfb_register_requests(struct engine_requests *eng, size_t size)
 	char *_data;
 	size_t len;
 
-	if (eng == NULL)
+	if (!eng)
 		return -1;
 
 	mfb_init_ring_ctl(&eng->req_ctl);
@@ -149,7 +150,7 @@ signed int mfb_register_requests(struct engine_requests *eng, size_t size)
 			MFB_MAX_REQUEST_SIZE_PER_ENGINE;
 	_data = vmalloc(len);
 
-	if (_data == NULL) {
+	if (!_data) {
 		LOG_ERR("[%s] vmalloc failed", __func__);
 		return -1;
 	}
@@ -179,12 +180,13 @@ signed int mfb_register_requests(struct engine_requests *eng, size_t size)
 
 	return 0;
 }
+EXPORT_SYMBOL(mfb_register_requests);
 
 signed int mfb_unregister_requests(struct engine_requests *eng)
 {
 	int f, r;
 
-	if (eng == NULL)
+	if (!eng)
 		return -1;
 
 	vfree(eng->reqs[0].frames[0].data);
@@ -204,18 +206,20 @@ signed int mfb_unregister_requests(struct engine_requests *eng)
 
 	return 0;
 }
+EXPORT_SYMBOL(mfb_unregister_requests);
 
 
 int mfb_set_engine_ops(struct engine_requests *eng,
 	const struct engine_ops *ops)
 {
-	if (eng == NULL || ops == NULL)
+	if (!eng || !ops)
 		return -1;
 
 	eng->ops = ops;
 
 	return 0;
 }
+EXPORT_SYMBOL(mfb_set_engine_ops);
 
 bool mfb_request_running(struct engine_requests *eng)
 {
@@ -233,6 +237,7 @@ bool mfb_request_running(struct engine_requests *eng)
 
 	return running;
 }
+EXPORT_SYMBOL(mfb_request_running);
 
 /*TODO: called in ENQUE_REQ */
 signed int mfb_enque_request(struct engine_requests *eng, unsigned int fcnt,
@@ -242,7 +247,7 @@ signed int mfb_enque_request(struct engine_requests *eng, unsigned int fcnt,
 	unsigned int f;
 	unsigned int enqnum = 0;
 
-	if (eng == NULL)
+	if (!eng)
 		return -1;
 
 	r = eng->req_ctl.wcnt;
@@ -254,7 +259,7 @@ signed int mfb_enque_request(struct engine_requests *eng, unsigned int fcnt,
 		goto ERROR;
 	}
 
-	if (eng->ops->req_enque_cb == NULL || req == NULL) {
+	if (!eng->ops->req_enque_cb || !req) {
 		LOG_ERR("NULL req_enque_cb or req");
 		goto ERROR;
 	}
@@ -297,6 +302,7 @@ signed int mfb_enque_request(struct engine_requests *eng, unsigned int fcnt,
 ERROR:
 	return -1;
 }
+EXPORT_SYMBOL(mfb_enque_request);
 
 /* ConfigWMFERequest / ConfigOCCRequest abstraction
  * TODO: locking should be here NOT camera_owe.c
@@ -310,7 +316,7 @@ signed int mfb_request_handler(struct engine_requests *eng, spinlock_t *lock)
 	unsigned long flags;
 	signed int ret = -1;
 
-	if (eng == NULL)
+	if (!eng)
 		return -1;
 
 	LOG_DBG("[%s]waits for completion(%d).\n", __func__,
@@ -461,6 +467,7 @@ signed int mfb_request_handler(struct engine_requests *eng, spinlock_t *lock)
 	return 1;
 
 }
+EXPORT_SYMBOL(mfb_request_handler);
 
 
 int mfb_update_request(struct engine_requests *eng, pid_t *pid)
@@ -468,7 +475,7 @@ int mfb_update_request(struct engine_requests *eng, pid_t *pid)
 	unsigned int i, f, n;
 	int req_jobs = -1;
 
-	if (eng == NULL)
+	if (!eng)
 		return -1;
 
 	/* TODO: request ring */
@@ -495,7 +502,7 @@ int mfb_update_request(struct engine_requests *eng, pid_t *pid)
 		LOG_INF("[%s]request %d of frame %d finished.\n",
 							__func__, i, f);
 		/*TODO: to obtain statistics */
-		if (eng->ops->req_feedback_cb == NULL) {
+		if (!eng->ops->req_feedback_cb) {
 			LOG_DBG("NULL req_feedback_cb");
 			goto NO_FEEDBACK;
 		}
@@ -529,6 +536,7 @@ NO_FEEDBACK:
 
 	return req_jobs;
 }
+EXPORT_SYMBOL(mfb_update_request);
 
 /*TODO: called in DEQUE_REQ */
 signed int mfb_deque_request(
@@ -537,7 +545,7 @@ signed int mfb_deque_request(
 	unsigned int r;
 	unsigned int f;
 
-	if (eng == NULL)
+	if (!eng)
 		return -1;
 
 	r = eng->req_ctl.rcnt;
@@ -548,17 +556,11 @@ signed int mfb_deque_request(
 		LOG_ERR("[%s]Request(%d) NOT finished", __func__, r);
 		goto ERROR;
 	}
-#if 0
-	for (f = 0; f < fcnt; f++)
-		if (eng->reqs[r].frames[f].state != FRAME_STATUS_FINISHED) {
-			LOG_ERR("Frame(%d) NOT finised", f);
-			goto ERROR;
-		}
-#else
+
 	*fcnt = eng->reqs[r].fctl.size;
 	LOG_DBG("[%s]deque request(%d) has %d frames", __func__, r, *fcnt);
-#endif
-	if (eng->ops->req_deque_cb == NULL || req == NULL) {
+
+	if (!eng->ops->req_deque_cb || !req) {
 		LOG_ERR("[%s]NULL req_deque_cb/req", __func__);
 		goto ERROR;
 	}
@@ -585,6 +587,7 @@ signed int mfb_deque_request(
 ERROR:
 	return -1;
 }
+EXPORT_SYMBOL(mfb_deque_request);
 
 signed int mfb_request_dump(struct engine_requests *eng)
 {
@@ -593,7 +596,7 @@ signed int mfb_request_dump(struct engine_requests *eng)
 
 	LOG_ERR("[%s] +\n", __func__);
 
-	if (eng == NULL) {
+	if (!eng) {
 		LOG_ERR("[%s]can't dump NULL engine", __func__);
 		return -1;
 	}
@@ -627,7 +630,9 @@ signed int mfb_request_dump(struct engine_requests *eng)
 
 	return 0;
 }
+EXPORT_SYMBOL(mfb_request_dump);
 
+#ifndef TODO
 static int __init egnreq_init(void)
 {
 	int ret = 0;
@@ -644,3 +649,4 @@ static void __exit egnreq_exit(void)
 
 module_init(egnreq_init);
 module_exit(egnreq_exit);
+#endif

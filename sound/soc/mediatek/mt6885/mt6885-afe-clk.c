@@ -10,7 +10,7 @@
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 #include <linux/arm-smccc.h> /* for Kernel Native SMC API */
-#include <mt-plat/mtk_secure_api.h> /* for SMC ID table */
+#include <linux/soc/mediatek/mtk_sip_svc.h> /* for SMC ID table */
 
 #include "mt6885-afe-common.h"
 #include "mt6885-afe-clk.h"
@@ -19,16 +19,12 @@ static DEFINE_MUTEX(mutex_request_dram);
 
 static const char *aud_clks[CLK_NUM] = {
 	[CLK_AFE] = "aud_afe_clk",
-	/*[CLK_DAC] = "aud_dac_clk",*/
-	/*[CLK_DAC_PREDIS] = "aud_dac_predis_clk",*/
-	/*[CLK_ADC] = "aud_adc_clk",*/
 	[CLK_TML] = "aud_tml_clk",
 	[CLK_APLL22M] = "aud_apll22m_clk",
 	[CLK_APLL24M] = "aud_apll24m_clk",
 	[CLK_APLL1_TUNER] = "aud_apll1_tuner_clk",
 	[CLK_APLL2_TUNER] = "aud_apll2_tuner_clk",
 	[CLK_NLE] = "aud_nle",
-	[CLK_SCP_SYS_AUD] = "scp_sys_audio",
 	[CLK_INFRA_SYS_AUDIO] = "aud_infra_clk",
 	[CLK_INFRA_AUDIO_26M] = "aud_infra_26m_clk",
 	[CLK_MUX_AUDIO] = "top_mux_audio",
@@ -59,7 +55,8 @@ static const char *aud_clks[CLK_NUM] = {
 	[CLK_TOP_APLL12_DIV3] = "top_apll12_div3",
 	[CLK_TOP_APLL12_DIV4] = "top_apll12_div4",
 	[CLK_TOP_APLL12_DIVB] = "top_apll12_divb",
-	[CLK_TOP_APLL12_DIV5] = "top_apll12_div5",
+	[CLK_TOP_APLL12_DIV5_LSB] = "top_apll12_div5_lsb",
+	[CLK_TOP_APLL12_DIV5_MSB] = "top_apll12_div5_msb",
 	[CLK_TOP_APLL12_DIV6] = "top_apll12_div6",
 	[CLK_TOP_APLL12_DIV7] = "top_apll12_div7",
 	[CLK_TOP_APLL12_DIV8] = "top_apll12_div8",
@@ -68,7 +65,7 @@ static const char *aud_clks[CLK_NUM] = {
 };
 
 int mt6885_set_audio_int_bus_parent(struct mtk_base_afe *afe,
-					   int clk_id)
+				    int clk_id)
 {
 	struct mt6885_afe_private *afe_priv = afe->platform_priv;
 	int ret;
@@ -77,8 +74,8 @@ int mt6885_set_audio_int_bus_parent(struct mtk_base_afe *afe,
 			     afe_priv->clk[clk_id]);
 	if (ret) {
 		dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
-		       __func__, aud_clks[CLK_MUX_AUDIOINTBUS],
-		       aud_clks[clk_id], ret);
+			__func__, aud_clks[CLK_MUX_AUDIOINTBUS],
+			aud_clks[clk_id], ret);
 	}
 
 	return ret;
@@ -100,8 +97,8 @@ static int apll1_mux_setting(struct mtk_base_afe *afe, bool enable)
 				     afe_priv->clk[CLK_TOP_APLL1_CK]);
 		if (ret) {
 			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
-			       __func__, aud_clks[CLK_TOP_MUX_AUD_1],
-			       aud_clks[CLK_TOP_APLL1_CK], ret);
+				__func__, aud_clks[CLK_TOP_MUX_AUD_1],
+				aud_clks[CLK_TOP_APLL1_CK], ret);
 			goto EXIT;
 		}
 
@@ -116,8 +113,8 @@ static int apll1_mux_setting(struct mtk_base_afe *afe, bool enable)
 				     afe_priv->clk[CLK_TOP_APLL1_D4]);
 		if (ret) {
 			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
-			       __func__, aud_clks[CLK_TOP_MUX_AUD_ENG1],
-			       aud_clks[CLK_TOP_APLL1_D4], ret);
+				__func__, aud_clks[CLK_TOP_MUX_AUD_ENG1],
+				aud_clks[CLK_TOP_APLL1_D4], ret);
 			goto EXIT;
 		}
 	} else {
@@ -125,8 +122,8 @@ static int apll1_mux_setting(struct mtk_base_afe *afe, bool enable)
 				     afe_priv->clk[CLK_CLK26M]);
 		if (ret) {
 			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
-			       __func__, aud_clks[CLK_TOP_MUX_AUD_ENG1],
-			       aud_clks[CLK_CLK26M], ret);
+				__func__, aud_clks[CLK_TOP_MUX_AUD_ENG1],
+				aud_clks[CLK_CLK26M], ret);
 			goto EXIT;
 		}
 		clk_disable_unprepare(afe_priv->clk[CLK_TOP_MUX_AUD_ENG1]);
@@ -135,8 +132,8 @@ static int apll1_mux_setting(struct mtk_base_afe *afe, bool enable)
 				     afe_priv->clk[CLK_CLK26M]);
 		if (ret) {
 			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
-			       __func__, aud_clks[CLK_TOP_MUX_AUD_1],
-			       aud_clks[CLK_CLK26M], ret);
+				__func__, aud_clks[CLK_TOP_MUX_AUD_1],
+				aud_clks[CLK_CLK26M], ret);
 			goto EXIT;
 		}
 		clk_disable_unprepare(afe_priv->clk[CLK_TOP_MUX_AUD_1]);
@@ -208,20 +205,12 @@ EXIT:
 	return 0;
 }
 
-
 int mt6885_afe_enable_clock(struct mtk_base_afe *afe)
 {
 	struct mt6885_afe_private *afe_priv = afe->platform_priv;
 	int ret = 0;
 
 	dev_info(afe->dev, "%s()\n", __func__);
-
-	ret = clk_prepare_enable(afe_priv->clk[CLK_SCP_SYS_AUD]);
-	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
-			__func__, aud_clks[CLK_SCP_SYS_AUD], ret);
-		goto CLK_SCP_SYS_AUD_ERR;
-	}
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_INFRA_SYS_AUDIO]);
 	if (ret) {
@@ -258,15 +247,14 @@ int mt6885_afe_enable_clock(struct mtk_base_afe *afe)
 			__func__, aud_clks[CLK_MUX_AUDIOINTBUS], ret);
 		goto CLK_MUX_AUDIO_INTBUS_ERR;
 	}
-	ret = mt6885_set_audio_int_bus_parent(afe,
-					      CLK_CLK26M);
+	ret = mt6885_set_audio_int_bus_parent(afe, CLK_CLK26M);
 
 	ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUDIO_H],
 			     afe_priv->clk[CLK_TOP_APLL2_CK]);
 	if (ret) {
 		dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
-		       __func__, aud_clks[CLK_TOP_MUX_AUDIO_H],
-		       aud_clks[CLK_TOP_APLL2_CK], ret);
+			__func__, aud_clks[CLK_TOP_MUX_AUDIO_H],
+			aud_clks[CLK_TOP_APLL2_CK], ret);
 		goto CLK_MUX_AUDIO_H_PARENT_ERR;
 	}
 
@@ -290,11 +278,8 @@ CLK_INFRA_AUDIO_26M_ERR:
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_AUDIO_26M]);
 CLK_INFRA_SYS_AUDIO_ERR:
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_SYS_AUDIO]);
-CLK_SCP_SYS_AUD_ERR:
-	clk_disable_unprepare(afe_priv->clk[CLK_SCP_SYS_AUD]);
 
 	return ret;
-
 }
 
 void mt6885_afe_disable_clock(struct mtk_base_afe *afe)
@@ -310,7 +295,6 @@ void mt6885_afe_disable_clock(struct mtk_base_afe *afe)
 	clk_disable_unprepare(afe_priv->clk[CLK_MUX_AUDIO]);
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_AUDIO_26M]);
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_SYS_AUDIO]);
-	clk_disable_unprepare(afe_priv->clk[CLK_SCP_SYS_AUD]);
 }
 
 int mt6885_afe_dram_request(struct device *dev)
@@ -505,6 +489,7 @@ struct mt6885_mck_div {
 	int div_mask_sft;
 	int div_mask;
 	int div_sft;
+	int div_msb_clk_id;
 	int div_msb_reg;
 	int div_msb_mask_sft;
 	int div_msb_mask;
@@ -515,6 +500,7 @@ struct mt6885_mck_div {
 	int div_inv_reg;
 	int div_inv_mask_sft;
 };
+
 
 static const struct mt6885_mck_div mck_div[MT6885_MCK_NUM] = {
 	[MT6885_I2S0_MCK] = {
@@ -606,13 +592,14 @@ static const struct mt6885_mck_div mck_div[MT6885_MCK_NUM] = {
 	},
 	[MT6885_I2S5_MCK] = {
 		.m_sel_id = CLK_TOP_I2S5_M_SEL,
-		.div_clk_id = CLK_TOP_APLL12_DIV5,
+		.div_clk_id = CLK_TOP_APLL12_DIV5_LSB,
 		.div_pdn_reg = CLK_AUDDIV_2,
 		.div_pdn_mask_sft = APLL12_DIV5_PDN_MASK_SFT,
 		.div_reg = CLK_AUDDIV_2,
 		.div_mask_sft = APLL12_CK_DIV5_LSB_MASK_SFT,
 		.div_mask = APLL12_CK_DIV5_LSB_MASK,
 		.div_sft = APLL12_CK_DIV5_LSB_SFT,
+		.div_msb_clk_id = CLK_TOP_APLL12_DIV5_MSB,
 		.div_msb_reg = CLK_AUDDIV_3,
 		.div_msb_mask_sft = APLL12_CK_DIV5_MSB_MASK_SFT,
 		.div_msb_mask = APLL12_CK_DIV5_MSB_MASK,
@@ -688,15 +675,11 @@ static const struct mt6885_mck_div mck_div[MT6885_MCK_NUM] = {
 int mt6885_mck_enable(struct mtk_base_afe *afe, int mck_id, int rate)
 {
 	struct mt6885_afe_private *afe_priv = afe->platform_priv;
-	int div_mask;
-	int msb_sft = 0;
 	int apll = mt6885_get_apll_by_rate(afe, rate);
-	int apll_rate = mt6885_get_apll_rate(afe, apll);
 	int apll_clk_id = apll == MT6885_APLL1 ?
 			  CLK_TOP_MUX_AUD_1 : CLK_TOP_MUX_AUD_2;
 	int m_sel_id = mck_div[mck_id].m_sel_id;
 	int div_clk_id = mck_div[mck_id].div_clk_id;
-	int div;
 	int ret;
 
 	/* select apll */
@@ -731,52 +714,28 @@ int mt6885_mck_enable(struct mtk_base_afe *afe, int mck_id, int rate)
 			rate, ret);
 		return ret;
 	}
-
-	/* below will be deprecated, i2s5 not full support by ccf now */
+	/* i2s5 not full support by ccf */
 	if (mck_id != MT6885_I2S5_MCK)
 		return 0;
 
-	afe_priv->mck_rate[mck_id] = rate;
-
-	div = apll_rate / rate - 1;
-
-	/* set ck div */
-	div_mask = mck_div[mck_id].div_mask;
-
-	if (mck_div[mck_id].div_msb_mask) {
-		msb_sft = fls(mck_div[mck_id].div_mask);
-		div_mask |= mck_div[mck_id].div_msb_mask << msb_sft;
+	/* enable div, set rate */
+	div_clk_id = mck_div[mck_id].div_msb_clk_id;
+	ret = clk_prepare_enable(afe_priv->clk[div_clk_id]);
+	if (ret) {
+		dev_err(afe->dev, "%s(), clk_prepare_enable %s fail %d\n",
+			__func__, aud_clks[div_clk_id], ret);
+		return ret;
 	}
-
-	if (div > div_mask) {
-		AUDIO_AEE("mclk_div not valid");
-		return -EINVAL;
+	ret = clk_set_rate(afe_priv->clk[div_clk_id], rate);
+	if (ret) {
+		dev_err(afe->dev, "%s(), clk_set_rate %s, rate %d, fail %d\n",
+			__func__, aud_clks[div_clk_id],
+			rate, ret);
+		return ret;
 	}
-	regmap_update_bits(afe_priv->topckgen, mck_div[mck_id].div_reg,
-			   mck_div[mck_id].div_mask_sft,
-			   div << mck_div[mck_id].div_sft);
-
-	if (mck_div[mck_id].div_msb_mask)
-		regmap_update_bits(afe_priv->topckgen,
-				   mck_div[mck_id].div_msb_reg,
-				   mck_div[mck_id].div_msb_mask_sft,
-				   (div >> msb_sft) <<
-				   mck_div[mck_id].div_msb_sft);
-	/* select apll */
-	if (mck_div[mck_id].div_apll_sel_mask_sft)
-		regmap_update_bits(afe_priv->topckgen,
-				   mck_div[mck_id].div_apll_sel_reg,
-				   mck_div[mck_id].div_apll_sel_mask_sft,
-				   apll <<
-				   mck_div[mck_id].div_apll_sel_sft);
-	/* reset inverse */
-	regmap_update_bits(afe_priv->topckgen,
-			   mck_div[mck_id].div_inv_reg,
-			   mck_div[mck_id].div_inv_mask_sft, 0);
-	/* enable div */
-	regmap_update_bits(afe_priv->topckgen,
-			   mck_div[mck_id].div_pdn_reg,
-			   mck_div[mck_id].div_pdn_mask_sft, 0);
+	/* debug when migration */
+	dev_info(afe->dev, "%s, clk_prepare_enable & clk_set_rate %s, rate %d success\n",
+		__func__, aud_clks[div_clk_id], rate);
 
 	return 0;
 }
@@ -788,6 +747,12 @@ void mt6885_mck_disable(struct mtk_base_afe *afe, int mck_id)
 	int div_clk_id = mck_div[mck_id].div_clk_id;
 
 	clk_disable_unprepare(afe_priv->clk[div_clk_id]);
+	/* i2s5 */
+	if (mck_id == MT6885_I2S5_MCK) {
+		div_clk_id = mck_div[mck_id].div_msb_clk_id;
+		clk_disable_unprepare(afe_priv->clk[div_clk_id]);
+	}
+
 	if (m_sel_id >= 0)
 		clk_disable_unprepare(afe_priv->clk[m_sel_id]);
 }
@@ -814,9 +779,9 @@ int mt6885_init_clock(struct mtk_base_afe *afe)
 	}
 
 	afe_priv->apmixed = syscon_regmap_lookup_by_phandle(afe->dev->of_node,
-							    "apmixed");
+							    "apmixedsys");
 	if (IS_ERR(afe_priv->apmixed)) {
-		dev_err(afe->dev, "%s() Cannot find apmixed controller: %ld\n",
+		dev_err(afe->dev, "%s() Cannot find apmixedsys: %ld\n",
 			__func__, PTR_ERR(afe_priv->apmixed));
 		return PTR_ERR(afe_priv->apmixed);
 	}
@@ -829,13 +794,13 @@ int mt6885_init_clock(struct mtk_base_afe *afe)
 		return PTR_ERR(afe_priv->topckgen);
 	}
 
-	afe_priv->infracfg_ao = syscon_regmap_lookup_by_phandle(
+	afe_priv->infracfg = syscon_regmap_lookup_by_phandle(
 				afe->dev->of_node,
-				"infracfg_ao");
-	if (IS_ERR(afe_priv->infracfg_ao)) {
-		dev_err(afe->dev, "%s() Cannot find infracfg_ao: %ld\n",
-			__func__, PTR_ERR(afe_priv->infracfg_ao));
-		return PTR_ERR(afe_priv->infracfg_ao);
+				"infracfg");
+	if (IS_ERR(afe_priv->infracfg)) {
+		dev_err(afe->dev, "%s() Cannot find infracfg: %ld\n",
+			__func__, PTR_ERR(afe_priv->infracfg));
+		return PTR_ERR(afe_priv->infracfg);
 	}
 
 	return 0;

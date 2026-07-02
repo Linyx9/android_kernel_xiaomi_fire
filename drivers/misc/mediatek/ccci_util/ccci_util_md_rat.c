@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2015 MediaTek Inc.
+ * Copyright (C) 2021 MediaTek Inc.
  */
 
 #include "ccci_util_lib_main.h"
@@ -280,11 +280,24 @@ static unsigned int ccci_rat_str_to_bitmap(char str[])
 	return bitmap;
 }
 
-unsigned int get_md_bin_capability(int md_id)
+unsigned int mtk_ccci_get_md_img_cap(void)
+{
+	unsigned int value = 0;
+
+	if (mtk_ccci_find_args_val("md_capability", (unsigned char *)&value, sizeof(unsigned int))
+					!= sizeof(unsigned int))
+		pr_info("ccci: %s: get MD CAP fail\n", __func__);
+
+	return value;
+}
+EXPORT_SYMBOL(mtk_ccci_get_md_img_cap);
+
+
+unsigned int get_md_bin_capability(void)
 {
 	int img_type;
 
-	img_type = get_md_img_type(md_id);
+	img_type = get_md_img_type();
 	if (img_type < 0)
 		return 0;
 
@@ -295,12 +308,12 @@ unsigned int get_md_bin_capability(int md_id)
 }
 EXPORT_SYMBOL(get_md_bin_capability);
 
-int check_rat_at_md_img(int md_id, char str[])
+int check_rat_at_md_img(char str[])
 {
 	unsigned int rat, cap;
 
 	rat = get_capability_bit(str);
-	cap = get_md_bin_capability(md_id);
+	cap = get_md_bin_capability();
 
 	if (rat & cap)
 		return 1;
@@ -309,40 +322,34 @@ int check_rat_at_md_img(int md_id, char str[])
 EXPORT_SYMBOL(check_rat_at_md_img);
 
 
-static unsigned int s_md_rt_wm_id_bitmap[MAX_MD_NUM_AT_LK];
-static unsigned int s_md_rt_wm_id[MAX_MD_NUM_AT_LK];
+static unsigned int s_md_rt_wm_id_bitmap;
+static unsigned int s_md_rt_wm_id;
 
-void set_soc_md_rt_rat(int md_id, unsigned int bitmap, unsigned int id)
+void set_soc_md_rt_rat(unsigned int bitmap, unsigned int id)
 {
-	if ((md_id < 0) || (md_id >= MAX_MD_NUM_AT_LK))
-		return;
-	s_md_rt_wm_id_bitmap[md_id] = bitmap;
-	s_md_rt_wm_id[md_id] = id;
+	s_md_rt_wm_id_bitmap = bitmap;
+	s_md_rt_wm_id = id;
 }
 EXPORT_SYMBOL(set_soc_md_rt_rat);
 
-unsigned int get_soc_md_rt_rat(int md_id)
+unsigned int get_soc_md_rt_rat(void)
 {
-	if ((md_id < 0) || (md_id >= MAX_MD_NUM_AT_LK))
-		return 0;
-	return s_md_rt_wm_id_bitmap[md_id];
+	return s_md_rt_wm_id_bitmap;
 }
 EXPORT_SYMBOL(get_soc_md_rt_rat);
 
-unsigned int get_soc_md_rt_rat_idx(int md_id)
+unsigned int get_soc_md_rt_rat_idx(void)
 {
-	if ((md_id < 0) || (md_id >= MAX_MD_NUM_AT_LK))
-		return 0;
-	return s_md_rt_wm_id[md_id];
+	return s_md_rt_wm_id;
 }
 EXPORT_SYMBOL(get_soc_md_rt_rat_idx);
 
-int check_rat_at_rt_setting(int md_id, char str[])
+int check_rat_at_rt_setting(char str[])
 {
 	unsigned int rat, cap;
 
 	rat = get_capability_bit(str);
-	cap = get_soc_md_rt_rat(md_id);
+	cap = get_soc_md_rt_rat();
 
 	if (rat & cap)
 		return 1;
@@ -350,11 +357,12 @@ int check_rat_at_rt_setting(int md_id, char str[])
 }
 EXPORT_SYMBOL(check_rat_at_rt_setting);
 
-int set_soc_md_rt_rat_by_idx(int md_id, unsigned int wm_idx)
+
+int set_soc_md_rt_rat_by_idx(unsigned int wm_idx)
 {
 	unsigned int rat_bitmap, cap;
 
-	cap = get_md_bin_capability(md_id);
+	cap = get_md_bin_capability();
 	if (!wm_idx)
 		return -1;
 
@@ -374,56 +382,48 @@ int set_soc_md_rt_rat_by_idx(int md_id, unsigned int wm_idx)
 		return -1;
 	}
 
-	set_soc_md_rt_rat(md_id, rat_bitmap, wm_idx);
+	set_soc_md_rt_rat(rat_bitmap, wm_idx);
 	pr_info("CCCI:%s:wm_idx[%u][c:0x%x|s:0x%x]\n", __func__, wm_idx, cap, rat_bitmap);
 
 	return 0;
 }
 EXPORT_SYMBOL(set_soc_md_rt_rat_by_idx);
 
-int set_soc_md_rt_rat_str(int md_id, char str[])
+int set_soc_md_rt_rat_str(char str[])
 {
 	unsigned int rat_bitmap, prefer, cap, id;
 
-	cap = get_md_bin_capability(md_id);
+	cap = get_md_bin_capability();
 	id = get_rat_id_by_bitmap(cap);
 
 	if (id == 0) {
-		pr_info("CCCI: %s: should not run to here.MD cap not in support list!\n",
+		pr_info("CCCI: %s: should not run to here. MD cap not in support list!\n",
 			__func__);
 		return -1;
 	}
 
 	if (!str) {
 		pr_info("CCCI: %s get NULL ptr!\n", __func__);
-		set_soc_md_rt_rat(md_id, cap, id);
+		set_soc_md_rt_rat(cap, id);
 		return 1;
 	}
 
 	if (strlen(str) == 0) {
 		pr_info("CCCI: %s str empty, set default value!\n", __func__);
-		set_soc_md_rt_rat(md_id, cap, id);
+		set_soc_md_rt_rat(cap, id);
 		return 1;
 	}
 
 	rat_bitmap = ccci_rat_str_to_bitmap(str);
-	/* LTE only mode default use lwg mode */
-	if (rat_bitmap == (MD_CAP_TDD_LTE|MD_CAP_FDD_LTE)) {
-		set_soc_md_rt_rat(md_id,
-			(MD_CAP_TDD_LTE|MD_CAP_FDD_LTE|MD_CAP_WCDMA|MD_CAP_GSM), id);
-		pr_info("CCCI:%s:LTE only mode set lwg rat[%s](r:0x%x|c:0x%x)\n",
-						__func__, str, rat_bitmap, cap);
-		return 0;
-	}
 	prefer = find_prefer_val(rat_bitmap, &id);
 
 	if ((prefer == 0) || ((prefer & cap) != prefer)) {
 		pr_info("CCCI:%s:rat[%s](r:0x%x|p:0x%x|c:0x%x) not support!\n",
 				__func__, str, rat_bitmap, prefer, cap);
-		set_soc_md_rt_rat(md_id, cap, id);
+		set_soc_md_rt_rat(cap, id);
 		return 1;
 	}
-	set_soc_md_rt_rat(md_id, prefer, id);
+	set_soc_md_rt_rat(prefer, id);
 	pr_info("CCCI:%s:rat[%s](r:0x%x|p:0x%x|c:0x%x)[%u]\n",
 				__func__, str, rat_bitmap, prefer, cap, id);
 	return 0;

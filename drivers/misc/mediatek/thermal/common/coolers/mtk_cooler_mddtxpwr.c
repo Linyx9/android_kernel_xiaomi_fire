@@ -75,7 +75,6 @@ static void mtk_cl_mddtxpwr_set_mddtxpwr_limit(void)
 
 	if (min_limit != cl_mddtxpwr_cur_limit) {
 		cl_mddtxpwr_cur_limit = min_limit;
-#if 1
 		if (cl_mddtxpwr_cur_limit >= 65535) {
 			int ret = eemcs_notify_md_by_sys_msg(MD_SYS5,
 							EXT_MD_DTX_REQ, 8);
@@ -92,7 +91,6 @@ static void mtk_cl_mddtxpwr_set_mddtxpwr_limit(void)
 					"%s() ret %d limit=%d\n", __func__,
 					cl_mddtxpwr_cur_limit);
 		}
-#endif
 	}
 }
 

@@ -2,8 +2,8 @@
 /*
  * mt6833-afe-gpio.h  --  Mediatek 6833 afe gpio ctrl definition
  *
- * Copyright (c) 2020 MediaTek Inc.
- * Author: Eason Yen <eason.yen@mediatek.com>
+ * Copyright (c) 2021 MediaTek Inc.
+ * Author: Yujie Xiao <yujie.xiao@mediatek.com>
  */
 
 #ifndef _MT6833_AFE_GPIO_H_
@@ -38,10 +38,8 @@ enum mt6833_afe_gpio {
 struct mtk_base_afe;
 
 int mt6833_afe_gpio_init(struct mtk_base_afe *afe);
-
 int mt6833_afe_gpio_request(struct mtk_base_afe *afe, bool enable,
 			    int dai, int uplink);
-
-bool mt6833_afe_gpio_is_prepare(enum mt6833_afe_gpio type);
+bool mt6833_afe_gpio_is_prepared(enum mt6833_afe_gpio type);
 
 #endif

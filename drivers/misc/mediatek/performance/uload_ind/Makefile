@@ -13,5 +13,5 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-obj-y += uload_ind.o
+obj-$(CONFIG_MTK_LOAD_TRACKER) += uload_ind.o
 

@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2019 MediaTek Inc.
+ * Copyright (C) 2021 MediaTek Inc.
  */
 
-#include <linux/interrupt.h>
-#include <linux/uaccess.h>
-#include <linux/of_irq.h>
-#include <linux/of_address.h>
-#include <linux/sched/debug.h>
+#include <linux/arm-smccc.h>
 #include <linux/clk.h>
 #include <linux/fs.h>
-#include <linux/arm-smccc.h>
-#include <mt-plat/mtk_secure_api.h>
-#include <mt-plat/devapc_public.h>
-#include <mt-plat/aee.h>
+#include <linux/interrupt.h>
+#include <linux/module.h>
+#include <linux/of_irq.h>
+#include <linux/of_address.h>
+#include <linux/proc_fs.h>
+#include <linux/sched/debug.h>
+#include <linux/uaccess.h>
+#include <linux/soc/mediatek/mtk_sip_svc.h>
+#include <linux/soc/mediatek/devapc_public.h>
+#include <../drivers/misc/mediatek/include/mt-plat/aee.h>
 #include "devapc-mtk-common.h"
 
 struct mtk_devapc_context {
@@ -406,26 +408,6 @@ static uint32_t sync_vio_dbg(int shift_bit)
 	return sync_done;
 }
 
-static void dump_backtrace(void *passed_regs)
-{
-	struct pt_regs *regs = passed_regs;
-
-	DEVAPC_MSG("====== %s ======\n",
-			"Start dumping Device APC violation tracing");
-
-	DEVAPC_MSG("****** %s ******\n",
-			"[All IRQ Registers]");
-	if (regs)
-		show_regs(regs);
-
-	DEVAPC_MSG("****** %s ******\n",
-			"[All Current Task Stack]");
-	show_stack(current, NULL);
-
-	DEVAPC_MSG("====== %s ======\n",
-			"End of dumping Device APC violation tracing");
-}
-
 static char *perm_to_string(uint32_t perm)
 {
 	if (perm == 0x0)
@@ -676,7 +658,6 @@ static irqreturn_t devapc_violation_irq(int irq_number, void *dev_id)
 	int i, device_count;
 	uint32_t perm;
 	const char *vio_master;
-	struct pt_regs *regs = get_irq_regs();
 	const struct mtk_device_info *device_info;
 	struct mtk_devapc_vio_info *vio_info;
 	uint32_t shift_bit, vio_shift_sta;
@@ -760,8 +741,6 @@ static irqreturn_t devapc_violation_irq(int irq_number, void *dev_id)
 					vio_master);
 		}
 	}
-
-	dump_backtrace(regs);
 
 	return IRQ_HANDLED;
 }
@@ -949,7 +928,7 @@ static ssize_t set_swp_addr_store(struct device_driver *driver,
 static DRIVER_ATTR_RW(set_swp_addr);
 #endif /* CONFIG_DEVAPC_SWP_SUPPORT */
 
-int mtk_devapc_probe(struct platform_device *pdev,
+int mtk_devapc_probe_v1(struct platform_device *pdev,
 		struct mtk_devapc_soc *soc)
 {
 	struct device_node *node = pdev->dev.of_node;
@@ -1011,20 +990,22 @@ int mtk_devapc_probe(struct platform_device *pdev,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mtk_devapc_probe_v1);
 
-int mtk_devapc_remove(struct platform_device *dev)
+int mtk_devapc_remove_v1(struct platform_device *dev)
 {
 	if (!IS_ERR(mtk_devapc_ctx->devapc_infra_clk))
 		clk_disable_unprepare(mtk_devapc_ctx->devapc_infra_clk);
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mtk_devapc_remove_v1);
 
-ssize_t mtk_devapc_dbg_read(struct file *file, char __user *buffer,
+ssize_t mtk_devapc_dbg_read_v1(struct file *file, char __user *buffer,
 	size_t count, loff_t *ppos)
 {
 	int len;
-	char msg_buf[1024] = {0};
+	char msg_buf[512] = {0};
 	char *p = msg_buf;
 	struct mtk_devapc_dbg_status *dbg_stat;
 
@@ -1045,8 +1026,9 @@ ssize_t mtk_devapc_dbg_read(struct file *file, char __user *buffer,
 
 	return simple_read_from_buffer(buffer, count, ppos, msg_buf, len);
 }
+EXPORT_SYMBOL_GPL(mtk_devapc_dbg_read_v1);
 
-ssize_t mtk_devapc_dbg_write(struct file *file, const char __user *buffer,
+ssize_t mtk_devapc_dbg_write_v1(struct file *file, const char __user *buffer,
 	size_t count, loff_t *data)
 {
 	char input[32] = {0};
@@ -1190,4 +1172,9 @@ ssize_t mtk_devapc_dbg_write(struct file *file, const char __user *buffer,
 
 	return count;
 }
+EXPORT_SYMBOL_GPL(mtk_devapc_dbg_write_v1);
+
+MODULE_DESCRIPTION("Mediatek Device APC Driver");
+MODULE_AUTHOR("Yintong Zhang <Yintong.Zhang@mediatek.com>");
+MODULE_LICENSE("GPL");
 

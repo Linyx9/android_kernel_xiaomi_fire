@@ -6,10 +6,11 @@
 #ifndef __GED_LOG_H__
 #define __GED_LOG_H__
 
+#include <linux/string_helpers.h>
 #include "ged_type.h"
 
 #if defined(__GNUC__)
-#define GED_LOG_BUF_FORMAT_PRINTF(x, y) __attribute__((format(printf, x, y)))
+#define GED_LOG_BUF_FORMAT_PRINTF(x, y) __printf(x, y)
 #else
 #define GED_LOG_BUF_FORMAT_PRINTF(x, y)
 #endif
@@ -60,23 +61,33 @@ void ged_log_system_exit(void);
 int ged_log_buf_write(GED_LOG_BUF_HANDLE hLogBuf,
 	const char __user *pszBuffer, int i32Count);
 
-void ged_log_trace_begin(char *name);
-
-void ged_log_trace_end(void);
-
-void ged_log_trace_counter(char *name, int count);
-
-void ged_log_perf_trace_counter(char *name, long long count, int pid,
-	unsigned long frameID, u64 BQID);
-
 void ged_log_dump(GED_LOG_BUF_HANDLE hLogBuf);
+int ged_timer_or_trace_enable(void);
 
-#if defined(CONFIG_MACH_MT8167) || defined(CONFIG_MACH_MT8173) ||\
-defined(CONFIG_MACH_MT6739) || defined(CONFIG_MACH_MT6761)\
-|| defined(CONFIG_MACH_MT6765)
+#if defined(CONFIG_GPU_MT8167) || defined(CONFIG_GPU_MT8173) ||\
+defined(CONFIG_GPU_MT6739) || defined(CONFIG_GPU_MT6761)\
+|| defined(CONFIG_GPU_MT6765)
 extern void ged_dump_fw(void);
 #endif
 
 unsigned int is_gpu_ged_log_enable(void);
+
+//debug_node info
+#define MAX_NAME_SIZE 256
+struct cmd_info {
+	/* unit: ms */
+	int pid;
+	unsigned int value;
+	unsigned int ori_value;
+	unsigned long long ts;
+	char buffer[MAX_NAME_SIZE];
+	int user_id; //0: unexpected user, 1:sh (cmd), 2:powerhal
+};
+
+void init_cmd_info(struct cmd_info *cmd, unsigned int value);
+
+// NOTICE: do not set_cmd_info with holding lock
+void set_cmd_info(struct cmd_info *cmd, unsigned int ori_value, unsigned int value);
+ssize_t get_cmd_info_dump(char *buf, int sz, ssize_t pos, struct cmd_info *cmd);
 
 #endif

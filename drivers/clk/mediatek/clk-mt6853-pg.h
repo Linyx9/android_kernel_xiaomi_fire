@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -47,5 +47,6 @@ extern struct pg_callbacks *register_pg_callback(struct pg_callbacks *pgcb);
 extern void subsys_if_on(void);
 extern void mtcmos_force_off(void);
 extern void mtk_check_subsys_swcg(enum subsys_id id);
+extern struct provider_clk *get_all_provider_clks(void);
 
 #endif/* __DRV_CLK_MT6758_PG_H */

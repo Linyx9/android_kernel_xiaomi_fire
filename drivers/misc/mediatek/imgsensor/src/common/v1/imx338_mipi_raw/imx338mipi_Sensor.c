@@ -35,7 +35,9 @@
 #include <linux/atomic.h>
 #include <linux/types.h>
 #include <linux/slab.h>
-
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/err.h>
 
 #include "kd_camera_typedef.h"
 #include "kd_imgsensor.h"
@@ -50,14 +52,14 @@
  ************************************************************************/
 #define PROFILE 0
 #if PROFILE
-static struct timeval tv1, tv2;
+static struct timespec64 tv1, tv2;
 static DEFINE_SPINLOCK(kdsensor_drv_lock);
 /************************************************************************
  *
  ************************************************************************/
 static void KD_SENSOR_PROFILE_INIT(void)
 {
-	do_gettimeofday(&tv1);
+	ktime_get_real_ts64(&tv1);
 }
 
 /************************************************************************
@@ -65,17 +67,16 @@ static void KD_SENSOR_PROFILE_INIT(void)
  ************************************************************************/
 static void KD_SENSOR_PROFILE(char *tag)
 {
-	unsigned long TimeIntervalUS;
+	struct timespec64 diff;
 
 	spin_lock(&kdsensor_drv_lock);
 
-	do_gettimeofday(&tv2);
-	TimeIntervalUS =
-	    (tv2.tv_sec - tv1.tv_sec) * 1000000 + (tv2.tv_usec - tv1.tv_usec);
+	ktime_get_real_ts64(&tv2);
+	diff = timespec64_sub(tv2, tv1);
 	tv1 = tv2;
 
 	spin_unlock(&kdsensor_drv_lock);
-	pr_debug("[%s]Profile = %lu us\n", tag, TimeIntervalUS);
+	pr_debug("[%s]Profile = %lu us\n", tag, timespec64_to_ns(&diff));
 }
 #else
 static void KD_SENSOR_PROFILE_INIT(void)
@@ -444,17 +445,6 @@ struct SENSOR_ATR_INFO {
 	MUINT16 OverExp_Max_H;
 	MUINT16 OverExp_Max_L;
 };
-#if 0
-static SENSOR_ATR_INFO sensorATR_Info[4] = {	/* Strength Range Min */
-	{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-	/* Strength Range Std */
-	{0x00, 0x32, 0x00, 0x3c, 0x03, 0xff},
-	/* Strength Range Max */
-	{0x3f, 0xff, 0x3f, 0xff, 0x3f, 0xff},
-	/* Strength Range Custom */
-	{0x3F, 0xFF, 0x00, 0x0, 0x3F, 0xFF}
-};
-#endif
 
 #define IMX338MIPI_MaxGainIndex (115)
 kal_uint16 IMX338MIPI_sensorGainMapping[IMX338MIPI_MaxGainIndex][2] = {
@@ -597,7 +587,7 @@ static int write_cmos_sensor(kal_uint32 addr, kal_uint32 para)
 	    pu_send_cmd, 3, imgsensor.i2c_write_id, imgsensor_info.i2c_speed);
 }
 
-#if 1
+// #if 1
 #define ATR_DARK_THRESHOLD 51
 static kal_uint32 imx338_ATR(UINT16 DarkLimit, UINT16 OverExp)
 {
@@ -630,7 +620,7 @@ static kal_uint32 imx338_ATR(UINT16 DarkLimit, UINT16 OverExp)
 
 	return ERROR_NONE;
 }
-#endif
+// #endif
 
 static MUINT32 cur_startpos;
 static MUINT32 cur_size;
@@ -1149,61 +1139,6 @@ static void hdr_write_shutter(kal_uint16 le, kal_uint16 se, kal_uint16 lv)
 
 }
 
-#if 0
-static void set_mirror_flip(kal_uint8 image_mirror)
-{
-	pr_debug("image_mirror = %d\n", image_mirror);
-	switch (image_mirror) {
-	case IMAGE_NORMAL:
-		write_cmos_sensor(0x0101, 0x00);
-		write_cmos_sensor(0x3A27, 0x00);
-		write_cmos_sensor(0x3A28, 0x00);
-		write_cmos_sensor(0x3A29, 0x01);
-		write_cmos_sensor(0x3A2A, 0x00);
-		write_cmos_sensor(0x3A2B, 0x00);
-		write_cmos_sensor(0x3A2C, 0x00);
-		write_cmos_sensor(0x3A2D, 0x01);
-		write_cmos_sensor(0x3A2E, 0x01);
-		break;
-	case IMAGE_H_MIRROR:
-		write_cmos_sensor(0x0101, 0x01);
-		write_cmos_sensor(0x3A27, 0x01);
-		write_cmos_sensor(0x3A28, 0x01);
-		write_cmos_sensor(0x3A29, 0x00);
-		write_cmos_sensor(0x3A2A, 0x00);
-		write_cmos_sensor(0x3A2B, 0x01);
-		write_cmos_sensor(0x3A2C, 0x00);
-		write_cmos_sensor(0x3A2D, 0x00);
-		write_cmos_sensor(0x3A2E, 0x01);
-		break;
-	case IMAGE_V_MIRROR:
-		write_cmos_sensor(0x0101, 0x02);
-		write_cmos_sensor(0x3A27, 0x10);
-		write_cmos_sensor(0x3A28, 0x10);
-		write_cmos_sensor(0x3A29, 0x01);
-		write_cmos_sensor(0x3A2A, 0x01);
-		write_cmos_sensor(0x3A2B, 0x00);
-		write_cmos_sensor(0x3A2C, 0x01);
-		write_cmos_sensor(0x3A2D, 0x01);
-		write_cmos_sensor(0x3A2E, 0x00);
-		break;
-	case IMAGE_HV_MIRROR:
-		write_cmos_sensor(0x0101, 0x03);
-		write_cmos_sensor(0x3A27, 0x11);
-		write_cmos_sensor(0x3A28, 0x11);
-		write_cmos_sensor(0x3A29, 0x00);
-		write_cmos_sensor(0x3A2A, 0x01);
-		write_cmos_sensor(0x3A2B, 0x01);
-		write_cmos_sensor(0x3A2C, 0x01);
-		write_cmos_sensor(0x3A2D, 0x00);
-		write_cmos_sensor(0x3A2E, 0x00);
-		break;
-	default:
-		pr_debug("Error image_mirror setting\n");
-	}
-
-}
-#endif
 /************************************************************************
  * FUNCTION
  *    night_mode

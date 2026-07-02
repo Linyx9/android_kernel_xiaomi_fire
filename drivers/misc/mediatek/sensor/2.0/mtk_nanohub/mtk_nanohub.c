@@ -117,50 +117,6 @@ static int mtk_nanohub_server_dispatch_data(uint32_t *currWp);
 static int mtk_nanohub_report_to_manager(struct data_unit_t *data);
 static int mtk_nanohub_create_manager(void);
 
-enum scp_ipi_status __attribute__((weak)) scp_ipi_registration(enum ipi_id id,
-        void (*ipi_handler)(int id, void *data, unsigned int len),
-        const char *name)
-{
-        return SCP_IPI_ERROR;
-}
-
-enum scp_ipi_status __attribute__((weak)) scp_ipi_unregistration(enum ipi_id id)
-{
-        return SCP_IPI_ERROR;
-}
-
-void __attribute__((weak)) scp_A_register_notify(struct notifier_block *nb)
-{
-
-}
-
-void __attribute__((weak)) scp_A_unregister_notify(struct notifier_block *nb)
-{
-
-}
-
-phys_addr_t __attribute__((weak))
-        scp_get_reserve_mem_virt(enum scp_reserve_mem_id_t id)
-{
-        return 0;
-}
-
-phys_addr_t __attribute__((weak))
-        scp_get_reserve_mem_phys(enum scp_reserve_mem_id_t id)
-{
-        return 0;
-}
-
-phys_addr_t __attribute__((weak))
-        scp_get_reserve_mem_size(enum scp_reserve_mem_id_t id)
-{
-        return 0;
-}
-
-void __attribute__((weak)) scp_register_feature(enum feature_id id)
-{
-}
-
 /* arch counter is 13M, mult is 161319385, shift is 21 */
 static inline uint64_t arch_counter_to_ns(uint64_t cyc)
 {
@@ -313,13 +269,9 @@ static void mtk_nanohub_sync_time_func(struct timer_list *list)
 
 static int mtk_nanohub_direct_push_work(void *data)
 {
-	int ret = 0;
-
 	for (;;) {
-		ret = wait_event_interruptible(chre_kthread_wait,
+		wait_event(chre_kthread_wait,
 			READ_ONCE(chre_kthread_wait_condition));
-		if (ret)
-			continue;
 		WRITE_ONCE(chre_kthread_wait_condition, false);
 		mtk_nanohub_read_wp_queue();
 	}
@@ -345,7 +297,7 @@ static void mtk_nanohub_moving_average(union SCP_SENSOR_HUB_DATA *rsp)
 	 *}
 	 */
 	ap_now_time = ktime_get_boottime_ns();
-	arch_counter = arch_counter_get_cntvct();
+	arch_counter = __arch_counter_get_cntvct();
 	scp_raw_time = rsp->notify_rsp.scp_timestamp;
 	ipi_transfer_time = arch_counter_to_ns(arch_counter -
 		rsp->notify_rsp.arch_counter);
@@ -578,19 +530,6 @@ static void mtk_nanohub_init_sensor_info(void)
 	strlcpy(p->name, "tiltdetector", sizeof(p->name));
 	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
 
-	p = &sensor_state[SENSOR_TYPE_IN_POCKET];
-	p->sensorType = SENSOR_TYPE_IN_POCKET;
-	p->rate = SENSOR_RATE_ONESHOT;
-	p->gain = 1;
-	strlcpy(p->name, "inpocket", sizeof(p->name));
-	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
-
-	p = &sensor_state[SENSOR_TYPE_ACTIVITY];
-	p->sensorType = SENSOR_TYPE_ACTIVITY;
-	p->gain = 1;
-	strlcpy(p->name, "activity", sizeof(p->name));
-	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
-
 	p = &sensor_state[SENSOR_TYPE_GLANCE_GESTURE];
 	p->sensorType = SENSOR_TYPE_GLANCE_GESTURE;
 	p->rate = SENSOR_RATE_ONESHOT;
@@ -612,12 +551,6 @@ static void mtk_nanohub_init_sensor_info(void)
 	strlcpy(p->name, "wake", sizeof(p->name));
 	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
 
-	p = &sensor_state[SENSOR_TYPE_ANSWER_CALL];
-	p->sensorType = SENSOR_TYPE_ANSWER_CALL;
-	p->rate = SENSOR_RATE_ONESHOT;
-	p->gain = 1;
-	strlcpy(p->name, "answercall", sizeof(p->name));
-	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
 
 	p = &sensor_state[SENSOR_TYPE_STATIONARY_DETECT];
 	p->sensorType = SENSOR_TYPE_STATIONARY_DETECT;
@@ -638,27 +571,6 @@ static void mtk_nanohub_init_sensor_info(void)
 	p->rate = SENSOR_RATE_ONCHANGE;
 	p->gain = 1;
 	strlcpy(p->name, "devori", sizeof(p->name));
-	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
-
-	p = &sensor_state[SENSOR_TYPE_GEOFENCE];
-	p->sensorType = SENSOR_TYPE_GEOFENCE;
-	p->rate = SENSOR_RATE_ONCHANGE;
-	p->gain = 1;
-	strlcpy(p->name, "geofence", sizeof(p->name));
-	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
-
-	p = &sensor_state[SENSOR_TYPE_FLOOR_COUNTER];
-	p->sensorType = SENSOR_TYPE_FLOOR_COUNTER;
-	p->rate = SENSOR_RATE_ONCHANGE;
-	p->gain = 1;
-	strlcpy(p->name, "floor", sizeof(p->name));
-	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
-
-	p = &sensor_state[SENSOR_TYPE_FLAT];
-	p->sensorType = SENSOR_TYPE_FLAT;
-	p->rate = SENSOR_RATE_ONESHOT;
-	p->gain = 1;
-	strlcpy(p->name, "flat", sizeof(p->name));
 	strlcpy(p->vendor, "mtk", sizeof(p->vendor));
 
 	p = &sensor_state[SENSOR_TYPE_RGBW];
@@ -839,7 +751,7 @@ static int mtk_nanohub_send_dram_info_to_hub(void)
 {
 	struct mtk_nanohub_device *device = mtk_nanohub_dev;
 	union SCP_SENSOR_HUB_DATA data;
-	unsigned int len = 0;
+	unsigned int len __maybe_unused = 0;
 	int err = 0, retry = 0, total = 10;
 
 	device->shub_dram_phys = scp_get_reserve_mem_phys(SENS_MEM_ID);
@@ -886,14 +798,14 @@ static int mtk_nanohub_enable_rawdata_to_hub(int sensor_id,
 static int mtk_nanohub_send_timestamp_wake_locked(void)
 {
 	union SCP_SENSOR_HUB_DATA req;
-	int len;
+	int len __maybe_unused;
 	int err = 0;
 	uint64_t now_time, arch_counter;
 
 	/* send_timestamp_to_hub is process context, disable irq is safe */
 	local_irq_disable();
 	now_time = ktime_get_boottime_ns();
-	arch_counter = arch_counter_get_cntvct();
+	arch_counter = __arch_counter_get_cntvct();
 	local_irq_enable();
 	req.set_config_req.sensorType = 0;
 	req.set_config_req.action = SENSOR_HUB_SET_TIMESTAMP;
@@ -958,7 +870,7 @@ int mtk_nanohub_enable_to_hub(uint8_t sensor_id, int enabledisable)
 	struct ConfigCmd cmd;
 	int ret = 0;
 
-	if (enabledisable == 1 && (READ_ONCE(scp_system_ready)))
+	if (enabledisable == 1 && (atomic_read(&power_status) == SENSOR_POWER_UP))
 		scp_register_feature(SENS_FEATURE_ID);
 	mutex_lock(&sensor_state_mtx);
 	if (sensor_id >= ID_SENSOR_MAX) {
@@ -1147,7 +1059,7 @@ int mtk_nanohub_get_data_from_hub(uint8_t sensor_id,
 {
 	union SCP_SENSOR_HUB_DATA req;
 	struct data_unit_t *data_t;
-	int len = 0, err = 0;
+	int len __maybe_unused = 0, err = 0;
 
 	if (atomic_read(&power_status) == SENSOR_POWER_DOWN) {
 		pr_err("scp power down, we can not access scp\n");
@@ -1235,7 +1147,7 @@ int mtk_nanohub_set_cmd_to_hub(uint8_t sensor_id,
 		enum CUST_ACTION action, void *data)
 {
 	union SCP_SENSOR_HUB_DATA req;
-	int len = 0, err = 0;
+	int len __maybe_unused = 0, err = 0;
 	struct SCP_SENSOR_HUB_GET_RAW_DATA *pGetRawData;
 
 	req.get_data_req.sensorType = sensor_id;
@@ -1796,14 +1708,13 @@ static void mtk_nanohub_start_timesync(void)
 
 void mtk_nanohub_power_up_loop(void *data)
 {
-	int ret = 0, id = 0;
+	int id = 0;
 	struct mtk_nanohub_device *device = mtk_nanohub_dev;
 	unsigned long flags = 0;
 
-	ret = wait_event_interruptible(power_reset_wait,
+	wait_event(power_reset_wait,
 		READ_ONCE(scp_system_ready) && READ_ONCE(scp_chre_ready));
-	if (ret)
-		return;
+
 	pr_info("SCP power up\n");
 	spin_lock_irqsave(&scp_state_lock, flags);
 	WRITE_ONCE(scp_chre_ready, false);
@@ -2261,10 +2172,7 @@ static int mtk_nanohub_report_to_manager(struct data_unit_t *data)
 			break;
 		case ID_STEP_DETECTOR:
 		case ID_SIGNIFICANT_MOTION:
-		case ID_ANSWER_CALL:
-		case ID_FLAT:
 		case ID_GLANCE_GESTURE:
-		case ID_IN_POCKET:
 		case ID_MOTION_DETECT:
 		case ID_PICK_UP_GESTURE:
 		case ID_STATIONARY_DETECT:

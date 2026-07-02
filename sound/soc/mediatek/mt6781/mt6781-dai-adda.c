@@ -112,7 +112,7 @@ static unsigned int adda_dl_rate_transform(struct mtk_base_afe *afe,
 	case 192000:
 		return MTK_AFE_ADDA_DL_RATE_192K;
 	default:
-		dev_warn(afe->dev, "%s(), rate %d invalid, use 48kHz!!!\n",
+		dev_info(afe->dev, "%s(), rate %d invalid, use 48kHz!!!\n",
 			 __func__, rate);
 		return MTK_AFE_ADDA_DL_RATE_48K;
 	}
@@ -135,7 +135,7 @@ static unsigned int adda_ul_rate_transform(struct mtk_base_afe *afe,
 	case 192000:
 		return MTK_AFE_ADDA_UL_RATE_192K;
 	default:
-		dev_warn(afe->dev, "%s(), rate %d invalid, use 48kHz!!!\n",
+		dev_info(afe->dev, "%s(), rate %d invalid, use 48kHz!!!\n",
 			 __func__, rate);
 		return MTK_AFE_ADDA_UL_RATE_48K;
 	}
@@ -363,7 +363,7 @@ static int mtk_adda_mtkaif_cfg_event(struct snd_soc_dapm_widget *w,
 
 			if (strcmp(w->name, "ADDA_MTKAIF_CFG") == 0 &&
 				!is_adda_mtkaif_need_phase_delay(afe_priv)) {
-				dev_warn(afe->dev,
+				dev_info(afe->dev,
 					 "%s(), check adda mtkaif_chosen_phase[0/1]:%d/%d\n",
 					 __func__,
 					 afe_priv->mtkaif_chosen_phase[0],
@@ -464,7 +464,7 @@ static int stf_positive_gain_set(struct snd_kcontrol *kcontrol,
 				   POSITIVE_GAIN_MASK_SFT,
 				   (gain_db / 6) << POSITIVE_GAIN_SFT);
 	} else {
-		dev_warn(afe->dev, "%s(), gain_db %d invalid\n",
+		dev_info(afe->dev, "%s(), gain_db %d invalid\n",
 			 __func__, gain_db);
 	}
 	return 0;
@@ -638,7 +638,7 @@ static int mtk_stf_event(struct snd_soc_dapm_widget *w,
 				if (new_w_ready == old_w_ready) {
 					udelay(3);
 					if (try_cnt == 9) {
-						dev_warn(afe->dev,
+						dev_info(afe->dev,
 							 "%s(), write coeff not ready",
 							 __func__);
 					}
@@ -1162,7 +1162,7 @@ int mt6781_dai_adda_register(struct mtk_base_afe *afe)
 	struct mt6781_afe_private *afe_priv = afe->platform_priv;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe_priv %p\n", __func__, afe_priv);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

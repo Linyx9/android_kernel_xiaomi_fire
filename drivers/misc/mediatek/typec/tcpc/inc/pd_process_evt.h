@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #ifndef PD_PROCESS_EVT_H_
@@ -38,7 +38,7 @@ struct pe_state_reaction {
 bool pd_process_protocol_error(
 	struct pd_port *pd_port, struct pd_event *pd_event);
 
-bool pd_process_tx_failed(struct pd_port *pd_port);
+bool pd_process_tx_failed_discard(struct pd_port *pd_port, uint8_t msg);
 
 /*---------------------------------------------------------------------------*/
 
@@ -68,9 +68,9 @@ static inline uint8_t pe_get_curr_evaluate_pr_swap_state(
 	struct pd_port *pd_port)
 {
 	if (pd_port->power_role == PD_ROLE_SINK)
-		return PE_PRS_SNK_SRC_EVALUATE_PR_SWAP;
+		return PE_PRS_SNK_SRC_EVALUATE_SWAP;
 
-	return PE_PRS_SRC_SNK_EVALUATE_PR_SWAP;
+	return PE_PRS_SRC_SNK_EVALUATE_SWAP;
 }
 
 static inline uint8_t pe_get_curr_send_pr_swap_state(
@@ -190,7 +190,7 @@ extern bool pd_process_event_vcs(struct pd_port *pd_port, struct pd_event *evt);
 extern bool pd_process_event_com(struct pd_port *pd_port, struct pd_event *evt);
 extern bool pd_process_event_tcp(struct pd_port *pd_port, struct pd_event *evt);
 
-#ifdef CONFIG_USB_PD_CUSTOM_DBGACC
+#if CONFIG_USB_PD_CUSTOM_DBGACC
 extern bool pd_process_event_dbg(struct pd_port *pd_port, struct pd_event *evt);
 #endif	/* CONFIG_USB_PD_CUSTOM_DBGACC */
 

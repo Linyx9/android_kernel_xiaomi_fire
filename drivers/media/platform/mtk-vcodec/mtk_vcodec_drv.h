@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
- */
+* Copyright (c) 2016 MediaTek Inc.
+* Author: PC Chen <pc.chen@mediatek.com>
+*         Tiffany Lin <tiffany.lin@mediatek.com>
+*/
 
 #ifndef _MTK_VCODEC_DRV_H_
 #define _MTK_VCODEC_DRV_H_
@@ -9,21 +11,35 @@
 #include <linux/platform_device.h>
 #include <linux/videodev2.h>
 #include <linux/semaphore.h>
+#include <linux/regulator/consumer.h>
+#include <linux/interconnect-provider.h>
+#include <linux/types.h>
+#include <linux/list.h>
+#include <linux/clk.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
 #include <media/videobuf2-core.h>
+#include <media/videobuf2-v4l2.h>
+#include <media/videobuf2-memops.h>
+#include <media/videobuf2-dma-contig.h>
+
 #include "mtk_vcodec_util.h"
 #include "vcodec_ipi_msg.h"
 #include "mtk_vcodec_pm.h"
-
-#include "mtk-dma-contig.h"
-#ifdef CONFIG_VB2_MEDIATEK_DMA_SG
-#include "mtkbuf-dma-cache-sg.h"
-#endif
-#ifdef CONFIG_MTK_SLBC
+#include "mtk_vcodec_dec_pm_plat.h"
+#include "vcodec_dvfs.h"
+#include "vcodec_bw.h"
 #include "slbc_ops.h"
+#include "mtk-v4l2-vcodec.h"
+#include "mtk_vcodec_dec_slc.h"
+
+#define ENABLE_FENCE 0
+#define ENABLE_META_BUF 0
+#if ENABLE_FENCE
+#include "mtk_sync.h"
 #endif
+
 #define MTK_VCODEC_DRV_NAME     "mtk_vcodec_drv"
 #define MTK_VCODEC_DEC_NAME     "mtk-vcodec-dec"
 #define MTK_VCODEC_ENC_NAME     "mtk-vcodec-enc"
@@ -31,22 +47,66 @@
 
 #define MTK_SLOWMOTION_GCE_TH   120
 #define MTK_VCODEC_MAX_PLANES   3
-#define MTK_V4L2_BENCHMARK      0
 #define WAIT_INTR_TIMEOUT_MS    500
 #define SUSPEND_TIMEOUT_CNT     5000
 #define MTK_MAX_CTRLS_HINT      64
 #define V4L2_BUF_FLAG_OUTPUT_NOT_GENERATED 0x02000000
+#define MTK_INVALID_TIMESTAMP   ((u64)-1)
+#define MTK_VDEC_ALWAYS_ON_OP_RATE 135
+#define MTK_VENC_MONI_FRM_CNT 8 // Monitor 8 frames
+#define MTK_VCODEC_IPI_THREAD_PRIORITY 1
+#define MTK_VCODEC_MAX_MQ_NODE_CNT 12
+
+#define MAX_CODEC_FREQ_STEP	10
+#define MTK_VDEC_PORT_NUM	64
+#define MTK_VENC_PORT_NUM	128
+#define MTK_VDEC_LARB_NUM	20
+#define MTK_VENC_LARB_NUM	40
+#define MTK_MAX_METADATA_NUM	8
+
+#define MAX_GEN_BUF_CNT		64
+#define MAX_META_BUF_CNT	32
+
+#define DEBUG_GKI 1
+
+enum mtk_vcodec_ipm {
+	VCODEC_IPM_V1 = 1,
+	VCODEC_IPM_V2 = 2,
+	VCODEC_IPM_MAX,
+};
 
 /**
- * enum mtk_instance_type - The type of an MTK Vcodec instance.
+ * enum mtk_mmdvfs_type - The type of an MTK Vcodec MMDVFS.
  */
-enum mtk_instance_type {
-	MTK_INST_DECODER                = 0,
-	MTK_INST_ENCODER                = 1,
+enum mtk_mmdvfs_type {
+	MTK_INST_START              = 0,
+	MTK_INST_UPDATE             = 1,
+	MTK_INST_RESUME             = 2,
+	MTK_INST_SET                = 3,
+	MTK_INST_END                = 4,
+};
+
+/**
+ * @par Enumeration
+ *   VENC_SCENARIO
+ * @par Description
+ *   This is the scenario for VENC scenario
+ */
+enum VENC_SCENARIO_T {
+	VENC_SCENARIO_CAMERA_REC             = 0, /* /< Camera recording */
+	VENC_SCENARIO_LIVEPHOTO_CAPTURE      = 1, /* /< LivePhoto recording */
+	VENC_SCENARIO_LIVEPHOTO_EFFECT       = 2, /* /< LivePhoto effect transcoding */
+	VENC_SCENARIO_CAMERA_REC_SLOW_MOTION = 3, /* /< Camera recording with slow motion */
+	VENC_SCENARIO_SCREEN_REC             = 4, /* /< Screen recording */
+	VENC_SCENARIO_VILTE_REC              = 5, /* /< VILTE recording */
+	VENC_SCENARIO_WECHAT_REC             = 6, /* /< WeChat recording */
+	VENC_SCENARIO_HDR_REC                = 7, /* /< HDR recording */
+	VENC_SCENARIO_HDR10Plus_REC          = 8, /* /< HDR10+ recording */
 };
 
 /**
  * enum mtk_instance_state - The state of an MTK Vcodec instance.
+ * @MTK_STATE_NULL - just for mean null
  * @MTK_STATE_FREE - default state when instance is created
  * @MTK_STATE_INIT - vcodec instance is initialized
  * @MTK_STATE_HEADER - vdec had sps/pps header parsed or venc
@@ -55,11 +115,37 @@ enum mtk_instance_type {
  * @MTK_STATE_ABORT - vcodec should be aborted
  */
 enum mtk_instance_state {
+	MTK_STATE_NULL = -1,
 	MTK_STATE_FREE = 0,
-	MTK_STATE_INIT = 1,
-	MTK_STATE_HEADER = 2,
-	MTK_STATE_FLUSH = 3,
-	MTK_STATE_ABORT = 4,
+	MTK_STATE_INIT,
+	MTK_STATE_HEADER,
+	MTK_STATE_FLUSH,
+	MTK_STATE_STOP,
+	MTK_STATE_ABORT,
+};
+
+enum mtk_codec_type {
+	VDEC_VENC_UNKNOWN = 0,
+	VDEC_H264,
+	VDEC_H265,
+	VDEC_HEIF,
+	VDEC_VP8,
+	VDEC_VP9,
+	VDEC_MPEG4,
+	VDEC_H263,
+	VDEC_MPEG12,
+	VDEC_WMV,
+	VDEC_RV30,
+	VDEC_RV40,
+	VDEC_AV1,
+	VENC_H264,
+	VENC_H265,
+	VENC_HEIF,
+	VENC_VP8,
+	VENC_MPEG4,
+	VENC_HYBRID_H264,
+	VENC_H263,
+	VDEC_VENC_MAX
 };
 
 /**
@@ -85,15 +171,21 @@ enum mtk_encode_param {
 	MTK_ENCODE_PARAM_SEC_ENCODE = (1 << 15),
 	MTK_ENCODE_PARAM_TSVC = (1 << 16),
 	MTK_ENCODE_PARAM_NONREFPFREQ = (1 << 17),
-	MTK_ENCODE_PARAM_MAX_QP = (1 << 18),
-	MTK_ENCODE_PARAM_MIN_QP = (1 << 19),
-	MTK_ENCODE_PARAM_I_P_QP_DELTA = (1 << 20),
-	MTK_ENCODE_PARAM_QP_CONTROL_MODE = (1 << 21),
-	MTK_ENCODE_PARAM_FRAME_LEVEL_QP = (1 << 22),
-	MTK_ENCODE_PARAM_MAX_REFP_NUM = (1 << 23),
-	MTK_ENCODE_PARAM_REFP_DISTANCE = (1 << 24),
-	MTK_ENCODE_PARAM_REFP_FRMNUM = (1 << 25),
-	MTK_ENCODE_PARAM_DUMMY_NAL = (1 << 26),
+	MTK_ENCODE_PARAM_HIGHQUALITY = (1 << 18),
+	MTK_ENCODE_PARAM_MAXQP = (1 << 19),
+	MTK_ENCODE_PARAM_MINQP = (1 << 20),
+	MTK_ENCODE_PARAM_FRAMELVLQP = (1 << 21),
+	MTK_ENCODE_PARAM_IP_QPDELTA = (1 << 22),
+	MTK_ENCODE_PARAM_QP_CTRL_MODE = (1 << 23),
+	MTK_ENCODE_PARAM_DUMMY_NAL = (1 << 24),
+	MTK_ENCODE_PARAM_FRAME_LEVEL_QP = (1 << 25),
+	MTK_ENCODE_PARAM_LOW_LATENCY_WFD = (1 << 26),
+	MTK_ENCODE_PARAM_SLICE_CNT = (1 << 27),
+	MTK_ENCODE_PARAM_VISUAL_QUALITY = (1 << 28),
+	MTK_ENCODE_PARAM_INIT_QP = (1 << 29),
+	MTK_ENCODE_PARAM_FRAMEQP_RANGE = (1 << 30),
+	MTK_ENCODE_PARAM_CHROMAQP = (1 << 31),
+	MTK_ENCODE_PARAM_MBRC_TKSPD = (1 << 32),
 };
 
 /*
@@ -127,6 +219,14 @@ enum venc_yuv_fmt {
 	VENC_YUV_FORMAT_P010 = 26,
 	VENC_YUV_FORMAT_NV12_AFBC = 27,
 	VENC_YUV_FORMAT_NV12_10B_AFBC = 28,
+	VENC_YUV_FORMAT_NV21_AFBC = 29,
+};
+
+/** * enum mtk_cpu_hint_mode - CPU hint mode for VDEC */
+enum mtk_cpu_hint_mode {
+	MTK_UCLAMP_MODE		= 0,
+	MTK_GRP_AWARE_MODE	= 1,
+	MTK_CPU_UNSUPPORT	= 2,
 };
 
 /**
@@ -135,6 +235,82 @@ enum venc_yuv_fmt {
 enum mtk_q_type {
 	MTK_Q_DATA_SRC = 0,
 	MTK_Q_DATA_DST = 1,
+};
+
+/** * enum mtk_ts_mode - Mode of timestamp */
+enum mtk_ts_mode {
+	MTK_TS_MODE_PTS = 0,
+	MTK_TS_MODE_DTS = 1,
+	MTK_TS_MODE_DETECTING = 2,
+};
+
+/**
+ * enum input_driven_mode  - decoder different input driven mode
+ * @NON_INPUT_DRIVEN     : non input driven, bs/frm pairwise trigger ipi
+ * @INPUT_DRIVEN_CB_FRM      : input driven, codec callback get frame
+ * @INPUT_DRIVEN_PUT_FRM : input driven, v4l2 initiatively put frame to codec
+ */
+enum vdec_input_driven_mode {
+	NON_INPUT_DRIVEN = 0,
+	INPUT_DRIVEN_CB_FRM = 1,
+	INPUT_DRIVEN_PUT_FRM = 2,
+};
+
+/**
+ * enum vdec_low_power_state  - decoder different state for low power mode
+ * @VDEC_LPW_WAIT  : waiting for start condition be met
+ * @VDEC_LPW_DEC   : start decode (group decode)
+ * @VDEC_LPW_RESET : get EOS or resolution change need to reset and continuous decoding,
+ *                   don't need to wait condition
+ */
+enum vdec_low_power_state {
+	VDEC_LPW_WAIT,
+	VDEC_LPW_DEC,
+	VDEC_LPW_RESET,
+};
+
+enum venc_lock {
+	VENC_LOCK_NONE,
+	VENC_LOCK_NORMAL,
+	VENC_LOCK_SEC
+};
+
+enum vdec_power_type {
+	VDEC_POWER_NORMAL = 0,
+	VDEC_POWER_RELEASE,
+	VDEC_POWER_ALWAYS,
+	VDEC_POWER_ALWAYS_OP,
+	VDEC_POWER_ALWAYS_FREQ,
+};
+
+enum vdec_slc_version {
+	VDEC_SLC_NOT_SUPPORT = 0,
+	VDEC_SLC_V1 = 1,
+	VDEC_SLC_VER_MAX,
+};
+
+/* struct vb2_dc_buf need sync with drivers\media\common\videobuf2\videobuf2-dma-contig.c */
+struct vb2_dc_buf {
+	struct device			*dev;
+	void				*vaddr;
+	unsigned long			size;
+	void				*cookie;
+	dma_addr_t			dma_addr;
+	unsigned long			attrs;
+	enum dma_data_direction		dma_dir;
+	struct sg_table			*dma_sgt;
+	struct frame_vector		*vec;
+
+	/* MMAP related */
+	struct vb2_vmarea_handler	handler;
+	refcount_t			refcount;
+	struct sg_table			*sgt_base;
+
+	/* DMABUF related */
+	struct dma_buf_attachment	*db_attach;
+
+	struct vb2_buffer		*vb;
+	bool				non_coherent_mem;
 };
 
 /**
@@ -151,42 +327,14 @@ struct mtk_q_data {
 	struct mtk_video_fmt    *fmt;
 };
 
-enum mtk_dec_param {
-	MTK_DEC_PARAM_NONE = 0,
-	MTK_DEC_PARAM_DECODE_MODE = (1 << 0),
-	MTK_DEC_PARAM_FRAME_SIZE = (1 << 1),
-	MTK_DEC_PARAM_FIXED_MAX_FRAME_SIZE = (1 << 2),
-	MTK_DEC_PARAM_CRC_PATH = (1 << 3),
-	MTK_DEC_PARAM_GOLDEN_PATH = (1 << 4),
-	MTK_DEC_PARAM_WAIT_KEY_FRAME = (1 << 5),
-	MTK_DEC_PARAM_NAL_SIZE_LENGTH = (1 << 6),
-	MTK_DEC_PARAM_FIXED_MAX_OUTPUT_BUFFER = (1 << 7),
-	MTK_DEC_PARAM_SEC_DECODE = (1 << 8),
-	MTK_DEC_PARAM_OPERATING_RATE = (1 << 9)
-};
-
-enum venc_lock {
-	VENC_LOCK_NONE,
-	VENC_LOCK_NORMAL,
-	VENC_LOCK_SEC
-};
-
-struct mtk_dec_params {
-	unsigned int    decode_mode;
-	unsigned int    frame_size_width;
-	unsigned int    frame_size_height;
-	unsigned int    fixed_max_frame_size_width;
-	unsigned int    fixed_max_frame_size_height;
-	char            *crc_path;
-	char            *golden_path;
-	unsigned int    fb_num_planes;
-	unsigned int	wait_key_frame;
-	unsigned int	nal_size_length;
-	unsigned int	svp_mode;
-	unsigned int	operating_rate;
-	u64	timestamp;
-	unsigned int	total_frame_bufq_count;
-	unsigned int	queued_frame_buf_count;
+struct mtk_detect_ts_param {
+	bool enable_detect_ts;
+	enum mtk_ts_mode mode;
+	struct mutex lock;
+	u64 first_disp_ts;
+	u64 record[VB2_MAX_FRAME];
+	int read_idx;
+	int recorded_size;
 };
 
 /**
@@ -229,28 +377,62 @@ struct mtk_enc_params {
 	unsigned int    rfs;
 	unsigned int    prependheader;
 	unsigned int    operationrate;
+	unsigned int    operationrate_adaptive;
 	unsigned int    bitratemode;
 	unsigned int    roion;
 	unsigned int    heif_grid_size;
 	struct mtk_color_desc color_desc; // data from userspace
+	struct mtk_venc_multi_ref multi_ref; //data from userspace
 	unsigned int    max_w;
 	unsigned int    max_h;
 	unsigned int    slbc_ready;
+	unsigned int    slbc_encode_performance;
+	unsigned int    slbc_cpu_used_performance;
+	unsigned int    slbc_request_extra;
 	unsigned int    i_qp;
 	unsigned int    p_qp;
 	unsigned int    b_qp;
 	unsigned int    svp_mode;
 	unsigned int    tsvc;
 	unsigned int    nonrefpfreq;
-	unsigned int    max_qp;
-	unsigned int    min_qp;
-	unsigned int    i_p_qp_delta;
-	unsigned int    qp_control_mode;
-	unsigned int    frame_level_qp;
-	unsigned int    maxrefpnum;
-	unsigned int    refpdistance;
-	unsigned int    refpfrmnum;
+	unsigned int    highquality;
+	int             max_qp;
+	int             min_qp;
+	int             framelvl_qp;
+	int             ip_qpdelta;
+	unsigned int	qp_control_mode;
 	unsigned int	dummynal;
+	unsigned int	lowlatencywfd;
+	unsigned int	slice_count;
+	int             priority;
+	unsigned int    wpp_mode;
+	unsigned int    low_latency_mode;
+	unsigned int    use_irq;
+	unsigned int    hier_ref_layer;
+	unsigned int    hier_ref_type;
+	unsigned int    temporal_layer_pcount;
+	unsigned int    temporal_layer_bcount;
+	unsigned int    max_ltr_num;
+	unsigned int    slice_header_spacing;
+	struct mtk_venc_vui_info vui_info; //data from userspace
+	int             qpvbr_upper_enable;
+	int             qpvbr_qp_upper_threshold;
+	int             qpvbr_qp_max_brratio;
+	int             qpvbr_lower_enable;
+	int             qpvbr_qp_lower_threshold;
+	int             qpvbr_qp_min_brratio;
+	int             cb_qp_offset;
+	int             cr_qp_offset;
+	int             mbrc_tk_spd;
+	int             ifrm_q_ltr;
+	int             pfrm_q_ltr;
+	int             bfrm_q_ltr;
+	unsigned int    mlvec_mode;
+	char            *config_data;
+	struct mtk_venc_visual_quality visual_quality;
+	struct mtk_venc_init_qp init_qp;
+	struct mtk_venc_frame_qp_range frame_qp_range;
+	struct mtk_venc_nal_length nal_length;
 };
 
 /*
@@ -288,6 +470,7 @@ struct venc_enc_param {
 	unsigned int rfs;
 	unsigned int prependheader;
 	unsigned int operationrate;
+	unsigned int operationrate_adaptive;
 	unsigned int bitratemode;
 	unsigned int roion;
 	unsigned int heif_grid_size;
@@ -304,16 +487,50 @@ struct venc_enc_param {
 	unsigned int svp_mode;
 	unsigned int tsvc;
 	unsigned int nonrefpfreq;
+	unsigned int highquality;
 	unsigned int max_qp;
 	unsigned int min_qp;
-	unsigned int i_p_qp_delta;
+	unsigned int framelvl_qp;
 	unsigned int qp_control_mode;
-	unsigned int frame_level_qp;
-	unsigned int maxrefpnum;
-	unsigned int refpdistance;
-	unsigned int refpfrmnum;
-	char *log;
+	unsigned int ip_qpdelta;
 	unsigned int dummynal;
+	unsigned int lowlatencywfd;
+	unsigned int slice_count;
+	unsigned int slbc_addr;
+	char *set_vcp_buf;
+	unsigned int wpp_mode;
+	unsigned int low_latency_mode;
+	unsigned int hier_ref_layer;
+	unsigned int hier_ref_type;
+	unsigned int temporal_layer_pcount;
+	unsigned int temporal_layer_bcount;
+	unsigned int max_ltr_num;
+	unsigned int slice_header_spacing;
+	unsigned int venc_dvfs_state;
+	unsigned int ctx_id;
+	unsigned int priority;
+	unsigned int codec_fmt;
+	struct mtk_venc_multi_ref *multi_ref;
+	struct mtk_venc_vui_info *vui_info;
+	char *log;
+	int qpvbr_upper_enable;
+	int qpvbr_qp_upper_threshold;
+	int qpvbr_qp_max_brratio;
+	int qpvbr_lower_enable;
+	int qpvbr_qp_lower_threshold;
+	int qpvbr_qp_min_brratio;
+	int cb_qp_offset;
+	int cr_qp_offset;
+	int mbrc_tk_spd;
+	int ifrm_q_ltr;
+	int pfrm_q_ltr;
+	int bfrm_q_ltr;
+	unsigned int mlvec_mode;
+	char *config_data;
+	struct mtk_venc_visual_quality *visual_quality;
+	struct mtk_venc_init_qp *init_qp;
+	struct mtk_venc_frame_qp_range *frame_qp_range;
+	struct mtk_venc_nal_length *nal_length;
 };
 
 /*
@@ -326,11 +543,66 @@ struct venc_frm_buf {
 	u32 index;
 	unsigned int num_planes;
 	u64 timestamp;
-	unsigned int roimap;
 	bool has_meta;
-	unsigned int qpmap;
 	struct dma_buf *meta_dma;
+	struct dma_buf_attachment *buf_att;
+	struct sg_table *sgt;
 	dma_addr_t meta_addr;
+	struct dma_buf_attachment *qpmap_dma_att;
+	struct sg_table *qpmap_sgt;
+	unsigned int meta_offset;
+	bool has_qpmap;
+	struct dma_buf *qpmap_dma;
+	dma_addr_t qpmap_dma_addr;
+	struct dma_buf *metabuffer_dma;
+	dma_addr_t metabuffer_addr;
+	dma_addr_t dyparams_dma_addr;
+	struct dma_buf *dyparams_dma;
+	unsigned int dyparams_offset;
+};
+
+struct dma_gen_buf {
+	void  *va;
+	struct dma_buf *dmabuf;
+	dma_addr_t dma_general_addr;
+	struct dma_buf_attachment *buf_att;
+	struct sg_table *sgt;
+};
+
+struct dma_meta_buf {
+	struct dma_buf *dmabuf;
+	dma_addr_t dma_meta_addr;
+	struct dma_buf_attachment *buf_att;
+	struct sg_table *sgt;
+};
+
+enum metadata_type {
+	METADATA_HDR               = 0,
+	METADATA_QPMAP             = 1,
+	METADATA_DYNAMICPARAM    = 4
+};
+
+struct meta_describe {
+	uint8_t invalid;  //1: valid 0:invalid
+	uint8_t fd_flag;  //whether pass with fd - 1:yes 0:no
+	uint32_t type;
+	uint32_t size;  //size of metadata (total in 32 bits length)
+	uint32_t value; //fd number or memory offset from the begginning of metadata buffer
+};
+
+struct metadata_info {
+	struct meta_describe metadata_dsc[MTK_MAX_METADATA_NUM];
+};
+
+struct vdec_set_frame_work_struct {
+	struct work_struct work;
+	struct mtk_vcodec_ctx *ctx;
+};
+
+struct vdec_check_alive_work_struct {
+	struct work_struct work;
+	struct mtk_vcodec_ctx *ctx;
+	struct mtk_vcodec_dev *dev;
 };
 
 /**
@@ -380,21 +652,33 @@ struct venc_frm_buf {
 struct mtk_vcodec_ctx {
 	enum mtk_instance_type type;
 	struct mtk_vcodec_dev *dev;
+	struct mtk_vcodec_ctx *dev_ctx; // = &dev->dev_ctx
 	struct list_head list;
+	int cpu_caller_pid;
+
+	/* for vdec open set cgroup colocate */
+	struct workqueue_struct *cgrp_wq;
+	struct delayed_work cgrp_delay_work;
+	bool cgrp_enable;
 
 	struct v4l2_fh fh;
 	struct v4l2_m2m_ctx *m2m_ctx;
+	struct device *general_dev;
 	struct mtk_q_data q_data[2];
 	int id;
 	enum mtk_instance_state state;
-	enum mtk_dec_param dec_param_change;
+	bool is_unsupport;
+	spinlock_t state_lock;
 	struct mtk_dec_params dec_params;
+	struct hdr10plus_info hdr10plus_buf;
 	enum mtk_encode_param param_change;
 	struct mtk_enc_params enc_params;
 
 	const struct vdec_common_if *dec_if;
 	const struct venc_common_if *enc_if;
 	unsigned long drv_handle;
+	struct mutex init_lock;
+	struct mutex ipi_use_lock; // lock for ipi_recv is using ctx
 	uintptr_t bs_list[VB2_MAX_FRAME+1];
 	uintptr_t fb_list[VB2_MAX_FRAME+1];
 
@@ -404,11 +688,21 @@ struct mtk_vcodec_ctx {
 	int is_hdr;
 	int last_is_hdr;
 	unsigned int errormap_info[VB2_MAX_FRAME];
+	u32 err_msg;
+	u64 timestamp;
 	s64 input_max_ts;
+	struct mtk_detect_ts_param detect_ts_param;
+	int input_slot;
+	bool has_first_input;
 
-	int int_cond[MTK_VDEC_HW_NUM];
+	bool waiting_fmt; // after resolution change need wait g_fmt
+	bool is_flushing;
+	unsigned int eos_type;
+	u64 early_eos_ts;
+
+	int int_cond[MTK_VDEC_IRQ_NUM];
 	int int_type;
-	wait_queue_head_t queue[MTK_VDEC_HW_NUM];
+	wait_queue_head_t queue[MTK_VDEC_IRQ_NUM];
 	unsigned int irq_status;
 
 	struct v4l2_ctrl_handler ctrl_hdl;
@@ -419,11 +713,36 @@ struct mtk_vcodec_ctx {
 	struct mtk_video_enc_buf *enc_flush_buf;
 	struct vb2_buffer *pend_src_buf;
 	wait_queue_head_t fm_wq;
-	int input_driven;
-	int user_lock_hw;
+	wait_queue_head_t bs_wq;
+	unsigned int *ipi_blocked;
+	enum vdec_input_driven_mode input_driven;
+	bool output_async;
+
+	/* for vdec low power mode */
+	spinlock_t lpw_lock;
+	bool low_pw_mode;
+	bool in_group;
+	bool prev_no_input;
+	bool dynamic_low_latency;
+	bool lpw_timer_wait; // if timer is start waiting
+	struct timer_list lpw_timer;
+	enum vdec_low_power_state lpw_state;
+	unsigned int lpw_dec_start_cnt;	// count for low power mode to decode after start streaming
+	unsigned int group_dec_cnt;
+	u64 group_start_time; // jiffies_to_nsecs
+	u64 lpw_start_time; // jiffies_to_nsecs
+	u64 lpw_start_ts; // ns
+	u64 lpw_last_disp_ts;
+	u64 lpw_ts_diff;
+
+	struct workqueue_struct *vdec_set_frame_wq;
+	struct vdec_set_frame_work_struct vdec_set_frame_work;
+
 	/* for user lock HW case release check */
 	struct mutex hw_status;
+	enum vdec_power_type power_type[MTK_VDEC_HW_NUM];
 	int hw_locked[MTK_VDEC_HW_NUM];
+	int core_locked[MTK_VENC_HW_NUM];
 	int async_mode;
 	int oal_vcodec;
 
@@ -432,14 +751,65 @@ struct mtk_vcodec_ctx {
 	enum v4l2_quantization quantization;
 	enum v4l2_xfer_func xfer_func;
 
+	int init_cnt;
 	int decoded_frame_cnt;
+	int last_decoded_frame_cnt; // used for timer to check active state of decoded ctx
+	int op_rate_adaptive; // current using adaptive op rate
+	int last_monitor_op; // current monitored op rate
+	unsigned int input_buf_cnt;
+	unsigned int prev_inbuf_time;
 	struct mutex buf_lock;
 	struct mutex worker_lock;
-#ifdef CONFIG_MTK_SLBC
 	struct slbc_data sram_data;
-#endif
+	struct slbc_data sram_data_extra;
+	bool later_cnt_once;
+	struct mutex q_mutex;
 	int use_slbc;
+	int use_slbc_extra;
+	unsigned int slbc_addr;
+	unsigned int slbc_addr_extra;
+	int sysram_enable;
+#if ENABLE_FENCE
+	struct sync_timeline *p_timeline_obj;
+#endif
+	bool use_fence;
+	int fence_idx;
+	struct dma_gen_buf dma_buf_list[MAX_GEN_BUF_CNT];
+	struct dma_meta_buf dma_meta_list[MAX_META_BUF_CNT];
+	struct mutex gen_buf_list_lock;
+	struct mutex meta_buf_lock;
+	/*
+	 * need resched or not
+	 * core want to re-schedule m2m ctx if disp/free list is not empty
+	 */
+	bool resched;
+	struct mutex resched_lock;
+	unsigned char is_active;
+
+	/* for max buf info query*/
+	unsigned int max_buf_pixelformat;
+	unsigned int max_buf_width;
+	unsigned int max_buf_height;
+	int cpu_hint;
 };
+
+/*
+ * struct venc_frm_buf - frame buffer information used in venc_if_encode()
+ * @fb_addr: plane frame buffer addresses
+ * @num_planes: frmae buffer plane num
+ */
+struct venc_larb_port {
+	unsigned int total_port_num;
+	unsigned int port_id[MTK_VENC_PORT_NUM];
+	unsigned int ram_type[MTK_VENC_PORT_NUM];
+};
+
+struct vdec_vp_mode_buf {
+	struct vcodec_mem_obj mem;
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
+};
+
 
 /**
  * struct mtk_vcodec_dev - driver data
@@ -482,51 +852,165 @@ struct mtk_vcodec_dev {
 	struct video_device *vfd_dec;
 	struct video_device *vfd_enc;
 	struct iommu_domain *io_domain;
+	struct mtk_chipid chip_id;
+	unsigned int support_acp;
+
+	const char *platform;
+	enum mtk_vcodec_ipm vdec_hw_ipm;
+	enum mtk_vcodec_ipm venc_hw_ipm;
+	unsigned int hw_max_count;
 
 	struct v4l2_m2m_dev *m2m_dev_dec;
 	struct v4l2_m2m_dev *m2m_dev_enc;
 	struct platform_device *plat_dev;
 	struct platform_device *vcu_plat_dev;
 	struct list_head ctx_list;
+	struct notifier_block vcp_notify;
 	spinlock_t irqlock;
+	struct mtk_vcodec_ctx dev_ctx; // for query cap & set property
 	struct mtk_vcodec_ctx *curr_dec_ctx[MTK_VDEC_HW_NUM];
 	struct mtk_vcodec_ctx *curr_enc_ctx[MTK_VENC_HW_NUM];
 	void __iomem *dec_reg_base[NUM_MAX_VDEC_REG_BASE];
 	void __iomem *enc_reg_base[NUM_MAX_VENC_REG_BASE];
+	void *com_vsi;
 
+	unsigned int power_in_vcp;
 	bool dec_is_power_on[MTK_VDEC_HW_NUM];
+	bool enc_is_power_on[MTK_VENC_HW_NUM];
 	spinlock_t dec_power_lock[MTK_VDEC_HW_NUM];
+	spinlock_t enc_power_lock[MTK_VENC_HW_NUM];
+	int dec_m4u_ports[NUM_MAX_VDEC_M4U_PORT];
+	atomic_t dec_clk_ref_cnt[MTK_VDEC_HW_NUM];
+	atomic_t larb_ref_cnt;
+	atomic_t smi_dump_ref_cnt;
+	atomic_t smi_ctrl_get_ref_cnt[MAX(MTK_VDEC_HW_NUM,MTK_VENC_HW_NUM)]; // for get_if_in_use
+	unsigned int dec_ao_pw_cnt;
 
 	unsigned long id_counter;
 
 	struct workqueue_struct *decode_workqueue;
 	struct workqueue_struct *encode_workqueue;
+	struct workqueue_struct *check_alive_workqueue;
+	struct vdec_check_alive_work_struct check_alive_work;
+
 	int int_cond;
 	int int_type;
 	struct mutex ctx_mutex;
 	struct mutex dev_mutex;
-	wait_queue_head_t queue;
+	struct mutex ipi_mutex;
+	struct mutex ipi_mutex_res;
+	struct mutex cap_mutex;
+	struct mtk_vcodec_msgq mq;
 
-	int dec_irq[MTK_VDEC_HW_NUM];
-	int enc_irq;
+	int dec_irq[MTK_VDEC_IRQ_NUM];
+	int enc_irq[MTK_VENC_HW_NUM];
 	int enc_lt_irq;
 
 	struct semaphore dec_sem[MTK_VDEC_HW_NUM];
 	struct semaphore enc_sem[MTK_VENC_HW_NUM];
+	atomic_t dec_hw_active[MTK_VDEC_HW_NUM];
 
 	struct mutex dec_dvfs_mutex;
 	struct mutex enc_dvfs_mutex;
+	struct mutex enc_qos_mutex;  /* only for SWRGO, need to remove in mp branch */
+	struct mutex cpu_hint_mutex;
+	struct mutex cgrp_mutex;
+	unsigned int cpu_hint_ref_cnt;
+	int cpu_hint_mode;
+	unsigned int cgrp_ref_cnt;
+	unsigned int uclamp_util_val;
 
 	struct mtk_vcodec_pm pm;
-	unsigned int dec_capability;
-	unsigned int enc_capability;
-
 	struct notifier_block pm_notifier;
 	bool is_codec_suspending;
+	bool has_backup;
+	bool codec_stop_done;
 
 	int dec_cnt;
 	int enc_cnt;
+
+	struct share_obj dec_ipi_data;
+	struct share_obj enc_ipi_data;
+	int *dec_mem_slot_stat;
+	int *enc_mem_slot_stat;
+
+	int dec_hw_cnt;
+	int enc_hw_cnt;
+
+	struct plist_head vdec_rlist[MTK_VDEC_HW_NUM];
+	struct plist_head venc_rlist[MTK_VENC_HW_NUM];
+	struct icc_path *vdec_qos_req[MTK_VDEC_PORT_NUM];
+	struct icc_path *venc_qos_req[MTK_VENC_PORT_NUM];
+
+	int vdec_freq_cnt;
+	int venc_freq_cnt;
+	unsigned long vdec_freqs[MAX_CODEC_FREQ_STEP];
+	unsigned long venc_freqs[MAX_CODEC_FREQ_STEP];
+
+	struct regulator *vdec_reg;
+	struct regulator *venc_reg;
+	struct venc_larb_port venc_ports[MTK_VENC_HW_NUM];
+	struct workqueue_struct *vdec_buf_wq;
+	struct work_struct vdec_buf_work;
+
+	int vdec_op_rate_cnt;
+	//int venc_op_rate_cnt;
+	int vdec_tput_cnt;
+	int venc_tput_cnt;
+	int vdec_cfg_cnt;
+	int venc_cfg_cnt;
+	int vdec_port_cnt;
+	int venc_port_cnt;
+	int venc_larb_cnt;
+	int vdec_larb_cnt;
+	int vdec_port_idx[MTK_VDEC_HW_NUM];
+	int venc_port_idx[MTK_VENC_HW_NUM];
+	struct mtk_tf_info *tf_info;
+	struct mtk_vio_info *vio_info;
+	struct vcodec_perf *vdec_tput;
+	struct vcodec_perf *venc_tput;
+	//struct vcodec_config *vdec_cfg;
+	struct vcodec_config *venc_cfg;
+	struct vcodec_op_rate *vdec_dflt_op_rate;
+	//struct vcodec_op_rate *venc_dflt_op_rate;
+	struct clk *vdec_mmdvfs_clk;
+	struct clk *venc_mmdvfs_clk;
+	struct list_head vdec_dvfs_inst;
+	struct list_head venc_dvfs_inst;
+	struct dvfs_params vdec_dvfs_params;
+	struct dvfs_params venc_dvfs_params;
+	struct vcodec_dev_qos venc_qos;
+	struct vcodec_port_bw *vdec_port_bw;
+	struct vcodec_port_bw *venc_port_bw;
+	struct vcodec_larb_bw *vdec_larb_bw;
+	struct vcodec_larb_bw *venc_larb_bw;
+
+	enum vdec_slc_version dec_slc_ver;
+	bool queued_frame;
+	struct slc_param dec_slc_frame;
+	struct slc_param dec_slc_ube;
+
+	//slb cpu used more performance than venc when throughput is lower than value
+	int enc_slb_cpu_used_perf;
+
+	int enc_slb_extra;
+
+	bool smmu_enabled;
+	struct mutex vp_mode_buf_mutex;
+	struct vdec_vp_mode_buf vp_mode_buf[2][3]; // [0] for 8 bit, [1] for 10 bit, [3] = {y dat, c dat, len}
+/**
+ *	struct ion_client *ion_vdec_client;
+ *	struct ion_client *ion_venc_client;
+ **/
+	struct list_head log_param_list;
+	struct list_head prop_param_list;
+	struct mutex log_param_mutex;
+	struct mutex prop_param_mutex;
+
+	struct device *smmu_dev;
+	unsigned int iommu_domain_swtich;
 	enum venc_lock enc_hw_locked[MTK_VENC_HW_NUM];
+	unsigned int svp_mtee;
 };
 
 static inline struct mtk_vcodec_ctx *fh_to_ctx(struct v4l2_fh *fh)

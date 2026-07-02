@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2020 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: PC Chen <pc.chen@mediatek.com>
+ * Tiffany Lin <tiffany.lin@mediatek.com>
  */
-
 #ifndef _HAL_API_H_
 #define _HAL_API_H_
 #include "val_types_public.h"

@@ -54,7 +54,7 @@ static void test_work_func(struct work_struct *work)
 
 	ret = debug_get_debug(SENSOR_TYPE_INVALID, buffer, len);
 	if (ret > 0)
-		pr_err("\n%s\n", buffer);
+		pr_info("\n%s\n", buffer);
 	kfree(buffer);
 	test_config();
 }

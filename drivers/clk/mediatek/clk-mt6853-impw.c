@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0+
-/*
- * Copyright (c) 2019 MediaTek Inc.
- */
-
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright (c) 2020 MediaTek Inc.
+// Author: Owen Chen <owen.chen@mediatek.com>
 
 #include <linux/clk-provider.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 
 #include "clk-mtk.h"
@@ -14,13 +14,9 @@
 
 #define MT_CLKMGR_MODULE_INIT	0
 
-#define MT_CCF_BRINGUP			1
+#define MT_CCF_BRINGUP		1
 
 #define INV_OFS			-1
-
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status pwr_stat = GATE_PWR_STAT(INV_OFS, INV_OFS,
-		0x00b0, BIT(15), 0);
 
 static const struct mtk_gate_regs impw_cg_regs = {
 	.set_ofs = 0xe08,
@@ -35,7 +31,6 @@ static const struct mtk_gate_regs impw_cg_regs = {
 		.regs = &impw_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &pwr_stat,			\
 	}
 
 static const struct mtk_gate impw_clks[] = {
@@ -97,10 +92,18 @@ static struct platform_driver clk_mt6853_impw_drv = {
 		.of_match_table = of_match_clk_mt6853_impw,
 	},
 };
-static int __init clk_mt6853_impw_platform_init(void)
+
+static int __init clk_mt6853_impw_init(void)
 {
 	return platform_driver_register(&clk_mt6853_impw_drv);
 }
-arch_initcall(clk_mt6853_impw_platform_init);
 
+static void __exit clk_mt6853_impw_exit(void)
+{
+	platform_driver_unregister(&clk_mt6853_impw_drv);
+}
+
+arch_initcall(clk_mt6853_impw_init);
+module_exit(clk_mt6853_impw_exit);
+MODULE_LICENSE("GPL");
 #endif	/* MT_CLKMGR_MODULE_INIT */

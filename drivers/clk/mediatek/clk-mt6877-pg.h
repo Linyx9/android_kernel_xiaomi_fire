@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef __DRV_CLK_MT6877_PG_H
 #define __DRV_CLK_MT6877_PG_H
@@ -47,5 +47,6 @@ struct pg_callbacks {
 extern struct pg_callbacks *register_pg_callback(struct pg_callbacks *pgcb);
 extern void mtcmos_force_off(void);
 extern void mtk_check_subsys_swcg(enum subsys_id id);
+extern struct provider_clk *get_all_provider_clks(bool is_internal);
 
 #endif/* __DRV_CLK_MT6877_PG_H */

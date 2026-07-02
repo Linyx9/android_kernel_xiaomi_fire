@@ -47,23 +47,24 @@ static bool get_done_spc;
 static int last_size_spc;
 
 
-#if 0
-static bool selective_read_eeprom(kal_uint16 addr, BYTE *data)
-{
-	char pu_send_cmd[2] = { (char)(addr >> 8), (char)(addr & 0xFF) };
+/*
+ * static bool selective_read_eeprom(kal_uint16 addr, BYTE *data)
+ * {
+ *	char pu_send_cmd[2] = { (char)(addr >> 8), (char)(addr & 0xFF) };
+ *
+ *	if (addr > IMX230_MAX_OFFSET)
+ *		return false;
+ *
+ *	if (iReadRegI2C(pu_send_cmd,
+ *		2,
+ *		(u8 *) data,
+ *		1,
+ *		IMX230_EEPROM_READ_ID) < 0)
+ *		return false;
+ *	return true;
+ * }
+ */
 
-	if (addr > IMX230_MAX_OFFSET)
-		return false;
-
-	if (iReadRegI2C(pu_send_cmd,
-		2,
-		(u8 *) data,
-		1,
-		IMX230_EEPROM_READ_ID) < 0)
-		return false;
-	return true;
-}
-#endif
 static bool _read_imx230_eeprom(kal_uint16 addr, BYTE *data, int size)
 {
 	int i = 0;
@@ -116,14 +117,14 @@ void read_imx230_SPC(BYTE *data)
 
 	pr_debug("read imx230 SPC, size = %d\n", size);
 
-#if 1
+// #if 1
 	if (!get_done_spc || last_size_spc != size) {
 		if (!_read_imx230_eeprom(addr, data, size)) {
 			get_done_spc = 0;
 			last_size_spc = 0;
 		}
 	}
-#endif
+// #endif
 	/* return true; */
 }
 

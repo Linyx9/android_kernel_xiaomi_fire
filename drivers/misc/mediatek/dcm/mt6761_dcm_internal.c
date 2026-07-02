@@ -22,17 +22,9 @@
 static short dcm_cpu_cluster_stat;
 static short dcm_debug;
 
-unsigned int all_dcm_type =
-		(ARMCORE_DCM_TYPE | MCUSYS_DCM_TYPE | RGU_DCM_TYPE
-		| GIC_SYNC_DCM_TYPE | INFRA_DCM_TYPE
-		| DDRPHY_DCM_TYPE | EMI_DCM_TYPE | DRAMC_DCM_TYPE
-		);
-unsigned int init_dcm_type =
-		(ARMCORE_DCM_TYPE | MCUSYS_DCM_TYPE | RGU_DCM_TYPE
-		| GIC_SYNC_DCM_TYPE | INFRA_DCM_TYPE
-		);
+unsigned int init_dcm_type = ALL_DCM_TYPE;
 
-#if defined(__KERNEL__) && defined(CONFIG_OF)
+#if defined(__KERNEL__) && IS_ENABLED(CONFIG_OF)
 unsigned long dcm_infracfg_ao_base;
 unsigned long dcm_mcucfg_base;
 /* unsigned long dcm_mcucfg_phys_base; */
@@ -90,16 +82,16 @@ int sync_dcm_set_cci_div(unsigned int cci)
 	 * 2. set xxx_sync_dcm_tog from 0 to 1 for making sure it is toggled
 	 */
 	reg_write(MCUCFG_SYNC_DCM_CCI_REG,
-		  aor(reg_read(MCUCFG_SYNC_DCM_CCI_REG),
-		      ~MCUCFG_SYNC_DCM_SEL_CCI_MASK,
-		      cci << MCUCFG_SYNC_DCM_SEL_CCI));
+		  (reg_read(MCUCFG_SYNC_DCM_CCI_REG) |
+		      (~MCUCFG_SYNC_DCM_SEL_CCI_MASK) |
+		      (cci << MCUCFG_SYNC_DCM_SEL_CCI)));
 	reg_write(MCUCFG_SYNC_DCM_CCI_REG,
-		aor(reg_read(MCUCFG_SYNC_DCM_CCI_REG),
-		~MCUCFG_SYNC_DCM_CCI_TOGMASK,
+		(reg_read(MCUCFG_SYNC_DCM_CCI_REG) |
+		(~MCUCFG_SYNC_DCM_CCI_TOGMASK) |
 		MCUCFG_SYNC_DCM_CCI_TOG0));
 	reg_write(MCUCFG_SYNC_DCM_CCI_REG,
-		aor(reg_read(MCUCFG_SYNC_DCM_CCI_REG),
-		~MCUCFG_SYNC_DCM_CCI_TOGMASK,
+		(reg_read(MCUCFG_SYNC_DCM_CCI_REG) |
+		(~MCUCFG_SYNC_DCM_CCI_TOGMASK) |
 		MCUCFG_SYNC_DCM_CCI_TOG1));
 #ifdef __KERNEL__
 	dcm_pr_dbg("%s: MCUCFG_SYNC_DCM_CCI_REG=0x%08x, cci_div_sel=%u/%u\n",
@@ -107,8 +99,7 @@ int sync_dcm_set_cci_div(unsigned int cci)
 	dcm_pr_dbg("%s: MCUCFG_SYNC_DCM_CCI_REG=0x%X, cci_div_sel=%u/%u\n",
 #endif
 		 __func__, reg_read(MCUCFG_SYNC_DCM_CCI_REG),
-		 (and(reg_read(MCUCFG_SYNC_DCM_CCI_REG),
-		      MCUCFG_SYNC_DCM_SEL_CCI_MASK) >> MCUCFG_SYNC_DCM_SEL_CCI),
+		 ((reg_read(MCUCFG_SYNC_DCM_CCI_REG) & MCUCFG_SYNC_DCM_SEL_CCI_MASK) >> MCUCFG_SYNC_DCM_SEL_CCI),
 		 cci);
 
 	return 0;
@@ -179,18 +170,8 @@ int sync_dcm_set_cpu_div(unsigned int cci, unsigned int mp0,
  * following is implementation per DCM module.
  * 1. per-DCM function is 1-argu with ON/OFF/MODE option.
  *****************************************/
-int dcm_topckg(int on)
-{
-	return 0;
-}
-
 void dcm_infracfg_ao_emi_indiv(int on)
 {
-}
-
-int dcm_infra_preset(int on)
-{
-	return 0;
 }
 
 int dcm_infra(int on)
@@ -203,9 +184,16 @@ int dcm_infra(int on)
 	return 0;
 }
 
-int dcm_peri(int on)
+static int dcm_infra_is_on(void)
 {
-	return 0;
+	int ret = 1;
+
+	ret &= dcm_infracfg_ao_dcm_infrabus_group_is_on();
+	ret &= dcm_infracfg_ao_dcm_mem_group_is_on();
+	ret &= dcm_infracfg_ao_dcm_peribus_group_is_on();
+	ret &= dcm_infracfg_ao_dcm_ssusb_group_is_on();
+
+	return ret;
 }
 
 int dcm_armcore(int mode)
@@ -213,6 +201,15 @@ int dcm_armcore(int mode)
 	dcm_mcu_misccfg_bus_arm_pll_divider_dcm(mode);
 
 	return 0;
+}
+
+static int dcm_armcore_is_on(void)
+{
+	int ret = 1;
+
+	ret &= dcm_mcu_misccfg_bus_arm_pll_divider_dcm_is_on();
+
+	return ret;
 }
 
 int dcm_mcusys(int on)
@@ -227,25 +224,19 @@ int dcm_mcusys(int on)
 	return 0;
 }
 
-int dcm_mcusys_preset(int on)
+static int dcm_mcusys_is_on(void)
 {
-	return 0;
+	int ret = 1;
+
+	ret &= dcm_mcu_misccfg_adb400_dcm_is_on();
+	ret &= dcm_mcu_misccfg_bus_clock_dcm_is_on();
+	ret &= dcm_mcu_misccfg_bus_fabric_dcm_is_on();
+	ret &= dcm_mcu_misccfg_l2_shared_dcm_is_on();
+	ret &= dcm_mcu_misccfg_mcu_misc_dcm_is_on();
+
+	return ret;
 }
 
-int dcm_big_core_preset(void)
-{
-	return 0;
-}
-
-int dcm_big_core(int on)
-{
-	return 0;
-}
-
-int dcm_stall(int on)
-{
-	return 0;
-}
 int dcm_gic_sync(int on)
 {
 	dcm_mcu_misccfg_gic_sync_dcm(on);
@@ -253,9 +244,13 @@ int dcm_gic_sync(int on)
 	return 0;
 }
 
-int dcm_last_core(int on)
+static int dcm_gic_sync_is_on(void)
 {
-	return 0;
+	int ret = 1;
+
+	ret &= dcm_mcu_misccfg_gic_sync_dcm_is_on();
+
+	return ret;
 }
 
 int dcm_rgu(int on)
@@ -263,6 +258,15 @@ int dcm_rgu(int on)
 	dcm_mp0_cpucfg_mp0_rgu_dcm(on);
 
 	return 0;
+}
+
+static int dcm_rgu_is_on(void)
+{
+	int ret = 1;
+
+	ret &= dcm_mp0_cpucfg_mp0_rgu_dcm_is_on();
+
+	return ret;
 }
 
 int dcm_dramc_ao(int on)
@@ -273,12 +277,32 @@ int dcm_dramc_ao(int on)
 	return 0;
 }
 
+static int dcm_dramc_ao_is_on(void)
+{
+	int ret = 1;
+
+	ret &= dcm_dramc_ch0_top1_dcm_dramc_group_is_on();
+	ret &= dcm_dramc_ch1_top1_dcm_dramc_group_is_on();
+
+	return ret;
+}
+
 int dcm_ddrphy(int on)
 {
 	dcm_dramc_ch0_top0_ddrphy(on);
 	dcm_dramc_ch1_top0_ddrphy(on);
 
 	return 0;
+}
+
+static int dcm_ddrphy_is_on(void)
+{
+	int ret = 1;
+
+	ret &= dcm_dramc_ch0_top0_ddrphy_is_on();
+	ret &= dcm_dramc_ch1_top0_ddrphy_is_on();
+
+	return ret;
 }
 
 int dcm_emi(int on)
@@ -289,19 +313,14 @@ int dcm_emi(int on)
 	return 0;
 }
 
-int dcm_lpdma(int on)
+static int dcm_emi_is_on(void)
 {
-	return 0;
-}
+	int ret = 1;
 
-int dcm_mcsi_preset(int on)
-{
-	return 0;
-}
+	ret &= dcm_chn0_emi_dcm_emi_group_is_on();
+	ret &= dcm_chn1_emi_dcm_emi_group_is_on();
 
-int dcm_mcsi(int on)
-{
-	return 0;
+	return ret;
 }
 
 void dcm_dump_regs(void)
@@ -345,49 +364,23 @@ void dcm_dump_regs(void)
 	REG_DUMP(CHN1_EMI_CHN_EMI_CONB);
 }
 
-void get_default(unsigned int *type, int *state)
+void get_init_state_and_type(unsigned int *type, int *state)
 {
-#ifndef DCM_DEFAULT_ALL_OFF
-	/** enable all dcm **/
-	*type = init_dcm_type;
-	*state = DCM_DEFAULT;
-#else /* DCM_DEFAULT_ALL_OFF */
-	*type = all_dcm_type;
+#if defined(DCM_DEFAULT_ALL_OFF)
+	*type = ALL_DCM_TYPE;
 	*state = DCM_OFF;
-#endif /* #ifndef DCM_DEFAULT_ALL_OFF */
-}
-
-void get_init_type(unsigned int *type)
-{
-	*type = init_dcm_type;
-}
-
-void get_all_type(unsigned int *type)
-{
-	*type = all_dcm_type;
-}
-
-void get_init_by_k_type(unsigned int *type)
-{
-#ifdef ENABLE_DCM_IN_LK
+#elif defined(ENABLE_DCM_IN_LK)
 	*type = INIT_DCM_TYPE_BY_K;
+	*state = DCM_INIT;
 #else
 	*type = init_dcm_type;
+	*state = DCM_INIT;
 #endif
-}
-
-void set_debug_mode(unsigned int mode)
-{
-	 dcm_debug = mode;
 }
 
 struct DCM_OPS dcm_ops = {
 	.dump_regs = (DCM_FUNC_VOID_VOID) dcm_dump_regs,
-	.get_default = (DCM_FUNC_VOID_UINTR_INTR) get_default,
-	.get_init_type = (DCM_FUNC_VOID_UINTR) get_init_type,
-	.get_all_type = (DCM_FUNC_VOID_UINTR) get_all_type,
-	.get_init_by_k_type = (DCM_FUNC_VOID_UINTR) get_init_by_k_type,
-	.set_debug_mode = (DCM_FUNC_VOID_UINT) set_debug_mode,
+	.get_init_state_and_type = (DCM_FUNC_VOID_UINTR_INTR) get_init_state_and_type,
 };
 
 struct DCM_BASE dcm_base_array[] = {
@@ -406,126 +399,57 @@ struct DCM dcm_array[NR_DCM_TYPE] = {
 		.typeid = ARMCORE_DCM_TYPE,
 		.name = "ARMCORE_DCM",
 		.func = (DCM_FUNC) dcm_armcore,
-		.current_state = ARMCORE_DCM_MODE1,
+		.is_on_func = dcm_armcore_is_on,
 		.default_state = ARMCORE_DCM_MODE1,
-		.disable_refcnt = 0,
 	},
 	{
 		.typeid = MCUSYS_DCM_TYPE,
 		.name = "MCUSYS_DCM",
 		.func = (DCM_FUNC) dcm_mcusys,
-		.preset_func = (DCM_PRESET_FUNC) dcm_mcusys_preset,
-		.current_state = MCUSYS_DCM_ON,
+		.is_on_func = dcm_mcusys_is_on,
 		.default_state = MCUSYS_DCM_ON,
-		.disable_refcnt = 0,
 	},
 	{
 		.typeid = INFRA_DCM_TYPE,
 		.name = "INFRA_DCM",
 		.func = (DCM_FUNC) dcm_infra,
-		.preset_func = (DCM_PRESET_FUNC) dcm_infra_preset,
-		.current_state = INFRA_DCM_ON,
+		.is_on_func = dcm_infra_is_on,
 		.default_state = INFRA_DCM_ON,
-		.disable_refcnt = 0,
-	},
-	{
-		.typeid = PERI_DCM_TYPE,
-		.name = "PERI_DCM",
-		.func = (DCM_FUNC) dcm_peri,
-		/*.preset_func = (DCM_PRESET_FUNC) dcm_peri_preset,*/
-		.current_state = PERI_DCM_OFF,
-		.default_state = PERI_DCM_OFF,
-		.disable_refcnt = 0,
 	},
 	{
 		.typeid = EMI_DCM_TYPE,
 		.name = "EMI_DCM",
 		.func = (DCM_FUNC) dcm_emi,
-		.current_state = EMI_DCM_ON,
+		.is_on_func = dcm_emi_is_on,
 		.default_state = EMI_DCM_ON,
-		.disable_refcnt = 0,
 	},
 	{
 		.typeid = DRAMC_DCM_TYPE,
 		.name = "DRAMC_DCM",
 		.func = (DCM_FUNC) dcm_dramc_ao,
-		.current_state = DRAMC_AO_DCM_ON,
+		.is_on_func = dcm_dramc_ao_is_on,
 		.default_state = DRAMC_AO_DCM_ON,
-		.disable_refcnt = 0,
 	},
 	{
 		.typeid = DDRPHY_DCM_TYPE,
 		.name = "DDRPHY_DCM",
 		.func = (DCM_FUNC) dcm_ddrphy,
-		.current_state = DDRPHY_DCM_ON,
+		.is_on_func = dcm_ddrphy_is_on,
 		.default_state = DDRPHY_DCM_ON,
-		.disable_refcnt = 0,
-	},
-	{
-		.typeid = STALL_DCM_TYPE,
-		.name = "STALL_DCM",
-		.func = (DCM_FUNC) dcm_stall,
-		/*.preset_func = (DCM_PRESET_FUNC) dcm_stall_preset,*/
-		.current_state = STALL_DCM_OFF,
-		.default_state = STALL_DCM_OFF,
-		.disable_refcnt = 0,
-	},
-	{
-		.typeid = BIG_CORE_DCM_TYPE,
-		.name = "BIG_CORE_DCM",
-		.func = (DCM_FUNC) dcm_big_core,
-		.current_state = BIG_CORE_DCM_OFF,
-		.default_state = BIG_CORE_DCM_OFF,
-		.disable_refcnt = 0,
 	},
 	{
 		.typeid = GIC_SYNC_DCM_TYPE,
 		.name = "GIC_SYNC_DCM",
 		.func = (DCM_FUNC) dcm_gic_sync,
-		.current_state = GIC_SYNC_DCM_ON,
+		.is_on_func = dcm_gic_sync_is_on,
 		.default_state = GIC_SYNC_DCM_ON,
-		.disable_refcnt = 0,
-	},
-	{
-		.typeid = LAST_CORE_DCM_TYPE,
-		.name = "LAST_CORE_DCM",
-		.func = (DCM_FUNC) dcm_last_core,
-		.current_state = LAST_CORE_DCM_OFF,
-		.default_state = LAST_CORE_DCM_OFF,
-		.disable_refcnt = 0,
 	},
 	{
 		.typeid = RGU_DCM_TYPE,
 		.name = "RGU_CORE_DCM",
 		.func = (DCM_FUNC) dcm_rgu,
-		.current_state = RGU_DCM_ON,
+		.is_on_func = dcm_rgu_is_on,
 		.default_state = RGU_DCM_ON,
-		.disable_refcnt = 0,
-	},
-	{
-		.typeid = TOPCKG_DCM_TYPE,
-		.name = "TOPCKG_DCM",
-		.func = (DCM_FUNC) dcm_topckg,
-		.current_state = TOPCKG_DCM_OFF,
-		.default_state = TOPCKG_DCM_OFF,
-		.disable_refcnt = 0,
-	},
-	{
-		.typeid = LPDMA_DCM_TYPE,
-		.name = "LPDMA_DCM",
-		.func = (DCM_FUNC) dcm_lpdma,
-		.current_state = LPDMA_DCM_OFF,
-		.default_state = LPDMA_DCM_OFF,
-		.disable_refcnt = 0,
-	},
-	{
-		.typeid = MCSI_DCM_TYPE,
-		.name = "MCSI_DCM",
-		.func = (DCM_FUNC) dcm_mcsi,
-		/*.preset_func = (DCM_PRESET_FUNC) dcm_mcsi_preset,*/
-		.current_state = MCSI_DCM_OFF,
-		.default_state = MCSI_DCM_OFF,
-		.disable_refcnt = 0,
 	},
 };
 
@@ -543,8 +467,8 @@ void dcm_array_register(void)
 	mt_dcm_array_register(dcm_array, &dcm_ops);
 }
 
-#ifdef CONFIG_OF
-int __init mt_dcm_dts_map(void)
+#if IS_ENABLED(CONFIG_OF)
+int mt_dcm_dts_map(void)
 {
 	struct device_node *node;
 	unsigned int i;
@@ -574,7 +498,7 @@ int __init mt_dcm_dts_map(void)
 {
 	return 0;
 }
-#endif /* #ifdef CONFIG_PM */
+#endif /* #if IS_ENABLED(CONFIG_OF) */
 
 void dcm_pre_init(void)
 {
@@ -605,13 +529,13 @@ static int __init mt6761_dcm_init(void)
 	return ret;
 }
 
-static void __init mt6761_dcm_exit(void)
+static void __exit mt6761_dcm_exit(void)
 {
 }
 MODULE_SOFTDEP("pre:mtk_dcm.ko");
 module_init(mt6761_dcm_init);
 module_exit(mt6761_dcm_exit);
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MediaTek DCM driver");
 

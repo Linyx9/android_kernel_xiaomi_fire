@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2016 MediaTek Inc.
  */
 #ifndef _SSPM_RESERVEDMEM_DEFINE_H_
 #define _SSPM_RESERVEDMEM_DEFINE_H_
-#include <sspm_reservedmem.h>
+#include "sspm_reservedmem.h"
 
 enum {
 	SSPM_MEM_ID = 0,
@@ -13,12 +13,14 @@ enum {
 	UPD_MEM_ID,
 	QOS_MEM_ID,
 	SWPM_MEM_ID,
-#if defined(CONFIG_MTK_GMO_RAM_OPTIMIZE) || defined(CONFIG_MTK_MET_MEM_ALLOC)
+#if IS_ENABLED(CONFIG_MTK_GMO_RAM_OPTIMIZE) || IS_ENABLED(CONFIG_MTK_MET_MEM_ALLOC)
 #else
 	MET_MEM_ID,
 #endif
 	SMI_MEM_ID,
+#if !IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_LEGACY)
 	GPU_MEM_ID,
+#endif
 	NUMS_MEM_ID,
 };
 
@@ -54,7 +56,7 @@ static struct sspm_reserve_mblock sspm_reserve_mblock[NUMS_MEM_ID] = {
 		.num = SWPM_MEM_ID,
 		.size = 0xC00,  /* 3K */
 	},
-#if defined(CONFIG_MTK_GMO_RAM_OPTIMIZE) || defined(CONFIG_MTK_MET_MEM_ALLOC)
+#if IS_ENABLED(CONFIG_MTK_GMO_RAM_OPTIMIZE) || IS_ENABLED(CONFIG_MTK_MET_MEM_ALLOC)
 #else
 	{
 		.num = MET_MEM_ID,
@@ -63,12 +65,18 @@ static struct sspm_reserve_mblock sspm_reserve_mblock[NUMS_MEM_ID] = {
 #endif
 	{
 		.num = SMI_MEM_ID,
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_LEGACY)
+		.size = 0,
+#else
 		.size = 0x9000, /* 36K */
+#endif
 	},
+#if !IS_ENABLED(CONFIG_MTK_TINYSYS_SSPM_LEGACY)
 	{
 		.num = GPU_MEM_ID,
 		.size = 0x1000,  /* 4K */
 	},
+#endif
 	/* TO align 64K, total is 1M+64K. The remaining size = 0x2800 */
 };
 #endif

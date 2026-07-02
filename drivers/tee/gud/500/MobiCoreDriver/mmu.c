@@ -25,7 +25,7 @@
 #include <linux/version.h>
 #include <linux/dma-buf.h>
 #ifdef CONFIG_DMA_SHARED_BUFFER
-#include <ion.h>
+#include <linux/ion.h>
 #ifdef CONFIG_MTK_ION
 /* for mtk_ion, struct ion_buffer is decleared here */
 #include <ion_priv.h>
@@ -76,8 +76,7 @@ static inline long gup_local(struct mm_struct *mm, uintptr_t start,
 	if (write)
 		gup_flags |= FOLL_WRITE;
 
-	return get_user_pages_remote(NULL, mm, start, nr_pages, gup_flags,
-			pages, NULL, NULL);
+	return get_user_pages(start, nr_pages, gup_flags, pages, NULL);
 }
 
 static inline long gup_local_repeat(struct mm_struct *mm, uintptr_t start,
@@ -429,7 +428,7 @@ struct tee_mmu *tee_mmu_create(struct mm_struct *mm,
 			long gup_ret;
 
 			/* Buffer was allocated in user space */
-			mmap_read_lock(mm);
+			down_read(&mm->mmap_lock);
 			/*
 			 * Always try to map read/write from a Linux PoV, so
 			 * Linux creates (page faults) the underlying pages if
@@ -447,7 +446,7 @@ struct tee_mmu *tee_mmu_create(struct mm_struct *mm,
 							   (uintptr_t)reader,
 							   nr_pages, 0, pages);
 			}
-			mmap_read_unlock(mm);
+			up_read(&mm->mmap_lock);
 			if (gup_ret < 0) {
 				ret = gup_ret;
 				mc_dev_err(ret, "failed to get user pages @%p",
@@ -645,3 +644,4 @@ int tee_mmu_debug_structs(struct kasnprintf_buf *buf, const struct tee_mmu *mmu)
 			  mmu, mmu->user ? "user" : "kernel", mmu->length,
 			  mmu->offset, (void *)mmu->pmd_table.page);
 }
+MODULE_IMPORT_NS(DMA_BUF);

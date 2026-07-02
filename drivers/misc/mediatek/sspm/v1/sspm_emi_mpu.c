@@ -7,26 +7,31 @@
 #include <mt-plat/sync_write.h>
 #include "sspm_define.h"
 
-
 #if SSPM_EMI_PROTECTION_SUPPORT
-#include <mt_emi_api.h>
+
+#include <soc/mediatek/emi.h>
+#define SSPM_MPU_PROCT_D0 0
+#define SSPM_MPU_PROCT_D8 8
 
 void sspm_set_emi_mpu(phys_addr_t base, phys_addr_t size)
 {
-	struct emi_region_info_t region_info;
+	struct emimpu_region_t sspm_region = {0};
+	int ret = 0;
 
-	region_info.region = SSPM_MPU_REGION_ID;
-	region_info.start = base;
-	region_info.end = base + size - 1;
-	SET_ACCESS_PERMISSION(region_info.apc, UNLOCK,
-			FORBIDDEN, FORBIDDEN, FORBIDDEN, FORBIDDEN,
-			FORBIDDEN, FORBIDDEN, FORBIDDEN, NO_PROTECTION,
-			FORBIDDEN, FORBIDDEN, FORBIDDEN, FORBIDDEN,
-			FORBIDDEN, FORBIDDEN, FORBIDDEN, NO_PROTECTION);
-	pr_debug("[SSPM] MPU SSPM Share region<%d:%08llx:%08llx> %x, %x\n",
-			region_info.region, region_info.start, region_info.end,
-			region_info.apc[1], region_info.apc[0]);
-
-	emi_mpu_set_protection(&region_info);
+	ret = mtk_emimpu_init_region(&sspm_region, SSPM_MPU_REGION_ID);
+	if (ret < 0) {
+		pr_info("%s fail to init emimpu region\n", __func__);
+		return;
+	}
+	mtk_emimpu_set_addr(&sspm_region, base, (base + size - 0x1));
+	mtk_emimpu_set_apc(&sspm_region, SSPM_MPU_PROCT_D0,
+		MTK_EMIMPU_NO_PROTECTION);
+	mtk_emimpu_set_apc(&sspm_region, SSPM_MPU_PROCT_D8,
+		MTK_EMIMPU_NO_PROTECTION);
+	ret = mtk_emimpu_set_protection(&sspm_region);
+	if (ret < 0)
+		pr_info("%s fail to set emimpu protection\n", __func__);
+	mtk_emimpu_free_region(&sspm_region);
 }
+
 #endif

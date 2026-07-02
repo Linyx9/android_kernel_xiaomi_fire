@@ -40,7 +40,7 @@ do { \
 
 static kuid_t uid = KUIDT_INIT(0);
 static kgid_t gid = KGIDT_INIT(1000);
-static DEFINE_SEMAPHORE(sem_mutex);
+static DEFINE_SEMAPHORE(sem_mutex, 1);
 
 static int kernelmode;
 static unsigned int interval; /* seconds, 0 : no auto polling */
@@ -49,6 +49,7 @@ static int trip_temp[10] = { 125000, 110000, 100000, 90000, 80000,
 				70000, 65000, 60000, 55000, 50000 };
 
 static int g_THERMAL_TRIP[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static struct thermal_trip trips[10];
 static char g_bind0[20] = "mtktscharger-sysrst";
 static char g_bind1[20] = "";
 static char g_bind2[20] = "";
@@ -138,7 +139,7 @@ static int mtktscharger_get_hw_temp(void)
 	ret = power_supply_get_property(chg_psy,
 			POWER_SUPPLY_PROP_TEMP, &prop);
 	if (ret == 0) {
-		t = 1000 * prop.intval;
+		t = 100 * prop.intval;
 		prev_temp = t;
 	} else
 		t = prev_temp;
@@ -159,11 +160,11 @@ static int mtktscharger_get_temp(struct thermal_zone_device *thermal, int *t)
 		mtktscharger_dprintk_always("HT %d\n", *t);
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -245,31 +246,10 @@ static int mtktscharger_unbind(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-static int mtktscharger_get_mode(
-struct thermal_zone_device *thermal, enum thermal_device_mode *mode)
-{
-	*mode = (kernelmode) ? THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
-	return 0;
-}
-
-static int mtktscharger_set_mode(
+static int mtktscharger_change_mode(
 struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 {
 	kernelmode = mode;
-	return 0;
-}
-
-static int mtktscharger_get_trip_type(
-struct thermal_zone_device *thermal, int trip, enum thermal_trip_type *type)
-{
-	*type = g_THERMAL_TRIP[trip];
-	return 0;
-}
-
-static int mtktscharger_get_trip_temp(
-struct thermal_zone_device *thermal, int trip, int *temp)
-{
-	*temp = trip_temp[trip];
 	return 0;
 }
 
@@ -285,18 +265,18 @@ static struct thermal_zone_device_ops mtktscharger_dev_ops = {
 	.bind = mtktscharger_bind,
 	.unbind = mtktscharger_unbind,
 	.get_temp = mtktscharger_get_temp,
-	.get_mode = mtktscharger_get_mode,
-	.set_mode = mtktscharger_set_mode,
-	.get_trip_type = mtktscharger_get_trip_type,
-	.get_trip_temp = mtktscharger_get_trip_temp,
+	.change_mode = mtktscharger_change_mode,
 	.get_crit_temp = mtktscharger_get_crit_temp,
 };
 
 static int mtktscharger_register_thermal(void)
 {
 	mtktscharger_dprintk("%s\n", __func__);
+
 	/* trips : trip 0~2 */
-	thz_dev = mtk_thermal_zone_device_register("mtktscharger", num_trip,
+	thz_dev = mtk_thermal_zone_device_register("mtktscharger",
+					trips,
+					num_trip,
 					NULL, /* name: mtktscharger ??? */
 					&mtktscharger_dev_ops, 0, 0, 0,
 					interval * 1000);
@@ -341,7 +321,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 	}
 
 	return 0;
@@ -447,7 +427,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		if (num_trip < 0 || num_trip > 10) {
 			mtktscharger_dprintk_always("%s bad argument\n",
 								__func__);
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtktscharger_write",
 					"Bad argument");
@@ -523,6 +503,12 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 						trip_temp[9], interval * 1000);
 
 		mtktscharger_dprintk("mtktscharger_register_thermal\n");
+
+		for (i = 0; i < num_trip; i++) {
+			trips[i].temperature = trip_temp[i];
+			trips[i].type = g_THERMAL_TRIP[i];
+		}
+
 		mtktscharger_register_thermal();
 		up(&sem_mutex);
 
@@ -541,24 +527,30 @@ static int mtktscharger_open(struct inode *inode, struct file *file)
 	return single_open(file, mtktscharger_read, NULL);
 }
 
-static const struct file_operations mtktscharger_fops = {
-	.owner = THIS_MODULE,
-	.open = mtktscharger_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtktscharger_write,
-	.release = single_release,
+static const struct proc_ops mtktscharger_fops = {
+	.proc_open = mtktscharger_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtktscharger_write,
+	.proc_release = single_release,
 };
 
 
 static int mtktscharger_pdrv_probe(struct platform_device *pdev)
 {
 	int err = 0;
+	int i = 0;
 	struct proc_dir_entry *entry = NULL;
 	struct proc_dir_entry *mtktscharger_dir = NULL;
 
 	mtktscharger_dprintk_always("%s\n", __func__);
 	charger_type = get_charger_type();
+
+	for (i = 0; i < num_trip; i++) {
+		trips[i].temperature = trip_temp[i];
+		trips[i].type = g_THERMAL_TRIP[i];
+	}
+
 	err = mtktscharger_register_thermal();
 	if (err)
 		goto err_unreg;
@@ -602,9 +594,10 @@ static struct platform_driver mtktscharger_driver = {
 };
 
 
-static int __init mtktscharger_init(void)
+int mtktscharger_init(void)
 {
 	int err = 0;
+
 	err = mtktscharger_register_cooler();
 	if (err)
 		return err;
@@ -632,12 +625,14 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtktscharger_exit(void)
+void mtktscharger_exit(void)
 {
 	mtktscharger_dprintk("%s\n", __func__);
 	mtktscharger_unregister_thermal();
 	mtktscharger_unregister_cooler();
 }
 
-late_initcall(mtktscharger_init);
-module_exit(mtktscharger_exit);
+//late_initcall(mtktscharger_init);
+//module_exit(mtktscharger_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

@@ -14,7 +14,6 @@
 #define AEE_MODULE_NAME_LENGTH 64
 #define AEE_PROCESS_NAME_LENGTH 256
 #define AEE_BACKTRACE_LENGTH 3072
-#define MODULES_INFO_BUF_SIZE SZ_16K
 
 
 enum AEE_REBOOT_MODE {
@@ -94,10 +93,6 @@ struct unwind_info_rms {
 	unsigned char *Userthread_maps __packed __aligned(8);
 };
 
-#ifdef CONFIG_CONSOLE_LOCK_DURATION_DETECT
-extern char *mtk8250_uart_dump(void);
-#endif
-
 #define AEE_MTK_CPU_NUMS	16
 /* powerkey press,modules use bits */
 #define AE_WDT_Powerkey_DEVICE_PATH		"/dev/kick_powerkey"
@@ -113,6 +108,14 @@ extern char *mtk8250_uart_dump(void);
 /* QHQ RT Monitor */
 #define AEEIOCTL_RT_MON_Kick _IOR('p', 0x0A, int)
 #define AE_WDT_DEVICE_PATH      "/dev/RT_Monitor"
+
+#if IS_ENABLED(CONFIG_MTK_HANG_DETECT)
+void monitor_hang_regist_ldt(void (*fn)(void));
+#else
+static inline void monitor_hang_regist_ldt(void (*fn)(void))
+{
+}
+#endif
 /* QHQ RT Monitor    end */
 
 /* DB dump option bits, set relative bit to 1 to include related file in db */
@@ -164,6 +167,17 @@ extern char *mtk8250_uart_dump(void);
 		aee_kernel_exception_api_func(__FILE__, __LINE__,	\
 			DB_OPT_DEFAULT, module, msg);	\
 })
+#define aee_kernel_fatal(module, msg...)            \
+({                                                      \
+	static DEFINE_RATELIMIT_STATE(__func__##_rs,    \
+			AEE_API_CALL_INTERVAL,          \
+			AEE_API_CALL_BURST);            \
+							\
+	if (__ratelimit(&(__func__##_rs)))              \
+		aee_kernel_fatal_api_func(__FILE__, __LINE__,       \
+			DB_OPT_DEFAULT, module, msg);   \
+})
+
 #define aee_kernel_warning(module, msg...)		\
 ({							\
 	static DEFINE_RATELIMIT_STATE(__func__##_rs,	\
@@ -183,6 +197,16 @@ extern char *mtk8250_uart_dump(void);
 	if (__ratelimit(&(__func__##_rs)))				\
 		aee_kernel_exception_api_func(__FILE__, __LINE__,	\
 			db_opt, module, msg);				\
+})
+
+#define aee_kernel_fatal_api(file, line, db_opt, module, msg...)    \
+({                                                                      \
+	static DEFINE_RATELIMIT_STATE(__func__##_rs,                    \
+			AEE_API_CALL_INTERVAL,                          \
+			AEE_API_CALL_BURST);                            \
+	if (__ratelimit(&(__func__##_rs)))                              \
+		aee_kernel_fatal_api_func(__FILE__, __LINE__,       \
+			db_opt, module, msg);                           \
 })
 
 #define aee_kernel_warning_api(file, line, db_opt, module, msg...)	\
@@ -211,6 +235,14 @@ extern char *mtk8250_uart_dump(void);
 #undef aee_kernel_exception_api
 #define aee_kernel_exception_api(file, line, db_opt, module, msg...) \
 	WARN(1, msg)
+
+#undef aee_kernel_fatal
+#define aee_kernel_fatal(module, msg...) WARN(1, msg)
+
+#undef aee_kernel_fatal_api
+#define aee_kernel_fatal_api(file, line, db_opt, module, msg...) \
+	WARN(1, msg)
+
 #endif
 
 #define aee_kernel_reminding(module, msg...)	\
@@ -234,7 +266,10 @@ extern char *mtk8250_uart_dump(void);
 	aed_common_exception_api(assert_type, log, log_size, phy,	\
 			phy_size, detail, DB_OPT_DEFAULT)
 
+#if IS_ENABLED(CONFIG_MTK_AEE_AED)
 void aee_kernel_exception_api_func(const char *file, const int line,
+		const int db_opt, const char *module, const char *msg, ...);
+void aee_kernel_fatal_api_func(const char *file, const int line,
 		const int db_opt, const char *module, const char *msg, ...);
 void aee_kernel_warning_api_func(const char *file, const int line,
 		const int db_opt, const char *module, const char *msg, ...);
@@ -249,12 +284,73 @@ void aed_scp_exception_api(const int *log, int log_size, const int *phy,
 			int phy_size, const char *detail, const int db_opt);
 void aed_combo_exception_api(const int *log, int log_size, const int *phy,
 			int phy_size, const char *detail, const int db_opt);
-void aed_common_exception_api(const char *assert_type, const int *log, int
-			log_size, const int *phy, int phy_size, const char
-			*detail, const int db_opt);
+void aed_common_exception_api(const char *assert_type, const int *log,
+			int log_size, const int *phy, int phy_size,
+			const char *detail, const int db_opt);
 
 int aed_get_status(void);
 int aee_is_printk_too_much(const char *module);
 void aee_sram_printk(const char *fmt, ...);
-int aee_is_enable(void);
+#else
+static inline void aee_kernel_exception_api_func(const char *file,
+		const int line, const int db_opt, const char *module,
+		const char *msg, ...)
+{
+}
+
+static inline void aee_kernel_fatal_api_func(const char *file,
+		const int line, const int db_opt, const char *module,
+		const char *msg, ...)
+{
+}
+
+static inline void aee_kernel_warning_api_func(const char *file,
+		const int line, const int db_opt, const char *module,
+		const char *msg, ...)
+{
+}
+
+static inline void aee_kernel_reminding_api(const char *file,
+		const int line, const int db_opt, const char *module,
+		const char *msg, ...)
+{
+}
+
+static inline void aed_md_exception_api(const int *log, int log_size,
+	const int *phy, int phy_size, const char *detail, const int db_opt)
+{
+}
+
+static inline void aed_md32_exception_api(const int *log, int log_size,
+		const int *phy, int phy_size, const char *detail,
+		const int db_opt)
+{
+}
+
+static inline void aed_combo_exception_api(const int *log, int log_size,
+		const int *phy, int phy_size, const char *detail,
+		const int db_opt)
+{
+}
+
+static inline void aed_common_exception_api(const char *assert_type,
+		const int *log, int log_size, const int *phy, int phy_size,
+		const char *detail, const int db_opt)
+{
+}
+
+static inline int aed_get_status(void)
+{
+	return 0;
+}
+
+static inline int aee_is_printk_too_much(const char *module)
+{
+	return 0;
+}
+static inline void aee_sram_printk(const char *fmt, ...)
+{
+}
+
+#endif
 #endif/* __AEE_H__ */

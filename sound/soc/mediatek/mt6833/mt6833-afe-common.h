@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * mt6833-afe-common.h  --  Mediatek 6833 audio driver definitions
+ * mt6833-afe-common.h  --  Mediatek 6885 audio driver definitions
  *
- * Copyright (c) 2020 MediaTek Inc.
- * Author: Eason Yen <eason.yen@mediatek.com>
+ * Copyright (c) 2021 MediaTek Inc.
+ * Author: Yujie Xiao <yujie.xiao@mediatek.com>
  */
 
 #ifndef _MT_6833_AFE_COMMON_H_
@@ -11,9 +11,19 @@
 #include <sound/soc.h>
 #include <linux/list.h>
 #include <linux/regmap.h>
+#include <mt-plat/aee.h>
 #include "mt6833-reg.h"
 #include "../common/mtk-base-afe.h"
-#include "../common/mtk-sp-common.h"
+
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
+#define AUDIO_AEE(message) \
+	(aee_kernel_exception_api(__FILE__, \
+				  __LINE__, \
+				  DB_OPT_FTRACE, message, \
+				  "audio assert"))
+#else
+#define AUDIO_AEE(message) WARN_ON(true)
+#endif
 
 enum {
 	MT6833_MEMIF_DL1,
@@ -78,7 +88,7 @@ enum {
 #define MT6833_VOIP_MEMIF MT6833_MEMIF_DL12
 #define MT6833_MMAP_DL_MEMIF MT6833_MEMIF_DL5
 #define MT6833_MMAP_UL_MEMIF MT6833_MEMIF_VUL5
-#define MT6833_BARGEIN_MEMIF MT6833_MEMIF_AWB
+#define MT6833_BARGE_INMEMIF MT6833_MEMIF_AWB
 
 enum {
 	MT6833_IRQ_0,
@@ -111,18 +121,6 @@ enum {
 	MT6833_IRQ_NUM,
 };
 
-enum {
-	MTKAIF_PROTOCOL_1 = 0,
-	MTKAIF_PROTOCOL_2,
-	MTKAIF_PROTOCOL_2_CLK_P2,
-};
-
-enum {
-	MTK_AFE_ADDA_DL_GAIN_MUTE = 0,
-	MTK_AFE_ADDA_DL_GAIN_NORMAL = 0xf74f,
-	/* SA suggest apply -0.3db to audio/speech path */
-};
-
 /* MCLK */
 enum {
 	MT6833_I2S0_MCK = 0,
@@ -135,16 +133,6 @@ enum {
 	MT6833_MCK_NUM,
 };
 
-/* SMC CALL Operations */
-enum mtk_audio_smc_call_op {
-	MTK_AUDIO_SMC_OP_INIT = 0,
-	MTK_AUDIO_SMC_OP_DRAM_REQUEST,
-	MTK_AUDIO_SMC_OP_DRAM_RELEASE,
-	MTK_AUDIO_SMC_OP_FM_REQUEST,
-	MTK_AUDIO_SMC_OP_FM_RELEASE,
-	MTK_AUDIO_SMC_OP_NUM
-};
-
 struct snd_pcm_substream;
 struct mtk_base_irq_data;
 struct clk;
@@ -153,7 +141,7 @@ struct mt6833_afe_private {
 	struct clk **clk;
 	struct regmap *topckgen;
 	struct regmap *apmixed;
-	struct regmap *infracfg_ao;
+	struct regmap *infracfg;
 	int irq_cnt[MT6833_MEMIF_NUM];
 	int stf_positive_gain_db;
 	int dram_resource_counter;
@@ -222,7 +210,7 @@ int mt6833_dai_pcm_register(struct mtk_base_afe *afe);
 
 int mt6833_dai_hostless_register(struct mtk_base_afe *afe);
 
-int mt6833_add_misc_control(struct snd_soc_component *platform);
+int mt6833_add_misc_control(struct snd_soc_component *component);
 
 int mt6833_set_local_afe(struct mtk_base_afe *afe);
 
@@ -237,4 +225,5 @@ int mt6833_adda_dl_gain_control(bool mute);
 
 int mt6833_dai_set_priv(struct mtk_base_afe *afe, int id,
 			int priv_size, const void *priv_data);
+
 #endif

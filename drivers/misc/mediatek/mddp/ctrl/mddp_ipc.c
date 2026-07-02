@@ -15,6 +15,7 @@
 
 #include "mtk_ccci_common.h"
 
+#define LLS_SMEM_SIZE (44*1024)
 //------------------------------------------------------------------------------
 // Struct definition.
 // -----------------------------------------------------------------------------
@@ -22,24 +23,27 @@
 //------------------------------------------------------------------------------
 // Global variables.
 //------------------------------------------------------------------------------
+uint8_t lls_mem_exist;
+
+//------------------------------------------------------------------------------
+// Private variables.
+//------------------------------------------------------------------------------
+static uint8_t smem_user_num;
 static int32_t mddp_ipc_tty_port_s = -1;
 static struct task_struct *rx_task;
 static struct wfpm_smem_info_t smem_info_s[] = {
-	{MDDP_MD_SMEM_USER_RX_REORDER_TO_MD, 0, WFPM_SM_E_ATTRI_WO,
-		0,
-		0},
-	{MDDP_MD_SMEM_USER_RX_REORDER_FROM_MD, 0, WFPM_SM_E_ATTRI_RO,
-		0,
-		0},
-	{MDDP_MD_SMEM_USER_WIFI_STATISTICS, 0, WFPM_SM_E_ATTRI_RO,
-		0,
+	{MDDP_MD_SMEM_USER_RX_REORDER_TO_MD, 0, WFPM_SM_E_ATTRI_WO, 0, 0},
+	{MDDP_MD_SMEM_USER_RX_REORDER_FROM_MD, 0, WFPM_SM_E_ATTRI_RO, 0, 0},
+	{MDDP_MD_SMEM_USER_WIFI_STATISTICS, 0, WFPM_SM_E_ATTRI_RO, 0,
 		sizeof(struct mddpw_net_stat_t)},
-	{MDDP_MD_SMEM_USER_WIFI_STATISTICS_EXT, 0, WFPM_SM_E_ATTRI_RO,
-		sizeof(struct mddpw_net_stat_t),
+	{MDDP_MD_SMEM_USER_WIFI_STATISTICS_EXT, 0, WFPM_SM_E_ATTRI_RO, 0,
 		sizeof(struct mddpw_net_stat_ext_t)},
-	{MDDP_MD_SMEM_USER_SYS_STAT_SYNC, 0, WFPM_SM_E_ATTRI_RW,
-		sizeof(struct mddpw_net_stat_t) + sizeof(struct mddpw_net_stat_ext_t),
+	{MDDP_MD_SMEM_USER_SYS_STAT_SYNC, 0, WFPM_SM_E_ATTRI_RW, 0,
 		sizeof(struct mddpw_sys_stat_t)},
+	{MDDP_MD_SMEM_USER_RESERVE1, 0, WFPM_SM_E_ATTRI_RO, 0, 0},
+	{MDDP_MD_SMEM_USER_RESERVE2, 0, WFPM_SM_E_ATTRI_RO, 0, 0},
+	{MDDP_MD_SMEM_USER_LLS, 0, WFPM_SM_E_ATTRI_RO, 0,
+		sizeof(struct wsvc_stat_lls_report_t)},
 };
 
 static struct mddp_ipc_rx_msg_entry_t mddp_rx_msg_table_s[] = {
@@ -59,10 +63,6 @@ static struct mddp_ipc_rx_msg_entry_t mddp_rx_msg_table_s[] = {
 static uint32_t mddp_rx_msg_table_cnt = ARRAY_SIZE(mddp_rx_msg_table_s);
 
 //------------------------------------------------------------------------------
-// Private variables.
-//------------------------------------------------------------------------------
-
-//------------------------------------------------------------------------------
 // Private helper macro.
 //------------------------------------------------------------------------------
 
@@ -74,21 +74,27 @@ static int32_t mddp_ipc_md_smem_layout_config(void)
 	struct wfpm_smem_info_t    *entry;
 	uint32_t                    i;
 	uint32_t                    total_len = 0;
-	uint32_t                    size;
 	uint8_t                    *addr;
-	uint8_t                     attr;
+	uint32_t                    smem_total_len;
+
+	addr = get_smem_start_addr(SMEM_USER_RAW_USB, &smem_total_len);
+	if (!addr)
+		return -EINVAL;
 
 	// Adjust offset of wfpm share memory
-	for (i = 0; i < MDDP_MD_SMEM_USER_NUM; i++) {
+	smem_user_num = MDDP_MD_SMEM_USER_SYS_STAT_SYNC + 1;
+	if (smem_total_len >= LLS_SMEM_SIZE) {
+		smem_user_num = MDDP_MD_SMEM_USER_NUM;
+		lls_mem_exist = 1;
+	}
+
+	for (i = 0; i < smem_user_num; i++) {
 		entry = &smem_info_s[i];
 		entry->offset = total_len;
 		total_len += entry->size;
 
-		size = 0;
-		if (!mddp_ipc_get_md_smem_by_id(entry->user_id,
-				(void **)&addr, &attr, &size) && size > 0) {
-			memset(addr, 0, size);
-		}
+		if (entry->size > 0)
+			memset(addr + entry->offset, 0, entry->size);
 	}
 
 	MDDP_C_LOG(MDDP_LL_INFO,
@@ -121,9 +127,6 @@ static int32_t mddp_ipc_open_port(void)
 	return 0;
 }
 
-//------------------------------------------------------------------------------
-// Public functions.
-//------------------------------------------------------------------------------
 /*
  * Rx kthread used to receive ctrl_msg from MD.
  */
@@ -167,6 +170,9 @@ static int32_t mddp_md_msg_hdlr(void *arg)
 	return 0;
 }
 
+//------------------------------------------------------------------------------
+// Public functions.
+//------------------------------------------------------------------------------
 /*
  * Tx API used to send ctrl_msg to MD.
  */
@@ -177,7 +183,7 @@ int32_t mddp_ipc_send_md(
 {
 	struct mddp_app_t      *app;
 	int32_t                 ret;
-	struct mdfpm_ctrl_msg_t ctrl_msg;
+	struct mdfpm_ctrl_msg_t ctrl_msg = {0};
 
 	if (!in_app)
 		app = mddp_get_default_app_inst();
@@ -188,7 +194,10 @@ int32_t mddp_ipc_send_md(
 		kfree(msg);
 		return -ENODEV;
 	}
-
+	if (msg->data_len > MDFPM_TTY_BUF_SZ) {
+		kfree(msg);
+		return -EFAULT;
+	}
 	ctrl_msg.dest_user_id = (dest_user == MDFPM_USER_ID_NULL)
 		? (app->md_cfg.ipc_md_user_id) : (dest_user);
 
@@ -196,10 +205,10 @@ int32_t mddp_ipc_send_md(
 	ctrl_msg.buf_len = msg->data_len;
 
 	if (msg->data_len > 0)
-		memcpy(ctrl_msg.buf, msg->data, msg->data_len);
+		memcpy(ctrl_msg.buf, &msg->data, msg->data_len);
 
 	ret = mtk_ccci_send_data(mddp_ipc_tty_port_s, (char *)&ctrl_msg,
-			sizeof(struct mddp_md_msg_t) + msg->data_len);
+			MDFPM_CTRL_MSG_HEADER_SZ + msg->data_len);
 
 	kfree(msg);
 
@@ -217,7 +226,7 @@ int32_t mddp_ipc_send_md(
 int32_t wfpm_ipc_get_smem_list(void **smem_info_base, uint32_t *smem_num)
 {
 	*smem_info_base = &smem_info_s;
-	*smem_num = MDDP_MD_SMEM_USER_NUM;
+	*smem_num = smem_user_num;
 
 	return 0;
 }
@@ -232,8 +241,7 @@ int32_t mddp_ipc_get_md_smem_by_id(enum mddp_md_smem_user_id_e app_id,
 	*smem_attr = smem_entry->attribute;
 	*smem_size = smem_entry->size;
 
-	*smem_addr = (uint8_t *)get_smem_start_addr(MD_SYS1,
-		SMEM_USER_RAW_USB, &smem_total_len);
+	*smem_addr = (uint8_t *)get_smem_start_addr(SMEM_USER_RAW_USB, &smem_total_len);
 
 	if (!(*smem_addr))
 		return -EINVAL;
@@ -247,7 +255,9 @@ int32_t mddp_ipc_init(void)
 {
 	int32_t ret = 0;
 
-	mddp_ipc_md_smem_layout_config();
+	ret = mddp_ipc_md_smem_layout_config();
+	if (ret)
+		return ret;
 
 	ret = mddp_ipc_open_port();
 	if (ret)

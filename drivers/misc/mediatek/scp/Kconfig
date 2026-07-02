@@ -1,16 +1,30 @@
 config MTK_TINYSYS_SCP_SUPPORT
 	tristate "Specify Interface Support SCP"
-	default n
-	select MFD_SYSCON
 	help
 	  SCP is a MediaTek in-house DSP which can receive
 	  command from IPI interface.
 	  Set Y to enable this feature.
 	  If unsure,
-	  Set N to stay with legacy feature.
+	  Set N to stay with legancy feature.
+
+config MTK_TINYSYS_SCP_LOGGER_SUPPORT
+	bool "SCP Logger support"
+	depends on MTK_TINYSYS_SCP_SUPPORT
+	help
+	  This is debug feature: SCP logger on/off option.
+	  Set Y to enable this feature.
+	  Set N to disable this feature.
+	  If unsure, Set Y to have debug log.
+
+config MTK_TINYSYS_SCP_VERSION
+	string "Support MTK SCP Driver Version"
+	depends on MTK_TINYSYS_SCP_SUPPORT
+	default ""
+	help
+	  MTK_TINYSYS_SCP_VERSION define which scp version will be used
 
 config MTK_TINYSYS_SCP_CM4_SUPPORT
-	tristate "Specify micro processor CM4 supported by SCP"
+	bool "Specify micro processor CM4 supported by SCP"
 	depends on MTK_TINYSYS_SCP_SUPPORT
 	default n
 	help
@@ -19,19 +33,19 @@ config MTK_TINYSYS_SCP_CM4_SUPPORT
 	  If unsure,
 	  Set N to stay with legacy feature.
 
-config MTK_TINYSYS_SCP_LOGGER_SUPPORT
-	bool "SCP Logger support"
-	depends on MTK_TINYSYS_SCP_SUPPORT
-	default y
+config MTK_TINYSYS_SCP_DEBUG_SUPPORT
+	bool "SCP Debug support"
 	help
-	  This is debug feature: SCP logger on/off option.
+	  This is a debug interface for SCP
 	  Set Y to enable this feature.
 	  Set N to disable this feature.
-	  If unsure, Set Y to have debug log.
+	  If unsure, Set N to disable it.
 
-config MTK_TINYSYS_SCP_RV_SUPPORT
-	tristate "Specify micro processor RV supported by SCP"
+config MTK_TINYSYS_SAP_SUPPORT
+	bool "Specify Interface Support SAP"
 	depends on MTK_TINYSYS_SCP_SUPPORT
-	default n
 	help
-	  MTK_TINYSYS_SCP_VERSION define which scp version will be used
+	  SAP is a MediaTek in-house DSP which
+	  can receive command from IPI interface.
+	  Set Y to enable this feature.
+	  If unsure, set N to stay with legacy feature.

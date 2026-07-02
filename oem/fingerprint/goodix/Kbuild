@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_LAMU_FINGERPRINT
+	FP_OBJS += gf_spi_tee.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_FINGERPRINT) += gf_tee.o
+gf_tee-y := $(FP_OBJS)
+

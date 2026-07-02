@@ -7,6 +7,7 @@
 #include <linux/wait.h>
 #include <linux/sched/clock.h> /* local_clock() */
 #include <linux/delay.h>
+#include <linux/kmemleak.h>
 #include <linux/module.h>
 #include <linux/stacktrace.h>
 
@@ -82,6 +83,49 @@ static void enable_watchpoint(void *address)
 #endif
 
 #ifdef CCCI_MEM_BM_DEBUG
+void ccci_mem_dump(void *start_addr, int len)
+{
+	unsigned int *curr_p = (unsigned int *)start_addr;
+	unsigned char *curr_ch_p = NULL;
+	int _16_fix_num = len / 16;
+	int tail_num = len % 16;
+	char buf[16];
+	int i, j;
+
+	if (curr_p == NULL) {
+		CCCI_NORMAL_LOG(0, BM, "NULL point to dump!\n");
+		return;
+	}
+	if (len == 0) {
+		CCCI_NORMAL_LOG(0, BM, "Not need to dump\n");
+		return;
+	}
+
+	CCCI_NORMAL_LOG(0, BM, "Base: %p\n", start_addr);
+	/* Fix section */
+	for (i = 0; i < _16_fix_num; i++) {
+		CCCI_NORMAL_LOG(0, BM, "%03X: %08X %08X %08X %08X\n",
+			i * 16, *curr_p, *(curr_p + 1),
+			*(curr_p + 2), *(curr_p + 3));
+		curr_p += 4;
+	}
+
+	/* Tail section */
+	if (tail_num > 0) {
+		curr_ch_p = (unsigned char *)curr_p;
+		for (j = 0; j < tail_num; j++) {
+			buf[j] = *curr_ch_p;
+			curr_ch_p++;
+		}
+		for (; j < 16; j++)
+			buf[j] = 0;
+		curr_p = (unsigned int *)buf;
+		CCCI_NORMAL_LOG(0, BM, "%03X: %08X %08X %08X %08X\n",
+			i * 16, *curr_p, *(curr_p + 1),
+			*(curr_p + 2), *(curr_p + 3));
+	}
+}
+
 static int is_in_ccci_skb_pool(struct sk_buff *skb)
 {
 	struct sk_buff *skb_p = NULL;
@@ -252,10 +296,13 @@ static inline struct sk_buff *__alloc_skb_from_kernel(int size, gfp_t gfp_mask)
 		skb = __dev_alloc_skb(SKB_1_5K, gfp_mask);
 	else if (size > 0)
 		skb = __dev_alloc_skb(SKB_16, gfp_mask);
+	kmemleak_ignore(skb);
 	if (!skb)
 		CCCI_ERROR_LOG(-1, BM,
 			"%ps alloc skb from kernel fail, size=%d\n",
 			__builtin_return_address(0), size);
+	else
+		kmemleak_ignore(skb->head);
 	return skb;
 }
 
@@ -294,6 +341,7 @@ void ccci_skb_enqueue(struct ccci_skb_queue *queue, struct sk_buff *newsk)
 	}
 	spin_unlock_irqrestore(&queue->skb_list.lock, flags);
 }
+EXPORT_SYMBOL(ccci_skb_enqueue);
 
 void ccci_skb_queue_init(struct ccci_skb_queue *queue, unsigned int skb_size,
 	unsigned int max_len, char fill_now)
@@ -316,7 +364,6 @@ void ccci_skb_queue_init(struct ccci_skb_queue *queue, unsigned int skb_size,
 		for (i = 0; i < queue->max_len; i++) {
 			struct sk_buff *skb =
 				__alloc_skb_from_kernel(skb_size, GFP_KERNEL);
-
 			if (skb != NULL)
 				skb_queue_tail(&queue->skb_list, skb);
 		}
@@ -376,6 +423,10 @@ struct sk_buff *ccci_alloc_skb(int size, unsigned char from_pool,
 			skb = __alloc_skb_from_kernel(size, GFP_ATOMIC);
 			if (!skb && count++ < 20)
 				goto fast_retry;
+			if (count > 1)
+				CCCI_NORMAL_LOG(-1, BM,
+						"%s, try to alloc skb %d times\n",
+						__func__, count);
 		}
 	}
  err_exit:
@@ -432,13 +483,13 @@ void ccci_free_skb(struct sk_buff *skb)
 }
 EXPORT_SYMBOL(ccci_free_skb);
 
-void ccci_dump_skb_pool_usage(int md_id)
+void ccci_dump_skb_pool_usage(void)
 {
-	CCCI_REPEAT_LOG(md_id, BM,
+	CCCI_REPEAT_LOG(0, BM,
 		"skb_pool_4K: \t\tmax_occupied %04d, enq_count %08d, deq_count %08d\n",
 		skb_pool_4K.max_occupied, skb_pool_4K.enq_count,
 		skb_pool_4K.deq_count);
-	CCCI_REPEAT_LOG(md_id, BM,
+	CCCI_REPEAT_LOG(0, BM,
 		"skb_pool_16: \t\tmax_occupied %04d, enq_count %08d, deq_count %08d\n",
 		skb_pool_16.max_occupied, skb_pool_16.enq_count,
 		skb_pool_16.deq_count);
@@ -449,6 +500,7 @@ void ccci_dump_skb_pool_usage(int md_id)
 	skb_pool_16.enq_count = 0;
 	skb_pool_16.deq_count = 0;
 }
+EXPORT_SYMBOL(ccci_dump_skb_pool_usage);
 
 static void __4K_reload_work(struct work_struct *work)
 {
@@ -494,108 +546,6 @@ static void __16_reload_work(struct work_struct *work)
  * then used again, the poor guy who is waiting for it may never see
  * the state transition (FLYING->IDLE/COMPLETE->FLYING) and wait forever.
  */
-
-void ccci_mem_dump(int md_id, void *start_addr, int len)
-{
-	unsigned int *curr_p = (unsigned int *)start_addr;
-	unsigned char *curr_ch_p = NULL;
-	int _16_fix_num = len / 16;
-	int tail_num = len % 16;
-	char buf[16];
-	int i, j;
-
-	if (curr_p == NULL) {
-		CCCI_NORMAL_LOG(md_id, BM, "NULL point to dump!\n");
-		return;
-	}
-	if (len == 0) {
-		CCCI_NORMAL_LOG(md_id, BM, "Not need to dump\n");
-		return;
-	}
-
-	CCCI_NORMAL_LOG(md_id, BM, "Base: %p\n", start_addr);
-	/* Fix section */
-	for (i = 0; i < _16_fix_num; i++) {
-		CCCI_NORMAL_LOG(md_id, BM, "%03X: %08X %08X %08X %08X\n",
-			i * 16, *curr_p, *(curr_p + 1),
-			*(curr_p + 2), *(curr_p + 3));
-		curr_p += 4;
-	}
-
-	/* Tail section */
-	if (tail_num > 0) {
-		curr_ch_p = (unsigned char *)curr_p;
-		for (j = 0; j < tail_num; j++) {
-			buf[j] = *curr_ch_p;
-			curr_ch_p++;
-		}
-		for (; j < 16; j++)
-			buf[j] = 0;
-		curr_p = (unsigned int *)buf;
-		CCCI_NORMAL_LOG(md_id, BM, "%03X: %08X %08X %08X %08X\n",
-			i * 16, *curr_p, *(curr_p + 1),
-			*(curr_p + 2), *(curr_p + 3));
-	}
-}
-
-void ccci_cmpt_mem_dump(int md_id, void *start_addr, int len)
-{
-	unsigned int *curr_p = (unsigned int *)start_addr;
-	unsigned char *curr_ch_p = NULL;
-	int _64_fix_num = len / 64;
-	int tail_num = len % 64;
-	char buf[64];
-	int i, j;
-
-	if (curr_p == NULL) {
-		CCCI_NORMAL_LOG(md_id, BM, "NULL point to dump!\n");
-		return;
-	}
-	if (len == 0) {
-		CCCI_NORMAL_LOG(md_id, BM, "Not need to dump\n");
-		return;
-	}
-
-	/* Fix section */
-	for (i = 0; i < _64_fix_num; i++) {
-		CCCI_MEM_LOG(md_id, BM,
-			"%03X: %X %X %X %X %X %X %X %X %X %X %X %X %X %X %X %X\n",
-			i * 64,
-			*curr_p, *(curr_p + 1), *(curr_p + 2),
-			*(curr_p + 3), *(curr_p + 4), *(curr_p + 5),
-			*(curr_p + 6), *(curr_p + 7), *(curr_p + 8),
-			*(curr_p + 9), *(curr_p + 10), *(curr_p + 11),
-			*(curr_p + 12), *(curr_p + 13), *(curr_p + 14),
-			*(curr_p + 15));
-		curr_p += 64/4;
-	}
-
-	/* Tail section */
-	if (tail_num > 0) {
-		curr_ch_p = (unsigned char *)curr_p;
-		for (j = 0; j < tail_num; j++) {
-			buf[j] = *curr_ch_p;
-			curr_ch_p++;
-		}
-		for (; j < 64; j++)
-			buf[j] = 0;
-		curr_p = (unsigned int *)buf;
-		CCCI_MEM_LOG(md_id, BM,
-			"%03X: %X %X %X %X %X %X %X %X %X %X %X %X %X %X %X %X\n",
-			i * 64,
-			*curr_p, *(curr_p + 1), *(curr_p + 2),
-			*(curr_p + 3), *(curr_p + 4), *(curr_p + 5),
-			*(curr_p + 6), *(curr_p + 7), *(curr_p + 8),
-			*(curr_p + 9), *(curr_p + 10), *(curr_p + 11),
-			*(curr_p + 12), *(curr_p + 13), *(curr_p + 14),
-			*(curr_p + 15));
-	}
-}
-
-void ccci_dump_skb(struct sk_buff *skb)
-{
-	ccci_mem_dump(-1, skb->data, skb->len > 32 ? 32 : skb->len);
-}
 
 int ccci_subsys_bm_init(void)
 {

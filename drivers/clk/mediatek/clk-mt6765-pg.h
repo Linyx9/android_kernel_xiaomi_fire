@@ -36,9 +36,9 @@ struct pg_callbacks {
 
 /* register new pg_callbacks and return previous pg_callbacks. */
 extern struct pg_callbacks *register_pg_callback(struct pg_callbacks *pgcb);
+extern struct provider_clk *get_all_provider_clks(void);
 
-/*ram console api*/
-#ifdef CONFIG_MTK_RAM_CONSOLE
+#if IS_ENABLED(CONFIG_MTK_AEE_IPANIC)
 extern void aee_rr_rec_clk(int id, u32 val);
 #endif
 

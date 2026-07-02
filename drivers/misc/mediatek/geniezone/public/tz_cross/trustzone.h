@@ -56,7 +56,7 @@ struct MTEEC32_MEM {
 	uint32_t size;
 };
 /**
- * Registed shared memory parameter define
+ * Registered shared memory parameter define
  *
  * @param handle    memory handle.
  * @param offset    Offset size in bytes. The shared memory is used based
@@ -70,7 +70,7 @@ struct MTEEC_MEMREF {
 };
 
 /**
- * Registed shared memory parameter define
+ * Registered shared memory parameter define
  *
  * @param a    Implementation defined value.
  * @param b    Implementation defined value.
@@ -85,7 +85,7 @@ struct MTEEC_VALUE {
  *
  * @param mem    Parameter for temp memory reference. Parameter types are
  * TZPT_MEM_XXX.
- * @param memref    Parameter for registed shared memory or allocated secure
+ * @param memref    Parameter for registered shared memory or allocated secure
  * memory.
  * Parameter types are TZPT_MEMREF_XXX.
  * @param value    Parameter for value. Parameter types are TZPT_VALUE_XXX.

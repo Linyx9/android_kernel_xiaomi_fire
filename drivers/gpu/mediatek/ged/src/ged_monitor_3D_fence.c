@@ -13,9 +13,7 @@
 #include <linux/dma-fence.h>
 
 #include <mt-plat/mtk_gpu_utility.h>
-/* This has been removed on kernel-4.19
- * #include <trace/events/gpu.h>
- */
+
 #ifdef MTK_GPU_DVFS
 #include <mtk_gpufreq.h>
 #else
@@ -31,6 +29,12 @@
 #include "ged_global.h"
 
 #include <asm/div64.h>
+
+#if defined(CONFIG_MTK_GPUFREQ_V2)
+#include <ged_gpufreq_v2.h>
+#else
+#include <ged_gpufreq_v1.h>
+#endif /* CONFIG_MTK_GPUFREQ_V2 */
 
 static atomic_t g_i32Count = ATOMIC_INIT(0);
 static unsigned int ged_monitor_3D_fence_debug;
@@ -78,7 +82,6 @@ static void ged_monitor_3D_fence_work_cb(struct work_struct *psWork)
 
 	if (atomic_sub_return(1, &g_i32Count) < 1) {
 		unsigned int uiFreqLevelID;
-
 		if (mtk_get_bottom_gpu_freq(&uiFreqLevelID)) {
 			if (uiFreqLevelID > 0 && ged_monitor_3D_fence_switch) {
 #ifdef GED_DEBUG_MONITOR_3D_FENCE
@@ -147,12 +150,10 @@ GED_ERROR ged_monitor_3D_fence_add(int fence_fd)
 	ged_log_buf_print(ghLogBuf_DVFS,
 		"[+] %s (ts=%llu) %p", __func__, t, psDebugAddress);
 
-
 #ifdef GED_DEBUG_MONITOR_3D_FENCE
 	ged_log_buf_print(ghLogBuf_GED,
 		"dma_fence_add_callback, err = %d", err);
 #endif
-
 
 	if (err < 0) {
 		dma_fence_put(psMonitor->psSyncFence);
@@ -162,15 +163,13 @@ GED_ERROR ged_monitor_3D_fence_add(int fence_fd)
 
 		if (iCount > 1) {
 			unsigned int uiFreqLevelID;
-
 			if (mtk_get_bottom_gpu_freq(&uiFreqLevelID)) {
 				if (uiFreqLevelID !=
-					mt_gpufreq_get_dvfs_table_num() - 1) {
+					ged_get_min_oppidx()) {
 
 					if (ged_monitor_3D_fence_switch)
 						mtk_set_bottom_gpu_freq(
-						mt_gpufreq_get_dvfs_table_num()
-						- 1);
+						ged_get_min_oppidx());
 				}
 			}
 		}

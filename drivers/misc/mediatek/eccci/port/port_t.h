@@ -16,6 +16,7 @@
 /* Rx queue only has this one port */
 #define PORT_F_RX_EXCLUSIVE	(1<<3)
 /* Check whether need remove ccci header while recv skb*/
+/* the same as PORT_F_WITH_CHAR_NODE, just different name? */
 #define PORT_F_ADJUST_HEADER	(1<<4)
 /* Enable port channel traffic*/
 #define PORT_F_CH_TRAFFIC	(1<<5)
@@ -32,6 +33,7 @@
 #define PORT_F_CLEAN            (1<<9)
 /*Dump pkt of ccmni*/
 #define PORT_F_NET_DUMP         (1<<10)
+#define PORT_F_CLOSE_NO_DROP_PKT   (1<<11)
 enum {
 	PORT_DBG_DUMP_RILD = 0,
 	PORT_DBG_DUMP_AUDIO,
@@ -77,7 +79,6 @@ struct port_t {
 	unsigned int minor;
 	char *name;
 	/* un-initiallized in defination, always put them at the end */
-	int md_id;
 	void *port_proxy;
 	void *private_data;
 	atomic_t usage_cnt;
@@ -108,12 +109,10 @@ struct port_t {
 	unsigned int tx_busy_count;
 	unsigned int rx_busy_count;
 	int interception;
-	unsigned int rx_pkg_cnt;
+	atomic_t rx_pkg_cnt;
 	unsigned int rx_drop_cnt;
 	unsigned int tx_pkg_cnt;
 	port_skb_handler skb_handler;
-	struct sk_buff_head port_rx_list;
-	atomic_t is_up; /*for ccmni status*/
 	spinlock_t flag_lock;
 };
 /****************************************************************************/
@@ -135,14 +134,12 @@ int port_user_unregister(struct port_t *port);
 int port_ask_more_req_to_md(struct port_t *port);
 int port_write_room_to_md(struct port_t *port);
 void port_ch_dump(struct port_t *port, int dir, void *msg_buf, int len);
-int port_get_capability(int md_id);
+int port_get_capability(void);
 struct port_t *port_get_by_node(int major, int minor);
-struct port_t *port_get_by_minor(int md_id, int minor);
-struct port_t *port_get_by_channel(int md_id, enum CCCI_CH ch);
+struct port_t *port_get_by_minor(int minor);
+struct port_t *port_get_by_channel(enum CCCI_CH ch);
 int port_send_skb_to_md(struct port_t *port, struct sk_buff *skb,
 	int blocking);
-int port_net_send_skb_to_md(struct port_t *port, int is_ack,
-	struct sk_buff *skb);
 int port_send_msg_to_md(struct port_t *port, unsigned int msg,
 		unsigned int resv, int blocking);
 
@@ -160,5 +157,5 @@ long port_dev_compat_ioctl(struct file *filp, unsigned int cmd,
 int port_dev_mmap(struct file *fp, struct vm_area_struct *vma);
 
 int find_port_by_channel(int channel, struct port_t **port);
-int send_new_time_to_new_md(int md_id, int tz);
+int send_new_time_to_new_md(int tz);
 #endif /* __PORT_T_H__ */

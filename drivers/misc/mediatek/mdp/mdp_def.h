@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
 #ifndef __MDP_DEF_H__
 #define __MDP_DEF_H__
 
 #include <linux/kernel.h>
-#include <linux/soc/mediatek/mtk-cmdq.h>
+#include <linux/soc/mediatek/mtk-cmdq-ext.h>
 
 #include "cmdq_subsys_common.h"
 #include "mdp_event_common.h"
@@ -17,9 +17,10 @@
 /* #define MDP_COMMON_ENG_SUPPORT */
 #ifdef MDP_COMMON_ENG_SUPPORT
 #include "mdp_engine_common.h"
-#else
-#include "mdp_engine.h"
 #endif
+
+#define MDP_DEFAULT_MASK_BITS 35
+#define CMDQ_MAX_ENGINE_COUNT 64
 
 #define CMDQ_SPECIAL_SUBSYS_ADDR (99)
 
@@ -33,6 +34,7 @@
 #define CMDQ_MAX_TASK_IN_THREAD		(16)
 #define CMDQ_MAX_READ_SLOT_COUNT	(4)
 #define CMDQ_INIT_FREE_TASK_COUNT	(8)
+#define CMDQ_MAX_TASK_CNT_ON_THREAD	(4)
 
 /* Thread that are high-priority (display threads) */
 #define CMDQ_MAX_HIGH_PRIORITY_THREAD_COUNT (8)
@@ -72,7 +74,7 @@
 #define CMDQ_MAX_INST_CYCLE             (27)
 #define CMDQ_MAX_ERROR_SIZE             (8 * 1024)
 
-#define CMDQ_MAX_TASK_IN_SECURE_THREAD	(3)
+#define CMDQ_MAX_TASK_IN_SECURE_THREAD	(10)
 
 /* max value of CMDQ_THR_EXEC_CMD_CNT (value starts from 0) */
 #ifdef CMDQ_USE_LARGE_MAX_COOKIE
@@ -277,8 +279,7 @@ struct cmdqReadAddressStruct {
 	uint32_t count;		/* [IN] number of entries in result. */
 
 	/* [IN] array of physical addresses to read.
-	 * these value must allocated by
-	 * CMDQ_IOCTL_ALLOC_WRITE_ADDRESS ioctl
+	 * these value must allocated by CMDQ_IOCTL_ALLOC_WRITE_ADDRESS ioctl
 	 *
 	 * indeed param dmaAddresses should be UNSIGNED LONG type
 	 * for 64 bit kernel.

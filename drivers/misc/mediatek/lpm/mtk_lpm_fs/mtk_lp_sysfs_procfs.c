@@ -35,6 +35,7 @@ void *mtk_lp_sysfs_procfs_seq_start(struct seq_file *sf, loff_t *ppos)
 void *mtk_lp_sysfs_procfs_seq_next(struct seq_file *sf
 			, void *v, loff_t *ppos)
 {
+	++*ppos;
 	return NULL;
 }
 
@@ -57,6 +58,7 @@ static int mtk_lp_sysfs_procfs_seq_show(struct seq_file *sf, void *v)
 			out_sz = pOp->fs_read(buf, buf_sz - 1, pOp->priv);
 		buf[buf_sz - 1] = '\0';
 		seq_commit(sf, out_sz);
+		pr_info("[%s:%d] buf_sz=%lu\n", __func__, __LINE__, buf_sz);
 	}
 
 	return 0;
@@ -82,7 +84,7 @@ static int mtk_lp_sysfs_procfs_open(
 
 	if (error == 0) {
 		((struct seq_file *)filp->private_data)->private
-			= PDE_DATA(inode);
+			= pde_data(inode);
 	}
 	return 0;
 }
@@ -109,6 +111,12 @@ static ssize_t mtk_lp_sysfs_procfs_write(struct file *filp,
 	struct mtk_lp_sysfs_op *pOp = (struct mtk_lp_sysfs_op *)
 			((struct seq_file *)filp->private_data)->private;
 
+	if (count >= MTK_LP_SYSFS_BUF_WRITESZ) {
+		pr_info("[name:mtk_lpm][P] - over MTK_LP_SYSFS_BUF_WRITESZ error (%s:%d)\n",
+			__func__, __LINE__);
+		return -EINVAL;
+	}
+
 	count = min(count, sizeof(BufFromUser));
 
 	memset(&BufFromUser[0], 0, sizeof(BufFromUser));
@@ -120,12 +128,12 @@ static ssize_t mtk_lp_sysfs_procfs_write(struct file *filp,
 	return bSz;
 }
 
-static const struct file_operations mtk_lpsysfs_proc_op = {
-	.open = mtk_lp_sysfs_procfs_open,
-	.read = mtk_lp_sysfs_procfs_read,
-	.write = mtk_lp_sysfs_procfs_write,
-	.llseek = seq_lseek,
-	.release = mtk_lp_sysfs_procfs_close,
+static const struct proc_ops mtk_lpsysfs_proc_op = {
+	.proc_open = mtk_lp_sysfs_procfs_open,
+	.proc_read = mtk_lp_sysfs_procfs_read,
+	.proc_write = mtk_lp_sysfs_procfs_write,
+	.proc_lseek = seq_lseek,
+	.proc_release = mtk_lp_sysfs_procfs_close,
 };
 
 #if MTK_LP_SYSFS_HAS_ENTRY
@@ -230,8 +238,9 @@ int mtk_lp_sysfs_entry_node_remove_plat(
 {
 	int bRet = 0;
 
-	proc_remove((struct proc_dir_entry *)node->_current);
-	node->_current = NULL;
+	if (!node)
+		return -EINVAL;
+	pr_info("FS remove %s\n", node->name);
 	return bRet;
 }
 

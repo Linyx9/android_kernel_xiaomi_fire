@@ -25,9 +25,19 @@
 #include "ccci_util_log.h"
 #include "ccci_util_lib_main.h"
 
+/* Broadcast event.time_stamp defination */
+struct ccci_timespec {
+	long tv_sec;	/* seconds */
+	long tv_nsec;	/* nanoseconds */
+};
+
 /* Broadcast event defination */
 struct md_status_event {
-	struct timeval time_stamp;
+	struct ccci_timespec time_stamp;
+
+	/* compatible with lk2 tag info
+	 * "load_modem_info" sturct
+	 */
 	int md_id;
 	int event_type;
 	char reason[32];
@@ -35,16 +45,18 @@ struct md_status_event {
 
 #ifdef CONFIG_COMPAT
 struct md_status_compat_event {
-	struct compat_timeval time_stamp;
+	struct {
+		int tv_sec;
+		int tv_usec;
+	} time_stamp;
 	int md_id;
 	int event_type;
 	char reason[32];
 };
 #endif
 
-#define MD_BC_MAX_NUM	(4)
-#define MD1_BC_SUPPORT	(1<<0)
-#define MD3_BC_SUPPORT	(1<<2)
+#define MD_BC_MAX_NUM	(2)
+#define MD_BC_SUPPORT	(1<<0)
 #define EVENT_BUFF_SIZE (8)
 
 static struct bc_ctl_block_t *s_bc_ctl_tbl[MD_BC_MAX_NUM];
@@ -61,12 +73,12 @@ struct cdev s_bd_char_dev;
 struct last_md_status_event {
 	int has_value;
 	int md_id;
-	struct timeval time_stamp;
+	struct timespec64 time_stamp;
 	int event_type;
 	char reason[32];
 };
 
-static struct last_md_status_event last_md_status[MAX_MD_NUM];
+static struct last_md_status_event last_md_status;
 
 #define CCCI_UTIL_BC_MAGIC 'B'  /*magic */
 
@@ -85,7 +97,7 @@ struct bc_ctl_block_t {
 struct ccci_util_bc_user_ctlb {
 	struct bc_ctl_block_t *bc_dev_ptr;
 	int pending_event_cnt;
-	int has_request_rst_lock;
+	atomic_t  has_request_rst_lock;
 	int curr_w;
 	int curr_r;
 	int buff_cnt;
@@ -96,11 +108,8 @@ struct ccci_util_bc_user_ctlb {
 };
 
 static void inject_event_helper(struct ccci_util_bc_user_ctlb *user_ctlb,
-	int md_id, const struct timeval *ev_rtime,
-	int event_type, char reason[])
+	const struct timespec64 *ev_rtime, int event_type, char reason[])
 {
-	int ret = 0;
-
 	if (user_ctlb->pending_event_cnt == user_ctlb->buff_cnt) {
 		/* Free one space */
 		user_ctlb->curr_r++;
@@ -110,102 +119,82 @@ static void inject_event_helper(struct ccci_util_bc_user_ctlb *user_ctlb,
 	}
 
 	if (user_ctlb->curr_w >= EVENT_BUFF_SIZE || user_ctlb->curr_w < 0) {
-		CCCI_UTIL_ERR_MSG(
-		"%s(user_ctlb->curr_w = %d)\n", __func__, user_ctlb->curr_w);
+		CCCI_UTIL_ERR_MSG("%s (user_ctlb->curr_w = %d)\n",
+				  __func__, user_ctlb->curr_w);
 		return;
 	}
 
-	user_ctlb->event_buf[user_ctlb->curr_w].time_stamp = *ev_rtime;
-	user_ctlb->event_buf[user_ctlb->curr_w].md_id = md_id;
+	user_ctlb->event_buf[user_ctlb->curr_w].time_stamp = *(struct ccci_timespec *)ev_rtime;
+	user_ctlb->event_buf[user_ctlb->curr_w].md_id = 0;
 	user_ctlb->event_buf[user_ctlb->curr_w].event_type = event_type;
 	if (reason != NULL)
-		ret = snprintf(user_ctlb->event_buf[user_ctlb->curr_w].reason, 32,
+		scnprintf(user_ctlb->event_buf[user_ctlb->curr_w].reason, 32,
 			"%s", reason);
 	else
-		ret = snprintf(user_ctlb->event_buf[user_ctlb->curr_w].reason, 32,
+		scnprintf(user_ctlb->event_buf[user_ctlb->curr_w].reason, 32,
 			"%s", "----");
-	if (ret < 0 || ret >= 32) {
-		CCCI_UTIL_ERR_MSG(
-			"%s-%d:snprintf fail,ret=%d\n", __func__, __LINE__, ret);
-		return;
-	}
 	user_ctlb->curr_w++;
 	if (user_ctlb->curr_w >= user_ctlb->buff_cnt)
 		user_ctlb->curr_w = 0;
 	user_ctlb->pending_event_cnt++;
 }
 
-static void save_last_md_status(int md_id,
-		const struct timeval *time_stamp, int event_type, char reason[])
+static void save_last_md_status(
+	const struct timespec64 *time_stamp, int event_type, char reason[])
 {
 	/* MD_STA_EV_HS1 = 9
 	 * ignore events before MD_STA_EV_HS1
 	 */
-	if (event_type < 9 || md_id < 0 || md_id >= MAX_MD_NUM)
+	if (event_type < 9)
 		return;
 
-	CCCI_UTIL_DBG_MSG("[%s] md_id = %d; event_type = %d\n",
-			__func__, md_id, event_type);
+	CCCI_UTIL_DBG_MSG("[%s] event_type = %d\n",
+			__func__, event_type);
 
-	last_md_status[md_id].has_value = 1;
-	last_md_status[md_id].md_id = md_id;
-	last_md_status[md_id].time_stamp = *time_stamp;
-	last_md_status[md_id].event_type = event_type;
+	last_md_status.has_value = 1;
+	last_md_status.md_id = 0;
+	last_md_status.time_stamp = *time_stamp;
+	last_md_status.event_type = event_type;
 
 	if (reason != NULL)
-		scnprintf(last_md_status[md_id].reason, 32, "%s", reason);
+		scnprintf(last_md_status.reason, 32, "%s", reason);
 	else
-		scnprintf(last_md_status[md_id].reason, 32, "%s", "----");
+		scnprintf(last_md_status.reason, 32, "%s", "----");
 }
 
-static void send_last_md_status_to_user(int md_id,
+static void send_last_md_status_to_user(
 		struct ccci_util_bc_user_ctlb *user_ctlb)
 {
-	int i;
+	CCCI_UTIL_DBG_MSG("[%s] user_name = %s\n",
+			__func__, user_ctlb->user_name);
 
-	CCCI_UTIL_DBG_MSG("[%s] md_id = %d; user_name = %s\n",
-			__func__, md_id, user_ctlb->user_name);
-
-	/* md_id == -1, that means it's ccci_mdx_sta */
-	for (i = 0; i < MAX_MD_NUM; i++) {
-		if ((last_md_status[i].has_value == 1) &&
-			(md_id == -1 || md_id == last_md_status[i].md_id)) {
-
-			inject_event_helper(user_ctlb,
-					last_md_status[i].md_id,
-					&last_md_status[i].time_stamp,
-					last_md_status[i].event_type,
-					last_md_status[i].reason);
-		}
-	}
+	if (last_md_status.has_value == 1)
+		inject_event_helper(user_ctlb, &last_md_status.time_stamp,
+				last_md_status.event_type, last_md_status.reason);
 }
 
-
-void inject_md_status_event(int md_id, int event_type, char reason[])
+void inject_md_status_event(int event_type, char reason[])
 {
-	struct timeval time_stamp;
+	struct timespec64 time_spec64;
+	struct timespec64 time_stamp;
 	struct ccci_util_bc_user_ctlb *user_ctlb = NULL;
 	unsigned int md_mark;
 	int i;
 	unsigned long flag;
 
-	if (md_id == 0)
-		md_mark = MD1_BC_SUPPORT;
-	else if (md_id == 2)
-		md_mark = MD3_BC_SUPPORT;
-	else
-		md_mark = 0;
+	md_mark = MD_BC_SUPPORT;
 
-	do_gettimeofday(&time_stamp);
-
+	ktime_get_ts64(&time_spec64);
+	time_stamp.tv_sec = time_spec64.tv_sec;
+	time_stamp.tv_nsec = time_spec64.tv_nsec;
 	spin_lock_irqsave(&s_event_update_lock, flag);
-	save_last_md_status(md_id, &time_stamp, event_type, reason);
+	save_last_md_status(&time_stamp, event_type, reason);
+
 	for (i = 0; i < MD_BC_MAX_NUM; i++) {
 		if (s_bc_ctl_tbl[i]->md_bit_mask & md_mark) {
 			list_for_each_entry(user_ctlb,
 				&s_bc_ctl_tbl[i]->user_list, node)
-				inject_event_helper(user_ctlb, md_id,
-					&time_stamp, event_type, reason);
+				inject_event_helper(user_ctlb, &time_stamp, event_type, reason);
 			wake_up_interruptible(&s_bc_ctl_tbl[i]->wait);
 		}
 	}
@@ -213,16 +202,7 @@ void inject_md_status_event(int md_id, int event_type, char reason[])
 }
 EXPORT_SYMBOL(inject_md_status_event);
 
-int get_lock_rst_user_cnt(int md_id)
-{
-	if (md_id == 0)
-		return s_md1_user_request_lock_cnt;
-	else if (md_id == 2)
-		return s_md3_user_request_lock_cnt;
-	return 0;
-}
-
-int get_lock_rst_user_list(int md_id, char list_buff[], int size)
+int get_lock_rst_user_list(char list_buff[], int size)
 {
 	int cpy_size;
 	int total_size = 0;
@@ -234,33 +214,19 @@ int get_lock_rst_user_list(int md_id, char list_buff[], int size)
 		return 0;
 	}
 
-	if (md_id == 0) {
-		spin_lock_irqsave(&s_event_update_lock, flag);
-		list_for_each_entry(user_ctlb,
-			&s_bc_ctl_tbl[0]->user_list, node) {
-			if (user_ctlb->has_request_rst_lock) {
-				cpy_size = scnprintf(&list_buff[total_size],
-				size - total_size,
-				"%s,", user_ctlb->user_name);
-				if (cpy_size > 0)
-					total_size += cpy_size;
-			}
+	spin_lock_irqsave(&s_event_update_lock, flag);
+	list_for_each_entry(user_ctlb,
+		&s_bc_ctl_tbl[0]->user_list, node) {
+		if (atomic_read(&user_ctlb->has_request_rst_lock) == 1) {
+			cpy_size = scnprintf(&list_buff[total_size],
+			size - total_size,
+			"%s,", user_ctlb->user_name);
+			if (cpy_size > 0)
+				total_size += cpy_size;
 		}
-		spin_unlock_irqrestore(&s_event_update_lock, flag);
-	} else if (md_id == 2) {
-		spin_lock_irqsave(&s_event_update_lock, flag);
-		list_for_each_entry(user_ctlb,
-			&s_bc_ctl_tbl[3]->user_list, node) {
-			if (user_ctlb->has_request_rst_lock) {
-				cpy_size = scnprintf(&list_buff[total_size],
-				size - total_size,
-				"%s,", user_ctlb->user_name);
-				if (cpy_size > 0)
-					total_size += cpy_size;
-			}
-		}
-		spin_unlock_irqrestore(&s_event_update_lock, flag);
 	}
+	spin_unlock_irqrestore(&s_event_update_lock, flag);
+
 
 	list_buff[total_size] = 0;
 
@@ -288,7 +254,7 @@ static int ccci_util_bc_open(struct inode *inode, struct file *filp)
 
 	user_ctlb->bc_dev_ptr = s_bc_ctl_tbl[minor];
 	user_ctlb->pending_event_cnt = 0;
-	user_ctlb->has_request_rst_lock = 0;
+	atomic_set(&user_ctlb->has_request_rst_lock, 0);
 	user_ctlb->curr_w = 0;
 	user_ctlb->curr_r = 0;
 	user_ctlb->buff_cnt = EVENT_BUFF_SIZE;
@@ -300,11 +266,12 @@ static int ccci_util_bc_open(struct inode *inode, struct file *filp)
 
 	spin_lock_irqsave(&s_event_update_lock, flag);
 	list_add_tail(&user_ctlb->node, &bc_dev->user_list);
-	send_last_md_status_to_user(minor - 1, user_ctlb);
+	send_last_md_status_to_user(user_ctlb);
 	spin_unlock_irqrestore(&s_event_update_lock, flag);
 
 	return 0;
 }
+
 
 static int ccci_util_bc_release(struct inode *inode, struct file *filp)
 {
@@ -320,21 +287,16 @@ static int ccci_util_bc_release(struct inode *inode, struct file *filp)
 	spin_lock_irqsave(&s_event_update_lock, flag);
 	user_ctlb->pending_event_cnt = 0;
 	spin_unlock_irqrestore(&s_event_update_lock, flag);
-	if (bc_dev->md_bit_mask & MD1_BC_SUPPORT) {
+
+	if (bc_dev->md_bit_mask & MD_BC_SUPPORT) {
 		spin_lock(&s_md1_user_lock_cnt_lock);
-		if (user_ctlb->has_request_rst_lock == 1) {
-			user_ctlb->has_request_rst_lock = 0;
+		if (atomic_read(&user_ctlb->has_request_rst_lock) == 1) {
+			atomic_set(&user_ctlb->has_request_rst_lock, 0);
 			s_md1_user_request_lock_cnt--;
 		}
 		spin_unlock(&s_md1_user_lock_cnt_lock);
-	} else if (bc_dev->md_bit_mask & MD3_BC_SUPPORT) {
-		spin_lock(&s_md3_user_lock_cnt_lock);
-		if (user_ctlb->has_request_rst_lock == 1) {
-			user_ctlb->has_request_rst_lock = 0;
-			s_md3_user_request_lock_cnt--;
-		}
-		spin_unlock(&s_md3_user_lock_cnt_lock);
 	}
+
 	spin_lock_irqsave(&s_event_update_lock, flag);
 	list_del(&user_ctlb->node);
 	spin_unlock_irqrestore(&s_event_update_lock, flag);
@@ -387,11 +349,11 @@ static int cpy_compat_event_to_user(char __user *buf, size_t size,
 #ifdef CONFIG_COMPAT
 	if (test_thread_flag(TIF_32BIT) && !COMPAT_USE_64BIT_TIME) {
 		event_size = sizeof(struct md_status_compat_event);
-		if (size < event_size)
+		if (event_size > size)
 			return -EINVAL;
 		compat_event.time_stamp.tv_sec = event->time_stamp.tv_sec;
-		compat_event.time_stamp.tv_usec = event->time_stamp.tv_usec;
-		compat_event.md_id = event->md_id;
+		compat_event.time_stamp.tv_usec = event->time_stamp.tv_nsec/NSEC_PER_USEC;
+		compat_event.md_id = 0;
 		compat_event.event_type = event->event_type;
 		memcpy(compat_event.reason, event->reason, 32);
 		if (copy_to_user(buf, &compat_event, event_size))
@@ -401,6 +363,8 @@ static int cpy_compat_event_to_user(char __user *buf, size_t size,
 	} else {
 #endif
 		event_size = sizeof(struct md_status_event);
+		if (event_size > size)
+			return -EINVAL;
 		if (copy_to_user(buf, event, event_size))
 			return -EFAULT;
 		else
@@ -454,9 +418,8 @@ static long ccci_util_bc_ioctl(struct file *filp, unsigned int cmd,
 	int err = 0;
 	struct ccci_util_bc_user_ctlb *user_ctlb;
 	struct bc_ctl_block_t *bc_dev;
-	int lock_cnt, cpy_size;
+	int lock_cnt;
 	char *buf = NULL;
-	int md_id;
 
 	user_ctlb = filp->private_data;
 	bc_dev = user_ctlb->bc_dev_ptr;
@@ -467,58 +430,34 @@ static long ccci_util_bc_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case CCCI_IOC_HOLD_RST_LOCK:
-		if (bc_dev->md_bit_mask & MD1_BC_SUPPORT) {
+		if (bc_dev->md_bit_mask & MD_BC_SUPPORT) {
 			spin_lock(&s_md1_user_lock_cnt_lock);
-			if (user_ctlb->has_request_rst_lock == 0) {
-				user_ctlb->has_request_rst_lock = 1;
+			if (atomic_read(&user_ctlb->has_request_rst_lock) == 0) {
+				atomic_set(&user_ctlb->has_request_rst_lock, 1);
 				s_md1_user_request_lock_cnt++;
 			}
 			spin_unlock(&s_md1_user_lock_cnt_lock);
-		} else if (bc_dev->md_bit_mask & MD3_BC_SUPPORT) {
-			spin_lock(&s_md3_user_lock_cnt_lock);
-			if (user_ctlb->has_request_rst_lock == 0) {
-				user_ctlb->has_request_rst_lock = 1;
-				s_md3_user_request_lock_cnt++;
-			}
-			spin_unlock(&s_md3_user_lock_cnt_lock);
 		} else
 			err = -1;
 		break;
 	case CCCI_IOC_FREE_RST_LOCK:
-		if (bc_dev->md_bit_mask & MD1_BC_SUPPORT) {
+		if (bc_dev->md_bit_mask & MD_BC_SUPPORT) {
 			spin_lock(&s_md1_user_lock_cnt_lock);
-			if (user_ctlb->has_request_rst_lock == 1) {
-				user_ctlb->has_request_rst_lock = 0;
+			if (atomic_read(&user_ctlb->has_request_rst_lock) == 1) {
+				atomic_set(&user_ctlb->has_request_rst_lock, 0);
 				s_md1_user_request_lock_cnt--;
 			}
 			spin_unlock(&s_md1_user_lock_cnt_lock);
-		} else if (bc_dev->md_bit_mask & MD3_BC_SUPPORT) {
-			spin_lock(&s_md3_user_lock_cnt_lock);
-			if (user_ctlb->has_request_rst_lock == 1) {
-				user_ctlb->has_request_rst_lock = 0;
-				s_md3_user_request_lock_cnt--;
-			}
-			spin_unlock(&s_md3_user_lock_cnt_lock);
 		} else
 			err = -1;
 		break;
 	case CCCI_IOC_GET_HOLD_RST_CNT:
-		if ((bc_dev->md_bit_mask & (MD1_BC_SUPPORT | MD3_BC_SUPPORT))
-			== (MD1_BC_SUPPORT | MD3_BC_SUPPORT))
-			lock_cnt = get_lock_rst_user_cnt(MD_SYS1) +
-			get_lock_rst_user_cnt(MD_SYS3);
-		else if ((bc_dev->md_bit_mask &
-				(MD1_BC_SUPPORT | MD3_BC_SUPPORT))
-				== MD1_BC_SUPPORT)
-			lock_cnt = get_lock_rst_user_cnt(MD_SYS1);
-		else if ((bc_dev->md_bit_mask &
-				(MD1_BC_SUPPORT | MD3_BC_SUPPORT))
-				== MD3_BC_SUPPORT)
-			lock_cnt = get_lock_rst_user_cnt(MD_SYS3);
+		if (bc_dev->md_bit_mask & MD_BC_SUPPORT)
+			lock_cnt = s_md1_user_request_lock_cnt;
 		else
 			lock_cnt = 0;
 		err = put_user((unsigned int)lock_cnt,
-				(unsigned int __user *)arg);
+					(unsigned int __user *)arg);
 		break;
 	case CCCI_IOC_SHOW_LOCK_USER:
 		buf = kmalloc(1024, GFP_KERNEL);
@@ -526,26 +465,10 @@ static long ccci_util_bc_ioctl(struct file *filp, unsigned int cmd,
 			err = -1;
 			break;
 		}
-		if ((bc_dev->md_bit_mask & (MD1_BC_SUPPORT | MD3_BC_SUPPORT))
-			== (MD1_BC_SUPPORT | MD3_BC_SUPPORT)) {
-			cpy_size = get_lock_rst_user_list(0, buf, 1024);
-			get_lock_rst_user_list(2, &buf[cpy_size],
-			1024 - cpy_size);
-			md_id = 0;
-		} else if ((bc_dev->md_bit_mask &
-					(MD1_BC_SUPPORT | MD3_BC_SUPPORT))
-					== MD1_BC_SUPPORT) {
-			get_lock_rst_user_list(0, buf, 1024);
-			md_id = 1;
-		} else if ((bc_dev->md_bit_mask &
-					(MD1_BC_SUPPORT | MD3_BC_SUPPORT))
-					== MD3_BC_SUPPORT) {
-			get_lock_rst_user_list(2, buf, 1024);
-			md_id = 3;
-		} else {
-			md_id = 0;
+		if (bc_dev->md_bit_mask & MD_BC_SUPPORT)
+			get_lock_rst_user_list(buf, 1024);
+		else
 			buf[0] = 0;
-		}
 		pr_info("ccci: Lock reset user list: %s\r\n", buf);
 		kfree(buf);
 
@@ -562,12 +485,6 @@ static long ccci_util_bc_ioctl(struct file *filp, unsigned int cmd,
 long ccci_util_bc_compat_ioctl(struct file *filp, unsigned int cmd,
 	unsigned long arg)
 {
-	struct ccci_util_bc_user_ctlb *user_ctlb;
-	struct bc_ctl_block_t *bc_dev;
-
-	user_ctlb = filp->private_data;
-	bc_dev = user_ctlb->bc_dev_ptr;
-
 	if (!filp->f_op || !filp->f_op->unlocked_ioctl) {
 		CCCI_UTIL_ERR_MSG(
 		"%s(!filp->f_op || !filp->f_op->unlocked_ioctl)\n", __func__);
@@ -618,7 +535,7 @@ int ccci_util_broadcast_init(void)
 	int i;
 	dev_t dev_n;
 
-	memset(last_md_status, 0, sizeof(last_md_status));
+	memset(&last_md_status, 0, sizeof(last_md_status));
 
 	for (i = 0; i < MD_BC_MAX_NUM; i++) {
 		s_bc_ctl_tbl[i] = kmalloc(sizeof(struct bc_ctl_block_t),
@@ -636,7 +553,7 @@ int ccci_util_broadcast_init(void)
 	spin_lock_init(&s_event_update_lock);
 	spin_lock_init(&s_md1_user_lock_cnt_lock);
 	spin_lock_init(&s_md3_user_lock_cnt_lock);
-	s_ccci_bd_class = class_create(THIS_MODULE, "ccci_md_sta");
+	s_ccci_bd_class = class_create("ccci_md_sta");
 	s_md1_user_request_lock_cnt = 0;
 	s_md3_user_request_lock_cnt = 0;
 
@@ -679,4 +596,3 @@ _exit:
 
 	return -1;
 }
-

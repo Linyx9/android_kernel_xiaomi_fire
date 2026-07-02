@@ -1,0 +1,26 @@
+/*
+ * this is the dtsi sample for SGM7220.
+ * update date:2024.04.15
+ */
+
+sgm7220: sgm7220@47 {
+	compatible = "sgm,usb_typec_sgm7220";
+	reg = <0x47>;
+	status = "disabled";
+
+	sgm7220-tcpc,name = "type_c_port0";    /* the name of tcpc_device */
+	sgm7220-tcpc,role_def = <5>;           /* 0: TYPEC_ROLE_UNKNOWN,
+                                              1: TYPEC_ROLE_SNK,
+                                              2: TYPEC_ROLE_SRC,
+                                              3: TYPEC_ROLE_DRP,
+                                              4: TYPEC_ROLE_TRY_SRC,
+                                              5: TYPEC_ROLE_TRY_SNK */
+	sgm7220-tcpc,notifier_supply_num = <3>;
+	sgm7220-tcpc,rp_level = <0>;           /* 0: TYPEC_CC_RP_DFT,
+                                               1: TYPEC_CC_RP_1_5,
+                                               2: TYPEC_CC_RP_3_0 */
+	sgm7220-tcpc,vconn_supply = <0>;       /* 0 : Default, 1: Always, 2:EMarkOnly, 3: StartOnly */
+	sgm7220_irq_gpio = <&pio 4 0x0>;
+	sgm7220_irq_gpio_num = <4>;
+	pinctrl-names = "default";
+};

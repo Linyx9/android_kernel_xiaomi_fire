@@ -3,8 +3,8 @@
  * Copyright (C) 2019 MediaTek Inc.
  */
 
-#ifndef __DEVAPC_MTK_MULTI_4_H__
-#define __DEVAPC_MTK_MULTI_4_H__
+#ifndef __DEVAPC_MTK_MULTI_AO_H__
+#define __DEVAPC_MTK_MULTI_AO_H__
 
 #include <linux/platform_device.h>
 #include <linux/types.h>
@@ -17,14 +17,17 @@
 #define DEAD			0xdeadbeaf
 #define RANDOM_OFFSET		0x88
 #define PFX			"[DEVAPC]: "
-#define SLAVE_TYPE_NUM_MAX	5
+#define SLAVE_TYPE_NUM_MAX	20
+#define IRQ_TYPE_NUM_MAX	19
+#define IRQ_TYPE_NUM_DEFAULT	1
+#define VIO_ADDR_HIGH_MASK	0xFFFFFFFF
 
 #define devapc_log(p, s, fmt, args...) \
 	(p += scnprintf(p, sizeof(s) - strlen(s), fmt, ##args))
 
 #define UNUSED(x)		(void)(x)
 
-#define RETRY_COUNT 3
+#define RETRY_COUNT	3
 
 /******************************************************************************
  * DATA STRUCTURE & FUNCTION DEFINATION
@@ -39,11 +42,18 @@ enum DEVAPC_PD_REG_TYPE {
 	VIO_SHIFT_STA,
 	VIO_SHIFT_SEL,
 	VIO_SHIFT_CON,
+	VIO_DBG3,
 	PD_REG_TYPE_NUM,
 };
 
 enum DEVAPC_UT_CMD {
-	DEVAPC_UT_DAPC_VIO = 1,
+	DEVAPC_UT_DAPC_INFRA_VIO = 1,
+	DEVAPC_UT_DAPC_PERI_VIO,
+	DEVAPC_UT_DAPC_VLP_VIO,
+	DEVAPC_UT_DAPC_ADSP_VIO,
+	DEVAPC_UT_DAPC_MMINFRA_VIO,
+	DEVAPC_UT_DAPC_MMUP_VIO,
+	DEVAPC_UT_DAPC_GPU_VIO,
 	DEVAPC_UT_SRAM_VIO,
 };
 
@@ -70,6 +80,34 @@ enum DEVAPC_DOM_ID {
 enum SRAMROM_VIO {
 	ROM_VIOLATION = 0,
 	SRAM_VIOLATION,
+};
+
+enum devapc_vio_type {
+	DEVAPC_VIO_PERM_DENIED = 0,
+	DEVAPC_VIO_PWRCLK_NOT_ENABLED,
+	DEVAPC_VIO_SERROR,
+	DEVAPC_VIO_OTHER,
+	DEVAPC_VIO_ABNORMAL,
+	DEVAPC_VIO_NO_VIO_FOUND,
+	DEVAPC_VIO_MAX,
+};
+
+enum devapc_excep_type {
+	DEVAPC_EXCEP_HANDLED_NOT_KE = 0,
+	DEVAPC_EXCEP_HANDLED,
+	DEVAPC_EXCEP_NOT_HANDLED,
+	DEVAPC_EXCEP_MAX,
+};
+
+enum devapc_get_type {
+	DEVAPC_GET_INFRA = 0,
+	DEVAPC_GET_PERI,
+	DEVAPC_GET_VLP,
+	DEVAPC_GET_ADSP,
+	DEVAPC_GET_MMINFRA,
+	DEVAPC_GET_MMUP,
+	DEVAPC_GET_GPU,
+	DEVAPC_GET_NUM,
 };
 
 #ifdef CONFIG_DEVAPC_SWP_SUPPORT
@@ -105,8 +143,10 @@ struct mtk_device_info {
 };
 
 struct mtk_device_num {
-	int slave_type;
+	int devapc_type;
 	uint32_t vio_slave_num;
+	int irq_type;
+	int perm_get_type;
 };
 
 struct mtk_devapc_vio_info {
@@ -160,6 +200,19 @@ struct mtk_devapc_pd_desc {
 	uint32_t pd_shift_con_offset;
 };
 
+struct mtk_devapc_pd_reg {
+	uint32_t pd_vio_dbg0_reg;
+	uint32_t pd_vio_dbg1_reg;
+	uint32_t pd_vio_dbg2_reg;
+	uint32_t pd_vio_dbg3_reg;
+	uint32_t pd_apc_con_reg;
+	uint32_t pd_vio_shift_sta_reg;
+	uint32_t pd_vio_shift_sel_reg;
+	uint32_t pd_vio_shift_con_reg;
+	uint32_t *pd_vio_mask_reg;
+	uint32_t *pd_vio_sta_reg;
+};
+
 struct mtk_devapc_soc {
 	struct mtk_devapc_dbg_status *dbg_stat;
 	const char * const *slave_type_arr;
@@ -170,24 +223,27 @@ struct mtk_devapc_soc {
 	const struct mtk_infra_vio_dbg_desc *vio_dbgs;
 	const struct mtk_sramrom_sec_vio_desc *sramrom_sec_vios;
 	const uint32_t *devapc_pds;
+	uint32_t irq_type_num;
 
 	/* platform specific operations */
 	const char* (*subsys_get)(int slave_type, uint32_t vio_index,
 			uint32_t vio_addr);
 	const char* (*master_get)(uint32_t bus_id, uint32_t vio_addr,
-			int slave_type, int shift_sta_bit, int domain);
+			int slave_type, int shift_sta_bit, uint32_t domain);
 	void (*mm2nd_vio_handler)(void __iomem *infracfg,
 			struct mtk_devapc_vio_info *vio_info,
 			bool mdp_vio, bool disp2_vio, bool mmsys_vio);
 	uint32_t (*shift_group_get)(int slave_type, uint32_t vio_index);
 };
 
-extern int mtk_devapc_probe(struct platform_device *pdev,
+int devapc_suspend_noirq(struct device *dev);
+int devapc_resume_noirq(struct device *dev);
+int mtk_devapc_probe(struct platform_device *pdev,
 		struct mtk_devapc_soc *soc);
-extern int mtk_devapc_remove(struct platform_device *dev);
+int mtk_devapc_remove(struct platform_device *dev);
 ssize_t mtk_devapc_dbg_read(struct file *file, char __user *buffer,
 	size_t count, loff_t *ppos);
 ssize_t mtk_devapc_dbg_write(struct file *file, const char __user *buffer,
 	size_t count, loff_t *data);
 
-#endif /* __DEVAPC_MTK_MULTI_4_H__ */
+#endif /* __DEVAPC_MTK_MULTI_AO_H__ */

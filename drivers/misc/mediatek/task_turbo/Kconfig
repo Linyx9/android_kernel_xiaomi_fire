@@ -1,6 +1,5 @@
 config MTK_TASK_TURBO
-	bool "MTK task turbo feature"
-	depends on MTK_SCHED_CPU_PREFER
+	tristate "MTK task turbo feature"
 	help
 	  A new option CONFIG_MTK_TASK_TURBO for the feature.
 	  Task turbo provide enhancement of APP launch and lock

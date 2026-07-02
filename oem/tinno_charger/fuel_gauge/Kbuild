@@ -1,0 +1,3 @@
+ifdef CONFIG_OEM_FUEL_GAUGE_SM5602
+	obj-y += sm5602/
+endif

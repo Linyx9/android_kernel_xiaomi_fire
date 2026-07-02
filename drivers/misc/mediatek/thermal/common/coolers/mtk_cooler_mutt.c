@@ -192,20 +192,6 @@ static int tt_MD_low = 50;
 static int triggered;
 #endif
 
-unsigned long __attribute__ ((weak))
-ccci_get_md_boot_count(int md_id)
-{
-	pr_notice("E_WF: %s doesn't exist\n", __func__);
-	return 0;
-}
-
-int __attribute__ ((weak))
-exec_ccci_kern_func_by_md_id(
-int md_id, unsigned int id, char *buf, unsigned int len)
-{
-	pr_notice("E_WF: %s doesn't exist\n", __func__);
-	return -316;
-}
 
 #define mtk_cooler_mutt_dprintk_always(fmt, args...) \
 pr_debug("[Thermal/TC/mutt]" fmt, ##args)
@@ -312,8 +298,9 @@ static int clmutt_send_tmd_signal(int level)
 	}
 
 	if (ret == 0 && ptmd_task) {
-		siginfo_t info;
+		struct kernel_siginfo info;
 
+		clear_siginfo(&info);
 		info.si_signo = SIGIO;
 		info.si_errno = 0;
 		info.si_code = level;
@@ -364,16 +351,15 @@ static int clmutt_tmd_pid_read(struct seq_file *m, void *v)
 
 static int clmutt_tmd_pid_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, clmutt_tmd_pid_read, PDE_DATA(inode));
+	return single_open(file, clmutt_tmd_pid_read, pde_data(inode));
 }
 
-static const struct file_operations clmutt_tmd_pid_fops = {
-	.owner = THIS_MODULE,
-	.open = clmutt_tmd_pid_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = clmutt_tmd_pid_write,
-	.release = single_release,
+static const struct proc_ops clmutt_tmd_pid_fops = {
+	.proc_open = clmutt_tmd_pid_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = clmutt_tmd_pid_write,
+	.proc_release = single_release,
 };
 #endif
 
@@ -413,8 +399,9 @@ static int clmutt_send_tm_signal(int level)
 	}
 
 	if (ret == 0 && pg_task) {
-		siginfo_t info;
+		struct kernel_siginfo info;
 
+		clear_siginfo(&info);
 		info.si_signo = SIGIO;
 		info.si_errno = TM_CLIENT_clmutt;
 		info.si_code = level; /* Toggle MD ON: 0 OFF: 1*/
@@ -470,16 +457,15 @@ static int clmutt_tm_pid_read(struct seq_file *m, void *v)
 
 static int clmutt_tm_pid_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, clmutt_tm_pid_read, PDE_DATA(inode));
+	return single_open(file, clmutt_tm_pid_read, pde_data(inode));
 }
 
-static const struct file_operations clmutt_tm_pid_fops = {
-	.owner = THIS_MODULE,
-	.open = clmutt_tm_pid_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = clmutt_tm_pid_write,
-	.release = single_release,
+static const struct proc_ops clmutt_tm_pid_fops = {
+	.proc_open = clmutt_tm_pid_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = clmutt_tm_pid_write,
+	.proc_release = single_release,
 };
 
 /*
@@ -509,7 +495,7 @@ static int mtk_cl_mdoff_get_cur_state(struct thermal_cooling_device *cdev,
 static int mtk_cl_mdoff_set_cur_state(struct thermal_cooling_device *cdev,
 				unsigned long state)
 {
-	if (state <= 1)
+	if ((state >= 0) && (state <= 1))
 		mtk_cooler_mutt_dprintk(
 			"[%s] %s %lu (0: md on;  1: md off)\n", __func__,
 			cdev->type, state);
@@ -531,6 +517,7 @@ static struct thermal_cooling_device_ops mtk_cl_mdoff_ops = {
 	.set_cur_state = mtk_cl_mdoff_set_cur_state,
 };
 
+#define ID_GET_MD_BOOT_CNT_FOR_THERMAL 10
 static void mtk_cl_mutt_set_onIMS(int level)
 {
 	int ret = 0;
@@ -569,15 +556,16 @@ static void mtk_cl_mutt_set_onIMS(int level)
 		cl_mutt_cur_ca_limit = cl_mutt_param_noIMS_ca;
 		cl_mutt_cur_pa_limit = cl_mutt_param_noIMS_pa;
 #endif
-		last_md_boot_cnt = ccci_get_md_boot_count(MD_SYS1);
-		ret = exec_ccci_kern_func_by_md_id(MD_SYS1,
+		last_md_boot_cnt =
+			exec_ccci_kern_func(ID_GET_MD_BOOT_CNT_FOR_THERMAL, NULL, 0);
+		ret = exec_ccci_kern_func(
 			ID_THROTTLING_CFG,
 			(char *) &cl_mutt_cur_limit, 4);
 #if defined(FEATURE_MUTT_INTERFACE_VER)
-		ret_pa = exec_ccci_kern_func_by_md_id(MD_SYS1,
+		ret_pa = exec_ccci_kern_func(
 			ID_THROTTLING_CFG,
 			(char *) &cl_mutt_cur_pa_limit, 4);
-		ret_ca = exec_ccci_kern_func_by_md_id(MD_SYS1,
+		ret_ca = exec_ccci_kern_func(
 			ID_THROTTLING_CFG,
 			(char *) &cl_mutt_cur_ca_limit, 4);
 #endif
@@ -596,18 +584,19 @@ static void mtk_cl_mutt_set_onIMS(int level)
 			last_md_boot_cnt);
 #endif
 	} else if (cl_mutt_param_noIMS != 0) {
-		unsigned long cur_md_bcnt = ccci_get_md_boot_count(MD_SYS1);
+		unsigned long cur_md_bcnt =
+			exec_ccci_kern_func(ID_GET_MD_BOOT_CNT_FOR_THERMAL, NULL, 0);
 
 		if (last_md_boot_cnt != cur_md_bcnt) {
 			last_md_boot_cnt = cur_md_bcnt;
-			ret = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *) &cl_mutt_cur_limit, 4);
 #if defined(FEATURE_MUTT_INTERFACE_VER)
-			ret_pa = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret_pa = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *) &cl_mutt_cur_pa_limit, 4);
-			ret_ca = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret_ca = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *) &cl_mutt_cur_ca_limit, 4);
 #endif
@@ -681,7 +670,7 @@ static int mtk_cl_noIMS_set_cur_state(struct thermal_cooling_device *cdev,
 		return 0;
 	}
 
-	if (state <= 1)
+	if ((state >= 0) && (state <= 1))
 		mtk_cooler_mutt_dprintk(
 			"%s() %s %lu (0: md IMS OK;	1: md no IMS)\n",
 			__func__,
@@ -778,18 +767,19 @@ static void mtk_cl_mutt_set_mutt_limit(void)
 #endif
 
 
-		last_md_boot_cnt = ccci_get_md_boot_count(MD_SYS1);
+		last_md_boot_cnt =
+			exec_ccci_kern_func(ID_GET_MD_BOOT_CNT_FOR_THERMAL, NULL, 0);
 
-		ret = exec_ccci_kern_func_by_md_id(MD_SYS1,
+		ret = exec_ccci_kern_func(
 			ID_THROTTLING_CFG,
 			(char *)&cl_mutt_cur_limit, 4);
 
 #if defined(FEATURE_MUTT_INTERFACE_VER)
-		ret_pa = exec_ccci_kern_func_by_md_id(MD_SYS1,
+		ret_pa = exec_ccci_kern_func(
 			ID_THROTTLING_CFG,
 			(char *)&cl_mutt_cur_pa_limit, 4);
 
-		ret_ca = exec_ccci_kern_func_by_md_id(MD_SYS1,
+		ret_ca = exec_ccci_kern_func(
 			ID_THROTTLING_CFG,
 			(char *)&cl_mutt_cur_ca_limit, 4);
 #endif
@@ -811,21 +801,22 @@ static void mtk_cl_mutt_set_mutt_limit(void)
 #else
 	} else if (min_param != 0) {
 #endif
-		unsigned long cur_md_bcnt = ccci_get_md_boot_count(MD_SYS1);
+		unsigned long cur_md_bcnt =
+			exec_ccci_kern_func(ID_GET_MD_BOOT_CNT_FOR_THERMAL, NULL, 0);
 
 		if (last_md_boot_cnt != cur_md_bcnt) {
 			last_md_boot_cnt = cur_md_bcnt;
 			ret =
-			exec_ccci_kern_func_by_md_id(MD_SYS1,
+			exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *)&cl_mutt_cur_limit, 4);
 #if defined(FEATURE_MUTT_INTERFACE_VER)
 			ret_pa =
-			exec_ccci_kern_func_by_md_id(MD_SYS1,
+			exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *)&cl_mutt_cur_pa_limit, 4);
 			ret_ca =
-			exec_ccci_kern_func_by_md_id(MD_SYS1,
+			exec_ccci_kern_func(
 			ID_THROTTLING_CFG,
 			(char *)&cl_mutt_cur_ca_limit, 4);
 #endif
@@ -1448,13 +1439,12 @@ static int _mtk_cl_mutt_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, _mtk_cl_mutt_proc_read, NULL);
 }
 
-static const struct file_operations cl_mutt_fops = {
-	.owner = THIS_MODULE,
-	.open = _mtk_cl_mutt_proc_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _mtk_cl_mutt_proc_write,
-	.release = single_release,
+static const struct proc_ops cl_mutt_fops = {
+	.proc_open = _mtk_cl_mutt_proc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _mtk_cl_mutt_proc_write,
+	.proc_release = single_release,
 };
 
 #if defined(FEATURE_MUTT_INTERFACE_VER)
@@ -1586,14 +1576,14 @@ struct file *filp, const char __user *buffer, size_t count, loff_t *data)
 				&& (mutt_level >= 0) && (mutt_level <= 8)) {
 
 			last_md_tuning_boot_cnt =
-				ccci_get_md_boot_count(MD_SYS1);
+				exec_ccci_kern_func(ID_GET_MD_BOOT_CNT_FOR_THERMAL, NULL, 0);
 
 			cl_mutt_tuning_param_lv =
 				level_selection(mutt_level);
 			cl_mutt_tuning_param_lv =
 				cl_mutt_tuning_param_lv |
 				(TMC_COOLER_LV_ENABLE << 8);
-			ret_lv = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret_lv = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *)&cl_mutt_tuning_param_lv, 4);
 
@@ -1609,13 +1599,13 @@ struct file *filp, const char __user *buffer, size_t count, loff_t *data)
 		if ((strncmp(arg_name, "disable_level", 13) == 0)) {
 
 			last_md_tuning_boot_cnt =
-				ccci_get_md_boot_count(MD_SYS1);
+				exec_ccci_kern_func(ID_GET_MD_BOOT_CNT_FOR_THERMAL, NULL, 0);
 
 			cl_mutt_tuning_param_lv =
 				level_selection(mutt_level);
 			cl_mutt_tuning_param_lv =
 				TMC_LEVEL_CTRL_COOLER_LV_DISABLE;
-			ret_lv = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret_lv = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *)&cl_mutt_tuning_param_lv, 4);
 
@@ -1665,12 +1655,13 @@ struct file *filp, const char __user *buffer, size_t count, loff_t *data)
 
 
 
-		last_md_tuning_boot_cnt = ccci_get_md_boot_count(MD_SYS1);
+		last_md_tuning_boot_cnt =
+			exec_ccci_kern_func(ID_GET_MD_BOOT_CNT_FOR_THERMAL, NULL, 0);
 
 		if (mutt_noIMS == 0xFF) {
 			cl_mutt_tuning_param = TMC_THROTTLING_THROT_DISABLE;
 
-			ret = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *)&cl_mutt_tuning_param, 4);
 			mtk_cooler_mutt_dprintk_always(
@@ -1678,7 +1669,7 @@ struct file *filp, const char __user *buffer, size_t count, loff_t *data)
 				__func__, ret, cl_mutt_tuning_param,
 				last_md_tuning_boot_cnt);
 		} else {/*Throttle disable*/
-			ret = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *)&cl_mutt_tuning_param, 4);
 			mtk_cooler_mutt_dprintk_always(
@@ -1689,7 +1680,7 @@ struct file *filp, const char __user *buffer, size_t count, loff_t *data)
 
 
 		if (mutt_off1pa != 0xFF) {
-			ret_pa = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret_pa = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *)&cl_mutt_tuning_param_pa, 4);
 
@@ -1701,7 +1692,7 @@ struct file *filp, const char __user *buffer, size_t count, loff_t *data)
 
 
 		if (mutt_off1ca != 0xFF) {
-			ret_pa = exec_ccci_kern_func_by_md_id(MD_SYS1,
+			ret_pa = exec_ccci_kern_func(
 				ID_THROTTLING_CFG,
 				(char *)&cl_mutt_tuning_param_ca, 4);
 			mtk_cooler_mutt_dprintk_always(
@@ -1726,17 +1717,16 @@ static int _mtk_cl_mutt_tuning_open(struct inode *inode, struct file *file)
 	return single_open(file, _mtk_cl_mutt_tuning_read, NULL);
 }
 
-static const struct file_operations clmutt_tuning_fops = {
-	.owner = THIS_MODULE,
-	.open = _mtk_cl_mutt_tuning_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = _mtk_cl_mutt_tuning_write,
-	.release = single_release,
+static const struct proc_ops clmutt_tuning_fops = {
+	.proc_open = _mtk_cl_mutt_tuning_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = _mtk_cl_mutt_tuning_write,
+	.proc_release = single_release,
 };
 #endif
 
-static int __init mtk_cooler_mutt_init(void)
+int mtk_cooler_mutt_init(void)
 {
 	int err = 0;
 	int i;
@@ -1802,7 +1792,7 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtk_cooler_mutt_exit(void)
+void  mtk_cooler_mutt_exit(void)
 {
 	mtk_cooler_mutt_dprintk("exit\n");
 
@@ -1811,5 +1801,7 @@ static void __exit mtk_cooler_mutt_exit(void)
 
 	mtk_cooler_mutt_unregister_ltf();
 }
-module_init(mtk_cooler_mutt_init);
-module_exit(mtk_cooler_mutt_exit);
+//module_init(mtk_cooler_mutt_init);
+//module_exit(mtk_cooler_mutt_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

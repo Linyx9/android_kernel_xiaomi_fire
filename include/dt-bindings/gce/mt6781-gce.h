@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (C) 2016 MediaTek Inc.
  */
@@ -378,6 +378,11 @@
 /* ISP sw token */
 #define CMDQ_SYNC_TOKEN_MSS				665
 #define CMDQ_SYNC_TOKEN_MSF				666
+
+#define CMDQ_SYNC_TOKEN_HISTOGRAM_MDP_WAIT		694
+#define CMDQ_SYNC_TOKEN_HISTOGRAM_MDP_SET		695
+#define CMDQ_SYNC_TOKEN_HISTOGRAM_VENC_WAIT		696
+#define CMDQ_SYNC_TOKEN_HISTOGRAM_VENC_SET		697
 
 /* DISP sw token */
 #define CMDQ_SYNC_TOKEN_SODI				671

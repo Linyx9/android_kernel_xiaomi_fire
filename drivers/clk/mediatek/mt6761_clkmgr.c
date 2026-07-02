@@ -389,34 +389,32 @@ static int univpll_speed_dump_read(struct seq_file *m, void *v)
 /************ L ********************/
 static int proc_armpll1_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
+	clk_info("clk: proc armpll1 fsel open start!");
 
 	return single_open(file, armpll1_fsel_read, NULL);
 }
 
-static const struct file_operations armpll1_fsel_proc_fops = {
-	.owner = THIS_MODULE,
-	.open = proc_armpll1_fsel_open,
-	.read = seq_read,
-	.write = armpll1_fsel_write,
-	.release = single_release,
+static const struct proc_ops armpll1_fsel_proc_fops = {
+	.proc_open = proc_armpll1_fsel_open,
+	.proc_read = seq_read,
+	.proc_write = armpll1_fsel_write,
+	.proc_release = single_release,
 };
 
 #if ARMPLL_L_EXIST
 /************ LL ********************/
 static int proc_armpll2_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
+	clk_info("clk: proc armpll2 fsel open start!");
 
 	return single_open(file, armpll2_fsel_read, NULL);
 }
 
-static const struct file_operations armpll2_fsel_proc_fops = {
-	.owner = THIS_MODULE,
-	.open = proc_armpll2_fsel_open,
-	.read = seq_read,
-	.write = armpll2_fsel_write,
-	.release = single_release,
+static const struct proc_ops armpll2_fsel_proc_fops = {
+	.proc_open = proc_armpll2_fsel_open,
+	.proc_read = seq_read,
+	.proc_write = armpll2_fsel_write,
+	.proc_release = single_release,
 };
 #endif
 
@@ -424,49 +422,46 @@ static const struct file_operations armpll2_fsel_proc_fops = {
 /************ CCI ********************/
 static int proc_ccipll_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
+	clk_info("clk: proc ccipll fsel open start!");
 
 	return single_open(file, ccipll_fsel_read, NULL);
 }
 
-static const struct file_operations ccipll_fsel_proc_fops = {
-	.owner = THIS_MODULE,
-	.open = proc_ccipll_fsel_open,
-	.read = seq_read,
-	.write = ccipll_fsel_write,
-	.release = single_release,
+static const struct proc_ops ccipll_fsel_proc_fops = {
+	.proc_open = proc_ccipll_fsel_open,
+	.proc_read = seq_read,
+	.proc_write = ccipll_fsel_write,
+	.proc_release = single_release,
 };
 #endif
 
 /************ MM ********************/
 static int proc_mmpll_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
+	clk_info("clk: proc mmpll fsel open start!");
 
 	return single_open(file, mmpll_fsel_read, NULL);
 }
 
-static const struct file_operations mmpll_fsel_proc_fops = {
-	.owner = THIS_MODULE,
-	.open = proc_mmpll_fsel_open,
-	.read = seq_read,
-	.write = mmpll_fsel_write,
-	.release = single_release,
+static const struct proc_ops mmpll_fsel_proc_fops = {
+	.proc_open = proc_mmpll_fsel_open,
+	.proc_read = seq_read,
+	.proc_write = mmpll_fsel_write,
+	.proc_release = single_release,
 };
 /************ GPU ********************/
 static int proc_gpupll_fsel_open(struct inode *inode, struct file *file)
 {
-	clk_info("%s", __func__);
+	clk_info("clk: proc gpupll fsel open start!");
 
 	return single_open(file, gpupll_fsel_read, NULL);
 }
 
-static const struct file_operations gpupll_fsel_proc_fops = {
-	.owner = THIS_MODULE,
-	.open = proc_gpupll_fsel_open,
-	.read = seq_read,
-	.write = gpupll_fsel_write,
-	.release = single_release,
+static const struct proc_ops gpupll_fsel_proc_fops = {
+	.proc_open = proc_gpupll_fsel_open,
+	.proc_read = seq_read,
+	.proc_write = gpupll_fsel_write,
+	.proc_release = single_release,
 };
 /************ mm_clk ********************/
 static int proc_mm_clk_open(struct inode *inode, struct file *file)
@@ -474,10 +469,9 @@ static int proc_mm_clk_open(struct inode *inode, struct file *file)
 	return single_open(file, mm_clk_speed_dump_read, NULL);
 }
 
-static const struct file_operations mm_fops = {
-	.owner = THIS_MODULE,
-	.open = proc_mm_clk_open,
-	.read = seq_read,
+static const struct proc_ops mm_fops = {
+	.proc_open = proc_mm_clk_open,
+	.proc_read = seq_read,
 };
 /************ gpupll ********************/
 static int proc_gpupll_open(struct inode *inode, struct file *file)
@@ -485,10 +479,9 @@ static int proc_gpupll_open(struct inode *inode, struct file *file)
 	return single_open(file, gpupll_speed_dump_read, NULL);
 }
 
-static const struct file_operations gpu_fops = {
-	.owner = THIS_MODULE,
-	.open = proc_gpupll_open,
-	.read = seq_read,
+static const struct proc_ops gpu_fops = {
+	.proc_open = proc_gpupll_open,
+	.proc_read = seq_read,
 };
 /************ univpll ********************/
 static int proc_univpll_open(struct inode *inode, struct file *file)
@@ -496,10 +489,9 @@ static int proc_univpll_open(struct inode *inode, struct file *file)
 	return single_open(file, univpll_speed_dump_read, NULL);
 }
 
-static const struct file_operations univ_fops = {
-	.owner = THIS_MODULE,
-	.open = proc_univpll_open,
-	.read = seq_read,
+static const struct proc_ops univ_fops = {
+	.proc_open = proc_univpll_open,
+	.proc_read = seq_read,
 };
 
 void mt_clkmgr_debug_init(void)
@@ -544,25 +536,13 @@ void mt_clkmgr_debug_init(void)
 			&univ_fops);
 }
 
-/*move to other place*/
-int univpll_is_used(void)
-{
-	/*
-	 * 0: univpll is not used, sspm can disable
-	 * 1: univpll is used, sspm cannot disable
-	 */
-	struct clk *c = __clk_lookup("univpll");
-
-	return __clk_get_enable_count(c);
-}
-
 #ifdef CONFIG_OF
 void iomap(void)
 {
 	struct device_node *node;
 
 /*apmixed*/
-	node = of_find_compatible_node(NULL, NULL, "mediatek,apmixed");
+	node = of_find_compatible_node(NULL, NULL, "mediatek,mt6761-apmixedsys");
 	if (!node)
 		pr_info("[CLK_APMIXED] find node failed\n");
 	clk_apmixed_base = of_iomap(node, 0);
@@ -583,9 +563,10 @@ void iomap(void)
 
 static int mt_clkmgr_debug_module_init(void)
 {
-	iomap();
-	mt_clkmgr_debug_init();
+// iomap();
+// mt_clkmgr_debug_init();
 	return 0;
 }
 
 module_init(mt_clkmgr_debug_module_init);
+MODULE_LICENSE("GPL");

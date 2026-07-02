@@ -1,0 +1,17 @@
+ifdef CONFIG_OEM_TOUCHSCREEN
+	TP_OBJS += focaltech_core.o
+	TP_OBJS += focaltech_ex_fun.o
+	TP_OBJS += focaltech_ex_mode.o
+	TP_OBJS += focaltech_gesture.o
+	TP_OBJS += focaltech_esdcheck.o
+	TP_OBJS += focaltech_point_report_check.o
+	TP_OBJS += focaltech_flash_spi.o
+	TP_OBJS += focaltech_spi_v2.o
+	TP_OBJS += focaltech_proximity.o
+	TP_OBJS += focaltech_test/focaltech_test.o
+	TP_OBJS += focaltech_test/focaltech_test_ini.o
+	TP_OBJS += focaltech_test/supported_ic/focaltech_test_ft8057s.o
+endif
+
+obj-$(CONFIG_OEM_TOUCHSCREEN) += tp_focaltech.o
+tp_focaltech-y := $(TP_OBJS)

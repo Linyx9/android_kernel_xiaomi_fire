@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2020 MediaTek Inc.
  */
@@ -30,7 +30,7 @@ struct apu_tags {
 	struct proc_dir_entry *proc;  /* allocated procfs entry */
 };
 
-#ifdef CONFIG_MTK_APUSYS_DEBUG
+#if IS_ENABLED(CONFIG_MTK_APUSYS_DEBUG)
 struct apu_tags *apu_tags_alloc(const char *name, int size, int cnt,
 	apu_tags_seq_f seq_tag, apu_tags_seq_f seq_info, void *priv);
 void apu_tag_add(struct apu_tags *at, void *tag);

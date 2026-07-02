@@ -17,6 +17,7 @@
 extern char mtk_ccm_name[camera_info_size];
 
 enum IMGSENSOR_RETURN imgsensor_proc_init(void);
+void imgsensor_proc_exit(void);
 
 extern struct IMGSENSOR gimgsensor;
 #endif

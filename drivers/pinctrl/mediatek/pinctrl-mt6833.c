@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2020 MediaTek Inc.
+ * Copyright (C) 2021 MediaTek Inc.
  * Author: Light Hsieh <light.hsieh@mediatek.com>
  *
  */
 
+#include <linux/module.h>
 #include "pinctrl-mtk-mt6833.h"
 #include "pinctrl-paris.h"
 
@@ -1177,7 +1178,7 @@ static const struct mtk_pin_field_calc mt6833_pin_eh_range[] = {
 	PIN_FIELD_BASE(142, 142, 2, 0x0070, 0x10, 6, 3),
 };
 
-static const struct mtk_pin_field_calc mt6833_pin_rsel_range[] = {
+static const struct mtk_pin_field_calc mt6833_pin_rsel_range[] __maybe_unused = {
 	PIN_FIELD_BASE(97, 97, 5, 0x0110, 0x10, 0, 3),
 	PIN_FIELD_BASE(98, 98, 5, 0x0110, 0x10, 9, 3),
 	PIN_FIELD_BASE(99, 99, 2, 0x0170, 0x10, 24, 3),
@@ -1226,16 +1227,7 @@ static const struct mtk_eh_pin_pinmux mt6833_eh_pin_pinmux_list[] = {
 	{118, 2},
 	{141, 1},
 	{142, 1},
-	{0xffff, 0}, /* indicate end of array */
 };
-
-static const struct mtk_eint_hw mt6833_eint_hw = {
-	.port_mask = 7,
-	.ports     = 7,
-	.ap_num    = 121,
-	.db_cnt    = 32,
-};
-
 
 static const struct mtk_pin_reg_calc mt6833_reg_cals[PINCTRL_PIN_REG_MAX] = {
 	[PINCTRL_PIN_REG_MODE] = MTK_RANGE(mt6833_pin_mode_range),
@@ -1259,38 +1251,30 @@ static const struct mtk_pin_soc mt6833_data = {
 	.pins = mtk_pins_mt6833,
 	.npins = ARRAY_SIZE(mtk_pins_mt6833),
 	.ngrps = ARRAY_SIZE(mtk_pins_mt6833),
-	.eint_hw = &mt6833_eint_hw,
 	.nfuncs = 8,
 	.gpio_m = 0,
-	.race_free_access = true,
+	.capability_flags = FLAG_RACE_FREE_ACCESS
+				| FLAG_DRIVE_SET_RAW,
 	.eh_pin_pinmux = mt6833_eh_pin_pinmux_list,
+	.neh_pins = ARRAY_SIZE(mt6833_eh_pin_pinmux_list),
 	.bias_set_combo = mtk_pinconf_bias_set_combo,
 	.bias_get_combo = mtk_pinconf_bias_get_combo,
-	.drive_set = mtk_pinconf_drive_set_raw,
-	.drive_get = mtk_pinconf_drive_get_raw,
-	.adv_pull_get = mtk_pinconf_adv_pull_get,
-	.adv_pull_set = mtk_pinconf_adv_pull_set,
 	.adv_drive_get = mtk_pinconf_adv_drive_get,
 	.adv_drive_set = mtk_pinconf_adv_drive_set,
 };
 
 static const struct of_device_id mt6833_pinctrl_of_match[] = {
-	{ .compatible = "mediatek,mt6833-pinctrl", },
+	{ .compatible = "mediatek,mt6833-pinctrl", .data = &mt6833_data },
 	{ }
 };
-
-static int mt6833_pinctrl_probe(struct platform_device *pdev)
-{
-	return mtk_paris_pinctrl_probe(pdev, &mt6833_data);
-}
 
 static struct platform_driver mt6833_pinctrl_driver = {
 	.driver = {
 		.name = "mt6833-pinctrl",
 		.of_match_table = mt6833_pinctrl_of_match,
-		.pm = &mtk_eint_pm_ops_v2,
+		.pm = &mtk_paris_pinctrl_pm_ops,
 	},
-	.probe = mt6833_pinctrl_probe,
+	.probe = mtk_paris_pinctrl_probe,
 };
 
 static int __init mt6833_pinctrl_init(void)
@@ -1298,3 +1282,6 @@ static int __init mt6833_pinctrl_init(void)
 	return platform_driver_register(&mt6833_pinctrl_driver);
 }
 arch_initcall(mt6833_pinctrl_init);
+
+MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("MediaTek MT6983 Pinctrl Driver");

@@ -1,33 +1,26 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 
 #include <linux/delay.h>
+#include <linux/module.h>
 #include <linux/of_address.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 
 #include "clk-fmeter.h"
+#include "clk-mt6877-fmeter.h"
 #include "clkchk.h"
 #include "clkdbg.h"
 
-#define SUBSYS_PLL_NUM		4
-
-//static DEFINE_SPINLOCK(pdn_lock);
-//#define pdn_lock(flags)   spin_lock_irqsave(&pdn_lock, flags)
-//#define pdn_unlock(flags) spin_unlock_irqrestore(&pdn_lock, flags)
+#define SUBSYS_PLL_NUM			4
 
 static DEFINE_SPINLOCK(meter_lock);
 #define fmeter_lock(flags)   spin_lock_irqsave(&meter_lock, flags)
 #define fmeter_unlock(flags) spin_unlock_irqrestore(&meter_lock, flags)
-/*
-static DEFINE_SPINLOCK(subsys_meter_lock);
-#define subsys_fmeter_lock(flags)	\
-	spin_lock_irqsave(&subsys_meter_lock, flags)
-#define subsys_fmeter_unlock(flags)	\
-	spin_unlock_irqrestore(&subsys_meter_lock, flags)
-*/
+
 /*
  * clkdbg fmeter
  */
@@ -219,7 +212,7 @@ static void __iomem *apmixed_base;
 //static void __iomem *apu_pll_ctrl_base;
 static void __iomem *spm_base;
 
-const struct fmeter_clk *get_fmeter_clks(void)
+const struct fmeter_clk *mt6877_get_fmeter_clks(void)
 {
 	return fm_all_clks;
 }
@@ -295,10 +288,10 @@ static unsigned int get_post_div(unsigned int type, unsigned int ID)
 	return post_div;
 }
 
-unsigned int mt_get_ckgen_freq(unsigned int ID)
+static unsigned int mt6877_get_ckgen_freq(unsigned int ID)
 {
 	int output = 0, i = 0;
-	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 = 0;
+	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 __maybe_unused = 0;
 	unsigned long flags;
 
 	fmeter_lock(flags);
@@ -378,11 +371,11 @@ unsigned int mt_get_ckgen_freq(unsigned int ID)
 
 }
 
-unsigned int mt_get_abist_freq(unsigned int ID)
+static unsigned int mt6877_get_abist_freq(unsigned int ID)
 {
 	int output = 0, i = 0;
 	unsigned long flags;
-	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 = 0, clk_div, post_div;
+	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 __maybe_unused = 0, clk_div, post_div;
 
 	fmeter_lock(flags);
 	while (clk_readl(CLK26CALI_0) & 0x1000) {
@@ -456,11 +449,11 @@ unsigned int mt_get_abist_freq(unsigned int ID)
 	return (output * 4);
 }
 
-unsigned int mt_get_abist2_freq(unsigned int ID)
+static unsigned int mt6877_get_abist2_freq(unsigned int ID)
 {
 	int output = 0, i = 0;
 	unsigned long flags;
-	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 = 0;
+	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 __maybe_unused = 0;
 
 	fmeter_lock(flags);
 	if (check_pdn(topck_base, ABIST_2, ID)) {
@@ -529,7 +522,7 @@ unsigned int mt_get_abist2_freq(unsigned int ID)
 		return (output * 2);
 }
 
-unsigned int mt_get_subsys_freq(unsigned int ID)
+static unsigned int mt6877_get_subsys_freq(unsigned int ID)
 {
 	int output = 0, i = 0;
 	unsigned int temp;
@@ -596,7 +589,22 @@ unsigned int mt_get_subsys_freq(unsigned int ID)
 	return output * 4;
 }
 
-int mt_subsys_freq_register(struct fm_subsys *fm, unsigned int size)
+static unsigned int mt6877_get_fmeter_freq(unsigned int id,
+		enum FMETER_TYPE type)
+{
+	if (type == CKGEN)
+		return mt6877_get_ckgen_freq(id);
+	else if (type == ABIST)
+		return mt6877_get_abist_freq(id);
+	else if (type == ABIST_2)
+		return mt6877_get_abist2_freq(id);
+	else if (type == SUBSYS)
+		return mt6877_get_subsys_freq(id);
+
+	return FT_NULL;
+}
+
+int mt6877_subsys_freq_register(struct fm_subsys *fm, unsigned int size)
 {
 	unsigned int all_idx, sub_idx;
 	int i;
@@ -632,7 +640,18 @@ int mt_subsys_freq_register(struct fm_subsys *fm, unsigned int size)
 	return 0;
 }
 
-static int __init clk_fmeter_mt6877_init(void)
+/*
+ * init functions
+ */
+
+static struct fmeter_ops fm_ops = {
+	.subsys_freq_register = mt6877_subsys_freq_register,
+	.get_fmeter_clks = mt6877_get_fmeter_clks,
+	.get_fmeter_freq = mt6877_get_fmeter_freq,
+	// .get_fmeter_id = mt6877_get_fmeter_id,
+};
+
+static int clk_fmeter_mt6877_probe(struct platform_device *pdev)
 {
 	struct device_node *node;
 	int i;
@@ -684,12 +703,39 @@ static int __init clk_fmeter_mt6877_init(void)
 		fm_clk_cnt++;
 	}
 
+	fmeter_set_ops(&fm_ops);
+
 	return 0;
-
 ERR:
-	pr_err("%s can't find compatible node for apmixedsys\n",
-				__func__);
-		return -1;
-}
-subsys_initcall(clk_fmeter_mt6877_init);
+	pr_err("%s can't find base\n", __func__);
 
+	return -EINVAL;
+}
+
+static struct platform_driver clk_fmeter_mt6877_drv = {
+	.probe = clk_fmeter_mt6877_probe,
+	.driver = {
+		.name = "clk-fmeter-mt6877",
+		.owner = THIS_MODULE,
+	},
+};
+
+static int __init clk_fmeter_init(void)
+{
+	static struct platform_device *clk_fmeter_dev;
+
+	clk_fmeter_dev = platform_device_register_simple("clk-fmeter-mt6877", -1, NULL, 0);
+	if (IS_ERR(clk_fmeter_dev))
+		pr_warn("unable to register clk-fmeter device");
+
+	return platform_driver_register(&clk_fmeter_mt6877_drv);
+}
+
+static void __exit clk_fmeter_exit(void)
+{
+	platform_driver_unregister(&clk_fmeter_mt6877_drv);
+}
+
+subsys_initcall(clk_fmeter_init);
+module_exit(clk_fmeter_exit);
+MODULE_LICENSE("GPL");

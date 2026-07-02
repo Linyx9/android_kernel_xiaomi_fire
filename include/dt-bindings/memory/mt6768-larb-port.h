@@ -1,16 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 #ifndef _DTS_IOMMU_PORT_MT6768_H_
 #define _DTS_IOMMU_PORT_MT6768_H_
 
-#define MTK_M4U_ID(larb, port)	(((larb) << 5) | (port))
-
-/* Local arbiter ID */
-#define MTK_M4U_TO_LARB(id)	(((id) >> 5) & 0xf)
-/* PortID within the local arbiter */
-#define MTK_M4U_TO_PORT(id)	((id) & 0x1f)
+#include <dt-bindings/memory/mtk-memory-port.h>
 
 #define MTK_IOMMU_LARB_NR	(5)
 

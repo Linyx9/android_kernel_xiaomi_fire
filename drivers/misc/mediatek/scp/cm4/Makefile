@@ -13,34 +13,23 @@ scp-$(CONFIG_MTK_TINYSYS_SCP_SUPPORT) += $(SCP_VERSION_PATH)/scp_logger.o
 scp-$(CONFIG_MTK_TINYSYS_SCP_SUPPORT) += $(SCP_VERSION_PATH)/scp_l1c.o
 scp-$(CONFIG_MTK_TINYSYS_SCP_SUPPORT) += $(SCP_VERSION_PATH)/scp_scpctl.o
 
-# include mtk_spm_resource_req
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/scp/include
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/scp/include
-# include emi_mpu.h
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/emi/submodule
-ccflags-$(CONFIG_MTK_EMI_LEGACY) += -I$(srctree)/drivers/misc/mediatek/emi/$(CONFIG_MTK_PLATFORM)
-ccflags-y += -I$(srctree)/drivers/devfreq/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/sensors-1.0/situation
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/sensors-1.0/hwmon/include
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/scp/cm4/
 
-#ifeq ($(CONFIG_MTK_ENG_BUILD),y)
-CFLAGS_scp_logger.o += -DDEBUG
-CFLAGS_scp_helper.o += -DDEBUG
-CFLAGS_scp_excep.o += -DDEBUG
-CFLAGS_scp_ipi.o += -DDEBUG
-CFLAGS_scp_irq.o += -DDEBUG
-CFLAGS_scp_dvfs.o += -DDEBUG
-CFLAGS_scp_scpctl.o += -DDEBUG
-#endif
 
-ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6335)+= -I$(srctree)/drivers/misc/mediatek/pmic/include/mt6335
-ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6353)+= -I$(srctree)/drivers/misc/mediatek/pmic/include/mt6353
-ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6355)+= -I$(srctree)/drivers/misc/mediatek/pmic/include/mt6355
-ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6357)+= -I$(srctree)/drivers/misc/mediatek/pmic/include/mt6357
-ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6358)+= -I$(srctree)/drivers/misc/mediatek/pmic/include/mt6358
-ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6359)+= -I$(srctree)/drivers/misc/mediatek/pmic/include/mt6359
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/
+
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/devfreq/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/mt-plat/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/spm/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/include/linux/mfd/mt6358/
+
+ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6335)+= -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/pmic/include/mt6335
+ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6353)+= -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/pmic/include/mt6353
+ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6355)+= -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/pmic/include/mt6355
+ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6357)+= -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/pmic/include/mt6357
+ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6358)+= -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/pmic/include/mt6358
+ccflags-$(CONFIG_MTK_PMIC_CHIP_MT6359)+= -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/pmic/include/mt6359
 
 

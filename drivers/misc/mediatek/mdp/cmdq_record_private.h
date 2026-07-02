@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2015 MediaTek Inc.
+ */
 
 #ifndef __CMDQ_RECORD_PRIVATE_H__
 #define __CMDQ_RECORD_PRIVATE_H__
 
-#include "mdp_cmdq_record.h"
+#include "cmdq_record.h"
 
 #ifdef __cplusplus
 extern "C" {

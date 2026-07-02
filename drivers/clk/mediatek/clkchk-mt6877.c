@@ -1,507 +1,43 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
-
+ */
+#include <linux/clk.h>
 #include <linux/clk-provider.h>
-#include <linux/syscore_ops.h>
-#include <linux/version.h>
+#include <linux/io.h>
+#include <linux/module.h>
+#include <linux/platform_device.h>
+#include <linux/seq_file.h>
+#include <linux/spinlock.h>
 
-#include <mt-plat/aee.h>
-#include "clk-mt6877-pg.h"
+#include <dt-bindings/power/mt6877-power.h>
+
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_DEVAPC)
+#include <devapc_public.h>
+#endif
+
+#if IS_ENABLED(CONFIG_MTK_DVFSRC_HELPER)
+#include <mt-plat/dvfsrc-exp.h>
+#endif
+
 #include "clkchk.h"
 #include "clkchk-mt6877.h"
-#include "clkdbg.h"
+// #include "clk-fmeter.h"
+// #include "clk-mt6877-fmeter.h"
+
 #define TAG			"[clkchk] "
-#define	BUG_ON_CHK_ENABLE	1
 
-int __attribute__((weak)) get_sw_req_vcore_opp(void)
-{
-	return -1;
-}
+#define	BUG_ON_CHK_ENABLE	0
+#define CHECK_VCORE_FREQ		0
+#define CG_CHK_PWRON_ENABLE		0
 
-static const char * const clks[] = {
-	/* topckgen */
-	"axi_sel",
-	"spm_sel",
-	"scp_sel",
-	"bus_aximem_sel",
-	"disp0_sel",
-	"mdp0_sel",
-	"img1_sel",
-	"ipe_sel",
-	"dpe_sel",
-	"cam_sel",
-	"ccu_sel",
-	"dsp_sel",
-	"dsp1_sel",
-	"dsp2_sel",
-	"dsp4_sel",
-	"dsp7_sel",
-	"camtg_sel",
-	"camtg2_sel",
-	"camtg3_sel",
-	"camtg4_sel",
-	"camtg5_sel",
-	"uart_sel",
-	"spi_sel",
-	"msdc5hclk_sel",
-	"msdc50_0_sel",
-	"msdc30_1_sel",
-	"audio_sel",
-	"aud_intbus_sel",
-	"pwrap_ulposc_sel",
-	"atb_sel",
-	"sspm_sel",
-	"disp_pwm_sel",
-	"usb_sel",
-	"ssusb_xhci_sel",
-	"i2c_sel",
-	"seninf_sel",
-	"seninf1_sel",
-	"seninf2_sel",
-	"seninf3_sel",
-	"dxcc_sel",
-	"aud_engen1_sel",
-	"aud_engen2_sel",
-	"aes_ufsfde_sel",
-	"ufs_sel",
-	"aud_1_sel",
-	"aud_2_sel",
-	"adsp_sel",
-	"dpmaif_main_sel",
-	"venc_sel",
-	"vdec_sel",
-	"camtm_sel",
-	"pwm_sel",
-	"audio_h_sel",
-	"mcupm_sel",
-	"spmi_m_mst_sel",
-	"dvfsrc_sel",
-	"mem_sub_sel",
-	"aes_msdcfde_sel",
-	"ufs_mbist_sel",
-	"mfg_internal2_sel",
-	"mfg_internal1_sel",
-	"ap2conn_host_sel",
-	"msdc_new_rx_sel",
-	"apll_i2s0_mck_sel",
-	"apll_i2s1_mck_sel",
-	"apll_i2s2_mck_sel",
-	"apll_i2s3_mck_sel",
-	"apll_i2s4_mck_sel",
-	"apll_i2s5_mck_sel",
-	"apll_i2s6_mck_sel",
-	"apll_i2s7_mck_sel",
-	"apll_i2s8_mck_sel",
-	"apll_i2s9_mck_sel",
-
-	/* topckgen */
-	"apll12_div0",
-	"apll12_div1",
-	"apll12_div2",
-	"apll12_div3",
-	"apll12_div4",
-	"apll12_divb",
-	"apll12_div5",
-	"apll12_div6",
-	"apll12_div7",
-	"apll12_div8",
-	"apll12_div9",
-
-	/* infracfg_ao */
-	"ifrao_pmic_tmr",
-	"ifrao_pmic_ap",
-	"ifrao_pmic_md",
-	"ifrao_pmic_conn",
-	"ifrao_apxgpt",
-	"ifrao_gce",
-	"ifrao_gce2",
-	"ifrao_therm",
-	"ifrao_i2c_pseudo",
-	"ifrao_pwm_hclk",
-	"ifrao_pwm1",
-	"ifrao_pwm2",
-	"ifrao_pwm3",
-	"ifrao_pwm4",
-	"ifrao_pwm",
-	"ifrao_uart0",
-	"ifrao_uart1",
-	"ifrao_uart2",
-	"ifrao_uart3",
-	"ifrao_gce_26m",
-	"ifrao_btif",
-	"ifrao_spi0",
-	"ifrao_msdc0",
-	"ifrao_msdc1",
-	"ifrao_msdc0_clk",
-	"ifrao_auxadc",
-	"ifrao_cpum",
-	"ifrao_ccif1_ap",
-	"ifrao_ccif1_md",
-	"ifrao_auxadc_md",
-	"ifrao_msdc1_clk",
-	"ifrao_msdc0_aes_clk",
-	"ifrao_ccif_ap",
-	"ifrao_audio",
-	"ifrao_ccif_md",
-	"ifrao_ssusb",
-	"ifrao_disp_pwm",
-	"ifrao_cldmabclk",
-	"ifrao_audio26m",
-	"ifrao_spi1",
-	"ifrao_spi2",
-	"ifrao_spi3",
-	"ifrao_unipro_sysclk",
-	"ifrao_ufs_bclk",
-	"ifrao_apdma",
-	"ifrao_spi4",
-	"ifrao_spi5",
-	"ifrao_cq_dma",
-	"ifrao_ufs",
-	"ifrao_aes_ufsfde",
-	"ifrao_ssusb_xhci",
-	"ifrao_ap_msdc0",
-	"ifrao_md_msdc0",
-	"ifrao_ccif5_md",
-	"ifrao_ccif2_ap",
-	"ifrao_ccif2_md",
-	"ifrao_fbist2fpc",
-	"ifrao_dpmaif_main",
-	"ifrao_ccif4_md",
-	"ifrao_spi6_ck",
-	"ifrao_spi7_ck",
-	"ifrao_aes_0p_ck",
-
-	/* apmixedsys */
-	"armpll_ll",
-	"armpll_bl",
-	"ccipll",
-	"mainpll",
-	"univpll",
-	"msdcpll",
-	"mmpll",
-	"adsppll",
-	"tvdpll",
-	"apll1",
-	"apll2",
-	"mpll",
-	"usbpll",
-
-	/* scp_par_top */
-	"scp_par_audiodsp",
-
-	/* audio */
-	"aud_afe",
-	"aud_22m",
-	"aud_24m",
-	"aud_apll2_tuner",
-	"aud_apll_tuner",
-	"aud_tdm_ck",
-	"aud_adc",
-	"aud_dac",
-	"aud_dac_predis",
-	"aud_tml",
-	"aud_nle",
-	"aud_connsys_i2s_asrc",
-	"aud_general1_asrc",
-	"aud_general2_asrc",
-	"aud_dac_hires",
-	"aud_adc_hires",
-	"aud_adc_hires_tml",
-	"aud_adda6_adc",
-	"aud_adda6_adc_hires",
-	"aud_3rd_dac",
-	"aud_3rd_dac_predis",
-	"aud_3rd_dac_tml",
-	"aud_3rd_dac_hires",
-
-	/* msdc0 */
-	"msdc0_msdc_rx",
-
-	/* imp_iic_wrap_c */
-	"impc_ap_clock_i2c10",
-	"impc_ap_clock_i2c11",
-
-	/* imp_iic_wrap_e */
-	"impe_ap_clock_i2c3",
-
-	/* imp_iic_wrap_s */
-	"imps_ap_clock_i2c5",
-	"imps_ap_clock_i2c7",
-	"imps_ap_clock_i2c8",
-	"imps_ap_clock_i2c9",
-
-	/* imp_iic_wrap_ws */
-	"impws_ap_clock_i2c1",
-	"impws_ap_clock_i2c2",
-	"impws_ap_clock_i2c4",
-
-	/* imp_iic_wrap_w */
-	"impw_ap_clock_i2c0",
-
-	/* imp_iic_wrap_n */
-	"impn_ap_clock_i2c6",
-
-	/* gpu_pll_ctrl */
-	"mfg_ao_mfgpll1",
-	"mfg_ao_mfgpll4",
-
-	/* mfgcfg */
-	"mfgcfg_bg3d",
-
-	/* mmsys_config */
-	"mm_disp_mutex0",
-	"mm_apb_bus",
-	"mm_disp_ovl0",
-	"mm_disp_rdma0",
-	"mm_disp_ovl0_2l",
-	"mm_disp_wdma0",
-	"mm_disp_ccorr1",
-	"mm_disp_rsz0",
-	"mm_disp_aal0",
-	"mm_disp_ccorr0",
-	"mm_disp_color0",
-	"mm_smi_infra",
-	"mm_disp_gamma0",
-	"mm_disp_postmask0",
-	"mm_disp_spr0",
-	"mm_disp_dither0",
-	"mm_smi_common",
-	"mm_disp_cm0",
-	"mm_dsi0",
-	"mm_smi_gals",
-	"mm_disp_dsc_wrap",
-	"mm_smi_iommu",
-	"mm_disp_ovl1_2l",
-	"mm_disp_ufbc_wdma0",
-	"mm_dsi0_dsi_domain",
-	"mm_disp_26m_ck",
-
-	/* imgsys1 */
-	"imgsys1_larb9",
-	"imgsys1_dip",
-	"imgsys1_gals",
-
-	/* imgsys2 */
-	"imgsys2_larb9",
-	"imgsys2_larb10",
-	"imgsys2_mfb",
-	"imgsys2_wpe",
-	"imgsys2_mss",
-	"imgsys2_gals",
-
-	/* vdec_gcon */
-	"vde2_vdec_cken",
-
-	/* venc_gcon */
-	"ven1_cke0_larb",
-	"ven1_cke1_venc",
-	"ven1_cke2_jpgenc",
-	"ven1_cke5_gals",
-
-	/* apu_conn2 */
-	"apu_conn2_ahb",
-	"apu_conn2_axi",
-	"apu_conn2_isp",
-	"apu_conn2_cam_adl",
-	"apu_conn2_img_adl",
-	"apu_conn2_emi_26m",
-	"apu_conn2_vpu_udi",
-	"apu_conn2_edma_0",
-	"apu_conn2_edma_1",
-	"apu_conn2_edmal_0",
-	"apu_conn2_edmal_1",
-	"apu_conn2_mnoc",
-	"apu_conn2_tcm",
-	"apu_conn2_md32",
-	"apu_conn2_iommu_0",
-	"apu_conn2_iommu_1",
-	"apu_conn2_md32_32k",
-	"apu_conn2_cpe",
-
-	/* apu_conn1 */
-	"apu_conn1_axi",
-	"apu_conn1_edma_0",
-	"apu_conn1_edma_1",
-	"apu_conn1_iommu_0",
-	"apu_conn1_iommu_1",
-
-	/* apusys_vcore */
-	"apuv_ahb",
-	"apuv_axi",
-	"apuv_adl",
-	"apuv_qos",
-
-	/* apu0 */
-	"apu0_apu",
-	"apu0_axi_m",
-	"apu0_jtag",
-
-	/* apu1 */
-	"apu1_apu",
-	"apu1_axi_m",
-	"apu1_jtag",
-
-	/* apu_mdla0 */
-	"apum0_mdla_cg0",
-	"apum0_mdla_cg1",
-	"apum0_mdla_cg2",
-	"apum0_mdla_cg3",
-	"apum0_mdla_cg4",
-	"apum0_mdla_cg5",
-	"apum0_mdla_cg6",
-	"apum0_mdla_cg7",
-	"apum0_mdla_cg8",
-	"apum0_mdla_cg9",
-	"apum0_mdla_cg10",
-	"apum0_mdla_cg11",
-	"apum0_mdla_cg12",
-	"apum0_apb",
-	"apum0_axi_m",
-
-	/* camsys_main */
-	"cam_m_larb13",
-	"cam_m_larb14",
-	"cam_m_cam",
-	"cam_m_camtg",
-	"cam_m_seninf",
-	"cam_m_camsv0",
-	"cam_m_camsv1",
-	"cam_m_camsv2",
-	"cam_m_camsv3",
-	"cam_m_ccu0",
-	"cam_m_ccu1",
-	"cam_m_mraw0",
-	"cam_m_ccu_gals",
-	"cam_m_cam2mm_gals",
-	"cam_m_camsv4",
-	"cam_m_pda",
-
-	/* camsys_rawa */
-	"cam_ra_larbx",
-	"cam_ra_cam",
-	"cam_ra_camtg",
-
-	/* camsys_rawb */
-	"cam_rb_larbx",
-	"cam_rb_cam",
-	"cam_rb_camtg",
-
-	/* ipesys */
-	"ipe_larb19",
-	"ipe_larb20",
-	"ipe_smi_subcom",
-	"ipe_fd",
-	"ipe_fe",
-	"ipe_rsc",
-	"ipe_dpe",
-	"ipe_gals",
-
-	/* mdpsys_config */
-	"mdp_rdma0",
-	"mdp_tdshp0",
-	"mdp_img_dl_async0",
-	"mdp_img_dl_async1",
-	"mdp_rdma1",
-	"mdp_tdshp1",
-	"mdp_smi0",
-	"mdp_apb_bus",
-	"mdp_wrot0",
-	"mdp_rsz0",
-	"mdp_hdr0",
-	"mdp_mutex0",
-	"mdp_wrot1",
-	"mdp_color0",
-	"mdp_aal0",
-	"mdp_aal1",
-	"mdp_rsz1",
-	"mdp_img_dl_rel0_as0",
-	"mdp_img_dl_rel1_as1",
-
-	/* SCPSYS */
-	"PG_MFG0",
-	"PG_MFG1",
-	"PG_MFG2",
-	"PG_MFG3",
-	"PG_MFG4",
-	"PG_MFG5",
-	"PG_MD",
-	"PG_CONN",
-	"PG_ISP0",
-	"PG_ISP1",
-	"PG_IPE",
-	"PG_VDEC",
-	"PG_VENC",
-	"PG_DISP",
-	"PG_AUDIO",
-	"PG_ADSP_DORMANT",
-	"PG_CAM",
-	"PG_CAM_RAWA",
-	"PG_CAM_RAWB",
-	"PG_CSI",
-	"PG_APU",
-
-	/* end */
-	NULL
-};
-
-const char * const *get_mt6877_all_clk_names(void)
-{
-	return clks;
-}
-
-static const char * const off_pll_names[] = {
-	"univpll",
-	"msdcpll",
-	"mmpll",
-	"tvdpll",
-	"usbpll",
-	"mfg_ao_mfgpll1",
-	"mfg_ao_mfgpll4",
-	NULL
-};
-
-static const char * const notice_pll_names[] = {
-	"adsppll",
-	"apll1",
-	"apll2",
-	NULL
-};
-
-static const char * const off_mtcmos_names[] = {
-	"PG_MFG0",
-	"PG_MFG1",
-	"PG_MFG2",
-	"PG_MFG3",
-	"PG_MFG4",
-	"PG_MFG5",
-	"PG_ISP0",
-	"PG_ISP1",
-	"PG_IPE",
-	"PG_VDEC",
-	"PG_VENC",
-	"PG_DISP",
-	"PG_CAM",
-	"PG_CAM_RAWA",
-	"PG_CAM_RAWB",
-	"PG_CSI",
-	"PG_APU",
-	NULL
-};
-
-static const char * const notice_mtcmos_names[] = {
-	"PG_MD",
-	"PG_CONN",
-	"PG_AUDIO",
-	"PG_ADSP_DORMANT",
-	NULL
-};
+static unsigned int suspend_cnt;
 
 /*
  * clkchk vf table
  */
 
+#if CHECK_VCORE_FREQ
 struct mtk_vf {
 	const char *name;
 	int freq_table[5];
@@ -584,287 +120,73 @@ static struct mtk_vf vf_table[] = {
 	MTK_VF_TABLE("msdc_new_rx_sel", 384000, 384000, 384000, 384000, 384000),
 	{},
 };
+#endif
 
 static const char *get_vf_name(int id)
 {
+#if CHECK_VCORE_FREQ
+	if (id < 0) {
+		pr_err("[%s]Negative index detected\n", __func__);
+		return NULL;
+	}
+
 	return vf_table[id].name;
+#else
+	return NULL;
+#endif
 }
 
 static int get_vf_opp(int id, int opp)
 {
+#if CHECK_VCORE_FREQ
+	if (id < 0 || opp < 0) {
+		pr_err("[%s]Negative index detected\n", __func__);
+		return 0;
+	}
+
+	if (id >= ARRAY_SIZE(vf_table) || opp >= 5) {
+		pr_err("[%s] invalid id:%d or opp:%d\n", __func__, id, opp);
+		return 0;
+	}
+
 	return vf_table[id].freq_table[opp];
+#else
+	return 0;
+#endif
 }
 
 static u32 get_vf_num(void)
 {
+#if CHECK_VCORE_FREQ
 	return ARRAY_SIZE(vf_table) - 1;
+#else
+	return 0;
+#endif
 }
 
 static int get_vcore_opp(void)
 {
 	int opp;
-
+#if IS_ENABLED(CONFIG_MTK_DVFSRC_HELPER) && CHECK_VCORE_FREQ
 	opp = get_sw_req_vcore_opp();
+
 #if defined(CONFIG_MTK_DVFSRC_MT6877_PRETEST)
 	if (opp >= 1)
 		opp = opp - 1;
 #endif
 
-	return opp;
-}
-
-/*
- * The clk names in Mediatek CCF.
- */
-
-struct subsys_cgs_check {
-	enum subsys_id id;		/* the Subsys id */
-	struct pg_check_swcg *swcgs;	/* those CGs that would be checked */
-	enum chk_sys_id chk_id;		/*
-					 * chk_id is used in
-					 * print_subsys_reg() and can be NULL
-					 * if not porting ready yet.
-					 */
-};
-
-/*
- * The clk names in Mediatek CCF.
- */
-/* audio */
-struct pg_check_swcg audio_swcgs[] = {
-	SWCG("aud_afe"),
-	SWCG("aud_22m"),
-	SWCG("aud_24m"),
-	SWCG("aud_apll2_tuner"),
-	SWCG("aud_apll_tuner"),
-	SWCG("aud_tdm_ck"),
-	SWCG("aud_adc"),
-	SWCG("aud_dac"),
-	SWCG("aud_dac_predis"),
-	SWCG("aud_tml"),
-	SWCG("aud_nle"),
-	SWCG("aud_connsys_i2s_asrc"),
-	SWCG("aud_general1_asrc"),
-	SWCG("aud_general2_asrc"),
-	SWCG("aud_dac_hires"),
-	SWCG("aud_adc_hires"),
-	SWCG("aud_adc_hires_tml"),
-	SWCG("aud_adda6_adc"),
-	SWCG("aud_adda6_adc_hires"),
-	SWCG("aud_3rd_dac"),
-	SWCG("aud_3rd_dac_predis"),
-	SWCG("aud_3rd_dac_tml"),
-	SWCG("aud_3rd_dac_hires"),
-	SWCG(NULL),
-};
-/* camsys_main */
-struct pg_check_swcg camsys_main_swcgs[] = {
-	SWCG("cam_m_larb13"),
-	SWCG("cam_m_larb14"),
-	SWCG("cam_m_cam"),
-	SWCG("cam_m_camtg"),
-	SWCG("cam_m_seninf"),
-	SWCG("cam_m_camsv0"),
-	SWCG("cam_m_camsv1"),
-	SWCG("cam_m_camsv2"),
-	SWCG("cam_m_camsv3"),
-	SWCG("cam_m_ccu0"),
-	SWCG("cam_m_ccu1"),
-	SWCG("cam_m_mraw0"),
-	SWCG("cam_m_ccu_gals"),
-	SWCG("cam_m_cam2mm_gals"),
-	SWCG("cam_m_camsv4"),
-	SWCG("cam_m_pda"),
-	SWCG(NULL),
-};
-/* camsys_rawa */
-struct pg_check_swcg camsys_rawa_swcgs[] = {
-	SWCG("cam_ra_larbx"),
-	SWCG("cam_ra_cam"),
-	SWCG("cam_ra_camtg"),
-	SWCG(NULL),
-};
-/* camsys_rawb */
-struct pg_check_swcg camsys_rawb_swcgs[] = {
-	SWCG("cam_rb_larbx"),
-	SWCG("cam_rb_cam"),
-	SWCG("cam_rb_camtg"),
-	SWCG(NULL),
-};
-/* imgsys1 */
-struct pg_check_swcg imgsys1_swcgs[] = {
-	SWCG("imgsys1_larb9"),
-	SWCG("imgsys1_dip"),
-	SWCG("imgsys1_gals"),
-	SWCG(NULL),
-};
-/* imgsys2 */
-struct pg_check_swcg imgsys2_swcgs[] = {
-	SWCG("imgsys2_larb9"),
-	SWCG("imgsys2_larb10"),
-	SWCG("imgsys2_mfb"),
-	SWCG("imgsys2_wpe"),
-	SWCG("imgsys2_mss"),
-	SWCG("imgsys2_gals"),
-	SWCG(NULL),
-};
-/* ipesys */
-struct pg_check_swcg ipesys_swcgs[] = {
-	SWCG("ipe_larb19"),
-	SWCG("ipe_larb20"),
-	SWCG("ipe_smi_subcom"),
-	SWCG("ipe_fd"),
-	SWCG("ipe_fe"),
-	SWCG("ipe_rsc"),
-	SWCG("ipe_dpe"),
-	SWCG("ipe_gals"),
-	SWCG(NULL),
-};
-/* mdpsys_config */
-struct pg_check_swcg mdpsys_config_swcgs[] = {
-	SWCG("mdp_rdma0"),
-	SWCG("mdp_tdshp0"),
-	SWCG("mdp_img_dl_async0"),
-	SWCG("mdp_img_dl_async1"),
-	SWCG("mdp_rdma1"),
-	SWCG("mdp_tdshp1"),
-	SWCG("mdp_smi0"),
-	SWCG("mdp_apb_bus"),
-	SWCG("mdp_wrot0"),
-	SWCG("mdp_rsz0"),
-	SWCG("mdp_hdr0"),
-	SWCG("mdp_mutex0"),
-	SWCG("mdp_wrot1"),
-	SWCG("mdp_color0"),
-	SWCG("mdp_aal0"),
-	SWCG("mdp_aal1"),
-	SWCG("mdp_rsz1"),
-	SWCG("mdp_img_dl_rel0_as0"),
-	SWCG("mdp_img_dl_rel1_as1"),
-	SWCG(NULL),
-};
-/* mfgcfg */
-struct pg_check_swcg mfgcfg_swcgs[] = {
-	SWCG("mfgcfg_bg3d"),
-	SWCG(NULL),
-};
-/* mmsys_config */
-struct pg_check_swcg mmsys_config_swcgs[] = {
-	SWCG("mm_disp_mutex0"),
-	SWCG("mm_apb_bus"),
-	SWCG("mm_disp_ovl0"),
-	SWCG("mm_disp_rdma0"),
-	SWCG("mm_disp_ovl0_2l"),
-	SWCG("mm_disp_wdma0"),
-	SWCG("mm_disp_ccorr1"),
-	SWCG("mm_disp_rsz0"),
-	SWCG("mm_disp_aal0"),
-	SWCG("mm_disp_ccorr0"),
-	SWCG("mm_disp_color0"),
-	SWCG("mm_smi_infra"),
-	SWCG("mm_disp_gamma0"),
-	SWCG("mm_disp_postmask0"),
-	SWCG("mm_disp_spr0"),
-	SWCG("mm_disp_dither0"),
-	SWCG("mm_smi_common"),
-	SWCG("mm_disp_cm0"),
-	SWCG("mm_dsi0"),
-	SWCG("mm_smi_gals"),
-	SWCG("mm_disp_dsc_wrap"),
-	SWCG("mm_smi_iommu"),
-	SWCG("mm_disp_ovl1_2l"),
-	SWCG("mm_disp_ufbc_wdma0"),
-	SWCG("mm_dsi0_dsi_domain"),
-	SWCG("mm_disp_26m_ck"),
-	SWCG(NULL),
-};
-/* vdec_gcon */
-struct pg_check_swcg vdec_gcon_swcgs[] = {
-	SWCG("vde2_vdec_cken"),
-	SWCG(NULL),
-};
-/* venc_gcon */
-struct pg_check_swcg venc_gcon_swcgs[] = {
-	SWCG("ven1_cke0_larb"),
-	SWCG("ven1_cke1_venc"),
-	SWCG("ven1_cke2_jpgenc"),
-	SWCG("ven1_cke5_gals"),
-	SWCG(NULL),
-};
-
-struct subsys_cgs_check mtk_subsys_check[] = {
-	{SYS_AUDIO, audio_swcgs, audsys},
-	{SYS_CAM, camsys_main_swcgs, cam_m},
-	{SYS_CAM_RAWA, camsys_rawa_swcgs, cam_ra},
-	{SYS_CAM_RAWB, camsys_rawb_swcgs, cam_rb},
-	{SYS_ISP0, imgsys1_swcgs, imgsys1},
-	{SYS_ISP1, imgsys2_swcgs, imgsys2},
-	{SYS_IPE, ipesys_swcgs, ipe},
-	{SYS_DISP, mdpsys_config_swcgs, mdp},
-	{SYS_MFG0, mfgcfg_swcgs, mfgcfg},
-	{SYS_DISP, mmsys_config_swcgs, mm},
-	{SYS_VDEC, vdec_gcon_swcgs, vde2},
-	{SYS_VENC, venc_gcon_swcgs, ven1},
-	{},
-};
-
-static unsigned int check_cg_state(struct pg_check_swcg *swcg)
-{
-	int enable_count = 0;
-
-	if (!swcg)
-		return 0;
-
-	while (swcg->name) {
-		if (!IS_ERR_OR_NULL(swcg->c)) {
-			if (__clk_get_enable_count(swcg->c) > 0) {
-				pr_notice("%s[%-17s: %3d]\n",
-				__func__,
-				__clk_get_name(swcg->c),
-				__clk_get_enable_count(swcg->c));
-				enable_count++;
-			}
-		}
-		swcg++;
-	}
-
-	return enable_count;
-}
-
-void mtk_check_subsys_swcg(enum subsys_id id)
-{
-	int i;
-	unsigned int ret = 0;
-
-	for (i = 0; i < ARRAY_SIZE(mtk_subsys_check); i++) {
-		if (mtk_subsys_check[i].id != id)
-			continue;
-
-		/* check if Subsys CGs are still on */
-		ret = check_cg_state(mtk_subsys_check[i].swcgs);
-		if (ret) {
-			pr_notice("%s:(%d) warning!\n", __func__, id);
-
-			/* print registers dump */
-			print_subsys_reg(spm);
-			print_subsys_reg(mtk_subsys_check[i].chk_id);
-		}
-	}
-
-	if (ret) {
-		pr_err("%s(%d): %d\n", __func__, id, ret);
-#if BUG_ON_CHK_ENABLE
-		BUG_ON(1);
+#else
+	opp =  VCORE_NULL;
 #endif
-	}
+	return opp;
 }
 
 /*
  * clkchk dump_regs
  */
 
-#define REGBASE_V(_phys, _id_name, _pg) { .phys = _phys,	\
-		.name = #_id_name, .pg = _pg}
+#define REGBASE_V(_phys, _id_name, _pg, _pn) { .phys = _phys,	\
+		.name = #_id_name, .pg = _pg, .pn = _pn}
 
 /*
  * checkpatch.pl ERROR:COMPLEX_MACRO
@@ -873,39 +195,39 @@ void mtk_check_subsys_swcg(enum subsys_id id)
  */
 
 static struct regbase rb[] = {
-	[top] = REGBASE_V(0x10000000, top, NULL),
-	[ifrao] = REGBASE_V(0x10001000, ifrao, NULL),
-	[infracfg_ao_bus] = REGBASE_V(0x10001000, infracfg_ao_bus, NULL),
-	[spm] = REGBASE_V(0x10006000, spm, NULL),
-	[apmixed] = REGBASE_V(0x1000C000, apmixed, NULL),
-	[scp_par] = REGBASE_V(0x10720000, scp_par, NULL),
-	[audsys] = REGBASE_V(0x11210000, audsys, "PG_AUDIO"),
-	[msdc0] = REGBASE_V(0x11230000, msdc0, NULL),
-	[impc] = REGBASE_V(0x11282000, impc, "fi2c_pseudo_ck"),
-	[impe] = REGBASE_V(0x11cb1000, impe, "fi2c_pseudo_ck"),
-	[imps] = REGBASE_V(0x11d04000, imps, "fi2c_pseudo_ck"),
-	[impws] = REGBASE_V(0x11d23000, impws, "fi2c_pseudo_ck"),
-	[impw] = REGBASE_V(0x11e01000, impw, "fi2c_pseudo_ck"),
-	[impn] = REGBASE_V(0x11f01000, impn, "fi2c_pseudo_ck"),
-	[mfg_ao] = REGBASE_V(0x13fa0000, mfg_ao, "PG_MFG5"),
-	[mfgcfg] = REGBASE_V(0x13fbf000, mfgcfg, "PG_MFG5"),
-	[mm] = REGBASE_V(0x14000000, mm, "PG_DISP"),
-	[imgsys1] = REGBASE_V(0x15020000, imgsys1, "PG_ISP0"),
-	[imgsys2] = REGBASE_V(0x15820000, imgsys2, "PG_ISP1"),
-	[vde2] = REGBASE_V(0x1602f000, vde2, "PG_VDEC"),
-	[ven1] = REGBASE_V(0x17000000, ven1, "PG_VENC"),
-	[apu_conn2] = REGBASE_V(0x19020000, apu_conn2, "PG_APU"),
-	[apu_conn1] = REGBASE_V(0x19024000, apu_conn1, "PG_APU"),
-	[apuv] = REGBASE_V(0x19029000, apuv, "PG_APU"),
-	[apu0] = REGBASE_V(0x19030000, apu0, "PG_APU"),
-	[apu1] = REGBASE_V(0x19031000, apu1, "PG_APU"),
-	[apum0] = REGBASE_V(0x19034000, apum0, "PG_APU"),
-	[apu_ao] = REGBASE_V(0x190f3000, apu_ao, NULL),
-	[cam_m] = REGBASE_V(0x1a000000, cam_m, "PG_CAM"),
-	[cam_ra] = REGBASE_V(0x1a04f000, cam_ra, "PG_CAM_RAWA"),
-	[cam_rb] = REGBASE_V(0x1a06f000, cam_rb, "PG_CAM_RAWB"),
-	[ipe] = REGBASE_V(0x1b000000, ipe, "PG_IPE"),
-	[mdp] = REGBASE_V(0x1f000000, mdp, "PG_DISP"),
+	[top] = REGBASE_V(0x10000000, top, PD_NULL, CLK_NULL),
+	[ifrao] = REGBASE_V(0x10001000, ifrao, PD_NULL, CLK_NULL),
+	[infracfg_ao_bus] = REGBASE_V(0x10001000, infracfg_ao_bus, PD_NULL, CLK_NULL),
+	[spm] = REGBASE_V(0x10006000, spm, PD_NULL, CLK_NULL),
+	[apmixed] = REGBASE_V(0x1000C000, apmixed, PD_NULL, CLK_NULL),
+	[scp_par] = REGBASE_V(0x10720000, scp_par, PD_NULL, CLK_NULL),
+	[audsys] = REGBASE_V(0x11210000, audsys, MT6877_CHK_PD_AUDIO, CLK_NULL),
+	[msdc0] = REGBASE_V(0x11230000, msdc0, PD_NULL, CLK_NULL),
+	[impc] = REGBASE_V(0x11282000, impc, PD_NULL,"fi2c_pseudo_ck"),
+	[impe] = REGBASE_V(0x11cb1000, impe, PD_NULL,"fi2c_pseudo_ck"),
+	[imps] = REGBASE_V(0x11d04000, imps, PD_NULL,"fi2c_pseudo_ck"),
+	[impws] = REGBASE_V(0x11d23000, impws, PD_NULL,"fi2c_pseudo_ck"),
+	[impw] = REGBASE_V(0x11e01000, impw, PD_NULL,"fi2c_pseudo_ck"),
+	[impn] = REGBASE_V(0x11f01000, impn, PD_NULL,"fi2c_pseudo_ck"),
+	// [mfg_ao] = REGBASE_V(0x13fa0000, mfg_ao, "PG_MFG5", CLK_NULL),
+	// [mfgcfg] = REGBASE_V(0x13fbf000, mfgcfg, "PG_MFG5", CLK_NULL),
+	[mm] = REGBASE_V(0x14000000, mm, MT6877_CHK_PD_DISP, CLK_NULL),
+	[imgsys1] = REGBASE_V(0x15020000, imgsys1, MT6877_CHK_PD_ISP0, CLK_NULL),
+	[imgsys2] = REGBASE_V(0x15820000, imgsys2, MT6877_CHK_PD_ISP1, CLK_NULL),
+	[vde2] = REGBASE_V(0x1602f000, vde2, MT6877_CHK_PD_VDEC, CLK_NULL),
+	[ven1] = REGBASE_V(0x17000000, ven1, MT6877_CHK_PD_VENC, CLK_NULL),
+	// [apu_conn2] = REGBASE_V(0x19020000, apu_conn2, "PG_APU", CLK_NULL),
+	// [apu_conn1] = REGBASE_V(0x19024000, apu_conn1, "PG_APU", CLK_NULL),
+	// [apuv] = REGBASE_V(0x19029000, apuv, "PG_APU", CLK_NULL),
+	// [apu0] = REGBASE_V(0x19030000, apu0, "PG_APU", CLK_NULL),
+	// [apu1] = REGBASE_V(0x19031000, apu1, "PG_APU", CLK_NULL),
+	// [apum0] = REGBASE_V(0x19034000, apum0, "PG_APU", CLK_NULL),
+	[apu_ao] = REGBASE_V(0x190f3000, apu_ao, PD_NULL, CLK_NULL),
+	[cam_m] = REGBASE_V(0x1a000000, cam_m, MT6877_CHK_PD_CAM, CLK_NULL),
+	[cam_ra] = REGBASE_V(0x1a04f000, cam_ra, MT6877_CHK_PD_CAM_RAWA, CLK_NULL),
+	[cam_rb] = REGBASE_V(0x1a06f000, cam_rb, MT6877_CHK_PD_CAM_RAWB, CLK_NULL),
+	[ipe] = REGBASE_V(0x1b000000, ipe, MT6877_CHK_PD_IPE, CLK_NULL),
+	[mdp] = REGBASE_V(0x1f000000, mdp, MT6877_CHK_PD_DISP, CLK_NULL),
 	{},
 };
 
@@ -1127,17 +449,12 @@ static struct regname rn[] = {
 	{},
 };
 
-struct regbase *get_mt6877_all_reg_bases(void)
-{
-	return rb;
-}
-
-struct regname *get_mt6877_all_reg_names(void)
+static const struct regname *get_all_reg_names_mt6877(void)
 {
 	return rn;
 }
 
-void print_subsys_reg(enum chk_sys_id id)
+void print_subsys_reg_mt6877(enum chk_sys_id id)
 {
 	struct regbase *rb_dump;
 	const struct regname *rns = &rn[0];
@@ -1165,63 +482,231 @@ void print_subsys_reg(enum chk_sys_id id)
 			rns->name, PHYSADDR(rns), clk_readl(ADDR(rns)));
 	}
 }
+EXPORT_SYMBOL(print_subsys_reg_mt6877);
 
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_DEVAPC)
 static void devapc_dump(void)
 {
-	print_subsys_reg(spm);
-	print_subsys_reg(top);
-	print_subsys_reg(ifrao);
-	print_subsys_reg(infracfg_ao_bus);
-	print_subsys_reg(apmixed);
+	print_subsys_reg_mt6877(spm);
+	print_subsys_reg_mt6877(top);
+	print_subsys_reg_mt6877(ifrao);
+	print_subsys_reg_mt6877(infracfg_ao_bus);
+	print_subsys_reg_mt6877(apmixed);
 }
 
-static void __init init_regbase(void)
-{
-	struct regbase *rb = get_mt6877_all_reg_bases();
 
-	for (; rb->name; rb++) {
-		if (!rb->phys)
+static struct devapc_vio_callbacks devapc_vio_handle = {
+	.id = DEVAPC_SUBSYS_CLKMGR,
+	.debug_dump = devapc_dump,
+};
+#endif
+
+u32 get_mt6877_reg_value(u32 id, u32 ofs)
+{
+	if (id >= chk_sys_num)
+		return 0;
+
+	return clk_readl(rb[id].virt + ofs);
+}
+EXPORT_SYMBOL_GPL(get_mt6877_reg_value);
+
+static void  init_regbase(void)
+{
+	size_t i;
+
+
+
+	for (i = 0; i < ARRAY_SIZE(rb); i++) {
+		if (!rb[i].phys)
 			continue;
 
-		rb->virt = ioremap_nocache(rb->phys, 0x1000);
+		rb[i].virt = ioremap(rb[i].phys, PAGE_SIZE);
 	}
 }
 
-static const char * const compatible[] = {"mediatek,mt6877", NULL};
+static const char * const off_pll_names[] = {
+	"univpll",
+	"msdcpll",
+	"mmpll",
+	"tvdpll",
+	"usbpll",
+	"mfg_ao_mfgpll1",
+	"mfg_ao_mfgpll4",
+	NULL
+};
 
-static struct clkchk_cfg_t cfg = {
-	.aee_excp_on_fail = false,
-#ifdef CONFIG_MTK_ENG_BUILD
-#if BUG_ON_CHK_ENABLE
-	.bug_on_fail = true,
-#else
-	.bug_on_fail = false,
+static const char * const notice_pll_names[] = {
+	"adsppll",
+	"apll1",
+	"apll2",
+	NULL
+};
+
+static const char * const *get_off_pll_names(void)
+{
+	return off_pll_names;
+}
+
+static const char * const *get_notice_pll_names(void)
+{
+	return notice_pll_names;
+}
+
+/*
+ * clkdbg pwr_status
+ */
+
+static u32 pwr_ofs[STA_NUM] = {
+	[PWR_STA] = 0x0EF0,
+	[PWR_STA2] = 0x0EF4,
+};
+
+static u32 pwr_sta[STA_NUM];
+
+u32 *get_spm_pwr_status_array(void)
+{
+	static void __iomem *pwr_addr[STA_NUM];
+	int i;
+
+	for (i = 0; i < STA_NUM; i++) {
+		if (pwr_ofs[i]) {
+			pwr_addr[i] = rb[spm].virt + pwr_ofs[i];
+			pwr_sta[i] = clk_readl(pwr_addr[i]);
+		}
+	}
+
+	return pwr_sta;
+}
+
+/*
+ * clkchk pwr_msk  need to review
+ */
+static struct pvd_msk pvd_pwr_mask[] = {
+	{"topckgen_clk", PWR_STA, 0x00000000},
+	{"infracfg_ao_clk", PWR_STA, 0x00000000},
+	{"apmixedsys_clk", PWR_STA, 0x00000000},
+	{"mdpsys_config_clk", PWR_STA, BIT(18)},
+	{"ipesys_clk", PWR_STA, BIT(11)},
+	{"vdec_gcon_clk", PWR_STA, BIT(12)},
+	{"venc_gcon_clk", PWR_STA, BIT(14)},
+	{"imgsys1_clk", PWR_STA, BIT(9)},
+	{"imgsys2_clk", PWR_STA, BIT(10)},
+	{"audio_clk", PWR_STA, BIT(21)},
+	{"scp_par_top_clk", PWR_STA, BIT(22)},
+	{"camsys_main_clk", PWR_STA, BIT(23)},
+	{"camsys_rawa_clk", PWR_STA, BIT(24)},
+	{"camsys_rawb_clk", PWR_STA, BIT(25)},
+	{"imp_iic_wrap_c_clk", PWR_STA, 0x00000000},
+	{"imp_iic_wrap_e_clk", PWR_STA, 0x00000000},
+	{"imp_iic_wrap_s_clk", PWR_STA, 0x00000000},
+	{"imp_iic_wrap_ws_clk", PWR_STA, 0x00000000},
+	{"imp_iic_wrap_w_clk", PWR_STA, 0x00000000},
+	{"imp_iic_wrap_n_clk", PWR_STA, 0x00000000},
+	{"mfgcfg_clk", PWR_STA, 0x00000000},
+	{"mmsys_config_clk", PWR_STA, BIT(18)},
+	{},
+};
+
+static struct pvd_msk *get_pvd_pwr_mask(void)
+{
+	return pvd_pwr_mask;
+}
+
+static bool is_pll_chk_bug_on(void)
+{
+#if (BUG_ON_CHK_ENABLE) || (IS_ENABLED(CONFIG_MTK_CLKMGR_DEBUG))
+	return true;
 #endif
-	.bug_on_fail = false,
-#endif
-	.warn_on_fail = true,
-	.compatible = compatible,
-	.off_pll_names = off_pll_names,
-	.notice_pll_names = notice_pll_names,
-	.off_mtcmos_names = off_mtcmos_names,
-	.notice_mtcmos_names = notice_mtcmos_names,
-	.all_clk_names = clks,
+	return false;
+}
+
+static bool is_suspend_retry_stop(bool reset_cnt)
+{
+	if (reset_cnt == true) {
+		suspend_cnt = 0;
+		return true;
+	}
+
+	suspend_cnt++;
+	pr_notice("%s: suspend cnt: %d\n", __func__, suspend_cnt);
+
+	if (suspend_cnt < 2)
+		return false;
+
+	return true;
+}
+
+static struct clkchk_ops clkchk_mt6877_ops = {
+	.get_all_regnames = get_all_reg_names_mt6877,
+	.get_spm_pwr_status_array = get_spm_pwr_status_array,
+	.get_pvd_pwr_mask = get_pvd_pwr_mask,
+	.get_off_pll_names = get_off_pll_names,
+	.get_notice_pll_names = get_notice_pll_names,
+	.is_pll_chk_bug_on = is_pll_chk_bug_on,
 	.get_vf_name = get_vf_name,
 	.get_vf_opp = get_vf_opp,
 	.get_vf_num = get_vf_num,
 	.get_vcore_opp = get_vcore_opp,
-	.get_devapc_dump = devapc_dump,
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_DEVAPC)
+	.devapc_dump = devapc_dump,
+#endif
+	.is_suspend_retry_stop = is_suspend_retry_stop,
 };
 
-static int __init clkchk_platform_init(void)
+
+static int clk_chk_mt6877_probe(struct platform_device *pdev)
 {
-	int i;
+	suspend_cnt = 0;
 
 	init_regbase();
 
-	for (i = 0; i < ARRAY_SIZE(mtk_subsys_check); i++)
-		clkchk_swcg_init(mtk_subsys_check[i].swcgs);
+	set_clkchk_notify();
 
-	return clkchk_init(&cfg);
+	set_clkchk_ops(&clkchk_mt6877_ops);
+
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_DEVAPC)
+	register_devapc_vio_callback(&devapc_vio_handle);
+#endif
+
+#if CHECK_VCORE_FREQ
+	mtk_clk_check_muxes();
+#endif
+
+	return 0;
 }
-subsys_initcall(clkchk_platform_init);
+
+static const struct of_device_id of_match_clkchk_mt6877[] = {
+	{
+		.compatible = "mediatek,mt6877-clkchk",
+	}, {
+		/* sentinel */
+	}
+};
+
+static struct platform_driver clk_chk_mt6877_drv = {
+	.probe = clk_chk_mt6877_probe,
+	.driver = {
+		.name = "clk-chk-mt6877",
+		.owner = THIS_MODULE,
+		.pm = &clk_chk_dev_pm_ops,
+		.of_match_table = of_match_clkchk_mt6877,
+	},
+};
+
+/*
+ * init functions
+ */
+
+static int __init clkchk_mt6877_init(void)
+{
+	return platform_driver_register(&clk_chk_mt6877_drv);
+}
+
+static void __exit clkchk_mt6877_exit(void)
+{
+	platform_driver_unregister(&clk_chk_mt6877_drv);
+}
+
+late_initcall(clkchk_mt6877_init);
+module_exit(clkchk_mt6877_exit);
+MODULE_LICENSE("GPL");

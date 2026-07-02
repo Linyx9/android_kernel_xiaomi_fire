@@ -1,8 +1,7 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2015 MediaTek Inc.
  */
-
 
 #ifndef __SWTP_H__
 #define __SWTP_H__
@@ -17,14 +16,13 @@
 #define SWTP3_COMPATIBLE_DEVICE_ID "mediatek, swtp3-eint"
 #define SWTP4_COMPATIBLE_DEVICE_ID "mediatek, swtp4-eint"
 
-#define SWTP_EINT_PIN_PLUG_IN        (1)
-#define SWTP_EINT_PIN_PLUG_OUT       (0)
+#define SWTP_EINT_PIN_PLUG_IN	(1)
+#define SWTP_EINT_PIN_PLUG_OUT	(0)
 
 #define SWTP_DO_TX_POWER	(0)
 #define SWTP_NO_TX_POWER	(1)
 
 struct swtp_t {
-	unsigned int	md_id;
 	unsigned int	curr_mode;
 	unsigned int	irq[MAX_PIN_NUM];
 	unsigned int	gpiopin[MAX_PIN_NUM];
@@ -39,6 +37,6 @@ struct swtp_t {
 /*****************************************************************************/
 /* External API Region called by ccci_swtp object */
 /*****************************************************************************/
-extern int swtp_init(int md_id);
+extern int swtp_init(void);
 extern void inject_pin_status_event(int pin_value, const char pin_name[]);
 #endif				/* __SWTP_H__ */

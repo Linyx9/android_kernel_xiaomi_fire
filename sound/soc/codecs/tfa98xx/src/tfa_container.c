@@ -2076,11 +2076,12 @@ enum Tfa98xx_Error tfaContWriteProfile(struct tfa_device *tfa, int prof_idx,
 			return err;
 	}
 
-	if ((prof->group != previous_prof->group || prof->group == 0) &&
-	    (tfa->tfa_family == 2)) {
-		if (TFA_GET_BF(tfa, REFCKSEL) == 0) {
-			/* set SBSL to go to operation mode */
-			TFA_SET_BF_VOLATILE(tfa, SBSL, 1);
+	if ((prof->group != previous_prof->group || prof->group == 0) && (tfa->tfa_family == 2)) {		
+		if(tfa->is_probus_device){
+			TFA_SET_BF_VOLATILE (tfa,  AMPE,  1); 
+		} else if (TFA_GET_BF (tfa,  REFCKSEL) == 0) {		
+			/* set SBSL to go to operation mode */		
+			TFA_SET_BF_VOLATILE (tfa,  SBSL,  1); 
 		}
 	}
 

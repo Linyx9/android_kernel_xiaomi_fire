@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: PC Chen <pc.chen@mediatek.com>
+ *                 Tiffany Lin <tiffany.lin@mediatek.com>
  */
 
 #ifndef _VDEC_DRV_IF_H_
@@ -24,18 +26,12 @@ struct vdec_inst {
 	struct mtk_vcodec_ctx *ctx;
 	struct vdec_vcu_inst vcu;
 	struct vdec_vsi *vsi;
-};
 
-/**
- * struct vdec_fb_status  - decoder frame buffer status
- * @FB_ST_NORMAL        : initial state
- * @FB_ST_DISPLAY       : frmae buffer is ready to be displayed
- * @FB_ST_FREE          : frame buffer is not used by decoder any more
- */
-enum vdec_fb_status {
-	FB_ST_NORMAL            = 0,
-	FB_ST_DISPLAY           = (1 << 0),
-	FB_ST_FREE              = (1 << 1)
+	bool put_frame_async;
+	struct ring_fb_list list_disp_fb;
+	struct mutex list_disp_fb_lock;
+	struct ring_fb_list list_free_fb;
+	struct mutex list_free_fb_lock;
 };
 
 /**
@@ -53,6 +49,8 @@ extern struct mtk_video_fmt
 	mtk_vdec_formats[MTK_MAX_DEC_CODECS_SUPPORT];
 extern struct mtk_codec_framesizes
 	mtk_vdec_framesizes[MTK_MAX_DEC_CODECS_SUPPORT];
+extern struct v4l2_vdec_max_buf_info mtk_vdec_max_buf_info;
+extern struct mtk_video_frame_frameintervals mtk_vdec_frameintervals;
 
 /**
  * vdec_if_init() - initialize decode driver
@@ -100,7 +98,20 @@ int vdec_if_get_param(struct mtk_vcodec_ctx *ctx, enum vdec_get_param_type type,
 int vdec_if_set_param(struct mtk_vcodec_ctx *ctx,
 					  enum vdec_set_param_type type,
 					  void *in);
+/*
+ * vdec_if_flush - Set parameter to driver
+ * @ctx  : [in] v4l2 context
+ * @bs  : [in] input bitstream
+ * @fb  : [in] frame buffer to store decoded frame, when null menas parse
+ *      header only
+ * @type : [in] flush from bitstream or frame buffer
+ * Return: 0 if flush successfully, otherwise it is failed.
+ */
+int vdec_if_flush(struct mtk_vcodec_ctx *ctx, struct mtk_vcodec_mem *bs,
+				   struct vdec_fb *fb, enum vdec_flush_type type);
 
+int vdec_if_dev_ctx_init(struct mtk_vcodec_dev *dev);
+void vdec_if_dev_ctx_deinit(struct mtk_vcodec_dev *dev);
 
 void vdec_decode_prepare(void *ctx_prepare,
 	unsigned int hw_id);

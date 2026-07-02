@@ -10,25 +10,61 @@
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 #include <linux/arm-smccc.h> /* for Kernel Native SMC API */
-#include <mt-plat/mtk_secure_api.h> /* for SMC ID table */
+#include <linux/soc/mediatek/mtk_sip_svc.h> /* for SMC ID table */
 
 #include "mt6853-afe-common.h"
 #include "mt6853-afe-clk.h"
 
 static DEFINE_MUTEX(mutex_request_dram);
 
+enum {
+	CLK_AFE = 0,
+	CLK_TML,
+	CLK_APLL22M,
+	CLK_APLL24M,
+	CLK_APLL1_TUNER,
+	CLK_APLL2_TUNER,
+	CLK_NLE,
+	CLK_INFRA_SYS_AUDIO,
+	CLK_INFRA_AUDIO_26M,
+	CLK_MUX_AUDIO,
+	CLK_MUX_AUDIOINTBUS,
+	CLK_TOP_MAINPLL_D4_D4,
+	/* apll related mux */
+	CLK_TOP_MUX_AUD_1,
+	CLK_TOP_APLL1_CK,
+	CLK_TOP_MUX_AUD_2,
+	CLK_TOP_APLL2_CK,
+	CLK_TOP_MUX_AUD_ENG1,
+	CLK_TOP_APLL1_D4,
+	CLK_TOP_MUX_AUD_ENG2,
+	CLK_TOP_APLL2_D4,
+	CLK_TOP_MUX_AUDIO_H,
+	CLK_TOP_I2S0_M_SEL,
+	CLK_TOP_I2S1_M_SEL,
+	CLK_TOP_I2S2_M_SEL,
+	CLK_TOP_I2S3_M_SEL,
+	CLK_TOP_I2S4_M_SEL,
+	CLK_TOP_I2S5_M_SEL,
+	CLK_TOP_APLL12_DIV0,
+	CLK_TOP_APLL12_DIV1,
+	CLK_TOP_APLL12_DIV2,
+	CLK_TOP_APLL12_DIV3,
+	CLK_TOP_APLL12_DIV4,
+	CLK_TOP_APLL12_DIVB,
+	CLK_TOP_APLL12_DIV5,
+	CLK_CLK26M,
+	CLK_NUM
+};
+
 static const char *aud_clks[CLK_NUM] = {
 	[CLK_AFE] = "aud_afe_clk",
-	/*[CLK_DAC] = "aud_dac_clk",*/
-	/*[CLK_DAC_PREDIS] = "aud_dac_predis_clk",*/
-	/*[CLK_ADC] = "aud_adc_clk",*/
 	[CLK_TML] = "aud_tml_clk",
 	[CLK_APLL22M] = "aud_apll22m_clk",
 	[CLK_APLL24M] = "aud_apll24m_clk",
 	[CLK_APLL1_TUNER] = "aud_apll1_tuner_clk",
 	[CLK_APLL2_TUNER] = "aud_apll2_tuner_clk",
 	[CLK_NLE] = "aud_nle",
-	[CLK_SCP_SYS_AUD] = "scp_sys_audio",
 	[CLK_INFRA_SYS_AUDIO] = "aud_infra_clk",
 	[CLK_INFRA_AUDIO_26M] = "aud_infra_26m_clk",
 	[CLK_MUX_AUDIO] = "top_mux_audio",
@@ -68,7 +104,7 @@ int mt6853_set_audio_int_bus_parent(struct mtk_base_afe *afe,
 	ret = clk_set_parent(afe_priv->clk[CLK_MUX_AUDIOINTBUS],
 			     afe_priv->clk[clk_id]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+		dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 			__func__, aud_clks[CLK_MUX_AUDIOINTBUS],
 			aud_clks[clk_id], ret);
 	}
@@ -84,14 +120,14 @@ static int apll1_mux_setting(struct mtk_base_afe *afe, bool enable)
 	if (enable) {
 		ret = clk_prepare_enable(afe_priv->clk[CLK_TOP_MUX_AUD_1]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+			dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_1], ret);
 			goto EXIT;
 		}
 		ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUD_1],
 				     afe_priv->clk[CLK_TOP_APLL1_CK]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_1],
 				aud_clks[CLK_TOP_APLL1_CK], ret);
 			goto EXIT;
@@ -100,14 +136,14 @@ static int apll1_mux_setting(struct mtk_base_afe *afe, bool enable)
 		/* 180.6336 / 4 = 45.1584MHz */
 		ret = clk_prepare_enable(afe_priv->clk[CLK_TOP_MUX_AUD_ENG1]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+			dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_ENG1], ret);
 			goto EXIT;
 		}
 		ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUD_ENG1],
 				     afe_priv->clk[CLK_TOP_APLL1_D4]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_ENG1],
 				aud_clks[CLK_TOP_APLL1_D4], ret);
 			goto EXIT;
@@ -116,7 +152,7 @@ static int apll1_mux_setting(struct mtk_base_afe *afe, bool enable)
 		ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUD_ENG1],
 				     afe_priv->clk[CLK_CLK26M]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_ENG1],
 				aud_clks[CLK_CLK26M], ret);
 			goto EXIT;
@@ -126,7 +162,7 @@ static int apll1_mux_setting(struct mtk_base_afe *afe, bool enable)
 		ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUD_1],
 				     afe_priv->clk[CLK_CLK26M]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_1],
 				aud_clks[CLK_CLK26M], ret);
 			goto EXIT;
@@ -146,14 +182,14 @@ static int apll2_mux_setting(struct mtk_base_afe *afe, bool enable)
 	if (enable) {
 		ret = clk_prepare_enable(afe_priv->clk[CLK_TOP_MUX_AUD_2]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+			dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_2], ret);
 			goto EXIT;
 		}
 		ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUD_2],
 				     afe_priv->clk[CLK_TOP_APLL2_CK]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_2],
 				aud_clks[CLK_TOP_APLL2_CK], ret);
 			goto EXIT;
@@ -162,14 +198,14 @@ static int apll2_mux_setting(struct mtk_base_afe *afe, bool enable)
 		/* 196.608 / 4 = 49.152MHz */
 		ret = clk_prepare_enable(afe_priv->clk[CLK_TOP_MUX_AUD_ENG2]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+			dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_ENG2], ret);
 			goto EXIT;
 		}
 		ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUD_ENG2],
 				     afe_priv->clk[CLK_TOP_APLL2_D4]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_ENG2],
 				aud_clks[CLK_TOP_APLL2_D4], ret);
 			goto EXIT;
@@ -178,7 +214,7 @@ static int apll2_mux_setting(struct mtk_base_afe *afe, bool enable)
 		ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUD_ENG2],
 				     afe_priv->clk[CLK_CLK26M]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_ENG2],
 				aud_clks[CLK_CLK26M], ret);
 			goto EXIT;
@@ -188,7 +224,7 @@ static int apll2_mux_setting(struct mtk_base_afe *afe, bool enable)
 		ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUD_2],
 				     afe_priv->clk[CLK_CLK26M]);
 		if (ret) {
-			dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[CLK_TOP_MUX_AUD_2],
 				aud_clks[CLK_CLK26M], ret);
 			goto EXIT;
@@ -205,39 +241,32 @@ int mt6853_afe_enable_clock(struct mtk_base_afe *afe)
 	struct mt6853_afe_private *afe_priv = afe->platform_priv;
 	int ret = 0;
 
-	dev_info(afe->dev, "%s()\n", __func__);
-
-	ret = clk_prepare_enable(afe_priv->clk[CLK_SCP_SYS_AUD]);
-	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
-			__func__, aud_clks[CLK_SCP_SYS_AUD], ret);
-		goto CLK_SCP_SYS_AUD_ERR;
-	}
+	dev_info(afe->dev, "%s() afe_priv %p\n", __func__, afe_priv);
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_INFRA_SYS_AUDIO]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_INFRA_SYS_AUDIO], ret);
 		goto CLK_INFRA_SYS_AUDIO_ERR;
 	}
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_INFRA_AUDIO_26M]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_INFRA_AUDIO_26M], ret);
 		goto CLK_INFRA_AUDIO_26M_ERR;
 	}
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_MUX_AUDIO]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_MUX_AUDIO], ret);
 		goto CLK_MUX_AUDIO_ERR;
 	}
 	ret = clk_set_parent(afe_priv->clk[CLK_MUX_AUDIO],
 			     afe_priv->clk[CLK_CLK26M]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+		dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 			__func__, aud_clks[CLK_MUX_AUDIO],
 			aud_clks[CLK_CLK26M], ret);
 		goto CLK_MUX_AUDIO_ERR;
@@ -245,7 +274,7 @@ int mt6853_afe_enable_clock(struct mtk_base_afe *afe)
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_MUX_AUDIOINTBUS]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_MUX_AUDIOINTBUS], ret);
 		goto CLK_MUX_AUDIO_INTBUS_ERR;
 	}
@@ -255,7 +284,7 @@ int mt6853_afe_enable_clock(struct mtk_base_afe *afe)
 	ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUDIO_H],
 			     afe_priv->clk[CLK_TOP_APLL2_CK]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
+		dev_info(afe->dev, "%s clk_set_parent %s-%s fail %d\n",
 			__func__, aud_clks[CLK_TOP_MUX_AUDIO_H],
 			aud_clks[CLK_TOP_APLL2_CK], ret);
 		goto CLK_MUX_AUDIO_H_PARENT_ERR;
@@ -263,7 +292,7 @@ int mt6853_afe_enable_clock(struct mtk_base_afe *afe)
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_AFE]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_AFE], ret);
 		goto CLK_AFE_ERR;
 	}
@@ -281,8 +310,6 @@ CLK_INFRA_AUDIO_26M_ERR:
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_AUDIO_26M]);
 CLK_INFRA_SYS_AUDIO_ERR:
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_SYS_AUDIO]);
-CLK_SCP_SYS_AUD_ERR:
-	clk_disable_unprepare(afe_priv->clk[CLK_SCP_SYS_AUD]);
 
 	return ret;
 }
@@ -291,7 +318,7 @@ void mt6853_afe_disable_clock(struct mtk_base_afe *afe)
 {
 	struct mt6853_afe_private *afe_priv = afe->platform_priv;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe_priv %p\n", __func__, afe_priv);
 
 	clk_disable_unprepare(afe_priv->clk[CLK_AFE]);
 
@@ -300,7 +327,6 @@ void mt6853_afe_disable_clock(struct mtk_base_afe *afe)
 	clk_disable_unprepare(afe_priv->clk[CLK_MUX_AUDIO]);
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_AUDIO_26M]);
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_SYS_AUDIO]);
-	clk_disable_unprepare(afe_priv->clk[CLK_SCP_SYS_AUD]);
 }
 
 int mt6853_afe_dram_request(struct device *dev)
@@ -344,7 +370,7 @@ int mt6853_afe_dram_release(struct device *dev)
 			      0, 0, 0, 0, 0, 0, &res);
 
 	if (afe_priv->dram_resource_counter < 0) {
-		dev_warn(dev, "%s(), dram_resource_counter %d\n",
+		dev_info(dev, "%s(), dram_resource_counter %d\n",
 			 __func__, afe_priv->dram_resource_counter);
 		afe_priv->dram_resource_counter = 0;
 	}
@@ -362,14 +388,14 @@ int mt6853_apll1_enable(struct mtk_base_afe *afe)
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_APLL22M]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_APLL22M], ret);
 		goto ERR_CLK_APLL22M;
 	}
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_APLL1_TUNER]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_APLL1_TUNER], ret);
 		goto ERR_CLK_APLL1_TUNER;
 	}
@@ -418,14 +444,14 @@ int mt6853_apll2_enable(struct mtk_base_afe *afe)
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_APLL24M]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_APLL24M], ret);
 		goto ERR_CLK_APLL24M;
 	}
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_APLL2_TUNER]);
 	if (ret) {
-		dev_err(afe->dev, "%s clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[CLK_APLL2_TUNER], ret);
 		goto ERR_CLK_APLL2_TUNER;
 	}
@@ -605,14 +631,14 @@ int mt6853_mck_enable(struct mtk_base_afe *afe, int mck_id, int rate)
 	if (m_sel_id >= 0) {
 		ret = clk_prepare_enable(afe_priv->clk[m_sel_id]);
 		if (ret) {
-			dev_err(afe->dev, "%s(), clk_prepare_enable %s fail %d\n",
+			dev_info(afe->dev, "%s(), clk_prepare_enable %s fail %d\n",
 				__func__, aud_clks[m_sel_id], ret);
 			return ret;
 		}
 		ret = clk_set_parent(afe_priv->clk[m_sel_id],
 				     afe_priv->clk[apll_clk_id]);
 		if (ret) {
-			dev_err(afe->dev, "%s(), clk_set_parent %s-%s fail %d\n",
+			dev_info(afe->dev, "%s(), clk_set_parent %s-%s fail %d\n",
 				__func__, aud_clks[m_sel_id],
 				aud_clks[apll_clk_id], ret);
 			return ret;
@@ -622,13 +648,13 @@ int mt6853_mck_enable(struct mtk_base_afe *afe, int mck_id, int rate)
 	/* enable div, set rate */
 	ret = clk_prepare_enable(afe_priv->clk[div_clk_id]);
 	if (ret) {
-		dev_err(afe->dev, "%s(), clk_prepare_enable %s fail %d\n",
+		dev_info(afe->dev, "%s(), clk_prepare_enable %s fail %d\n",
 			__func__, aud_clks[div_clk_id], ret);
 		return ret;
 	}
 	ret = clk_set_rate(afe_priv->clk[div_clk_id], rate);
 	if (ret) {
-		dev_err(afe->dev, "%s(), clk_set_rate %s, rate %d, fail %d\n",
+		dev_info(afe->dev, "%s(), clk_set_rate %s, rate %d, fail %d\n",
 			__func__, aud_clks[div_clk_id],
 			rate, ret);
 		return ret;
@@ -661,7 +687,7 @@ int mt6853_init_clock(struct mtk_base_afe *afe)
 	for (i = 0; i < CLK_NUM; i++) {
 		afe_priv->clk[i] = devm_clk_get(afe->dev, aud_clks[i]);
 		if (IS_ERR(afe_priv->clk[i])) {
-			dev_warn(afe->dev, "%s devm_clk_get %s fail, ret %ld\n",
+			dev_info(afe->dev, "%s devm_clk_get %s fail, ret %ld\n",
 				 __func__,
 				 aud_clks[i], PTR_ERR(afe_priv->clk[i]));
 			/*return PTR_ERR(clks[i]);*/
@@ -670,9 +696,9 @@ int mt6853_init_clock(struct mtk_base_afe *afe)
 	}
 
 	afe_priv->apmixed = syscon_regmap_lookup_by_phandle(afe->dev->of_node,
-							    "apmixed");
+							    "apmixedsys");
 	if (IS_ERR(afe_priv->apmixed)) {
-		dev_err(afe->dev, "%s() Cannot find apmixed controller: %ld\n",
+		dev_info(afe->dev, "%s() Cannot find apmixedsys: %ld\n",
 			__func__, PTR_ERR(afe_priv->apmixed));
 		return PTR_ERR(afe_priv->apmixed);
 	}
@@ -680,18 +706,18 @@ int mt6853_init_clock(struct mtk_base_afe *afe)
 	afe_priv->topckgen = syscon_regmap_lookup_by_phandle(afe->dev->of_node,
 							     "topckgen");
 	if (IS_ERR(afe_priv->topckgen)) {
-		dev_err(afe->dev, "%s() Cannot find topckgen controller: %ld\n",
+		dev_info(afe->dev, "%s() Cannot find topckgen controller: %ld\n",
 			__func__, PTR_ERR(afe_priv->topckgen));
 		return PTR_ERR(afe_priv->topckgen);
 	}
 
-	afe_priv->infracfg_ao = syscon_regmap_lookup_by_phandle(
+	afe_priv->infracfg = syscon_regmap_lookup_by_phandle(
 				afe->dev->of_node,
-				"infracfg_ao");
-	if (IS_ERR(afe_priv->infracfg_ao)) {
-		dev_err(afe->dev, "%s() Cannot find infracfg_ao: %ld\n",
-			__func__, PTR_ERR(afe_priv->infracfg_ao));
-		return PTR_ERR(afe_priv->infracfg_ao);
+				"infracfg");
+	if (IS_ERR(afe_priv->infracfg)) {
+		dev_info(afe->dev, "%s() Cannot find infracfg: %ld\n",
+			__func__, PTR_ERR(afe_priv->infracfg));
+		return PTR_ERR(afe_priv->infracfg);
 	}
 
 	return 0;

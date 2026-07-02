@@ -18,14 +18,15 @@
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #endif
-#include <mt-plat/mtk_boot.h>
-#include <mt-plat/upmu_common.h>
+//#include <mt-plat/mtk_boot.h>
+//#include <mt-plat/upmu_common.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include "bq25601.h"
 #include "charger_class.h"
 #include <linux/power_supply.h>
 #include <linux/regulator/driver.h>
+#include "mtk_charger.h"
 
 /**********************************************************
  *
@@ -102,14 +103,17 @@ struct bq25601_info {
 	const char *eint_name;
 	int irq;
 	struct regulator_dev *otg_rdev;
+
+	struct power_supply_desc psy_desc;
+	struct power_supply_config psy_cfg;
+	struct power_supply *psy;
 };
 
 DEFINE_MUTEX(g_input_current_mutex);
 static struct i2c_client *new_client;
 static const struct i2c_device_id bq25601_i2c_id[] = { {"bq25601", 0}, {} };
 
-static int bq25601_driver_probe(struct i2c_client *client,
-				const struct i2c_device_id *id);
+static int bq25601_driver_probe(struct i2c_client *client);
 
 unsigned int charging_value_to_parameter(const unsigned int
 		*parameter, const unsigned int array_size,
@@ -423,6 +427,7 @@ void bq25601_set_en_hiz(unsigned int val)
 				       (unsigned char) (CON0_EN_HIZ_MASK),
 				       (unsigned char) (CON0_EN_HIZ_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_iinlim(unsigned int val)
@@ -434,6 +439,7 @@ void bq25601_set_iinlim(unsigned int val)
 				       (unsigned char) (CON0_IINLIM_MASK),
 				       (unsigned char) (CON0_IINLIM_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_stat_ctrl(unsigned int val)
@@ -445,6 +451,7 @@ void bq25601_set_stat_ctrl(unsigned int val)
 				   (unsigned char) (CON0_STAT_IMON_CTRL_MASK),
 				   (unsigned char) (CON0_STAT_IMON_CTRL_SHIFT)
 				   );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 /* CON1---------------------------------------------------- */
@@ -458,6 +465,7 @@ void bq25601_set_reg_rst(unsigned int val)
 				       (unsigned char) (CON11_REG_RST_MASK),
 				       (unsigned char) (CON11_REG_RST_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_pfm(unsigned int val)
@@ -469,6 +477,7 @@ void bq25601_set_pfm(unsigned int val)
 				       (unsigned char) (CON1_PFM_MASK),
 				       (unsigned char) (CON1_PFM_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_wdt_rst(unsigned int val)
@@ -480,6 +489,7 @@ void bq25601_set_wdt_rst(unsigned int val)
 				       (unsigned char) (CON1_WDT_RST_MASK),
 				       (unsigned char) (CON1_WDT_RST_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_otg_config(unsigned int val)
@@ -491,6 +501,7 @@ void bq25601_set_otg_config(unsigned int val)
 				       (unsigned char) (CON1_OTG_CONFIG_MASK),
 				       (unsigned char) (CON1_OTG_CONFIG_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 unsigned int bq25601_get_otg_config(void)
@@ -503,6 +514,7 @@ unsigned int bq25601_get_otg_config(void)
 				     (unsigned char) (CON1_OTG_CONFIG_MASK),
 				     (unsigned char) (CON1_OTG_CONFIG_SHIFT)
 				    );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 	return val;
 }
 
@@ -515,6 +527,7 @@ void bq25601_set_chg_config(unsigned int val)
 				       (unsigned char) (CON1_CHG_CONFIG_MASK),
 				       (unsigned char) (CON1_CHG_CONFIG_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 
@@ -527,6 +540,7 @@ void bq25601_set_sys_min(unsigned int val)
 				       (unsigned char) (CON1_SYS_MIN_MASK),
 				       (unsigned char) (CON1_SYS_MIN_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_batlowv(unsigned int val)
@@ -538,6 +552,7 @@ void bq25601_set_batlowv(unsigned int val)
 				       (unsigned char) (CON1_MIN_VBAT_SEL_MASK),
 				       (unsigned char) (CON1_MIN_VBAT_SEL_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 
@@ -552,6 +567,7 @@ void bq25601_set_rdson(unsigned int val)
 				       (unsigned char) (CON2_Q1_FULLON_MASK),
 				       (unsigned char) (CON2_Q1_FULLON_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_boost_lim(unsigned int val)
@@ -563,6 +579,7 @@ void bq25601_set_boost_lim(unsigned int val)
 				       (unsigned char) (CON2_BOOST_LIM_MASK),
 				       (unsigned char) (CON2_BOOST_LIM_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_ichg(unsigned int val)
@@ -574,6 +591,7 @@ void bq25601_set_ichg(unsigned int val)
 				       (unsigned char) (CON2_ICHG_MASK),
 				       (unsigned char) (CON2_ICHG_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 #ifdef FIXME //this function does not exist on bq25601
@@ -599,6 +617,7 @@ void bq25601_set_iprechg(unsigned int val)
 				       (unsigned char) (CON3_IPRECHG_MASK),
 				       (unsigned char) (CON3_IPRECHG_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_iterm(unsigned int val)
@@ -610,6 +629,7 @@ void bq25601_set_iterm(unsigned int val)
 				       (unsigned char) (CON3_ITERM_MASK),
 				       (unsigned char) (CON3_ITERM_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 /* CON4---------------------------------------------------- */
@@ -623,6 +643,7 @@ void bq25601_set_vreg(unsigned int val)
 				       (unsigned char) (CON4_VREG_MASK),
 				       (unsigned char) (CON4_VREG_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_topoff_timer(unsigned int val)
@@ -634,6 +655,7 @@ void bq25601_set_topoff_timer(unsigned int val)
 				       (unsigned char) (CON4_TOPOFF_TIMER_MASK),
 				       (unsigned char) (CON4_TOPOFF_TIMER_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 
 }
 
@@ -647,6 +669,7 @@ void bq25601_set_vrechg(unsigned int val)
 				       (unsigned char) (CON4_VRECHG_MASK),
 				       (unsigned char) (CON4_VRECHG_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 /* CON5---------------------------------------------------- */
@@ -660,6 +683,7 @@ void bq25601_set_en_term(unsigned int val)
 				       (unsigned char) (CON5_EN_TERM_MASK),
 				       (unsigned char) (CON5_EN_TERM_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 
@@ -673,6 +697,7 @@ void bq25601_set_watchdog(unsigned int val)
 				       (unsigned char) (CON5_WATCHDOG_MASK),
 				       (unsigned char) (CON5_WATCHDOG_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_en_timer(unsigned int val)
@@ -684,6 +709,7 @@ void bq25601_set_en_timer(unsigned int val)
 				       (unsigned char) (CON5_EN_TIMER_MASK),
 				       (unsigned char) (CON5_EN_TIMER_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_chg_timer(unsigned int val)
@@ -695,8 +721,8 @@ void bq25601_set_chg_timer(unsigned int val)
 				       (unsigned char) (CON5_CHG_TIMER_MASK),
 				       (unsigned char) (CON5_CHG_TIMER_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
-
 /* CON6---------------------------------------------------- */
 
 void bq25601_set_treg(unsigned int val)
@@ -721,6 +747,7 @@ void bq25601_set_vindpm(unsigned int val)
 				       (unsigned char) (CON6_VINDPM_MASK),
 				       (unsigned char) (CON6_VINDPM_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 
@@ -733,6 +760,7 @@ void bq25601_set_ovp(unsigned int val)
 				       (unsigned char) (CON6_OVP_MASK),
 				       (unsigned char) (CON6_OVP_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 
 }
 
@@ -746,6 +774,7 @@ void bq25601_set_boostv(unsigned int val)
 				       (unsigned char) (CON6_BOOSTV_MASK),
 				       (unsigned char) (CON6_BOOSTV_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 
@@ -761,6 +790,7 @@ void bq25601_set_tmr2x_en(unsigned int val)
 					(unsigned char) (CON7_TMR2X_EN_MASK),
 					(unsigned char) (CON7_TMR2X_EN_SHIFT)
 					);
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_batfet_disable(unsigned int val)
@@ -772,6 +802,7 @@ void bq25601_set_batfet_disable(unsigned int val)
 				(unsigned char) (CON7_BATFET_Disable_MASK),
 				(unsigned char) (CON7_BATFET_Disable_SHIFT)
 				);
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 
@@ -784,6 +815,7 @@ void bq25601_set_batfet_delay(unsigned int val)
 				       (unsigned char) (CON7_BATFET_DLY_MASK),
 				       (unsigned char) (CON7_BATFET_DLY_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 void bq25601_set_batfet_reset_enable(unsigned int val)
@@ -795,6 +827,7 @@ void bq25601_set_batfet_reset_enable(unsigned int val)
 				(unsigned char) (CON7_BATFET_RST_EN_MASK),
 				(unsigned char) (CON7_BATFET_RST_EN_SHIFT)
 				);
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 
@@ -809,6 +842,7 @@ unsigned int bq25601_get_system_status(void)
 				     (&val), (unsigned char) (0xFF),
 				     (unsigned char) (0x0)
 				    );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 	return val;
 }
 
@@ -822,6 +856,7 @@ unsigned int bq25601_get_vbus_stat(void)
 				     (unsigned char) (CON8_VBUS_STAT_MASK),
 				     (unsigned char) (CON8_VBUS_STAT_SHIFT)
 				    );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 	return val;
 }
 
@@ -835,6 +870,7 @@ unsigned int bq25601_get_chrg_stat(void)
 				     (unsigned char) (CON8_CHRG_STAT_MASK),
 				     (unsigned char) (CON8_CHRG_STAT_SHIFT)
 				    );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 	return val;
 }
 
@@ -848,6 +884,7 @@ unsigned int bq25601_get_vsys_stat(void)
 				     (unsigned char) (CON8_VSYS_STAT_MASK),
 				     (unsigned char) (CON8_VSYS_STAT_SHIFT)
 				    );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 	return val;
 }
 
@@ -861,6 +898,7 @@ unsigned int bq25601_get_pg_stat(void)
 				     (unsigned char) (CON8_PG_STAT_MASK),
 				     (unsigned char) (CON8_PG_STAT_SHIFT)
 				    );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 	return val;
 }
 
@@ -875,6 +913,7 @@ void bq25601_set_int_mask(unsigned int val)
 				       (unsigned char) (CON10_INT_MASK_MASK),
 				       (unsigned char) (CON10_INT_MASK_SHIFT)
 				      );
+	pr_info("[%s] ret:%u\n", __func__, ret);
 }
 
 /**********************************************************
@@ -919,8 +958,8 @@ static void bq25601_hw_component_detect(void)
 	else
 		g_bq25601_hw_exist = 1;
 
-	pr_info("[%s] exist=%d, Reg[0x0B]=0x%x\n", __func__,
-		g_bq25601_hw_exist, val);
+	pr_info("[%s] exist=%d, Reg[0x0B]=0x%x ret=%u\n", __func__,
+		g_bq25601_hw_exist, val, ret);
 }
 
 
@@ -1186,13 +1225,12 @@ static int bq25601_parse_dt(struct bq25601_info *info,
 	struct device_node *np = dev->of_node;
 	//int bq25601_en_pin = 0;
 
-	pr_info("%s\n", __func__);
 	if (!np) {
 		pr_info("%s: no of node\n", __func__);
 		return -ENODEV;
 	}
 
-	if (of_property_read_string(np, "charger_name",
+	if (of_property_read_string(np, "charger-name",
 				    &info->chg_dev_name) < 0) {
 		info->chg_dev_name = "primary_chg";
 		pr_info("%s: no charger name\n", __func__);
@@ -1203,6 +1241,7 @@ static int bq25601_parse_dt(struct bq25601_info *info,
 		info->chg_props.alias_name = "bq25601";
 		pr_info("%s: no alias name\n", __func__);
 	}
+
 	/*
 	 * bq25601_en_pin = of_get_named_gpio(np,"gpio_bq25601_en",0);
 	 * if(bq25601_en_pin < 0){
@@ -1225,22 +1264,28 @@ static int bq25601_parse_dt(struct bq25601_info *info,
 static int bq25601_do_event(struct charger_device *chg_dev, u32 event,
 			    u32 args)
 {
+	struct bq25601_info *info = NULL;
+
 	if (chg_dev == NULL)
 		return -EINVAL;
-
 	pr_info("%s: event = %d\n", __func__, event);
-#ifdef FIXME
+
+	info = (struct bq25601_info *)dev_get_drvdata(&chg_dev->dev);
+	if (info == NULL)
+		return -EINVAL;
+
 	switch (event) {
-	case EVENT_EOC:
+	case EVENT_FULL:
 		charger_dev_notify(chg_dev, CHARGER_DEV_NOTIFY_EOC);
+		power_supply_changed(info->psy);
 		break;
 	case EVENT_RECHARGE:
 		charger_dev_notify(chg_dev, CHARGER_DEV_NOTIFY_RECHG);
+		power_supply_changed(info->psy);
 		break;
 	default:
 		break;
 	}
-#endif
 	return 0;
 }
 
@@ -1315,14 +1360,76 @@ static struct charger_ops bq25601_chg_ops = {
 	.event = bq25601_do_event,
 };
 
-static int bq25601_driver_probe(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static enum power_supply_property bq25601_psy_properties[] = {
+	POWER_SUPPLY_PROP_STATUS,
+	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_USB_TYPE,
+};
+
+static enum power_supply_usb_type bq25601_usb_types[] = {
+	POWER_SUPPLY_USB_TYPE_UNKNOWN,
+	POWER_SUPPLY_USB_TYPE_SDP,
+	POWER_SUPPLY_USB_TYPE_DCP,
+	POWER_SUPPLY_USB_TYPE_CDP,
+};
+
+static int psy_bq25601_get_property(struct power_supply *psy,
+	enum power_supply_property psp, union power_supply_propval *val)
+{
+	struct bq25601_info *info = NULL;
+	struct power_supply *chg_type_psy = NULL;
+	unsigned int ret_val;
+
+	info = (struct bq25601_info *)power_supply_get_drvdata(psy);
+	if (info == NULL) {
+		pr_info("%s get info fail\n", __func__);
+		return -EINVAL;
+	}
+
+	chg_type_psy = devm_power_supply_get_by_phandle(info->dev, "charger");
+	if (IS_ERR_OR_NULL(chg_type_psy)) {
+		pr_info("%s get chg_type_psy fail\n", __func__);
+		return -EINVAL;
+	}
+
+	pr_info("%s psp:%d\n", __func__, psp);
+	switch (psp) {
+	case POWER_SUPPLY_PROP_STATUS:
+		ret_val = bq25601_get_chrg_stat();
+		if (ret_val == 0)
+			val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		else if (ret_val == 1 || ret_val == 2)
+			val->intval = POWER_SUPPLY_STATUS_CHARGING;
+		else if (ret_val == 3)
+			val->intval = POWER_SUPPLY_STATUS_FULL;
+		else
+			return -EINVAL;
+		break;
+	case POWER_SUPPLY_PROP_ONLINE:
+		power_supply_get_property(chg_type_psy, POWER_SUPPLY_PROP_ONLINE, val);
+		break;
+	case POWER_SUPPLY_PROP_USB_TYPE:
+		power_supply_get_property(chg_type_psy, POWER_SUPPLY_PROP_USB_TYPE, val);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static char *bq25601_supplied_to[] = {
+	"battery",
+	"mtk-master-charger",
+};
+
+static int bq25601_driver_probe(struct i2c_client *client)
 {
 	int ret = 0;
 	struct bq25601_info *info = NULL;
 	struct regulator_config config = { };
 
-	pr_info("[%s]\n", __func__);
+	pr_info("[%s] 20240710-V1.5!\n", __func__);
 
 	info = devm_kzalloc(&client->dev, sizeof(struct bq25601_info),
 			    GFP_KERNEL);
@@ -1361,6 +1468,22 @@ static int bq25601_driver_probe(struct i2c_client *client,
 		return ret;
 	}
 
+	info->psy_desc.name = "mt6370-charger";
+	info->psy_desc.type = POWER_SUPPLY_TYPE_UNKNOWN;
+	info->psy_desc.properties = bq25601_psy_properties;
+	info->psy_desc.num_properties = ARRAY_SIZE(bq25601_psy_properties);
+	info->psy_desc.get_property = psy_bq25601_get_property;
+	info->psy_desc.usb_types = bq25601_usb_types,
+	info->psy_desc.num_usb_types = ARRAY_SIZE(bq25601_usb_types),
+
+	info->psy_cfg.drv_data = info;
+	info->psy_cfg.of_node = client->dev.of_node;
+	info->psy_cfg.supplied_to = bq25601_supplied_to;
+	info->psy_cfg.num_supplicants = ARRAY_SIZE(bq25601_supplied_to);
+
+	info->psy = power_supply_register(info->dev, &info->psy_desc, &info->psy_cfg);
+	if (IS_ERR(info->psy))
+		chr_err("register psy fail:%ld\n", PTR_ERR(info->psy));
 
 	bq25601_dump_register(info->chg_dev);
 
@@ -1389,7 +1512,7 @@ static ssize_t bq25601_access_store(struct device *dev,
 	unsigned int reg_value = 0;
 	unsigned int reg_address = 0;
 
-	pr_info("[%s]\n", __func__);
+	pr_info("[%s] ret:%u\n", __func__, ret);
 
 	if (buf != NULL && size != 0) {
 		pr_info("[%s] buf is %s and size is %zu\n", __func__, buf,
@@ -1438,6 +1561,7 @@ static int bq25601_user_space_probe(struct platform_device *dev)
 
 	ret_device_file = device_create_file(&(dev->dev),
 					     &dev_attr_bq25601_access);
+	pr_info("[%s] ret:%u\n", __func__, ret_device_file);
 
 	return 0;
 }
@@ -1481,6 +1605,7 @@ static int __init bq25601_init(void)
 {
 	int ret = 0;
 
+	pr_info("[%s] 20240710-V1.5!\n", __func__);
 	/* i2c registration using DTS instead of boardinfo*/
 #ifdef CONFIG_OF
 	pr_info("[%s] init start with i2c DTS", __func__);

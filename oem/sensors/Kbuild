@@ -1,0 +1,11 @@
+ifdef CONFIG_AWINIC_SAR
+	obj-y += aw_sar/
+endif
+
+ifdef CONFIG_HX9031_SAR
+	obj-y += hx9031/
+endif
+
+ifdef CONFIG_OEM_ANT_DET
+	obj-y += ant_det/
+endif

@@ -1315,7 +1315,7 @@ int fsm_write_preset_eq(fsm_dev_t *fsm_dev,
 	}
 	dev_list = fsm_dev->dev_list;
 	if ((dev_list->eq_scenes & scene) == 0) {
-		pr_addr(warning, "eq_scenes:%04X unmatched scene:%04X",
+		pr_addr(err, "eq_scenes:%04X unmatched scene:%04X",
 				dev_list->eq_scenes, scene);
 		return 0;
 	}
@@ -1755,7 +1755,7 @@ int fsm_check_otp(fsm_dev_t *fsm_dev)
 		fsm_set_threshold(fsm_dev, re25, FSM_DATA_TYPE_RE25);
 	} else if (count == 0 && fsm_dev->re25_dft != 0) {
 		fsm_set_threshold(fsm_dev, fsm_dev->re25_dft, FSM_DATA_TYPE_RE25);
-		pr_addr(warning, "not calibrate yet");
+		pr_addr(err, "not calibrate yet");
 	} else {
 		pr_addr(err, "got something wrong");
 	}

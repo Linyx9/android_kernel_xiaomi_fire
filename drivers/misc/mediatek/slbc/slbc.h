@@ -16,15 +16,14 @@
 			struct file *file)			\
 {								\
 	return single_open(file, name ## _proc_show,		\
-			PDE_DATA(inode));			\
+			pde_data(inode));			\
 }								\
-static const struct file_operations name ## _proc_fops = {	\
-	.owner		= THIS_MODULE,				\
-	.open		= name ## _proc_open,			\
-	.read		= seq_read,				\
-	.llseek		= seq_lseek,				\
-	.release	= single_release,			\
-	.write		= name ## _proc_write,			\
+static const struct proc_ops name ## _proc_fops = {	\
+	.proc_open		= name ## _proc_open,			\
+	.proc_read		= seq_read,				\
+	.proc_lseek		= seq_lseek,				\
+	.proc_release	= single_release,			\
+	.proc_write		= name ## _proc_write,			\
 }
 #endif /* PROC_FOPS_RW */
 
@@ -34,14 +33,13 @@ static const struct file_operations name ## _proc_fops = {	\
 			struct file *file)			\
 {								\
 	return single_open(file, name ## _proc_show,		\
-			PDE_DATA(inode));			\
+			pde_data(inode));			\
 }								\
-static const struct file_operations name ## _proc_fops = {	\
-	.owner		= THIS_MODULE,				\
-	.open		= name ## _proc_open,			\
-	.read		= seq_read,				\
-	.llseek		= seq_lseek,				\
-	.release	= single_release,			\
+static const struct proc_ops name ## _proc_fops = {	\
+	.proc_open		= name ## _proc_open,			\
+	.proc_read		= seq_read,				\
+	.proc_lseek		= seq_lseek,				\
+	.proc_release	= single_release,			\
 }
 #endif /* PROC_FOPS_RO */
 
@@ -60,6 +58,16 @@ struct slbc_config {
 	unsigned int cache_mode;
 };
 
+struct mtk_slbc {
+	struct device *dev;
+	void __iomem *regs;
+	unsigned int regsize;
+	void __iomem *sram_vaddr;
+	struct slbc_config *config;
+	struct wakeup_source *ws;
+	int slbc_qos_latency;
+};
+
 #define SLBC_ENTRY(id, sid, max, fix, p, extra, res, cache)	\
 {								\
 	.uid = id,						\
@@ -72,7 +80,44 @@ struct slbc_config {
 	.cache_mode = cache,					\
 }
 
-extern int slbc_activate(struct slbc_data *data);
-extern int slbc_deactivate(struct slbc_data *data);
+struct slbc_common_ops {
+	int (*slbc_status)(struct slbc_data *d);
+	int (*slbc_request)(struct slbc_data *d);
+	int (*slbc_release)(struct slbc_data *d);
+	int (*slbc_power_on)(struct slbc_data *d);
+	int (*slbc_power_off)(struct slbc_data *d);
+	int (*slbc_secure_on)(struct slbc_data *d);
+	int (*slbc_secure_off)(struct slbc_data *d);
+	int (*slbc_register_activate_ops)(struct slbc_ops *ops);
+	int (*slbc_activate_status)(struct slbc_data *d);
+	u32 (*slbc_sram_read)(u32 offset);
+	void (*slbc_sram_write)(u32 offset, u32 val);
+	void (*slbc_update_mm_bw)(unsigned int bw);
+	void (*slbc_update_mic_num)(unsigned int num);
+	int (*slbc_gid_val)(enum slc_ach_uid uid);
+	int (*slbc_gid_request)(enum slc_ach_uid uid, int *gid, struct slbc_gid_data *data);
+	int (*slbc_gid_release)(enum slc_ach_uid uid, int gid);
+	int (*slbc_roi_update)(enum slc_ach_uid uid, int gid, struct slbc_gid_data *data);
+	int (*slbc_validate)(enum slc_ach_uid uid, int gid);
+	int (*slbc_invalidate)(enum slc_ach_uid uid, int gid);
+	int (*slbc_read_invalidate)(enum slc_ach_uid uid, int gid, int enable);
+	int (*slbc_force_cache)(enum slc_ach_uid uid, unsigned int size);
+	int (*slbc_force_cache_ratio)(enum slc_ach_uid uid, unsigned int ratio);
+	int (*slbc_ceil)(enum slc_ach_uid uid, unsigned int ceil);
+	int (*slbc_total_ceil)(unsigned int ceil);
+	int (*slbc_window)(unsigned int window);
+	int (*slbc_cg_priority)(bool gpu_first);
+	int (*slbc_disable_dcc)(bool disable);
+	int (*slbc_disable_slc)(bool disable);
+	int (*slbc_get_cache_size)(enum slc_ach_uid uid);
+	int (*slbc_get_cache_hit_rate)(enum slc_ach_uid uid);
+	int (*slbc_get_cache_hit_bw)(enum slc_ach_uid uid);
+	int (*slbc_get_cache_usage)(int *cpu, int *gpu, int *other);
+};
+
+extern u32 slbc_sram_read(u32 offset);
+extern void slbc_sram_write(u32 offset, u32 val);
+extern void slbc_register_common_ops(struct slbc_common_ops *ops);
+extern void slbc_unregister_common_ops(struct slbc_common_ops *ops);
 
 #endif /* _SLBC_H_ */

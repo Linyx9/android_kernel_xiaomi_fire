@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
+ * vow.h  --  VoW platform driver definition
+ *
  * Copyright (c) 2020 MediaTek Inc.
+ * Author: Michael Hsiao <michael.hsiao@mediatek.com>
  */
 
 #ifndef __VOW_H__
@@ -17,18 +20,20 @@
 #define DEBUG_VOWDRV 1
 
 #if DEBUG_VOWDRV
-#define VOWDRV_DEBUG(format, args...) pr_debug(format, ##args)
+#define VOWDRV_DEBUG(format, args...) pr_info(format, ##args)
 #else
 #define VOWDRV_DEBUG(format, args...)
 #endif
 
-#ifdef CONFIG_MTK_VOW_GVA_SUPPORT
+#define DEBUG_IPI_RX 0
+
+#if IS_ENABLED(CONFIG_MTK_VOW_GVA_SUPPORT)
 #define VOW_GOOGLE_MODEL 1
 #else
 #define VOW_GOOGLE_MODEL 0
 #endif
 
-#ifdef CONFIG_MTK_VOW_AMAZON_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_VOW_AMAZON_SUPPORT)
 #define VOW_AMAZON_MODEL 1
 #else
 #define VOW_AMAZON_MODEL 0
@@ -36,71 +41,74 @@
 
 #define VOW_DEVNAME                    "vow"
 #define VOW_IOC_MAGIC                  'V'
-#define VOW_PRE_LEARN_MODE             1
+#define VOW_PRE_LEARN_MODE             (1)
 
-#define MAX_VOW_SPEAKER_MODEL          2
+#define MAX_VOW_SPEAKER_MODEL          (2)
 
-#define VOW_WAITCHECK_INTERVAL_MS      2
-#define MAX_VOW_INFO_LEN               7
-#define VOW_VOICE_RECORD_THRESHOLD     2560 /* 80ms */
-#define VOW_VOICE_RECORD_BIG_THRESHOLD 8320 /* 260ms */
-#define VOW_IPI_SEND_CNT_TIMEOUT       50 /* 50 loop */
-/* UBM_V1:0xA000, UBM_V2:0xDC00, UBM_V3: 2*0x11000 */
-#define VOW_MODEL_SIZE_THRES           0x2800
-#define VOW_MODEL_SIZE                 0x11000
+#define VOW_WAITCHECK_INTERVAL_MS      (2)
+#define MAX_VOW_INFO_LEN               (7)
+#define VOW_VOICE_RECORD_THRESHOLD     (1280) /* 40ms */
+#define VOW_VOICE_RECORD_BIG_THRESHOLD (8320) /* 260ms */
+#define VOW_IPI_SEND_CNT_TIMEOUT       (50) /* 50 loop */
+/* UBM_V1:0xA000, UBM_V2:0xDC00, UBM_V3: 2*0x11000, UBM_V4: 2*0x16800  */
+#define VOW_MODEL_SIZE_THRES           (0x2800)
+#define VOW_MODEL_SIZE                 (0x16800)
 #define VOW_VOICEDATA_OFFSET           (VOW_MODEL_SIZE * MAX_VOW_SPEAKER_MODEL)
-#define VOW_VOICEDATA_SIZE             0x12500 /* 74880, need over 2.3sec */
+#define VOW_VOICEDATA_SIZE             (0x12C00) /* 74880 + 6*320, need over 2.3sec */
+#define VOW_NORMAL_REC_SIZE            (0x12480) /* 2.3sec(74880B) can be divided by 320byte */
 /* IPI return value definition */
-#define WORD_H                         16
-#define WORD_L                         0
-#define WORD_H_MASK                    0xFFFF0000
-#define WORD_L_MASK                    0x0000FFFF
+#define WORD_H                         (16)
+#define WORD_L                         (0)
+#define WORD_H_MASK                    (0xFFFF0000)
+#define WORD_L_MASK                    (0x0000FFFF)
 /* multiplier of cycle to ns in 13m clock */
-#define CYCLE_TO_NS                    77
-#define VOW_STOP_DUMP_WAIT             50
-#define FRAME_BUF_SIZE                 8192
-#define RESERVED_DATA                  4
-#define VOW_RECOVERY_WAIT              100
+#define CYCLE_TO_NS                    (77)
+#define VOW_STOP_DUMP_WAIT             (50)
+#define FRAME_BUF_SIZE                 (8192)
+#define RESERVED_DATA                  (4)
+#define VOW_RECOVERY_WAIT              (100)
 
-#define VOW_MAX_MIC_NUM	(2)
+#define VOW_MAX_MIC_NUM                (2)
+#define VOW_MAX_ECHO_NUM               (2)
+#define VOW_MAX_VFFP_OUTPUT_CH         (2)
+#define VOW_DEFAULT_SPEAKER_NUM        (1)
 
 /* length limitation sync by audio hal */
-#if defined DUAL_CH_TRANSFER
-#define VOW_VBUF_LENGTH      (0x12E80 * VOW_MAX_MIC_NUM)  /* (0x12480 + 0x0A00) * 2 */
-#else
-#define VOW_VBUF_LENGTH      (0x12E80)  /* 0x12480 + 0x0A00 */
-#endif
+#define VOW_VBUF_LENGTH                (0x12E80)  /* 0x12480 + 0x0A00 */
 
 #define VOW_FRM_LEN                    (160)
-#define RECOG_DUMP_SMPL_CNT            (VOW_FRM_LEN * 16)
-#define RECOG_DUMP_BYTE_CNT            (RECOG_DUMP_SMPL_CNT * sizeof(short))
-#define RECOG_DUMP_TOTAL_BYTE_CNT      (RECOG_DUMP_BYTE_CNT * VOW_MAX_MIC_NUM)
-#define VFFP_DUMP_SMPL_CNT             (VOW_FRM_LEN * 16)
-#define VFFP_DUMP_BYTE_CNT             (VFFP_DUMP_SMPL_CNT * sizeof(short))
-#define VFFP_DUMP_TOTAL_BYTE_CNT       (VFFP_DUMP_BYTE_CNT * 2)  /* 2 = 2ch */
+#define AECOUT_DUMP_SMPL_CNT           (VOW_FRM_LEN * 16)
+#define AECOUT_DUMP_BYTE_CNT           (AECOUT_DUMP_SMPL_CNT * sizeof(short))
+#define AECOUT_DUMP_TOTAL_BYTE_CNT     (AECOUT_DUMP_BYTE_CNT * VOW_MAX_MIC_NUM)
+#define VFFPIN_DUMP_SMPL_CNT           (VOW_FRM_LEN * 50)
+#define VFFPIN_DUMP_BYTE_CNT           (VFFPIN_DUMP_SMPL_CNT * sizeof(short))
+#define VFFPIN_DUMP_TOTAL_BYTE_CNT     (VFFPIN_DUMP_BYTE_CNT * VOW_MAX_MIC_NUM)
+#define VFFPOUT_DUMP_SMPL_CNT          (VOW_FRM_LEN * 50)
+#define VFFPOUT_DUMP_BYTE_CNT          (VFFPOUT_DUMP_SMPL_CNT * sizeof(short))
+#define VFFPOUT_DUMP_TOTAL_BYTE_CNT    (VFFPOUT_DUMP_BYTE_CNT * VOW_MAX_VFFP_OUTPUT_CH)
 #define BARGEIN_DUMP_SMPL_CNT_MIC      (VOW_FRM_LEN * 16)
 #define BARGEIN_DUMP_BYTE_CNT_MIC      (BARGEIN_DUMP_SMPL_CNT_MIC * sizeof(short))
+#define BARGEIN_DUMP_TOTAL_BYTE_CNT_MIC (BARGEIN_DUMP_BYTE_CNT_MIC * VOW_MAX_MIC_NUM)
 #define BARGEIN_DUMP_SMPL_CNT_ECHO     (VOW_FRM_LEN * 16)
-#define BARGEIN_DUMP_BYTE_CNT_ECHO     (BARGEIN_DUMP_SMPL_CNT_ECHO * sizeof(short) * \
-					VOW_MAX_MIC_NUM)  /* dump size align with mic */
-#define BARGEIN_DUMP_TOTAL_BYTE_CNT    (BARGEIN_DUMP_BYTE_CNT_MIC * VOW_MAX_MIC_NUM + \
-					BARGEIN_DUMP_BYTE_CNT_ECHO)
+#define BARGEIN_DUMP_BYTE_CNT_ECHO     (BARGEIN_DUMP_SMPL_CNT_ECHO * sizeof(short))
+#define BARGEIN_DUMP_TOTAL_BYTE_CNT_ECHO (BARGEIN_DUMP_BYTE_CNT_ECHO * VOW_MAX_ECHO_NUM)
 #define VOW_MAX_CH_NUM                 (2)   /* used in dump interleaving */
-#define VOW_PCM_DUMP_BYTE_SIZE         0xA00 /* 320 * 8 */
+#define VOW_MAX_SCP_DMIC_CH_NUM        (3)
+
 #define VOW_EXTRA_DATA_SIZE            0x100 /* 256 */
 #define VOW_CUSTOM_MODEL_SIZE          0x2800 // 10KB = 0x2800
 #define VOW_MAX_CUST_MODEL_SIZE        (3000)
 
 #define VOW_ENGINE_INFO_LENGTH_BYTE    64
 
-#if defined DUAL_CH_TRANSFER
-#define VOW_RECOGDATA_OFFSET          (VOW_VOICEDATA_OFFSET + VOW_MAX_MIC_NUM * VOW_VOICEDATA_SIZE)
-#else
-#define VOW_RECOGDATA_OFFSET          (VOW_VOICEDATA_OFFSET + VOW_VOICEDATA_SIZE)
-#endif
-#define VOW_VFFPDATA_OFFSET           (VOW_RECOGDATA_OFFSET + RECOG_DUMP_TOTAL_BYTE_CNT)
-#define VOW_EXTRA_DATA_OFFSET         (VOW_VFFPDATA_OFFSET + VFFP_DUMP_TOTAL_BYTE_CNT)
-#define VOW_CUSTOM_MODEL_OFFSET       (VOW_EXTRA_DATA_OFFSET + VOW_EXTRA_DATA_SIZE)
+#define VOW_AECOUTDATA_OFFSET          (VOW_VOICEDATA_OFFSET + VOW_MAX_MIC_NUM * VOW_VOICEDATA_SIZE)
+#define VOW_VFFPOUTDATA_OFFSET         (VOW_AECOUTDATA_OFFSET + AECOUT_DUMP_TOTAL_BYTE_CNT)
+#define VOW_VFFPINDATA_OFFSET          (VOW_VFFPOUTDATA_OFFSET + VFFPOUT_DUMP_TOTAL_BYTE_CNT)
+#define VOW_EXTRA_DATA_OFFSET          (VOW_VFFPINDATA_OFFSET + VFFPIN_DUMP_TOTAL_BYTE_CNT)
+#define VOW_CUSTOM_MODEL_OFFSET        (VOW_EXTRA_DATA_OFFSET + VOW_EXTRA_DATA_SIZE)
+#define VOW_PAYLOADDUMP_OFFSET         (VOW_CUSTOM_MODEL_OFFSET + (((VOW_MAX_CUST_MODEL_SIZE >> 8) + 1) << 8))
+#define VOW_PAYLOADDUMP_R_OFFSET       (VOW_PAYLOADDUMP_OFFSET + VOW_VOICEDATA_SIZE)
+#define VOW_DRAM_REGION_END_OFFSET     (VOW_PAYLOADDUMP_R_OFFSET + VOW_VOICEDATA_SIZE)
 
 /* below is control message */
 #define VOW_SET_CONTROL               _IOW(VOW_IOC_MAGIC, 0x03, unsigned int)
@@ -120,42 +128,35 @@
 #define VOW_SET_DSP_AEC_PARAMETER     _IOW(VOW_IOC_MAGIC, 0x14, unsigned int)
 #define VOW_SET_PAYLOADDUMP_INFO      _IOW(VOW_IOC_MAGIC, 0x16, unsigned int)
 #define VOW_READ_VOICE_DATA           _IOW(VOW_IOC_MAGIC, 0x17, unsigned int)
-#define VOW_READ_VOW_DUMP_DATA        _IOW(VOW_IOC_MAGIC, 0x18, unsigned int)
+#define VOW_SET_VOW_DUMP_DATA         _IOW(VOW_IOC_MAGIC, 0x18, unsigned int)
+#define VOW_GET_SCP_RECOVER_STATUS    _IOW(VOW_IOC_MAGIC, 0x19, unsigned int)
+#define VOW_SET_VOW_DUAL_CH_TRANSFER  _IOW(VOW_IOC_MAGIC, 0x1A, unsigned int)
+#define VOW_NOTIFY_CHRE_STATUS        _IOW(VOW_IOC_MAGIC, 0x1B, unsigned int)
+#define VOW_SET_VOW_DELAY_WAKEUP      _IOW(VOW_IOC_MAGIC, 0x1C, unsigned int)
+#define VOW_SET_VOW_PAYLOAD_CALLBACK  _IOW(VOW_IOC_MAGIC, 0x1D, unsigned int)
 
 #ifdef VOW_ECHO_SW_SRC
-#define VOW_BARGEIN_AFE_MEMIF_SIZE    0x1E00
+#define VOW_BARGEIN_AFE_MEMIF_SIZE        (0x1E00)
 #else
-#define VOW_BARGEIN_AFE_MEMIF_SIZE    0xA00
+#define VOW_BARGEIN_AFE_MEMIF_SIZE        (0xA00)
 #endif
-#define VOW_BARGEIN_IRQ_MAX_NUM       32
+#define VOW_BARGEIN_AFE_MEMIF_MAX_SIZE    (0x2000)
 
-#define KERNEL_VOW_DRV_VER              "2.1.0"
-#define DEFAULT_GOOGLE_ENGINE_VER       2147483647
+#define VOW_BARGEIN_IRQ_MAX_NUM           (32)
 
-struct dump_package_t {
-	uint32_t dump_data_type;
-	uint32_t mic_offset;
-	uint32_t mic_data_size;
-	uint32_t recog_data_offset;
-	uint32_t recog_data_size;
-	uint32_t mic_offset_R;
-	uint32_t mic_data_size_R;
-	uint32_t recog_data_offset_R;
-	uint32_t recog_data_size_R;
-	uint32_t echo_offset;
-	uint32_t echo_data_size;
-	uint32_t vffp_data_offset_1st_ch;
-	uint32_t vffp_data_size_1st_ch;
-	uint32_t vffp_data_offset_2nd_ch;
-	uint32_t vffp_data_size_2nd_ch;
-};
+#define KERNEL_VOW_DRV_VER                "3.0.0"
+#define DEFAULT_GOOGLE_ENGINE_VER         (1235201314)  /* set meaningless default value */
+#define MAGIC_PROVIDER_NUMBER             (0xABCD)      /* set meaningless default value */
+#define MAGIC_IOCTL_NUMBER                (0xDEADBEEF)  /* set meaningless default value */
+
+#define REC_QUEUE_NUM                     (10)
 
 enum { /* dump_data_t */
-	DUMP_RECOG = 0,
-	DUMP_VFFP,
+	DUMP_AECOUT = 0,
+	DUMP_VFFPOUT,
 	DUMP_BARGEIN,
 	DUMP_INPUT,
-	DUMP_DELAY_INFO,
+	DUMP_VFFPIN,
 	NUM_DUMP_DATA,
 };
 
@@ -165,24 +166,27 @@ enum { /* dump_data_t */
  *****************************************************************************/
 enum vow_control_cmd_t {
 	VOWControlCmd_Init = 0,
-	VOWControlCmd_EnableDebug,
-	VOWControlCmd_DisableDebug,
+	VOWControlCmd_EnableHotword,
+	VOWControlCmd_DisableHotword,
 	VOWControlCmd_EnableSeamlessRecord,
 	VOWControlCmd_EnableDump,
 	VOWControlCmd_DisableDump,
+	VOWControlCmd_GetDump,
 	VOWControlCmd_Reset,
 	VOWControlCmd_Mic_Single,
 	VOWControlCmd_Mic_Dual,
+	VOWControlCmd_Speaker_Single,
+	VOWControlCmd_Speaker_Dual
 };
 
 enum vow_ipi_msgid_t {
 	IPIMSG_VOW_ENABLE = 0,
 	IPIMSG_VOW_DISABLE = 1,
 	IPIMSG_VOW_SETMODE = 2,
-	IPIMSG_VOW_APREGDATA_ADDR = 3,
+	IPIMSG_VOW_APINIT = 3,
 	IPIMSG_VOW_SET_MODEL = 4,
 	IPIMSG_VOW_SET_FLAG = 5,
-	IPIMSG_VOW_SET_SMART_DEVICE = 6,
+	//IPIMSG_VOW_SET_SMART_DEVICE = 6,
 	IPIMSG_VOW_SET_BARGEIN_ON = 10,
 	IPIMSG_VOW_SET_BARGEIN_OFF = 11,
 	IPIMSG_VOW_PCM_DUMP_ON = 12,
@@ -198,7 +202,12 @@ enum vow_ipi_msgid_t {
 	IPIMSG_VOW_ALEXA_ENGINE_VER = 25,
 	IPIMSG_VOW_GOOGLE_ENGINE_VER = 26,
 	IPIMSG_VOW_GOOGLE_ARCH = 27,
-	IPIMSG_VOW_SET_CUSTOM_MODEL = 28
+	IPIMSG_VOW_SET_CUSTOM_MODEL = 28,
+	IPIMSG_VOW_HAL_REBOOT = 29,
+	//IPIMSG_VOW_FLUSH = 30,
+	IPIMSG_VOW_SCP_BARGE_IN_RESUME = 31,
+	/*------ sound_soc-vow-kernel ------*/
+	IPIMSG_VOW_PCM_HWFREE = 100
 };
 
 enum vow_eint_status_t {
@@ -212,15 +221,18 @@ enum vow_eint_status_t {
 enum vow_flag_type_t {
 	VOW_FLAG_DEBUG = 0,
 	VOW_FLAG_PRE_LEARN,
-	VOW_FLAG_DMIC_LOWPOWER,
 	VOW_FLAG_PERIODIC_ENABLE,
 	VOW_FLAG_FORCE_PHASE1_DEBUG,
 	VOW_FLAG_FORCE_PHASE2_DEBUG,
 	VOW_FLAG_SWIP_LOG_PRINT,
-	VOW_FLAG_MTKIF_TYPE,
+	VOW_FLAG_PROVIDER_TYPE,
 	VOW_FLAG_SEAMLESS,
 	VOW_FLAG_DUAL_MIC_SWITCH,
 	VOW_FLAG_MCPS,
+	VOW_FLAG_SPEAKER_NUMBER,
+	VOW_FLAG_CHRE_STATUS,
+	VOW_FLAG_WAKEUP_DELAY_TIME,
+	VOW_FLAG_PAYLOADDUMP_CB_TYPE,
 	NUM_OF_VOW_FLAG_TYPE
 };
 
@@ -250,12 +262,13 @@ enum vow_model_type_t {
 	VOW_MODEL_CLEAR = 4
 };
 
-enum vow_mtkif_type_t {
-	VOW_MTKIF_NONE = 0,
-	VOW_MTKIF_AMIC = 1,
-	VOW_MTKIF_DMIC = 2,
-	VOW_MTKIF_DMIC_LP = 3,
-	VOW_MTKIF_MAX
+enum vow_provider_t {
+	VOW_PROVIDER_NONE = 0,
+	VOW_PROVIDER_SCP_FIFO = 1,
+	VOW_PROVIDER_STANDALONE_CODEC = 2,
+	VOW_PROVIDER_VIRTUAL = 3,
+	VOW_PROVIDER_SCP_DMIC_FIFO = 4,
+	VOW_PROVIDER_MAX
 };
 
 enum vow_channel_t {
@@ -287,6 +300,25 @@ enum {
 	VOW_ENABLE_SINGLE_REF_MIC = 0
 };
 
+enum {
+	VOW_SCP_EVENT_NONE = 0,
+	VOW_SCP_EVENT_STOP = 5,
+	VOW_SCP_EVENT_READY = 6
+};
+
+enum chre_status_t {
+	CHRE_DO_NOTHING = 0,
+	CHRE_CLOSE = 1,
+	CHRE_OPEN = 2
+};
+
+enum vow_payloaddump_setting_t {
+	PAYLOADDUMP_OFF = 0,
+	PAYLOADDUMP_1ST_STAGE = 1,
+	PAYLOADDUMP_2ND_STAGE = 2,
+	PAYLOADDUMP_MAX_NUM
+};
+
 /*****************************************************************************
  * VOW Structure Define
  *****************************************************************************/
@@ -303,8 +335,12 @@ struct vow_eint_data_struct_t {
 	char data[RESERVED_DATA];    /* reserved for future extension */
 };
 
+struct vow_rec_queue_info_t {
+	unsigned int rec_buf_offset;
+	unsigned int rec_buf_length;
+};
 
-#ifdef CONFIG_COMPAT
+#if IS_ENABLED(CONFIG_COMPAT)
 
 struct vow_speaker_model_t {
 	void *model_ptr;
@@ -374,7 +410,25 @@ struct vow_payloaddump_info_kernel_t {
 	compat_size_t max_payloaddump_size;
 };
 
-#else  /* #ifdef CONFIG_COMPAT */
+struct vow_scp_recover_info_t {
+	long return_event_addr;
+};
+
+struct vow_scp_recover_info_kernel_t {
+	compat_size_t return_event_addr;
+};
+
+struct vow_ioctl_arg_info_t {
+  long magic_number;
+  long return_data;
+};
+
+struct vow_ioctl_arg_info_kernel_t {
+  compat_size_t magic_number;
+  compat_size_t return_data;
+};
+
+#else  /* #if IS_ENABLED(CONFIG_COMPAT) */
 
 struct vow_speaker_model_t {
 	void *model_ptr;
@@ -416,29 +470,39 @@ struct vow_payloaddump_info_t {
 	long max_payloaddump_size;
 };
 
-#endif  /* #ifdef CONFIG_COMPAT */
+struct vow_scp_recover_info_t {
+	long return_event_addr;
+};
+
+struct vow_ioctl_arg_info_t {
+  long magic_number;
+  long return_data;
+};
+
+#endif  /* #if IS_ENABLED(CONFIG_COMPAT) */
 
 enum ipi_type_flag_t {
 	RECOG_OK_IDX = 0,
 	DEBUG_DUMP_IDX = 1,
-	RECOG_DUMP_IDX = 2,
-	BARGEIN_DUMP_INFO_IDX = 3,
+	AECOUT_DUMP_IDX = 2,
+	VFFPIN_DUMP_IDX = 3,
 	BARGEIN_DUMP_IDX = 4,
 	INPUT_DUMP_IDX = 5,
-	VFFP_DUMP_IDX = 6
+	VFFPOUT_DUMP_IDX = 6
 };
 
 #define RECOG_OK_IDX_MASK           (0x01 << RECOG_OK_IDX)
 #define DEBUG_DUMP_IDX_MASK         (0x01 << DEBUG_DUMP_IDX)
-#define RECOG_DUMP_IDX_MASK         (0x01 << RECOG_DUMP_IDX)
-#define BARGEIN_DUMP_INFO_IDX_MASK  (0x01 << BARGEIN_DUMP_INFO_IDX)
+#define AECOUT_DUMP_IDX_MASK        (0x01 << AECOUT_DUMP_IDX)
+#define VFFPIN_DUMP_IDX_MASK        (0x01 << VFFPIN_DUMP_IDX)
 #define BARGEIN_DUMP_IDX_MASK       (0x01 << BARGEIN_DUMP_IDX)
 #define INPUT_DUMP_IDX_MASK         (0x01 << INPUT_DUMP_IDX)
-#define VFFP_DUMP_IDX_MASK          (0x01 << VFFP_DUMP_IDX)
-#define SCP_DUMP_DATA_MASK	(RECOG_DUMP_IDX_MASK + \
-							BARGEIN_DUMP_INFO_IDX_MASK + \
-							BARGEIN_DUMP_IDX_MASK + \
-							INPUT_DUMP_IDX_MASK + VFFP_DUMP_IDX_MASK)
+#define VFFPOUT_DUMP_IDX_MASK       (0x01 << VFFPOUT_DUMP_IDX)
+#define SCP_DUMP_DATA_MASK	    (AECOUT_DUMP_IDX_MASK + \
+				     VFFPIN_DUMP_IDX_MASK + \
+				     BARGEIN_DUMP_IDX_MASK + \
+				     INPUT_DUMP_IDX_MASK + \
+				     VFFPOUT_DUMP_IDX_MASK)
 
 struct vow_ipi_combined_info_t {
 	unsigned short ipi_type_flag;
@@ -452,8 +516,9 @@ struct vow_ipi_combined_info_t {
 	unsigned int voice_buf_offset;
 	unsigned int voice_length;
 	/* IPIMSG_VOW_BARGEIN_DUMP_INFO */
-	unsigned int dump_frm_cnt;
-	unsigned int voice_sample_delay;
+	unsigned int vffpin_dump_size;
+	unsigned int vffpin_dump_offset;
+	unsigned int vffpin_dump_offset_R;
 	/* IPIMSG_VOW_BARGEIN_PCMDUMP_OK */
 	unsigned int mic_dump_size;
 	unsigned int mic_offset;
@@ -461,14 +526,15 @@ struct vow_ipi_combined_info_t {
 	unsigned int mic_offset_R;
 	unsigned int echo_dump_size;
 	unsigned int echo_offset;
-	unsigned int recog_dump_size;
-	unsigned int recog_dump_offset;
-//	unsigned int recog_dump_size_R;
-	unsigned int recog_dump_offset_R;
+	unsigned int echo_offset_R;
+	unsigned int aecout_dump_size;
+	unsigned int aecout_dump_offset;
+//	unsigned int aecout_dump_size_R;
+	unsigned int aecout_dump_offset_R;
 	unsigned int payloaddump_len;
-	unsigned int vffp_dump_size;
-	unsigned int vffp_dump_offset;
-	unsigned int vffp_dump_offset_2nd_ch;
+	unsigned int vffpout_dump_size;
+	unsigned int vffpout_dump_offset;
+	unsigned int vffpout_dump_offset_2nd_ch;
 };
 
 

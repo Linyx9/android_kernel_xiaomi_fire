@@ -1,0 +1,14 @@
+/*
+ * this is the dtsi sample for Z350.
+ * update date:2024.04.15
+ */
+
+z350: z350@35 {
+	compatible = "injoinic,z350";
+	reg = <0x35>;
+	z350,reset_gpio = <&pio 92 IRQ_TYPE_EDGE_RISING>;
+	z350,irq_gpio = <&pio 94 IRQ_TYPE_EDGE_FALLING>;
+	z350,qc3-vset-mv = <9000>;
+	interrupt-names = "z350_irq";
+	status = "okay";
+};

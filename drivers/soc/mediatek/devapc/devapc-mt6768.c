@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2019 MediaTek Inc.
+ * Copyright (C) 2021 MediaTek Inc.
  */
 
+#include <linux/bug.h>
 #include <linux/module.h>
-#include <linux/proc_fs.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <linux/bug.h>
-#include "devapc-mtk-common.h"
+#include <linux/proc_fs.h>
 #include "devapc-mt6768.h"
+#include "devapc-mtk-common.h"
 
 static struct mtk_device_info mt6768_infra_devices[] = {
 /* slave type,       config_idx, device name                enable_vio_irq */
@@ -627,19 +627,18 @@ EXPORT_SYMBOL(devapc_catch_illegal_range);
 static ssize_t mt6768_devapc_dbg_read(struct file *file, char __user *buffer,
 	size_t count, loff_t *ppos)
 {
-	return mtk_devapc_dbg_read(file, buffer, count, ppos);
+	return mtk_devapc_dbg_read_v1(file, buffer, count, ppos);
 }
 
 static ssize_t mt6768_devapc_dbg_write(struct file *file,
 	const char __user *buffer, size_t count, loff_t *data)
 {
-	return mtk_devapc_dbg_write(file, buffer, count, data);
+	return mtk_devapc_dbg_write_v1(file, buffer, count, data);
 }
 
-static const struct file_operations devapc_dbg_fops = {
-	.owner = THIS_MODULE,
-	.write = mt6768_devapc_dbg_write,
-	.read = mt6768_devapc_dbg_read,
+static const struct proc_ops devapc_dbg_fops = {
+	.proc_write = mt6768_devapc_dbg_write,
+	.proc_read = mt6768_devapc_dbg_read,
 };
 
 static struct mtk_devapc_dbg_status mt6768_devapc_dbg_stat = {
@@ -711,12 +710,12 @@ static int mt6768_devapc_probe(struct platform_device *pdev)
 {
 	proc_create("devapc_dbg", 0664, NULL, &devapc_dbg_fops);
 
-	return mtk_devapc_probe(pdev, &mt6768_data);
+	return mtk_devapc_probe_v1(pdev, &mt6768_data);
 }
 
 static int mt6768_devapc_remove(struct platform_device *dev)
 {
-	return mtk_devapc_remove(dev);
+	return mtk_devapc_remove_v1(dev);
 }
 
 static struct platform_driver mt6768_devapc_driver = {

@@ -1,0 +1,32 @@
+ifdef CONFIG_OEM_LAMU_TOUCHSCREEN
+	TP_OBJS += ilitek_v3.o
+	TP_OBJS += ilitek_v3_spi.o
+	TP_OBJS += ilitek_v3_mtk.o
+	TP_OBJS += ilitek_v3_hostdl.o
+	TP_OBJS += ilitek_v3_ic.o
+	TP_OBJS += ilitek_v3_touch.o
+	TP_OBJS += ilitek_v3_mp.o
+	TP_OBJS += ilitek_v3_node.o
+	TP_OBJS += ilitek_v3_touch.o
+	TP_OBJS += ilitek_ts_log_capture.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_TOUCHSCREEN) += tp_ilitek.o
+
+ifdef CONFIG_OEM_TOUCHSCREEN
+	TP_OBJS += ilitek_v3.o
+	TP_OBJS += ilitek_v3_spi.o
+	TP_OBJS += ilitek_v3_mtk.o
+	TP_OBJS += ilitek_v3_hostdl.o
+	TP_OBJS += ilitek_v3_ic.o
+	TP_OBJS += ilitek_v3_touch.o
+	TP_OBJS += ilitek_v3_mp.o
+	TP_OBJS += ilitek_v3_node.o
+	TP_OBJS += ilitek_v3_touch.o
+	TP_OBJS += ilitek_ts_log_capture.o
+endif
+obj-$(CONFIG_OEM_TOUCHSCREEN) += tp_ilitek.o
+
+
+tp_ilitek-y := $(TP_OBJS)
+

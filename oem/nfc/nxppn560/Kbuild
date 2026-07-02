@@ -1,0 +1,17 @@
+#obj-$(CONFIG_NXP_NFC_I2C) := pn553_i2c.o
+
+#pn553_i2c-y := common.o \
+#              common_ese.o \
+#               i2c_drv.o
+
+#include $(srctree)/oem/config.conf
+
+ifdef CONFIG_NXP_NFC_I2C
+	NFC_OBJS += common.o
+	NFC_OBJS += common_ese.o
+	NFC_OBJS += i2c_drv.o
+endif
+
+obj-$(CONFIG_NXP_NFC_I2C) += pn553_i2c.o
+pn553_i2c-y := $(NFC_OBJS)
+

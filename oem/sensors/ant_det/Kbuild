@@ -1,0 +1,6 @@
+ifdef CONFIG_OEM_ANT_DET
+	ANT_DET_OBJS += ant_det.o
+endif
+
+obj-$(CONFIG_OEM_ANT_DET) += oem_antdet.o
+oem_antdet-y := $(ANT_DET_OBJS)

@@ -39,7 +39,7 @@ int adapter_dev_get_property(struct adapter_device *adapter_dev,
 	    adapter_dev->ops->get_property)
 		return adapter_dev->ops->get_property(adapter_dev, sta);
 
-	return -ENOTSUPP;
+	return -EOPNOTSUPP;
 }
 EXPORT_SYMBOL(adapter_dev_get_property);
 
@@ -50,7 +50,7 @@ int adapter_dev_get_status(struct adapter_device *adapter_dev,
 	    adapter_dev->ops->get_status)
 		return adapter_dev->ops->get_status(adapter_dev, sta);
 
-	return -ENOTSUPP;
+	return -EOPNOTSUPP;
 }
 EXPORT_SYMBOL(adapter_dev_get_status);
 
@@ -60,7 +60,7 @@ int adapter_dev_get_output(struct adapter_device *adapter_dev, int *mV, int *mA)
 	    adapter_dev->ops->get_output)
 		return adapter_dev->ops->get_output(adapter_dev, mV, mA);
 
-	return -ENOTSUPP;
+	return -EOPNOTSUPP;
 }
 EXPORT_SYMBOL(adapter_dev_get_output);
 
@@ -72,7 +72,7 @@ int adapter_dev_set_cap(struct adapter_device *adapter_dev,
 	    adapter_dev->ops->set_cap)
 		return adapter_dev->ops->set_cap(adapter_dev, type, mV, mA);
 
-	return -ENOTSUPP;
+	return -EOPNOTSUPP;
 }
 EXPORT_SYMBOL(adapter_dev_set_cap);
 
@@ -85,9 +85,80 @@ int adapter_dev_get_cap(struct adapter_device *adapter_dev,
 		adapter_dev->ops->get_cap)
 		return adapter_dev->ops->get_cap(adapter_dev, type, cap);
 
-	return -ENOTSUPP;
+	return -EOPNOTSUPP;
 }
 EXPORT_SYMBOL(adapter_dev_get_cap);
+
+int adapter_dev_authentication(struct adapter_device *adapter_dev,
+			       struct adapter_auth_data *data)
+{
+	if (adapter_dev != NULL && adapter_dev->ops != NULL &&
+	    adapter_dev->ops->authentication)
+		return adapter_dev->ops->authentication(adapter_dev, data);
+
+	return -EOPNOTSUPP;
+}
+EXPORT_SYMBOL(adapter_dev_authentication);
+
+int adapter_dev_is_cc(struct adapter_device *adapter_dev, bool *cc)
+{
+	if (adapter_dev != NULL && adapter_dev->ops != NULL &&
+	    adapter_dev->ops->is_cc)
+		return adapter_dev->ops->is_cc(adapter_dev, cc);
+
+	return -EOPNOTSUPP;
+}
+EXPORT_SYMBOL(adapter_dev_is_cc);
+
+int adapter_dev_set_wdt(struct adapter_device *adapter_dev, u32 ms)
+{
+	if (adapter_dev != NULL && adapter_dev->ops != NULL &&
+	    adapter_dev->ops->set_wdt)
+		return adapter_dev->ops->set_wdt(adapter_dev, ms);
+
+	return -EOPNOTSUPP;
+}
+EXPORT_SYMBOL(adapter_dev_set_wdt);
+
+int adapter_dev_enable_wdt(struct adapter_device *adapter_dev, bool en)
+{
+	if (adapter_dev != NULL && adapter_dev->ops != NULL &&
+	    adapter_dev->ops->enable_wdt)
+		return adapter_dev->ops->enable_wdt(adapter_dev, en);
+
+	return -EOPNOTSUPP;
+}
+EXPORT_SYMBOL(adapter_dev_enable_wdt);
+
+int adapter_dev_sync_volt(struct adapter_device *adapter_dev, u32 mV)
+{
+	if (adapter_dev != NULL && adapter_dev->ops != NULL &&
+	    adapter_dev->ops->sync_volt)
+		return adapter_dev->ops->sync_volt(adapter_dev, mV);
+
+	return -EOPNOTSUPP;
+}
+EXPORT_SYMBOL(adapter_dev_sync_volt);
+
+int adapter_dev_send_hardreset(struct adapter_device *adapter_dev)
+{
+	if (adapter_dev != NULL && adapter_dev->ops != NULL &&
+	    adapter_dev->ops->send_hardreset)
+		return adapter_dev->ops->send_hardreset(adapter_dev);
+
+	return -EOPNOTSUPP;
+}
+EXPORT_SYMBOL(adapter_dev_send_hardreset);
+
+int adapter_dev_exit_mode(struct adapter_device *adapter_dev)
+{
+	if (adapter_dev != NULL && adapter_dev->ops != NULL &&
+	    adapter_dev->ops->exit_mode)
+		return adapter_dev->ops->exit_mode(adapter_dev);
+
+	return -EOPNOTSUPP;
+}
+EXPORT_SYMBOL(adapter_dev_exit_mode);
 
 static DEVICE_ATTR_RO(name);
 
@@ -163,7 +234,7 @@ struct adapter_device *adapter_device_register(const char *name,
 	adapter_dev->dev.class = adapter_class;
 	adapter_dev->dev.parent = parent;
 	adapter_dev->dev.release = adapter_device_release;
-	dev_set_name(&adapter_dev->dev, name);
+	dev_set_name(&adapter_dev->dev, "%s",name);
 	dev_set_drvdata(&adapter_dev->dev, devdata);
 
 	/* Copy properties */
@@ -231,7 +302,7 @@ static void __exit adapter_class_exit(void)
 
 static int __init adapter_class_init(void)
 {
-	adapter_class = class_create(THIS_MODULE, "Charging Adapter");
+	adapter_class = class_create("Charging Adapter");
 	if (IS_ERR(adapter_class)) {
 		pr_notice("Unable to create Charging Adapter class; errno = %ld\n",
 			PTR_ERR(adapter_class));
@@ -241,10 +312,9 @@ static int __init adapter_class_init(void)
 	return 0;
 }
 
-subsys_initcall(adapter_class_init);
+module_init(adapter_class_init);
 module_exit(adapter_class_exit);
 
 MODULE_DESCRIPTION("Adapter Class Device");
 MODULE_AUTHOR("Wy Chuang <wy.chuang@mediatek.com>");
 MODULE_LICENSE("GPL");
-

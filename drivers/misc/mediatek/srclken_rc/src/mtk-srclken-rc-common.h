@@ -11,13 +11,8 @@
 #ifndef __MTK_SRCLKEN_RC_COMMON_H__
 #define __MTK_SRCLKEN_RC_COMMON_H__
 
-#include <linux/init.h>
-#include <linux/kernel.h>
-#include <linux/delay.h>
 #include <linux/sysfs.h>
 #include <linux/kobject.h>
-#include <linux/of.h>
-#include <linux/of_address.h>
 
 #ifdef pr_fmt
 #undef pr_fmt
@@ -26,7 +21,7 @@
 
 #define srclken_dbg(fmt, args...)			\
 	do {						\
-		if (srclken_get_debug_cfg())			\
+		if (srclken_get_debug_cfg())		\
 			pr_info(fmt, ##args);		\
 	} while (0)
 

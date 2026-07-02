@@ -1059,3 +1059,4 @@ bool SetIntfConnectionFormat(unsigned int ConnectionFormat,
 	return true;
 }
 EXPORT_SYMBOL(SetIntfConnectionFormat);
+MODULE_LICENSE("GPL");

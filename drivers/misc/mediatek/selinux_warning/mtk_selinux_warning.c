@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2020 MediaTek Inc.
+ * Copyright (c) 2022 MediaTek Inc.
  */
 #include <linux/types.h>
 #include <linux/atomic.h>
@@ -19,9 +19,16 @@
 #include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/signal.h>
+#include <linux/tracepoint.h>
 #include "mtk_selinux_warning.h"
-
-#ifdef CONFIG_MTK_AEE_FEATURE
+#include <avc.h>
+#include <avc_ss.h>
+#ifdef MODULE
+#include <classmap.h>
+#else
+extern const struct security_class_mapping secclass_map[];
+#endif
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 #include <mt-plat/aee.h>
 #endif
 
@@ -29,13 +36,8 @@
 #define MOD		"SELINUX"
 #define SCONTEXT_FILTER
 #define AV_FILTER
+#define NE_FILTER
 /* #define ENABLE_CURRENT_NE_CORE_DUMP */
-
-#ifdef ENABLE_CURRENT_NE_CORE_DUMP
-#include <mt-plat/mtk_sysenv.h>
-static atomic_t ne_warning_count;
-#define POLLING_NE_PROCESS_COUNT     5
-#endif
 
 
 static const char *aee_filter_list[AEE_FILTER_NUM] = {
@@ -48,7 +50,6 @@ static const char *aee_filter_list[AEE_FILTER_NUM] = {
 	"u:r:hwservicemanager:s0",
 	"u:r:hal_graphics_composer_default:s0",
 	"u:r:hal_graphics_allocator_default:s0",
-	"u:r:mtk_hal_audio:s0",
 	"u:r:priv_app:s0",
 };
 #ifdef NEVER
@@ -99,6 +100,7 @@ static const char *skip_pattern[SKIP_PATTERN_NUM] = {
 	"scontext=u:r:untrusted_app"
 };
 
+static struct tracepoint *satp;
 
 static int mtk_check_filter(char *scontext);
 static int mtk_get_scontext(char *data, char *buf);
@@ -175,11 +177,10 @@ static void mtk_check_av(char *data)
 					snprintf(printbuf, PRINT_BUF_LEN-1,
 						"[%s][WARNING]\nCR_DISPATCH_PROCESSNAME:%s\n",
 						MOD, pname);
-
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 					aee_kernel_warning_api(
 							__FILE__, __LINE__,
-							DB_OPT_DEFAULT | DB_OPT_NATIVE_BACKTRACE,
+							DB_OPT_DEFAULT  | DB_OPT_NATIVE_BACKTRACE,
 							printbuf, data);
 #endif
 				}
@@ -217,6 +218,31 @@ static int mtk_get_scontext(char *data, char *buf)
 	return 1;
 }
 
+static int mtk_get_pname(char *scontext, char *buf)
+{
+	char *t1 = scontext, *t2;
+	int diff, i;
+
+	/* Omit two ':' */
+	for (i = 0; i < 2; i++) {
+		t1 = strchr(t1, ':');
+		if (!t1)
+			return 0;
+		t1 = t1 + 1;
+	}
+
+	t2 = strchr(t1, ':');
+	if (!t2)
+		return 0;
+
+	/* Add one for NUL-terminator. */
+	diff = t2 - t1 + 1;
+	if (diff > AEE_FILTER_LEN)
+		return 0;
+
+	strscpy(buf, t1, diff);
+	return 1;
+}
 
 static char *mtk_get_process(char *in)
 {
@@ -267,65 +293,16 @@ void mtk_audit_hook(char *data)
 		if (pname != 0) {
 			char printbuf[PRINT_BUF_LEN] = { '\0' };
 
-			#ifdef ENABLE_CURRENT_NE_CORE_DUMP
-			int count = 0;
-			struct task_struct *task;
-			pid_t pid = current->pid;  /* pid need dump */
-			pid_t tgid = current->tgid;
-			char *selinux_ne = get_env("selinux_ne");
-
-			if (selinux_ne != NULL) {
-				long ne_option;
-				int err = kstrtol(selinux_ne, 10, &ne_option);
-
-				if (err || (ne_option != 1)) {
-					pr_debug("[%s] ne_opt:%ld, err:%d\n",
-						MOD, ne_option, err);
-					return;
-				}
-			} else {
-				pr_debug("[%s] ne option is null\n", MOD);
-				return;
-			}
-
-
-			if (atomic_read(&ne_warning_count) >= 1)
-				return;
-
-			send_sig(SIGSEGV, current, 0);
-			atomic_inc(&ne_warning_count);
-			#endif
 
 			snprintf(printbuf, PRINT_BUF_LEN-1,
 				"[%s][WARNING]\nCR_DISPATCH_PROCESSNAME:%s\n",
 				MOD, pname);
 
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
-					DB_OPT_DEFAULT | DB_OPT_NATIVE_BACKTRACE,
+					DB_OPT_DEFAULT  | DB_OPT_NATIVE_BACKTRACE,
 					printbuf, data);
 #endif
-
-			#ifdef ENABLE_CURRENT_NE_CORE_DUMP
-
-			/* poll NE process and wait for its exitence */
-			while (count < POLLING_NE_PROCESS_COUNT) {
-				rcu_read_lock();
-				task = find_task_by_vpid(pid);
-				rcu_read_unlock();
-
-				if (task == NULL) {
-					pr_debug("[%s] pid: %d exist.\n",
-						 MOD, pid);
-					break;  /* pid exit, safe to return */
-				}
-				/* wait two more seconds */
-				pr_debug("[%s] pid: %d, tgid: %d, wait(%ds)\n",
-					MOD, pid, tgid, count);
-				msleep(2000);
-				count++;
-			}
-			#endif
 		}
 	}
 #endif
@@ -333,4 +310,166 @@ void mtk_audit_hook(char *data)
 	mtk_check_av(data);
 #endif
 }
-EXPORT_SYMBOL(mtk_audit_hook);
+
+static void trigger_debugger(void)
+{
+	/*
+	 * Add a short delay to ensure that the debugger can capture the
+	 * correct stack trace. We should avoid a lengthy delay here, as the
+	 * avc denied issue may occur frequently within a short timeframe,
+	 * exacerbating the problem.
+	 */
+	send_sig(35, current, 0);
+	msleep_interruptible(100);
+}
+
+/* reference avc_audit_pre_callback */
+static size_t gen_avc_audit_pre_log(char *data, size_t size, struct selinux_audit_data *sad)
+{
+	const char *const *perms;
+	int i, perm;
+	u32 av = sad->audited;
+	size_t len = 0;
+
+	len += scnprintf(data, size, "avc: denied ");
+
+	if (!av) {
+		len += scnprintf(data + len, size - len, "null");
+		return len;
+	}
+
+	len += scnprintf(data + len, size - len, " {");
+	perms = secclass_map[sad->tclass - 1].perms;
+	for (i = 0, perm = 1; i < (sizeof(av) * 8); i++, perm <<= 1) {
+		if (!(perm & av) || !perms[i])
+			continue;
+
+		len += scnprintf(data + len, size - len, " %s", perms[i]);
+		av &= ~perm;
+	}
+
+	if (av)
+		len += scnprintf(data + len, size - len, " 0x%x", av);
+
+	len += scnprintf(data + len, size - len, " }");
+	return len;
+}
+
+static void selinux_aee(struct selinux_audit_data *sad, char *scontext,
+			char *tcontext, const char *tclass)
+{
+	char pname[AEE_FILTER_LEN];
+	char printbuf[PRINT_BUF_LEN];
+	char data[PRINT_BUF_LEN];
+	size_t len;
+
+	if (!mtk_get_pname(scontext, pname))
+		return;
+
+	len = gen_avc_audit_pre_log(data, sizeof(data), sad);
+
+	snprintf(data + len, sizeof(data) - len,
+		 " scontext=%s tcontext=%s tclass=%s\n",
+		 scontext, tcontext, tclass);
+
+	snprintf(printbuf, sizeof(printbuf),
+		 "[%s][WARNING]\nCR_DISPATCH_PROCESSNAME:%s\n",
+		 MOD, pname);
+
+	trigger_debugger();
+	aee_kernel_warning_api(__FILE__, __LINE__,
+			       DB_OPT_DEFAULT, printbuf, data);
+}
+
+static bool scontext_filter(char *scontext)
+{
+#ifdef SCONTEXT_FILTER
+	int ret;
+
+	/*check scontext is in warning list */
+	ret = mtk_check_filter(scontext);
+	if (ret >= 0) {
+		pr_debug("[%s], In AEE Warning List scontext: %s\n",
+			 MOD, scontext);
+		return true;
+	}
+#endif
+	return false;
+}
+
+static bool av_filter(struct selinux_audit_data *sad)
+{
+#ifdef AV_FILTER
+	const char *const *perms;
+	int i, j, perm;
+	u32 av = sad->audited;
+
+	if (!av)
+		return false;
+
+	perms = secclass_map[sad->tclass - 1].perms;
+
+	/* reference avc_audit_pre_callback */
+	for (i = 0, perm = 1; i < (sizeof(av) * 8); i++, perm <<= 1) {
+		if (!(perm & av) || !perms[i])
+			continue;
+
+		for (j = 0; j < AEE_AV_FILTER_NUM && aee_av_filter_list[j];
+		     j++) {
+			if (!strcmp(perms[i], aee_av_filter_list[j]))
+				return true;
+		}
+	}
+#endif
+	return false;
+}
+
+static void probe_selinux_audited(void *ignore, struct selinux_audit_data *sad,
+				  char *scontext, char *tcontext,
+				  const char *tclass)
+{
+	bool aee = false;
+
+	/* Also skip checking if in permissive mode. " permissive=%u", sad->result ? 0 : 1 */
+	if (!sad || !sad->denied || !sad->result)
+		return;
+	if (!scontext)
+		return;
+
+	aee = scontext_filter(scontext) ||
+	      (!strstr(scontext, "u:r:untrusted_app") && av_filter(sad));
+	if (aee)
+		selinux_aee(sad, scontext, tcontext, tclass);
+}
+
+static void register_tracepoint(struct tracepoint *tp, void *ignore)
+{
+	if (!strcmp(tp->name, "selinux_audited"))
+		satp = tp;
+}
+
+static int __init selinux_init(void)
+{
+	int ret;
+
+	for_each_kernel_tracepoint(register_tracepoint, NULL);
+	ret = tracepoint_probe_register(satp, probe_selinux_audited, NULL);
+	if (ret)
+		return ret;
+	pr_info("[SELinux] MTK SELinux init done\n");
+
+	return 0;
+}
+
+static void __exit selinux_exit(void)
+{
+	tracepoint_probe_unregister(satp, probe_selinux_audited, NULL);
+	tracepoint_synchronize_unregister();
+	pr_info("[SELinux] MTK SELinux func exit\n");
+}
+
+module_init(selinux_init);
+module_exit(selinux_exit);
+MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("MediaTek SELINUX Driver");
+MODULE_AUTHOR("Kuan-Hsin Lee <kuan-hsin.lee@mediatek.com>");

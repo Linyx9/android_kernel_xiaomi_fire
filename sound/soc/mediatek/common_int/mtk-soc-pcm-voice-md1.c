@@ -74,7 +74,8 @@ struct mtk_voice_property {
  */
 
 static int mtk_voice_probe(struct platform_device *pdev);
-static int mtk_voice_close(struct snd_pcm_substream *substream);
+static int mtk_voice_close(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream);
 static int mtk_voice_component_probe(struct snd_soc_component *component);
 
 static bool Voice_Status;
@@ -243,7 +244,8 @@ static const struct snd_kcontrol_new mtk_voice_speech_controls[] = {
 		       speech_property_get, speech_property_set),
 };
 
-static int mtk_voice_pcm_open(struct snd_pcm_substream *substream)
+static int mtk_voice_pcm_open(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	int ret = 0;
@@ -270,13 +272,14 @@ static int mtk_voice_pcm_open(struct snd_pcm_substream *substream)
 	runtime->hw.info |= SNDRV_PCM_INFO_NONINTERLEAVED;
 
 	if (ret < 0) {
-		mtk_voice_close(substream);
+		mtk_voice_close(component, substream);
 		return ret;
 	}
 	return 0;
 }
 
-static int mtk_voice_close(struct snd_pcm_substream *substream)
+static int mtk_voice_close(struct snd_soc_component *component,
+			   struct snd_pcm_substream *substream)
 {
 	pr_info("%s(), stream(%d)\n", __func__, substream->stream);
 
@@ -326,7 +329,8 @@ static int mtk_voice_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_voice_trigger(struct snd_pcm_substream *substream, int cmd)
+static int mtk_voice_trigger(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream, int cmd)
 {
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -341,7 +345,8 @@ static int mtk_voice_trigger(struct snd_pcm_substream *substream, int cmd)
 	return 0;
 }
 
-static int mtk_voice_pcm_copy(struct snd_pcm_substream *substream,
+static int mtk_voice_pcm_copy(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream,
 			      int channel,
 			      unsigned long pos,
 			      void __user *buf,
@@ -350,22 +355,17 @@ static int mtk_voice_pcm_copy(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int mtk_voice_pcm_silence(struct snd_pcm_substream *substream,
-				 int channel,
-				 unsigned long pos,
-				 unsigned long bytes)
-{
-	return 0; /* do nothing */
-}
 
 static void *dummy_page[2];
-static struct page *mtk_pcm_page(struct snd_pcm_substream *substream,
+static struct page *mtk_pcm_page(struct snd_soc_component *component,
+				 struct snd_pcm_substream *substream,
 				 unsigned long offset)
 {
 	return virt_to_page(dummy_page[substream->stream]); /* the same page */
 }
 
-static int mtk_voice1_prepare(struct snd_pcm_substream *substream)
+static int mtk_voice1_prepare(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtimeStream = substream->runtime;
 
@@ -433,36 +433,32 @@ static int mtk_voice1_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int mtk_pcm_hw_params(struct snd_pcm_substream *substream,
+static int mtk_pcm_hw_params(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *hw_params)
 {
 	int ret = 0;
 	return ret;
 }
 
-static int mtk_voice_hw_free(struct snd_pcm_substream *substream)
+static int mtk_voice_hw_free(struct snd_soc_component *component,
+			     struct snd_pcm_substream *substream)
 {
-	pr_debug("%s()\n", __func__);
 	return snd_pcm_lib_free_pages(substream);
 }
 
-static struct snd_pcm_ops mtk_voice_ops = {
+static const struct snd_soc_component_driver mtk_soc_voice_component = {
+	.name = AFE_PCM_NAME,
+	.probe = mtk_voice_component_probe,
 	.open = mtk_voice_pcm_open,
 	.close = mtk_voice_close,
-	.ioctl = snd_pcm_lib_ioctl,
 	.hw_params = mtk_pcm_hw_params,
 	.hw_free = mtk_voice_hw_free,
 	.prepare = mtk_voice1_prepare,
 	.trigger = mtk_voice_trigger,
-	.copy_user = mtk_voice_pcm_copy,
-	.fill_silence = mtk_voice_pcm_silence,
+	.copy = mtk_voice_pcm_copy,
 	.page = mtk_pcm_page,
-};
 
-static struct snd_soc_component_driver mtk_soc_voice_component = {
-	.name = AFE_PCM_NAME,
-	.ops = &mtk_voice_ops,
-	.probe = mtk_voice_component_probe,
 };
 
 static int mtk_voice_probe(struct platform_device *pdev)
@@ -485,8 +481,6 @@ static int mtk_voice_probe(struct platform_device *pdev)
 
 static int mtk_voice_component_probe(struct snd_soc_component *component)
 {
-	pr_info("%s()\n", __func__);
-
 	snd_soc_add_component_controls(component, mtk_voice_speech_controls,
 				      ARRAY_SIZE(mtk_voice_speech_controls));
 
@@ -495,7 +489,6 @@ static int mtk_voice_component_probe(struct snd_soc_component *component)
 
 static int mtk_voice_remove(struct platform_device *pdev)
 {
-	pr_info("%s()\n", __func__);
 	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
@@ -569,7 +562,7 @@ const struct dev_pm_ops mtk_voice_pm_ops = {
 	.restore_noirq = NULL,
 };
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_voice_md1_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_voice_md1",
@@ -582,10 +575,10 @@ static struct platform_driver mtk_voice_driver = {
 
 			.name = MT_SOC_VOICE_MD1,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_voice_md1_of_ids,
 #endif
-#ifdef CONFIG_PM
+#if IS_ENABLED(CONFIG_PM)
 			.pm = &mtk_voice_pm_ops,
 #endif
 		},
@@ -597,11 +590,10 @@ static struct platform_driver mtk_voice_driver = {
 static struct platform_device *soc_mtk_voice_dev;
 #endif
 
-static int __init mtk_soc_voice_platform_init(void)
+int mtk_soc_voice_platform_init(void)
 {
 	int ret = 0;
 
-	pr_info("%s()\n", __func__);
 #ifndef CONFIG_OF
 	soc_mtk_voice_dev = platform_device_alloc(MT_SOC_VOICE_MD1, -1);
 
@@ -619,14 +611,11 @@ static int __init mtk_soc_voice_platform_init(void)
 
 	return ret;
 }
-module_init(mtk_soc_voice_platform_init);
 
-static void __exit mtk_soc_voice_platform_exit(void)
+void mtk_soc_voice_platform_exit(void)
 {
-	pr_info("%s()\n", __func__);
 	platform_driver_unregister(&mtk_voice_driver);
 }
-module_exit(mtk_soc_voice_platform_exit);
 
 MODULE_DESCRIPTION("AFE PCM module platform driver");
 MODULE_LICENSE("GPL");

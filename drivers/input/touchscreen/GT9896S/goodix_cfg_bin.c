@@ -1,11 +1,28 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Goodix Firmware Update Driver.
+ *
+ * Copyright (C) 2019 - 2020 Goodix, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be a reference
+ * to you, when you are integrating the GOODiX's CTP IC into your system,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
  */
-
 #include "goodix_cfg_bin.h"
+static int gt9896s_parse_cfg_bin(struct gt9896s_cfg_bin *cfg_bin);
+static int gt9896s_get_reg_and_cfg(struct gt9896s_ts_device *ts_dev,
+				  struct gt9896s_cfg_bin *cfg_bin);
+static int gt9896s_read_cfg_bin(struct device *dev,
+			       struct gt9896s_cfg_bin *cfg_bin);
+static void gt9896s_cfg_pkg_leToCpu(struct gt9896s_cfg_package *pkg);
 
-int gt9896s_parse_cfg_bin(struct gt9896s_cfg_bin *cfg_bin)
+static int gt9896s_parse_cfg_bin(struct gt9896s_cfg_bin *cfg_bin)
 {
 	u8 checksum;
 	int i, r;
@@ -156,7 +173,7 @@ static int gt9896s_cfg_bin_proc(struct gt9896s_ts_core *core_data)
 	ts_dev->cfg_bin_state = CFG_BIN_STATE_ERROR;
 
 	/*get cfg_bin from file system*/
-	r = gt9896s_read_cfg_bin(ts_dev, cfg_bin);
+	r = gt9896s_read_cfg_bin(ts_dev->dev, cfg_bin);
 	if (r < 0) {
 		ts_err("Failed get valid config bin data");
 		goto exit;
@@ -262,7 +279,7 @@ static int gt9896s_extract_cfg_pkg(struct gt9896s_ts_device *ts_dev,
 	return 0;
 }
 
-int gt9896s_get_reg_and_cfg(struct gt9896s_ts_device *ts_dev,
+static int gt9896s_get_reg_and_cfg(struct gt9896s_ts_device *ts_dev,
 			   struct gt9896s_cfg_bin *cfg_bin)
 {
 	int i;
@@ -412,37 +429,54 @@ get_default_pkg:
 	return r;
 }
 
-int gt9896s_read_cfg_bin(struct gt9896s_ts_device *ts_dev, struct gt9896s_cfg_bin *cfg_bin)
+static int gt9896s_read_cfg_bin(struct device *dev, struct gt9896s_cfg_bin *cfg_bin)
 {
 	const struct firmware *firmware = NULL;
-	struct gt9896s_ts_board_data *ts_bdata = &ts_dev->board_data;
-	char cfg_bin_name[64] = {0x00};
+	char cfg_bin_name[128] = {0x00};
 	int i = 0, r;
 
 	/*get cfg_bin_name*/
-	if (ts_bdata->lcm_max_x == 1080 && ts_bdata->lcm_max_y == 2280) {
-		r = snprintf(cfg_bin_name, sizeof(cfg_bin_name), "%s%s_1080x2280.bin",
-				TS_DEFAULT_CFG_BIN, gt9896s_config_buf);
-	} else if (ts_bdata->lcm_max_x == 1080 && ts_bdata->lcm_max_y == 2300) {
-		r = snprintf(cfg_bin_name, sizeof(cfg_bin_name), "%s%s_1080x2300.bin",
-				TS_DEFAULT_CFG_BIN, gt9896s_config_buf);
+	if (gt9896s_find_touch_node == 1) {
+		if (gt9896s_cfg_flag == 0) {
+			/*Check if panel_config_buf has enough space to append ".bin" and a null terminator*/
+			if (strlen(panel_config_buf) + strlen(".bin") < sizeof(panel_config_buf)) {
+				strncat(panel_config_buf, ".bin", strlen(".bin"));
+				gt9896s_cfg_flag = 1;
+			} else {
+				ts_err("No enough space in panel_config_buf to append, len:%lu",
+				strlen(panel_config_buf));
+				r = -ENOMEM;
+				goto exit;
+			}
+		}
+		/*Check if gt9896s_fw_update_ctrl.fw_name has enough space to contain panel_config_buf*/
+		if (strlen(panel_config_buf) < sizeof(cfg_bin_name)) {
+			strscpy(cfg_bin_name, panel_config_buf, strlen(panel_config_buf));
+			cfg_bin_name[strlen(panel_config_buf)] = '\0';
+		} else {
+			ts_err("string in panel_firmware_buf is too long, len:%lu, size:%lu", strlen(
+			panel_config_buf), sizeof(cfg_bin_name));
+			r = -ENOMEM;
+			goto exit;
+		}
 	} else {
 		r = snprintf(cfg_bin_name, sizeof(cfg_bin_name), "%s%s.bin",
 			TS_DEFAULT_CFG_BIN, gt9896s_config_buf);
-	}
-	if (r >= sizeof(cfg_bin_name)) {
-		ts_err("get cfg_bin name FAILED!!!");
-		goto exit;
+
+		if (r >= sizeof(cfg_bin_name)) {
+			ts_err("get cfg_bin name FAILED!!!");
+			goto exit;
+		}
 	}
 
 	ts_info("cfg_bin_name:%s", cfg_bin_name);
 
 	for (i = 0; i < TS_RQST_FW_RETRY_TIMES; i++) {
-		r = request_firmware(&firmware, cfg_bin_name, ts_dev->dev);
+		r = request_firmware(&firmware, cfg_bin_name, dev);
 		if (r < 0) {
 			ts_err("failed get cfg bin[%s] error:%d, try_times:%d",
 				cfg_bin_name, r, i + 1);
-			msleep(3000);
+			msleep(1000);
 		} else {
 			ts_info("Cfg_bin image [%s] is ready, try_times:%d",
 				cfg_bin_name, i + 1);
@@ -479,7 +513,7 @@ exit:
 	return r;
 }
 
-void gt9896s_cfg_pkg_leToCpu(struct gt9896s_cfg_package *pkg)
+static void gt9896s_cfg_pkg_leToCpu(struct gt9896s_cfg_package *pkg)
 {
 	if (!pkg) {
 		ts_err("cfg package is NULL");

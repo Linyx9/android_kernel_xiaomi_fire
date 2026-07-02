@@ -13,7 +13,9 @@
 #
 
 
+# To handle circular dependency between common_int and mt6765 APIS
+# module ko is combined with mtk-soc-sound-cycle-dependent inside
+# sound/soc/mediatek/common_int/Makefile
+
 # AP object
-obj-y += mtk-auddrv-clk.o
-obj-y += mtk-soc-afe-connection.o
-obj-y += mt6765-sound.o
+#obj-$(CONFIG_SND_SOC_MT6765) += mtk-auddrv-clk.o

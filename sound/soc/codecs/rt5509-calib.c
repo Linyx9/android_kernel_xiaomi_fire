@@ -13,7 +13,6 @@
 #include <linux/delay.h>
 /* vfs */
 #include <linux/fs.h>
-#include <asm/segment.h>
 #include <linux/uaccess.h>
 #include <linux/buffer_head.h>
 /* alsa sound header */
@@ -49,12 +48,15 @@ static int rt5509_calib_get_dcroffset(struct rt5509_chip *chip)
 	uint32_t delta_v = 0, vtemp = 0;
 	int ret = 0;
 
-	dev_info(component->dev, "%s\n", __func__);
-	ret = snd_soc_component_read32(component, RT5509_REG_VTEMP_TRIM);
+	ret = snd_soc_component_read(component, RT5509_REG_VTEMP_TRIM);
 	if (ret < 0)
 		return ret;
 	vtemp = ret & 0xffff;
-	ret = snd_soc_component_read32(component, RT5509_REG_VTHRMDATA);
+	if (vtemp == 0) {
+		dev_dbg(component->dev, "%s invalid vtemp\n", __func__);
+		return -EINVAL;
+	}
+	ret = snd_soc_component_read(component, RT5509_REG_VTHRMDATA);
 	if (ret < 0)
 		return ret;
 	ret &= 0xffff;
@@ -69,8 +71,7 @@ static int rt5509_calib_chosen_db(struct rt5509_chip *chip, int choose)
 	uint8_t mode_store;
 	int i = 0, ret = 0;
 
-	dev_info(chip->dev, "%s\n", __func__);
-	ret = snd_soc_component_read32(component, RT5509_REG_BST_MODE);
+	ret = snd_soc_component_read(component, RT5509_REG_BST_MODE);
 	if (ret < 0)
 		return ret;
 	mode_store = ret;
@@ -98,7 +99,7 @@ static int rt5509_calib_chosen_db(struct rt5509_chip *chip, int choose)
 	ret = snd_soc_component_write(component, RT5509_REG_CALIB_GAIN, data);
 	if (ret < 0)
 		return ret;
-	ret = snd_soc_component_read32(component, RT5509_REG_CALIB_CTRL);
+	ret = snd_soc_component_read(component, RT5509_REG_CALIB_CTRL);
 	if (ret < 0)
 		return ret;
 	data = ret;
@@ -108,8 +109,7 @@ static int rt5509_calib_chosen_db(struct rt5509_chip *chip, int choose)
 		return ret;
 	mdelay(120);
 	while (i++ < 3) {
-		ret = snd_soc_component_read32(component,
-					       RT5509_REG_CALIB_CTRL);
+		ret = snd_soc_component_read(component, RT5509_REG_CALIB_CTRL);
 		if (ret < 0)
 			return ret;
 		if (ret & 0x01)
@@ -128,7 +128,7 @@ static int rt5509_calib_chosen_db(struct rt5509_chip *chip, int choose)
 		dev_err(chip->dev, "over ready count\n");
 		return -EINVAL;
 	}
-	return snd_soc_component_read32(component, RT5509_REG_CALIB_OUT0);
+	return snd_soc_component_read(component, RT5509_REG_CALIB_OUT0);
 }
 
 static int rt5509_calib_read_otp(struct rt5509_chip *chip)
@@ -136,7 +136,7 @@ static int rt5509_calib_read_otp(struct rt5509_chip *chip)
 	struct snd_soc_component *component = chip->component;
 	int ret = 0;
 
-	ret = snd_soc_component_read32(component, RT5509_REG_ISENSEGAIN);
+	ret = snd_soc_component_read(component, RT5509_REG_ISENSEGAIN);
 	if (ret < 0)
 		return ret;
 	ret &= 0xffffff;
@@ -152,11 +152,11 @@ static int rt5509_calib_write_otp(struct rt5509_chip *chip)
 	uint32_t bst_th;
 	int ret = 0;
 
-	ret = snd_soc_component_read32(component, RT5509_REG_BST_TH1);
+	ret = snd_soc_component_read(component, RT5509_REG_BST_TH1);
 	if (ret < 0)
 		return ret;
 	bst_th = ret;
-	ret = snd_soc_component_read32(component, RT5509_REG_BST_MODE);
+	ret = snd_soc_component_read(component, RT5509_REG_BST_MODE);
 	if (ret < 0)
 		return ret;
 	mode_store = ret;
@@ -170,7 +170,7 @@ static int rt5509_calib_write_otp(struct rt5509_chip *chip)
 	ret = snd_soc_component_write(component, RT5509_REG_CALIB_DCR, param);
 	if (ret < 0)
 		return ret;
-	ret = snd_soc_component_read32(component, RT5509_REG_OTPDIN);
+	ret = snd_soc_component_read(component, RT5509_REG_OTPDIN);
 	ret &= 0x00ffff;
 	ret |= 0xc50000;
 	ret = snd_soc_component_write(component, RT5509_REG_OTPDIN, ret);
@@ -202,13 +202,13 @@ static int rt5509_calib_write_otp(struct rt5509_chip *chip)
 	ret = snd_soc_component_write(component, RT5509_REG_OTPCONF, 0x00);
 	if (ret < 0)
 		return ret;
-	ret = snd_soc_component_read32(component, RT5509_REG_CALIB_DCR);
+	ret = snd_soc_component_read(component, RT5509_REG_CALIB_DCR);
 	param_store = ret & 0xffffff;
 	dev_info(chip->dev, "store %08x, put %08x\n", param_store,
 		 param);
 	if (param_store != param)
 		return -EINVAL;
-	ret = snd_soc_component_read32(component, RT5509_REG_OTPDIN);
+	ret = snd_soc_component_read(component, RT5509_REG_OTPDIN);
 	dev_info(chip->dev, "otp_din = 0x%08x\n", ret);
 	if ((ret & 0xff0000) != 0xc50000)
 		return -EINVAL;
@@ -220,7 +220,6 @@ static int rt5509_calib_rwotp(struct rt5509_chip *chip, int choose)
 {
 	int ret = 0;
 
-	dev_info(chip->dev, "%s\n", __func__);
 	switch (choose) {
 	case RT5509_CALIB_CTRL_READOTP:
 		ret = rt5509_calib_read_otp(chip);
@@ -239,7 +238,7 @@ static int rt5509_calib_read_rapp(struct rt5509_chip *chip)
 	struct snd_soc_component *component = chip->component;
 	int ret = 0;
 
-	ret = snd_soc_component_read32(component, RT5509_REG_RAPP);
+	ret = snd_soc_component_read(component, RT5509_REG_RAPP);
 	if (ret < 0)
 		return ret;
 	ret &= 0xffffff;
@@ -255,15 +254,14 @@ static int rt5509_calib_start_process(struct rt5509_chip *chip)
 {
 	int ret = 0;
 
-	dev_info(chip->dev, "%s\n", __func__);
-	ret = snd_soc_component_read32(chip->component, RT5509_REG_CHIPEN);
+	ret = snd_soc_component_read(chip->component, RT5509_REG_CHIPEN);
 	if (ret < 0)
 		return ret;
 	if (!(ret & RT5509_SPKAMP_ENMASK)) {
 		dev_err(chip->dev, "class D not turn on\n");
 		return -EINVAL;
 	}
-	ret = snd_soc_component_read32(chip->component,
+	ret = snd_soc_component_read(chip->component,
 				       RT5509_REG_I2CBCKLRCKCONF);
 	if (ret < 0)
 		return ret;
@@ -271,7 +269,7 @@ static int rt5509_calib_start_process(struct rt5509_chip *chip)
 		dev_err(chip->dev, "BCK loss\n");
 		return -EINVAL;
 	}
-	ret = snd_soc_component_read32(chip->component, RT5509_REG_CALIB_REQ);
+	ret = snd_soc_component_read(chip->component, RT5509_REG_CALIB_REQ);
 	if (ret < 0)
 		return ret;
 	chip->pilot_freq = ret & 0xffff;
@@ -280,7 +278,6 @@ static int rt5509_calib_start_process(struct rt5509_chip *chip)
 
 static int rt5509_calib_end_process(struct rt5509_chip *chip)
 {
-	dev_info(chip->dev, "%s\n", __func__);
 	return snd_soc_component_write(chip->component, RT5509_REG_CALIB_REQ,
 			chip->pilot_freq);
 }
@@ -290,7 +287,6 @@ static int rt5509_calib_trigger_read(struct rt5509_calib_classdev *cdev)
 	struct rt5509_chip *chip = dev_get_drvdata(cdev->dev->parent);
 	int ret = 0;
 
-	dev_dbg(chip->dev, "%s\n", __func__);
 	ret = rt5509_calib_start_process(chip);
 	if (ret < 0) {
 		dev_err(chip->dev, "start fail\n");
@@ -335,7 +331,6 @@ static int rt5509_calib_trigger_write(struct rt5509_calib_classdev *cdev)
 	struct rt5509_chip *chip = dev_get_drvdata(cdev->dev->parent);
 	int ret = 0;
 
-	dev_dbg(chip->dev, "%s\n", __func__);
 	ret = rt5509_calib_rwotp(chip, RT5509_CALIB_CTRL_WRITEOTP);
 	if (ret < 0)
 		goto out_trigger_write;
@@ -426,7 +421,6 @@ static int rt5509_calib_trigger_calculation(struct rt5509_calib_classdev *cdev)
 
 void rt5509_calib_destroy(struct rt5509_chip *chip)
 {
-	dev_dbg(chip->dev, "%s\n", __func__);
 	device_unregister(chip->calib_dev.dev);
 }
 EXPORT_SYMBOL_GPL(rt5509_calib_destroy);
@@ -436,12 +430,11 @@ int rt5509_calib_create(struct rt5509_chip *chip)
 	struct rt5509_calib_classdev *pcalib_dev = &chip->calib_dev;
 	int ret = 0;
 
-	dev_dbg(chip->dev, "%s\n", __func__);
-	ret = snd_soc_component_read32(chip->component, RT5509_REG_OTPDIN);
+	ret = snd_soc_component_read(chip->component, RT5509_REG_OTPDIN);
 	ret &= 0xff0000;
 	if (ret == 0xc50000)
 		chip->calibrated = 1;
-	ret = snd_soc_component_read32(chip->component, RT5509_REG_CALIB_DCR);
+	ret = snd_soc_component_read(chip->component, RT5509_REG_CALIB_DCR);
 	ret &= 0xffffff;
 	pcalib_dev->rspk = ret;
 	/* default rspk min,max,alphspk */
@@ -545,7 +538,7 @@ static int rt_dev_event_read(struct rt5509_chip *chip, char *buf)
 	struct snd_soc_component *component = chip->component;
 	int i, index = 0, ret = 0;
 
-	ret = snd_soc_component_read32(component, RT5509_REG_CHIPEN);
+	ret = snd_soc_component_read(component, RT5509_REG_CHIPEN);
 	if (ret < 0)
 		return ret;
 	if (!(ret & RT5509_SPKAMP_ENMASK)) {
@@ -556,38 +549,38 @@ static int rt_dev_event_read(struct rt5509_chip *chip, char *buf)
 			   "important reg dump ++\n");
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0x03) -> 0x%02x\n", ret);
-	ret = snd_soc_component_read32(component, RT5509_REG_CHIPREV);
+	ret = snd_soc_component_read(component, RT5509_REG_CHIPREV);
 	if (ret < 0)
 		return ret;
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0x00) -> 0x%02x\n", ret);
-	ret = snd_soc_component_read32(component, RT5509_REG_EVENTINFO);
+	ret = snd_soc_component_read(component, RT5509_REG_EVENTINFO);
 	if (ret < 0)
 		return ret;
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0x01) -> 0x%02x\n", ret);
-	ret = snd_soc_component_read32(component, RT5509_REG_DMGFLAG);
+	ret = snd_soc_component_read(component, RT5509_REG_DMGFLAG);
 	if (ret < 0)
 		return ret;
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0x02) -> 0x%02x\n", ret);
-	ret = snd_soc_component_read32(component, RT5509_REG_BST_MODE);
+	ret = snd_soc_component_read(component, RT5509_REG_BST_MODE);
 	if (ret < 0)
 		return ret;
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0x1e) -> 0x%02x\n", ret);
-	ret = snd_soc_component_read32(component, RT5509_REG_ISENSEGAIN);
+	ret = snd_soc_component_read(component, RT5509_REG_ISENSEGAIN);
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0x46) -> 0x%06x\n", ret & 0xffffff);
-	ret = snd_soc_component_read32(component, RT5509_REG_CALIB_DCR);
+	ret = snd_soc_component_read(component, RT5509_REG_CALIB_DCR);
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0x4e) -> 0x%06x\n", ret & 0xffffff);
-	ret = snd_soc_component_read32(component, RT5509_REG_VTEMP_TRIM);
+	ret = snd_soc_component_read(component, RT5509_REG_VTEMP_TRIM);
 	if (ret < 0)
 		return ret;
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0xc4) -> 0x%04x\n", ret);
-	ret = snd_soc_component_read32(component, RT5509_REG_INTERRUPT);
+	ret = snd_soc_component_read(component, RT5509_REG_INTERRUPT);
 	if (ret < 0)
 		return ret;
 	index += scnprintf(buf + index, PAGE_SIZE - index,
@@ -601,14 +594,14 @@ static int rt_dev_event_read(struct rt5509_chip *chip, char *buf)
 					      RT5509_REG_SPKRPTSEL, i);
 		if (ret < 0)
 			return ret;
-		ret = snd_soc_component_read32(component, RT5509_REG_SPKRPT);
+		ret = snd_soc_component_read(component, RT5509_REG_SPKRPT);
 		index += scnprintf(buf + index, PAGE_SIZE - index,
 				   "i(0x%02x) -> 0x%06x\n", i, ret & 0xffffff);
 	}
 	ret = snd_soc_component_write(component, RT5509_REG_SPKRPTSEL, 0x0d);
 	if (ret < 0)
 		return ret;
-	ret = snd_soc_component_read32(component, RT5509_REG_SPKRPT);
+	ret = snd_soc_component_read(component, RT5509_REG_SPKRPT);
 	index += scnprintf(buf + index, PAGE_SIZE - index,
 			   "i(0x0d) -> 0x%06x\n", ret & 0xffffff);
 	index += scnprintf(buf + index, PAGE_SIZE - index,
@@ -713,11 +706,11 @@ static ssize_t rt_calib_dev_attr_store(struct device *dev,
 	return count;
 }
 
-static ssize_t rt_calib_class_attr_show(struct class *,
-		struct class_attribute *, char *);
-static ssize_t rt_calib_class_attr_store(struct class *,
-		struct class_attribute *, const char *, size_t);
-static struct class_attribute rt5509_class_attrs[] = {
+static ssize_t rt_calib_class_attr_show(const struct class *,
+		const struct class_attribute *, char *);
+static ssize_t rt_calib_class_attr_store(const struct class *,
+		const struct class_attribute *, const char *, size_t);
+static const struct class_attribute rt5509_class_attrs[] = {
 	__ATTR(trigger, 0220, rt_calib_class_attr_show,
 	       rt_calib_class_attr_store),
 	__ATTR(status, 0444, rt_calib_class_attr_show,
@@ -731,8 +724,8 @@ enum {
 	RT5509_CALIB_CLASS_MAX,
 };
 
-static ssize_t rt_calib_class_attr_show(struct class *cls,
-		struct class_attribute *attr, char *buf)
+static ssize_t rt_calib_class_attr_show(const struct class *cls,
+		const struct class_attribute *attr, char *buf)
 {
 	const ptrdiff_t offset = attr - rt5509_class_attrs;
 	int ret = 0;
@@ -772,7 +765,7 @@ static int rt_calib_trigger_calculation(struct device *dev, void *data)
 			calib_dev->trigger_calculation(calib_dev) : -EINVAL;
 }
 
-static int rt_calib_trigger_sequence(struct class *cls, int seq)
+static int rt_calib_trigger_sequence(const struct class *cls, int seq)
 {
 	int ret = 0;
 
@@ -810,8 +803,8 @@ static int rt_calib_trigger_sequence(struct class *cls, int seq)
 	return ret;
 }
 
-static ssize_t rt_calib_class_attr_store(struct class *cls,
-		struct class_attribute *attr, const char *buf, size_t cnt)
+static ssize_t rt_calib_class_attr_store(const struct class *cls,
+		const struct class_attribute *attr, const char *buf, size_t cnt)
 {
 	const ptrdiff_t offset = attr - rt5509_class_attrs;
 	int parse_val = 0;
@@ -838,7 +831,7 @@ static int __init rt5509_cal_init(void)
 {
 	int i = 0, ret = 0;
 
-	rt5509_cal_class = class_create(THIS_MODULE, "rt5509_cal");
+	rt5509_cal_class = class_create("rt5509_cal");
 	if (IS_ERR(rt5509_cal_class))
 		return PTR_ERR(rt5509_cal_class);
 	for (i = 0; rt5509_class_attrs[i].attr.name; i++) {

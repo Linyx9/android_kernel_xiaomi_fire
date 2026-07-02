@@ -1,0 +1,8 @@
+subdir-ccflags-y += -Wno-unused-but-set-variable
+
+ifdef CONFIG_OEM_SWITCH_CHARGER_SGM41542
+	SWITCH_CHARGER_SGM41542_OBJS += sgm415xx.o
+endif
+
+obj-$(CONFIG_OEM_SWITCH_CHARGER_SGM41542) += sgm41542.o
+sgm41542-y := $(SWITCH_CHARGER_SGM41542_OBJS)

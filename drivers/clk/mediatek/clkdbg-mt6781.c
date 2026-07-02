@@ -1,17 +1,21 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2016 MediaTek Inc.
+ * Copyright (c) 2019 MediaTek Inc.
  */
 
 
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 
-#ifdef CONFIG_MTK_DEVAPC
-#include <mt-plat/devapc_public.h>
-#endif
+#include <linux/platform_device.h>
+#include <linux/seq_file.h>
+#include <linux/delay.h>
+#include <linux/module.h>
+
+
 #include "clkdbg.h"
 #include "clkchk.h"
+#include "clk-fmeter.h"
 
 #define ALL_CLK_ON		0
 #define DUMP_INIT_STATE		0
@@ -20,25 +24,6 @@
  * clkdbg dump_regs
  */
 
-enum {
-	topckgen,
-	infracfg,
-	scpsys,
-	apmixed,
-	audio,
-	mfgsys,
-	mmsys,
-	imgsys,
-	camsys,
-	vencsys,
-	vdecsys,
-	ipu_vcore,
-	ipu_conn,
-	ipu0,
-	ipu1,
-	ipu2,
-};
-
 #define REGBASE_V(_phys, _id_name) { .phys = _phys, .name = #_id_name }
 
 /*
@@ -46,140 +31,6 @@ enum {
  *
  * #define REGBASE(_phys, _id_name) [_id_name] = REGBASE_V(_phys, _id_name)
  */
-
-static struct regbase rb[] = {
-	[topckgen] = REGBASE_V(0x10000000, topckgen),
-	[infracfg] = REGBASE_V(0x10001000, infracfg),
-	[scpsys]   = REGBASE_V(0x10006000, scpsys),
-	[apmixed]  = REGBASE_V(0x1000c000, apmixed),
-	[audio]    = REGBASE_V(0x11220000, audio),
-	[mfgsys]   = REGBASE_V(0x13000000, mfgsys),
-	[mmsys]    = REGBASE_V(0x14000000, mmsys),
-	[imgsys]   = REGBASE_V(0x15020000, imgsys),
-	[camsys]   = REGBASE_V(0x1a000000, camsys),
-	[vencsys]  = REGBASE_V(0x17000000, vencsys),
-	[vdecsys]  = REGBASE_V(0x16000000, vdecsys),
-	[ipu_vcore]  = REGBASE_V(0x19020000, ipu_vcore),
-	[ipu_conn]  = REGBASE_V(0x19000000, ipu_conn),
-	[ipu0]  = REGBASE_V(0x19180000, ipu0),
-	[ipu1]  = REGBASE_V(0x19280000, ipu1),
-	[ipu2]  = REGBASE_V(0x19380000, ipu2),
-};
-
-#define REGNAME(_base, _ofs, _name)	\
-	{ .base = &rb[_base], .ofs = _ofs, .name = #_name }
-
-static struct regname rn[] = {
-	REGNAME(topckgen,  0x020, CLK_CFG_0),
-	REGNAME(topckgen,  0x030, CLK_CFG_1),
-	REGNAME(topckgen,  0x040, CLK_CFG_2),
-	REGNAME(topckgen,  0x050, CLK_CFG_3),
-	REGNAME(topckgen,  0x060, CLK_CFG_4),
-	REGNAME(topckgen,  0x070, CLK_CFG_5),
-	REGNAME(topckgen,  0x080, CLK_CFG_6),
-	REGNAME(topckgen,  0x090, CLK_CFG_7),
-	REGNAME(topckgen,  0x0a0, CLK_CFG_8),
-	REGNAME(topckgen,  0x0b0, CLK_CFG_9),
-	REGNAME(topckgen,  0x0c0, CLK_CFG_10),
-	REGNAME(topckgen,  0x0d0, CLK_CFG_11),
-	REGNAME(topckgen,  0x0e0, CLK_CFG_12),
-	REGNAME(topckgen,  0x0f0, CLK_CFG_13),
-	REGNAME(apmixed,  0x200, ARMPLL_LL_CON0),
-	REGNAME(apmixed,  0x204, ARMPLL_LL_CON1),
-	REGNAME(apmixed,  0x20C, ARMPLL_LL_PWR_CON0),
-	REGNAME(apmixed,  0x210, ARMPLL_BL_CON0),
-	REGNAME(apmixed,  0x214, ARMPLL_BL_CON1),
-	REGNAME(apmixed,  0x21C, ARMPLL_BL_PWR_CON0),
-	REGNAME(apmixed,  0x220, ARMPLL_BB_CON0),
-	REGNAME(apmixed,  0x224, ARMPLL_BB_CON1),
-	REGNAME(apmixed,  0x22C, ARMPLL_BB_PWR_CON0),
-	REGNAME(apmixed,  0x230, MAINPLL_CON0),
-	REGNAME(apmixed,  0x234, MAINPLL_CON1),
-	REGNAME(apmixed,  0x23C, MAINPLL_PWR_CON0),
-	REGNAME(apmixed,  0x240, UNIVPLL_CON0),
-	REGNAME(apmixed,  0x244, UNIVPLL_CON1),
-	REGNAME(apmixed,  0x24C, UNIVPLL_PWR_CON0),
-	REGNAME(apmixed,  0x250, MFGPLL_CON0),
-	REGNAME(apmixed,  0x254, MFGPLL_CON1),
-	REGNAME(apmixed,  0x25C, MFGPLL_PWR_CON0),
-	REGNAME(apmixed,  0x260, MSDCPLL_CON0),
-	REGNAME(apmixed,  0x264, MSDCPLL_CON1),
-	REGNAME(apmixed,  0x26C, MSDCPLL_PWR_CON0),
-	REGNAME(apmixed,  0x270, TVDPLL_CON0),
-	REGNAME(apmixed,  0x274, TVDPLL_CON1),
-	REGNAME(apmixed,  0x27C, TVDPLL_PWR_CON0),
-	REGNAME(apmixed,  0x280, MMPLL_CON0),
-	REGNAME(apmixed,  0x284, MMPLL_CON1),
-	REGNAME(apmixed,  0x28C, MMPLL_PWR_CON0),
-	REGNAME(apmixed,  0x2A0, CCIPLL_CON0),
-	REGNAME(apmixed,  0x2A4, CCIPLL_CON1),
-	REGNAME(apmixed,  0x2AC, CCIPLL_PWR_CON0),
-	REGNAME(apmixed,  0x2B0, ADSPPLL_CON0),
-	REGNAME(apmixed,  0x2B4, ADSPPLL_CON1),
-	REGNAME(apmixed,  0x2BC, ADSPPLL_PWR_CON0),
-	REGNAME(apmixed,  0x2C0, APLL1_CON0),
-	REGNAME(apmixed,  0x2C4, APLL1_CON1),
-	REGNAME(apmixed,  0x2D0, APLL1_PWR_CON0),
-	REGNAME(apmixed,  0x2D4, APLL2_CON0),
-	REGNAME(apmixed,  0x2D8, APLL2_CON1),
-	REGNAME(apmixed,  0x2E4, APLL2_PWR_CON0),
-	REGNAME(scpsys,  0x160, PWR_STATUS),
-	REGNAME(scpsys,  0x164, PWR_STATUS_2ND),
-	REGNAME(scpsys,  0x328, MFG0_PWR_CON),
-	REGNAME(scpsys,  0x32C, MFG1_PWR_CON),
-	REGNAME(scpsys,  0x330, MFG2_PWR_CON),
-	REGNAME(scpsys,  0x334, MFG3_PWR_CON),
-	REGNAME(scpsys,  0x338, MFG4_PWR_CON),
-	REGNAME(scpsys,  0x308, ISP_PWR_CON),
-	REGNAME(scpsys,  0x350, IPE_PWR_CON),
-	REGNAME(scpsys,  0x304, VEN_PWR_CON),
-	REGNAME(scpsys,  0x300, VDE_PWR_CON),
-	REGNAME(scpsys,  0x30C, DIS_PWR_CON),
-	REGNAME(scpsys,  0x31C, AUD_PWR_CON),
-	REGNAME(scpsys,  0x324, CAM_PWR_CON),
-	REGNAME(scpsys,  0x318, MD1_PWR_CON),
-	REGNAME(scpsys,  0x320, CONN_PWR_CON),
-	REGNAME(scpsys,  0x33C, VPU_VCORE_PWR_CON),
-	REGNAME(scpsys,  0x340, VPU_CONN_PWR_CON),
-	REGNAME(scpsys,  0x344, VPU_CORE0_PWR_CON),
-	REGNAME(scpsys,  0x348, VPU_CORE1_PWR_CON),
-	REGNAME(scpsys,  0x34C, VPU_CORE2_PWR_CON),
-	REGNAME(audio,	0x000, AUDIO_TOP_CON0),
-	REGNAME(audio,	0x004, AUDIO_TOP_CON1),
-	REGNAME(camsys,  0x000, CAMSYS_CG),
-	REGNAME(imgsys,  0x000, IMG_CG),
-	REGNAME(infracfg,  0x090, MODULE_SW_CG_0),
-	REGNAME(infracfg,  0x094, MODULE_SW_CG_1),
-	REGNAME(infracfg,  0x0ac, MODULE_SW_CG_2),
-	REGNAME(infracfg,  0x0c8, MODULE_SW_CG_3),
-#if 0
-	REGNAME(ipu0,  0x000, IPU0_CORE_CG),
-	REGNAME(ipu1,  0x000, IPU1_CORE_CG),
-	REGNAME(ipu2,  0x000, IPU2_CORE_CG),
-	REGNAME(ipu_conn,  0x000, IPU_CONN_CG),
-	REGNAME(ipu_vcore,  0x000, IPU_VCORE_CG),
-#endif
-	REGNAME(mfgsys,  0x000, MFG_CG),
-	REGNAME(mmsys,	0x100, MMSYS_CG_CON0),
-	REGNAME(mmsys,	0x110, MMSYS_CG_CON1),
-	REGNAME(vdecsys,  0x000, VDEC_CKEN),
-	REGNAME(vdecsys,  0x008, VDEC_LARB1_CKEN),
-	REGNAME(vencsys,  0x000, VENCSYS_CG),
-	{}
-};
-
-static const struct regname *get_all_regnames(void)
-{
-	return rn;
-}
-
-static void __init init_regbase(void)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(rb); i++)
-		rb[i].virt = ioremap(rb[i].phys, PAGE_SIZE);
-}
 
 /*
  * clkdbg fmeter
@@ -201,16 +52,10 @@ static void __init init_regbase(void)
 	clk_writel(addr, (clk_readl(addr) & ~GENMASK(h, l)) | ((v) << (l)))
 
 #define ABS_DIFF(a, b)	((a) > (b) ? (a) - (b) : (b) - (a))
-#if 0
-enum FMETER_TYPE {
-	FT_NULL,
-	ABIST,
-	CKGEN
-};
-#endif
+
 #define FMCLK(_t, _i, _n) { .type = _t, .id = _i, .name = _n }
 
-static const struct fmeter_clk fclks[] = {
+static const struct fmeter_clk fclks[] __maybe_unused = {
 	FMCLK(CKGEN,  1, "hd_faxi_ck"),
 	FMCLK(CKGEN,  2, "hf_fscp_ck"),
 	FMCLK(CKGEN,  3, "hf_fmfg_ck"),
@@ -322,23 +167,6 @@ static const struct fmeter_clk fclks[] = {
 #define SPM_PWR_STATUS		_SCPSYS(0x16C)
 #define SPM_PWR_STATUS_2ND	_SCPSYS(0x170)
 
-#ifdef CONFIG_MTK_DEVAPC
-static void devapc_dump_regs(void)
-{
-	int i = 0;
-
-	pr_notice("[devapc] CLK_CFG_0-12\r\n");
-	for (i = 0; i < 13; i++)
-		pr_notice("[%d]0x%08x\r\n", i, clk_readl(CLK_CFG_0 + (i << 4)));
-	pr_notice("[devapc] PWR_STATUS(0x16C,0x170) = 0x%08x 0x%08x\n",
-		clk_readl(SPM_PWR_STATUS), clk_readl(SPM_PWR_STATUS_2ND));
-}
-
-static struct devapc_vio_callbacks devapc_vio_handle = {
-	.id = DEVAPC_SUBSYS_CLKMGR,
-	.debug_dump = devapc_dump_regs,
-};
-#endif
 
 #define PLL_HP_CON0			(rb[apmixed].virt + 0x014)
 #define PLL_TEST_CON1			(rb[apmixed].virt + 0x064)
@@ -372,189 +200,11 @@ static struct devapc_vio_callbacks devapc_vio_handle = {
 
 #define RG_FRMTR_WINDOW     519
 
-#if 0 /*use other function*/
-static u32 fmeter_freq(enum FMETER_TYPE type, int k1, int clk)
-{
-	u32 cnt = 0;
-
-	/* reset & reset deassert */
-	clk_writel(FREQ_MTR_CTRL_REG, RG_FQMTR_MONCLK_RST_SET(RG_FQMTR_RST));
-	clk_writel(FREQ_MTR_CTRL_REG, RG_FQMTR_MONCLK_RST_SET(!RG_FQMTR_RST));
-
-	/* set window and target */
-	clk_writel(FREQ_MTR_CTRL_REG,
-		RG_FQMTR_MONCLK_WINDOW_SET(RG_FRMTR_WINDOW) |
-		RG_FQMTR_MONCLK_SEL_SET(clk) |
-		RG_FQMTR_FIXCLK_SEL_SET(RG_FQMTR_FIXCLK_26MHZ) |
-		RG_FQMTR_MONCLK_EN_SET(RG_FQMTR_EN));
-
-	udelay(30);
-
-	cnt = clk_readl(FREQ_MTR_CTRL_RDATA);
-	/* reset & reset deassert */
-	clk_writel(FREQ_MTR_CTRL_REG, RG_FQMTR_MONCLK_RST_SET(RG_FQMTR_RST));
-	clk_writel(FREQ_MTR_CTRL_REG, RG_FQMTR_MONCLK_RST_SET(!RG_FQMTR_RST));
-
-	return ((cnt * 26000) / (RG_FRMTR_WINDOW + 1));
-}
-
-
-static u32 measure_stable_fmeter_freq(enum FMETER_TYPE type, int k1, int clk)
-{
-	u32 last_freq = 0;
-	u32 freq = fmeter_freq(type, k1, clk);
-	u32 maxfreq = max(freq, last_freq);
-
-	while (maxfreq > 0 && ABS_DIFF(freq, last_freq) * 100 / maxfreq > 10) {
-		last_freq = freq;
-		freq = fmeter_freq(type, k1, clk);
-		maxfreq = max(freq, last_freq);
-	}
-
-	return freq;
-}
-#endif
-
-static const struct fmeter_clk *get_all_fmeter_clks(void)
-{
-	return fclks;
-}
-
-struct bak {
-	u32 pll_hp_con0;
-	u32 pll_test_con1;
-	u32 test_dbg_ctrl;
-};
-
-unsigned int mt_get_ckgen_freq(unsigned int ID)
-{
-	int output = 0, i = 0;
-	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 = 0;
-
-	clk_dbg_cfg = clk_readl(CLK_DBG_CFG);
-	clk_writel(CLK_DBG_CFG, (clk_dbg_cfg & 0xFFFFC0FC)|(ID << 8)|(0x1));
-
-	clk_misc_cfg_0 = clk_readl(CLK_MISC_CFG_0);
-	clk_writel(CLK_MISC_CFG_0, (clk_misc_cfg_0 & 0x00FFFFFF) | (3 << 24));
-
-	clk26cali_1 = clk_readl(CLK26CALI_1);
-	clk_writel(CLK26CALI_0, 0x1000);
-	clk_writel(CLK26CALI_0, 0x1010);
-
-	/* wait frequency meter finish */
-	while (clk_readl(CLK26CALI_0) & 0x10) {
-		udelay(10);
-		i++;
-		if (i > 30)
-			break;
-	}
-	/* illegal pass */
-	if (i == 0) {
-		clk_writel(CLK26CALI_0, 0x0000);
-		//re-trigger
-		clk_writel(CLK26CALI_0, 0x1000);
-		clk_writel(CLK26CALI_0, 0x1010);
-		while (clk_readl(CLK26CALI_0) & 0x10) {
-			udelay(10);
-			i++;
-			if (i > 30)
-				break;
-		}
-	}
-
-	temp = clk_readl(CLK26CALI_1) & 0xFFFF;
-
-	output = (temp * 26000) / 1024;
-
-	clk_writel(CLK_DBG_CFG, clk_dbg_cfg);
-	clk_writel(CLK_MISC_CFG_0, clk_misc_cfg_0);
-	clk_writel(CLK26CALI_0, 0x0000);
-
-	/*print("ckgen meter[%d] = %d Khz\n", ID, output);*/
-	if (i > 30)
-		return 0;
-	if ((output * 4) < 25000) {
-		pr_notice("%s: CLK_DBG_CFG = 0x%x, CLK_MISC_CFG_0 = 0x%x, CLK26CALI_0 = 0x%x, CLK26CALI_1 = 0x%x\n",
-			__func__,
-			clk_readl(CLK_DBG_CFG),
-			clk_readl(CLK_MISC_CFG_0),
-			clk_readl(CLK26CALI_0),
-			clk_readl(CLK26CALI_1));
-	}
-	return (output * 4);
-}
-
-unsigned int mt_get_abist_freq(unsigned int ID)
-{
-	int output = 0, i = 0;
-	unsigned int temp, clk_dbg_cfg, clk_misc_cfg_0, clk26cali_1 = 0;
-
-	clk_dbg_cfg = clk_readl(CLK_DBG_CFG);
-	clk_writel(CLK_DBG_CFG, (clk_dbg_cfg & 0xFFC0FFFC)|(ID << 16));
-
-	clk_misc_cfg_0 = clk_readl(CLK_MISC_CFG_0);
-	clk_writel(CLK_MISC_CFG_0, (clk_misc_cfg_0 & 0x00FFFFFF) | (3 << 24));
-
-	clk26cali_1 = clk_readl(CLK26CALI_1);
-
-	clk_writel(CLK26CALI_0, 0x1000);
-	clk_writel(CLK26CALI_0, 0x1010);
-
-	/* wait frequency meter finish */
-	while (clk_readl(CLK26CALI_0) & 0x10) {
-		udelay(10);
-		i++;
-		if (i > 30)
-			break;
-	}
-	/* illegal pass */
-	if (i == 0) {
-		clk_writel(CLK26CALI_0, 0x0000);
-		//re-trigger
-		clk_writel(CLK26CALI_0, 0x1000);
-		clk_writel(CLK26CALI_0, 0x1010);
-		while (clk_readl(CLK26CALI_0) & 0x10) {
-			udelay(10);
-			i++;
-			if (i > 30)
-				break;
-		}
-	}
-	temp = clk_readl(CLK26CALI_1) & 0xFFFF;
-
-	output = (temp * 26000) / 1024;
-
-	clk_writel(CLK_DBG_CFG, clk_dbg_cfg);
-	clk_writel(CLK_MISC_CFG_0, clk_misc_cfg_0);
-	clk_writel(CLK26CALI_0, 0x0000);
-
-	if (i > 30)
-		return 0;
-	if ((output * 4) < 25000) {
-		pr_notice("%s: CLK_DBG_CFG = 0x%x, CLK_MISC_CFG_0 = 0x%x, CLK26CALI_0 = 0x%x, CLK26CALI_1 = 0x%x\n",
-			__func__,
-			clk_readl(CLK_DBG_CFG),
-			clk_readl(CLK_MISC_CFG_0),
-			clk_readl(CLK26CALI_0),
-			clk_readl(CLK26CALI_1));
-	}
-	return (output * 4);
-}
-
-static u32 fmeter_freq_op(const struct fmeter_clk *fclk)
-{
-	if (fclk->type == ABIST)
-		return mt_get_abist_freq(fclk->id);
-	else if (fclk->type == CKGEN)
-		return mt_get_ckgen_freq(fclk->id);
-	return 0;
-}
-
 /*
  * clkdbg dump_state
  */
 
-static const char * const *get_all_clk_names(void)
+static const char * const *get_mt6781_all_clk_names(void)
 {
 	static const char * const clks[] = {
 		/* APMIXEDSYS */
@@ -949,102 +599,16 @@ static const char * const *get_all_clk_names(void)
 	return clks;
 }
 
-/*
- * clkdbg pwr_status
- */
-
-static const char * const *get_pwr_names(void)
-{
-	static const char * const pwr_names[] = {
-		[0]  = "MD1",
-		[1]  = "CONN",
-		[2]  = "",
-		[3]  = "DISP",
-		[4]  = "MFG0",
-		[5]  = "ISP",
-		[6]  = "",
-		[7]  = "MFG1",
-		[8]  = "",
-		[9]  = "",
-		[10] = "",
-		[11] = "",
-		[12] = "",
-		[13] = "IPE",
-		[14] = "",
-		[15] = "",
-		[16] = "",
-		[17] = "",
-		[18] = "",
-		[19] = "",
-		[20] = "MFG2",
-		[21] = "VEN",
-		[22] = "MFG3",
-		[23] = "MFG4",
-		[24] = "AUDIO",
-		[25] = "CAM",
-		[26] = "APU_VCORE",
-		[27] = "APU_CONN",
-		[28] = "APU_CORE0",
-		[29] = "APU_CORE1",
-		[30] = "APU_CORE2",
-		[31] = "VDE",
-	};
-
-	return pwr_names;
-}
-
-/*
- * clkdbg dump_clks
- */
-
-void setup_provider_clk(struct provider_clk *pvdck)
-{
-	static const struct {
-		const char *pvdname;
-		u32 pwr_mask;
-	} pvd_pwr_mask[] = {
-	};
-
-	int i;
-	const char *pvdname = pvdck->provider_name;
-
-	if (!pvdname)
-		return;
-
-	for (i = 0; i < ARRAY_SIZE(pvd_pwr_mask); i++) {
-		if (strcmp(pvdname, pvd_pwr_mask[i].pvdname) == 0) {
-			pvdck->pwr_mask = pvd_pwr_mask[i].pwr_mask;
-			return;
-		}
-	}
-}
-
-/*
- * chip_ver functions
- */
-
 #include <linux/seq_file.h>
-#if 0
-#include <mt-plat/mtk_chip.h>
-#endif
-static int clkdbg_chip_ver(struct seq_file *s, void *v)
+
+static const struct fmeter_clk *get_all_fmeter_clks(void)
 {
-	static const char * const sw_ver_name[] = {
-		"CHIP_SW_VER_01",
-		"CHIP_SW_VER_02",
-		"CHIP_SW_VER_03",
-		"CHIP_SW_VER_04",
-	};
+	return mt_get_fmeter_clks();
+}
 
-	#if 0 /*no support*/
-	enum chip_sw_ver ver = mt_get_chip_sw_ver();
-
-	seq_printf(s, "mt_get_chip_sw_ver(): %d (%s)\n", ver, sw_ver_name[ver]);
-	#else
-	seq_printf(s, "mt_get_chip_sw_ver(): %d (%s)\n", 0, sw_ver_name[0]);
-	#endif
-
-	return 0;
+static u32 fmeter_freq_op(const struct fmeter_clk *fclk)
+{
+	return mt_get_fmeter_freq(fclk->id, fclk->type);
 }
 
 /*
@@ -1056,85 +620,36 @@ static struct clkdbg_ops clkdbg_mt6781_ops = {
 	.prepare_fmeter = NULL,
 	.unprepare_fmeter = NULL,
 	.fmeter_freq = fmeter_freq_op,
-	.get_all_regnames = get_all_regnames,
-	.get_all_clk_names = get_all_clk_names,
-	.get_pwr_names = get_pwr_names,
-	.setup_provider_clk = setup_provider_clk,
+	.get_all_clk_names = get_mt6781_all_clk_names,
 };
 
-static void __init init_custom_cmds(void)
+static int clk_dbg_mt6781_probe(struct platform_device *pdev)
 {
-	static const struct cmd_fn cmds[] = {
-		CMDFN("chip_ver", clkdbg_chip_ver),
-		{}
-	};
-
-	set_custom_cmds(cmds);
-}
-
-static int __init clkdbg_mt6781_init(void)
-{
-	if (!of_machine_is_compatible("mediatek,mt6781"))
-		return -ENODEV;
-
-	init_regbase();
-
-	init_custom_cmds();
 	set_clkdbg_ops(&clkdbg_mt6781_ops);
-
-#ifdef CONFIG_MTK_DEVAPC
-	register_devapc_vio_callback(&devapc_vio_handle);
-#endif
-
-#if ALL_CLK_ON
-	prepare_enable_provider("topckgen");
-	reg_pdrv("all");
-	prepare_enable_provider("all");
-#endif
-
-#if DUMP_INIT_STATE
-	print_regs();
-	print_fmeter_all();
-#endif /* DUMP_INIT_STATE */
 
 	return 0;
 }
+
+static struct platform_driver clk_dbg_mt6781_drv = {
+	.probe = clk_dbg_mt6781_probe,
+	.driver = {
+		.name = "clk-dbg-mt6781",
+		.owner = THIS_MODULE,
+	},
+};
+
+static int __init clkdbg_mt6781_init(void)
+{
+	return clk_dbg_driver_register(&clk_dbg_mt6781_drv, "clk-dbg-mt6781");
+
+}
+
+
+static void __exit clkdbg_mt6781_exit(void)
+{
+	platform_driver_unregister(&clk_dbg_mt6781_drv);
+}
+
 subsys_initcall(clkdbg_mt6781_init);
-
-static struct regbase *lookup_regbase(char *name)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(rb) - 1; i++) {
-		if (!strcmp(name, rb[i].name))
-			return &rb[i];
-	}
-	return NULL;
-}
-
-void print_subsys_reg(char *subsys_name)
-{
-	struct regbase *rb_dump;
-	const struct regname *rns = &rn[0];
-
-	if (rns == NULL)
-		return;
-
-	rb_dump = lookup_regbase(subsys_name);
-	if (rb_dump == NULL) {
-		pr_info("wrong regbase name:%s\n", subsys_name);
-		return;
-	}
-
-	for (; rns->base != NULL; rns++) {
-		if (!is_valid_reg(ADDR(rns)))
-			return;
-
-		/* filter out the subsys that we don't want */
-		if (rns->base != rb_dump)
-			continue;
-
-		pr_info("%-18s: [0x%08x] = 0x%08x\n",
-			rns->name, PHYSADDR(rns), clk_readl(ADDR(rns)));
-	}
-}
+module_exit(clkdbg_mt6781_exit);
+MODULE_LICENSE("GPL");

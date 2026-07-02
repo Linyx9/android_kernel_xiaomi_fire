@@ -15,6 +15,7 @@ static const int regulator_voltage[] = {
 	REGULATOR_VOLTAGE_1220,
 	REGULATOR_VOLTAGE_1500,
 	REGULATOR_VOLTAGE_1800,
+	REGULATOR_VOLTAGE_1804,
 	REGULATOR_VOLTAGE_2500,
 	REGULATOR_VOLTAGE_2800,
 	REGULATOR_VOLTAGE_2900,
@@ -22,12 +23,8 @@ static const int regulator_voltage[] = {
 
 struct REGULATOR_CTRL regulator_control[REGULATOR_TYPE_MAX_NUM] = {
 	{"vcama"},
-#ifdef CONFIG_REGULATOR_RT5133
 	{"vcama1"},
-#endif
-#if defined(IMGSENSOR_MT6781) || defined(IMGSENSOR_MT6877)
 	{"vcamaf"},
-#endif
 	{"vcamd"},
 	{"vcamio"},
 };
@@ -56,14 +53,19 @@ static enum IMGSENSOR_RETURN regulator_init(
 				idx,
 				regulator_control[type].pregulator_type);
 			if (ret < 0)
-				return ret;
+				PK_DBG("NOTICE: %s, snprintf err, %d\n",
+					__func__, ret);
+
 			preg->pregulator[idx][type] = regulator_get_optional(
 					&pcommon->pplatform_device->dev,
 					str_regulator_name);
-			if (IS_ERR(preg->pregulator[idx][type])) {
+
+			if (preg->pregulator[idx][type] == NULL ||
+				IS_ERR(preg->pregulator[idx][type])) {
+				PK_DBG("NOTICE: %s, regulator[%d][%d] err: %s\n",
+					__func__,
+					idx, type, str_regulator_name);
 				preg->pregulator[idx][type] = NULL;
-				PK_INFO("ERROR: regulator[%d][%d]  %s fail!\n",
-						idx, type, str_regulator_name);
 			}
 			atomic_set(&preg->enable_cnt[idx][type], 0);
 		}
@@ -107,7 +109,6 @@ static enum IMGSENSOR_RETURN regulator_set(
 	int reg_type_offset;
 	atomic_t             *enable_cnt;
 
-
 	if (pin > IMGSENSOR_HW_PIN_DOVDD   ||
 	    pin < IMGSENSOR_HW_PIN_AVDD    ||
 	    pin_state < IMGSENSOR_HW_PIN_STATE_LEVEL_0 ||
@@ -130,14 +131,14 @@ static enum IMGSENSOR_RETURN regulator_set(
 				regulator_voltage[
 				pin_state - IMGSENSOR_HW_PIN_STATE_LEVEL_0])) {
 
-				PK_PR_ERR(
+				PK_DBG(
 				  "[regulator]fail to regulator_set_voltage, powertype:%d powerId:%d\n",
 				  pin,
 				  regulator_voltage[
 				  pin_state - IMGSENSOR_HW_PIN_STATE_LEVEL_0]);
 			}
 			if (regulator_enable(pregulator)) {
-				PK_PR_ERR(
+				PK_DBG(
 				"[regulator]fail to regulator_enable, powertype:%d powerId:%d\n",
 				pin,
 				regulator_voltage[
@@ -150,7 +151,7 @@ static enum IMGSENSOR_RETURN regulator_set(
 				PK_DBG("[regulator]%d is enabled\n", pin);
 
 			if (regulator_disable(pregulator)) {
-				PK_PR_ERR(
+				PK_DBG(
 					"[regulator]fail to regulator_disable, powertype: %d\n",
 					pin);
 				return IMGSENSOR_RETURN_ERROR;
@@ -158,7 +159,7 @@ static enum IMGSENSOR_RETURN regulator_set(
 			atomic_dec(enable_cnt);
 		}
 	} else {
-		PK_PR_ERR("regulator == NULL %d %d %d\n",
+		PK_DBG("regulator == NULL %d %d %d\n",
 				reg_type_offset,
 				pin,
 				IMGSENSOR_HW_PIN_AVDD);

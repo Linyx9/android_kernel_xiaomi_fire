@@ -106,7 +106,7 @@ struct file *file, const char __user *buf, size_t count, loff_t *data)
 static int mddulthro_pid_open(struct inode *inode, struct file *file)
 {
 	/* return single_open(file, mddulthro_pid_read, NULL); */
-	return single_open(file, mddulthro_pid_read, PDE_DATA(inode));
+	return single_open(file, mddulthro_pid_read, pde_data(inode));
 }
 
 static const struct file_operations mddulthro_pid_fops = {

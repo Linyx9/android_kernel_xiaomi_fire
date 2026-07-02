@@ -12,13 +12,6 @@
 #include "mtk_nanohub_ipi.h"
 #include "scp.h"
 
-enum scp_ipi_status __attribute__((weak)) scp_ipi_send(enum ipi_id id,
-                void *buf, unsigned int  len,
-                unsigned int wait, enum scp_core_id scp_id)
-{
-        return SCP_IPI_ERROR;
-}
-
 struct ipi_hw_master {
 	spinlock_t lock;
 	bool running;

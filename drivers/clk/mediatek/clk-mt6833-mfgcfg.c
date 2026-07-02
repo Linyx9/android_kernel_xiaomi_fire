@@ -1,9 +1,11 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2021 MediaTek Inc.
+ * Author: Owen Chen <owen.chen@mediatek.com>
+ */
 
 #include <linux/clk-provider.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 
 #include "clk-mtk.h"
@@ -11,15 +13,11 @@
 
 #include <dt-bindings/clock/mt6833-clk.h>
 
-#define MT_CLKMGR_MODULE_INIT	0
+#define MT_CCF_BRINGUP		1
 
-#define MT_CCF_BRINGUP			1
-
+/* Regular Number Definition */
 #define INV_OFS			-1
-
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status pwr_stat = GATE_PWR_STAT(0x16C,
-		0x170, INV_OFS, 0xBC, 0xBC);
+#define INV_BIT			-1
 
 static const struct mtk_gate_regs mfgcfg_cg_regs = {
 	.set_ofs = 0x4,
@@ -34,7 +32,6 @@ static const struct mtk_gate_regs mfgcfg_cg_regs = {
 		.regs = &mfgcfg_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &pwr_stat,			\
 	}
 
 static const struct mtk_gate mfgcfg_clks[] = {
@@ -42,26 +39,24 @@ static const struct mtk_gate mfgcfg_clks[] = {
 			"mfg_ref_ck"/* parent */, 0),
 };
 
+static const struct mtk_clk_desc mfgcfg_mcd = {
+	.clks = mfgcfg_clks,
+	.num_clks = CLK_MFGCFG_NR_CLK,
+};
+
 static int clk_mt6833_mfgcfg_probe(struct platform_device *pdev)
 {
-	struct clk_onecell_data *clk_data;
 	int r;
-	struct device_node *node = pdev->dev.of_node;
 
 #if MT_CCF_BRINGUP
 	pr_notice("%s init begin\n", __func__);
 #endif
 
-	clk_data = mtk_alloc_clk_data(CLK_MFGCFG_NR_CLK);
-
-	mtk_clk_register_gates(node, mfgcfg_clks, ARRAY_SIZE(mfgcfg_clks),
-			clk_data);
-
-	r = of_clk_add_provider(node, of_clk_src_onecell_get, clk_data);
-
+	r = mtk_clk_simple_probe(pdev);
 	if (r)
-		pr_notice("%s(): could not register clock provider: %d\n",
-			__func__, r);
+		dev_err(&pdev->dev,
+			"could not register clock provider: %s: %d\n",
+			pdev->name, r);
 
 #if MT_CCF_BRINGUP
 	pr_notice("%s init end\n", __func__);
@@ -71,12 +66,13 @@ static int clk_mt6833_mfgcfg_probe(struct platform_device *pdev)
 }
 
 static const struct of_device_id of_match_clk_mt6833_mfgcfg[] = {
-	{ .compatible = "mediatek,mt6833-mfgsys", },
+	{
+		.compatible = "mediatek,mt6833-mfg",
+		.data = &mfgcfg_mcd,
+	},
 	{}
 };
 
-#if MT_CLKMGR_MODULE_INIT
-
 static struct platform_driver clk_mt6833_mfgcfg_drv = {
 	.probe = clk_mt6833_mfgcfg_probe,
 	.driver = {
@@ -85,21 +81,5 @@ static struct platform_driver clk_mt6833_mfgcfg_drv = {
 	},
 };
 
-builtin_platform_driver(clk_mt6833_mfgcfg_drv);
-
-#else
-
-static struct platform_driver clk_mt6833_mfgcfg_drv = {
-	.probe = clk_mt6833_mfgcfg_probe,
-	.driver = {
-		.name = "clk-mt6833-mfgcfg",
-		.of_match_table = of_match_clk_mt6833_mfgcfg,
-	},
-};
-static int __init clk_mt6833_mfgcfg_platform_init(void)
-{
-	return platform_driver_register(&clk_mt6833_mfgcfg_drv);
-}
-arch_initcall(clk_mt6833_mfgcfg_platform_init);
-
-#endif	/* MT_CLKMGR_MODULE_INIT */
+module_platform_driver(clk_mt6833_mfgcfg_drv);
+MODULE_LICENSE("GPL");

@@ -1,25 +1,15 @@
- /*
-  * Copyright (C) 2010 - 2017 Novatek, Inc.
-  *
-  * Revision: 15504
-  *
-  * This program is free software; you can redistribute it and/or modify
-  * it under the terms of the GNU General Public License as published by
-  * the Free Software Foundation; either version 2 of the License, or
-  * (at your option) any later version.
-  *
-  * This program is distributed in the hope that it will be useful, but WITHOUT
-  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  * more details.
-  *
-  */
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (c) 2023 MediaTek Inc.
+ */
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/gpio.h>
 #include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 #include <linux/uaccess.h>
 #include <linux/input/mt.h>
 #include <linux/of.h>
@@ -946,11 +936,10 @@ static int32_t nvt_flash_close(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static const struct file_operations nvt_flash_fops = {
-	.owner = THIS_MODULE,
-	.open = nvt_flash_open,
-	.release = nvt_flash_close,
-	.read = nvt_flash_read,
+static const struct proc_ops nvt_flash_fops = {
+	.proc_open = nvt_flash_open,
+	.proc_release = nvt_flash_close,
+	.proc_read = nvt_flash_read,
 };
 
 /*******************************************************
@@ -1431,8 +1420,7 @@ out:
  * return:
  *	Executive outcomes. 0---succeed. negative---failed
  *******************************************************/
-static int32_t nvt_ts_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int nvt_ts_probe(struct i2c_client *client)
 {
 	int32_t ret = 0;
 #if ((TOUCH_KEY_NUM > 0) || WAKEUP_GESTURE)
@@ -1677,7 +1665,7 @@ err_check_functionality_failed:
  * return:
  *	Executive outcomes. 0---succeed.
  *******************************************************/
-static int32_t nvt_ts_remove(struct i2c_client *client)
+static void nvt_ts_remove(struct i2c_client *client)
 {
 	mutex_destroy(&ts->lock);
 
@@ -1688,8 +1676,6 @@ static int32_t nvt_ts_remove(struct i2c_client *client)
 		input_unregister_device(ts->input_dev);
 	i2c_set_clientdata(client, NULL);
 	kfree(ts);
-
-	return 0;
 }
 
 static int nvt_i2c_detect(struct i2c_client *client,
@@ -1894,6 +1880,7 @@ static int32_t __init nvt_driver_init(void)
 	}
 
 	NVT_LOG("end\n");
+	tpd_device_init();
 
 err_driver:
 	return ret;
@@ -1902,6 +1889,7 @@ err_driver:
 static void __exit nvt_driver_exit(void)
 {
 	tpd_driver_remove(&nvt_device_driver);
+	tpd_device_exit();
 
 #if BOOT_UPDATE_FIRMWARE
 	if (nvt_fwu_wq)

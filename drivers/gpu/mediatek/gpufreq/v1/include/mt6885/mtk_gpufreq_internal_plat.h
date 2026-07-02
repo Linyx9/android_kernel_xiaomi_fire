@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef ___MT_GPUFREQ_INTERNAL_PLAT_H___
 #define ___MT_GPUFREQ_INTERNAL_PLAT_H___
@@ -79,9 +79,9 @@
 /**************************************************
  * Reference Power Setting
  **************************************************/
-#define GPU_ACT_REF_POWER               (2974)                /* mW  */
-#define GPU_ACT_REF_FREQ                (836000)              /* KHz */
-#define GPU_ACT_REF_VOLT                (75000)               /* mV x 100 */
+#define GPU_ACT_REF_POWER               (1285)                /* mW  */
+#define GPU_ACT_REF_FREQ                (900000)              /* KHz */
+#define GPU_ACT_REF_VOLT                (90000)               /* mV x 100 */
 #define PTPOD_DISABLE_VOLT              (75000)
 
 /**************************************************
@@ -107,11 +107,6 @@
  **************************************************/
 #define MT_GPUFREQ_DFD_ENABLE 1
 #define MT_GPUFREQ_DFD_DEBUG 0
-
-/**************************************************
- * Hopping Setting
- **************************************************/
-#define MT_GPUFREQ_DVFS_HOPPING_ENABLE 1
 
 /**************************************************
  * Register Manipulations
@@ -147,7 +142,7 @@
 		return single_open(	\
 				file,	\
 				mt_ ## name ## _proc_show,	\
-				PDE_DATA(inode));	\
+				pde_data(inode));	\
 	}	\
 	static const struct file_operations mt_ ## name ## _proc_fops =	\
 	{	\
@@ -166,7 +161,7 @@
 		return single_open(	\
 				file,	\
 				mt_ ## name ## _proc_show,	\
-				PDE_DATA(inode));	\
+				pde_data(inode));	\
 	}	\
 	static const struct file_operations mt_ ## name ## _proc_fops =	\
 	{	\

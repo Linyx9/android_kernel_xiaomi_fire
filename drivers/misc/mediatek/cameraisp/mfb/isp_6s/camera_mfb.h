@@ -342,8 +342,8 @@ enum MFB_CMD_ENUM {
 	MFB_CMD_MSF_ENQUE_REQ,	/* MSF Enque Request */
 	MFB_CMD_MSS_DEQUE_REQ,	/* MSS Deque Request */
 	MFB_CMD_MSF_DEQUE_REQ,	/* MSF Deque Request */
-	MFB_CMD_MAP,
-	MFB_CMD_UNMAP,
+	MFB_CMD_MAP,	/* MFB MAP */
+	MFB_CMD_UNMAP,	/* MFB UNMAP */
 	MFB_CMD_TOTAL,
 };
 
@@ -413,6 +413,12 @@ struct compat_MFB_MSFRequest {
 	enum exec_mode exec;
 };
 
+struct MFB_MapTable {
+	unsigned int buf_fd;
+	unsigned int buf_offset;
+	unsigned int buf_pa;
+};
+
 #endif
 
 #define MFB_MSS_RESET           _IO(MFB_MAGIC, MFB_CMD_MSS_RESET)
@@ -449,6 +455,10 @@ struct compat_MFB_MSFRequest {
 #define MFB_MSF_DEQUE_REQ \
 	_IOWR(MFB_MAGIC, MFB_CMD_MSF_DEQUE_REQ, struct MFB_MSFRequest)
 
+#define MFB_MAP \
+	_IOWR(MFB_MAGIC, MFB_CMD_MAP, struct MFB_MapTable)
+#define MFB_UNMAP \
+	_IOWR(MFB_MAGIC, MFB_CMD_UNMAP, struct MFB_MapTable)
 
 #ifdef CONFIG_COMPAT
 #define COMPAT_MFB_MSS_WRITE_REGISTER \

@@ -3,6 +3,7 @@
  * Copyright (c) 2015 MediaTek Inc.
  */
 
+
 #ifndef __CAMERA_FDVT_H__
 #define __CAMERA_FDVT_H__
 
@@ -11,7 +12,7 @@
 
 #define SIG_ERESTARTSYS 512
 
-#ifdef CONFIG_COMPAT
+#if IS_ENABLED(CONFIG_COMPAT)
 /*64 bit*/
 #include <linux/fs.h>
 #include <linux/compat.h>
@@ -24,7 +25,7 @@ struct FDVTRegIO {
 };
 #define FDVTRegIO struct FDVTRegIO
 
-#ifdef CONFIG_COMPAT
+#if IS_ENABLED(CONFIG_COMPAT)
 
 struct compat_FDVTRegIO {
 	compat_uptr_t pAddr;
@@ -52,7 +53,7 @@ struct compat_FDVTRegIO {
 #define FDVT_IOC_T_DUMPREG \
 	_IO(FDVT_IOC_MAGIC, 0x80)
 
-#ifdef CONFIG_COMPAT
+#if IS_ENABLED(CONFIG_COMPAT)
 
 #define COMPAT_FDVT_IOC_INIT_SETPARA_CMD \
 	_IO(FDVT_IOC_MAGIC, 0x00)

@@ -222,7 +222,7 @@ enum scp_ipi_status scp_ipi_send(enum ipi_id id, void *buf,
 	}
 
 	/* keep scp awake for sram copy*/
-	if (scp_awake_lock(scp_id) == -1) {
+	if (scp_awake_lock((void *)scp_id) == -1) {
 		mutex_unlock(&scp_ipi_mutex[scp_id]);
 		pr_err("[SCP] %s: %s ipi error, awake scp fail\n", __func__,
 			core_ids[scp_id]);
@@ -242,7 +242,7 @@ enum scp_ipi_status scp_ipi_send(enum ipi_id id, void *buf,
 				scp_ipi_owner[scp_id]);
 			scp_A_dump_regs();
 		}
-		if (scp_awake_unlock(scp_id) == -1)
+		if (scp_awake_unlock((void*)scp_id) == -1)
 			pr_debug("[SCP] %s: ap->scp busy awake unlock -1\n",
 				__func__);
 		scp_ipi_desc[id].busy_count++;
@@ -288,7 +288,7 @@ enum scp_ipi_status scp_ipi_send(enum ipi_id id, void *buf,
 	if (wait)
 		while ((readl(SCP_GIPC_IN_REG) & (1<<scp_id)) > 0)
 			;
-	if (scp_awake_unlock(scp_id) == -1)
+	if (scp_awake_unlock((void *)scp_id) == -1)
 		pr_debug("[SCP] %s: awake unlock fail\n", __func__);
 
 	/* scp is interrupted, so unlock mutex to let other users in */
@@ -377,4 +377,5 @@ void mt_print_scp_ipi_id(void)
 		break;
 	}
 }
+EXPORT_SYMBOL(mt_print_scp_ipi_id);
 

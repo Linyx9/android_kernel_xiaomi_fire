@@ -31,7 +31,7 @@
 #ifndef _MT_AUDDRV_DEVTREE_PARSER_H_
 #define _MT_AUDDRV_DEVTREE_PARSER_H_
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>

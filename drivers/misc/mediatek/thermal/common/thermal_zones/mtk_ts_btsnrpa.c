@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/version.h>
 #include <linux/kernel.h>
@@ -24,7 +24,7 @@
 #include <linux/uidgid.h>
 #include <tmp_bts.h>
 #include <linux/slab.h>
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 #include <linux/of.h>
 #include <linux/iio/consumer.h>
 #include <linux/iio/iio.h>
@@ -33,7 +33,7 @@
  *Weak functions
  *=============================================================
  */
-#if !defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if !IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 int __attribute__ ((weak))
 IMM_IsAdcInitReady(void)
 {
@@ -52,7 +52,7 @@ IMM_GetOneChannelValue(int dwChannel, int data[4], int *rawdata)
  */
 static kuid_t uid = KUIDT_INIT(0);
 static kgid_t gid = KGIDT_INIT(1000);
-static DEFINE_SEMAPHORE(sem_mutex);
+static DEFINE_SEMAPHORE(sem_mutex, 1);
 
 static unsigned int interval = 1;	/* seconds, 0 : no auto polling */
 static int trip_temp[10] = { 120000, 110000, 100000, 90000, 80000,
@@ -62,8 +62,9 @@ static struct thermal_zone_device *thz_dev;
 static int mtkts_btsnrpa_debug_log;
 static int kernelmode;
 static int g_THERMAL_TRIP[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static struct thermal_trip trips[10];
 
-static int num_trip;
+static int num_trip = 1;
 static char g_bind0[20] = {"mtk-cl-shutdown03"};
 static char g_bind1[20] = { 0 };
 static char g_bind2[20] = { 0 };
@@ -100,7 +101,7 @@ do {                                    \
 pr_notice("[Thermal/TZ/BTSNRPA]" fmt, ##args)
 
 
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 struct iio_channel *thermistor_ch2;
 static int g_ADC_channel;
 #endif
@@ -257,28 +258,6 @@ static struct BTSNRPA_TEMPERATURE BTSNRPA_Temperature_Table3[] = {
 	{60, 2970}		/* FIX_ME */
 };
 
-#if 0
-/* AP_NTC_10 */
-static struct BTSNRPA_TEMPERATURE BTSNRPA_Temperature_Table4[] = {
-	{-20, 68237},
-	{-15, 53650},
-	{-10, 42506},
-	{-5, 33892},
-	{0, 27219},
-	{5, 22021},
-	{10, 17926},
-	{15, 14674},
-	{20, 12081},
-	{25, 10000},
-	{30, 8315},
-	{35, 6948},
-	{40, 5834},
-	{45, 4917},
-	{50, 4161},
-	{55, 3535},
-	{60, 3014}
-};
-#else
 /* AP_NTC_10(TSM0A103F34D1RZ) */
 static struct BTSNRPA_TEMPERATURE BTSNRPA_Temperature_Table4[] = {
 	{-40, 188500},
@@ -316,7 +295,6 @@ static struct BTSNRPA_TEMPERATURE BTSNRPA_Temperature_Table4[] = {
 	{120, 599},
 	{125, 534}
 };
-#endif
 
 /* AP_NTC_47 */
 static struct BTSNRPA_TEMPERATURE BTSNRPA_Temperature_Table5[] = {
@@ -547,27 +525,6 @@ static __s32 mtkts_btsnrpa_thermistor_conver_temp(__s32 Res)
 #endif
 	}
 
-#if 0
-	mtkts_btsnrpa_dprintk(
-			"%s() : TAP_Value = %d\n", __func__,
-			TAP_Value);
-	mtkts_btsnrpa_dprintk(
-			"%s() : Res = %d\n", __func__,
-			Res);
-	mtkts_btsnrpa_dprintk(
-			"%s() : RES1 = %d\n", __func__,
-			RES1);
-	mtkts_btsnrpa_dprintk(
-			"%s() : RES2 = %d\n", __func__,
-			RES2);
-	mtkts_btsnrpa_dprintk(
-			"%s() : TMP1 = %d\n", __func__,
-			TMP1);
-	mtkts_btsnrpa_dprintk(
-			"%s() : TMP2 = %d\n", __func__,
-			TMP2);
-#endif
-
 	return TAP_Value;
 }
 
@@ -625,7 +582,7 @@ static __s32 mtk_ts_btsnrpa_volt_to_temp(__u32 dwVolt)
 
 static int get_hw_btsnrpa_temp(void)
 {
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	int val = 0;
 	int ret = 0, output;
 #else
@@ -633,15 +590,10 @@ static int get_hw_btsnrpa_temp(void)
 	int times = 1, Channel = g_RAP_ADC_channel;
 	static int valid_temp;
 #endif
-#if defined (CONFIG_MACH_MT6833)
+
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	if (IS_ERR_OR_NULL(thermistor_ch2)) {
-		mtkts_btsnrpa_printk("invalid thermistor_ch2:0x%px\n", thermistor_ch2);
-		return ret;
-	}
-#endif
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
-	if (IS_ERR_OR_NULL(thermistor_ch2)) {
-		mtkts_btsnrpa_printk("invalid thermistor_ch2:0x%px\n", thermistor_ch2);
+		mtkts_btsnrpa_printk("invalid thermistor_ch2:0x%p\n", thermistor_ch2);
 		return ret;
 	}
 	ret = iio_read_channel_processed(thermistor_ch2, &val);
@@ -726,7 +678,7 @@ static int get_hw_btsnrpa_temp(void)
 	ret = ret * 1500 / 4096;
 #endif
 #endif
-#endif /*CONFIG_MEDIATEK_MT6577_AUXADC*/
+#endif /*CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC*/
 
 	/* ret = ret*1800/4096;//82's ADC power */
 	mtkts_btsnrpa_dprintk("APtery output mV = %d\n", ret);
@@ -792,11 +744,11 @@ static int mtkts_btsnrpa_get_temp(struct thermal_zone_device *thermal, int *t)
 		mtkts_btsnrpa_dprintk("T=%d\n", (int)*t);
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -909,31 +861,12 @@ static int mtkts_btsnrpa_unbind(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-static int mtkts_btsnrpa_get_mode(struct thermal_zone_device *thermal,
-				  enum thermal_device_mode *mode)
-{
-	*mode = (kernelmode) ? THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
-	return 0;
-}
 
-static int mtkts_btsnrpa_set_mode(struct thermal_zone_device *thermal,
+
+static int mtkts_btsnrpa_change_mode(struct thermal_zone_device *thermal,
 				  enum thermal_device_mode mode)
 {
 	kernelmode = mode;
-	return 0;
-}
-
-static int mtkts_btsnrpa_get_trip_type(
-struct thermal_zone_device *thermal, int trip, enum thermal_trip_type *type)
-{
-	*type = g_THERMAL_TRIP[trip];
-	return 0;
-}
-
-static int mtkts_btsnrpa_get_trip_temp(
-struct thermal_zone_device *thermal, int trip, int *temp)
-{
-	*temp = trip_temp[trip];
 	return 0;
 }
 
@@ -949,10 +882,7 @@ static struct thermal_zone_device_ops mtkts_btsnrpa_dev_ops = {
 	.bind = mtkts_btsnrpa_bind,
 	.unbind = mtkts_btsnrpa_unbind,
 	.get_temp = mtkts_btsnrpa_get_temp,
-	.get_mode = mtkts_btsnrpa_get_mode,
-	.set_mode = mtkts_btsnrpa_set_mode,
-	.get_trip_type = mtkts_btsnrpa_get_trip_type,
-	.get_trip_temp = mtkts_btsnrpa_get_trip_temp,
+	.change_mode = mtkts_btsnrpa_change_mode,
 	.get_crit_temp = mtkts_btsnrpa_get_crit_temp,
 };
 
@@ -1061,7 +991,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		mtkts_btsnrpa_unregister_thermal();
 
 		if (num_trip < 0 || num_trip > 10) {
-			#ifdef CONFIG_MTK_AEE_FEATURE
+			#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtkts_btsnrpa_write",
 					"Bad argument");
@@ -1143,6 +1073,12 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 
 		mtkts_btsnrpa_dprintk(
 			"[%s] mtkts_btsnrpa_register_thermal\n", __func__);
+
+		for (i = 0; i < num_trip; i++) {
+			trips[i].temperature = trip_temp[i];
+			trips[i].type = g_THERMAL_TRIP[i];
+		}
+
 		mtkts_btsnrpa_register_thermal();
 		up(&sem_mutex);
 
@@ -1153,7 +1089,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 	}
 
 	mtkts_btsnrpa_dprintk("[%s] bad argument\n", __func__);
-	#ifdef CONFIG_MTK_AEE_FEATURE
+	#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 	aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_DEFAULT,
 					"mtkts_btsnrpa_write", "Bad argument");
 	#endif
@@ -1202,22 +1138,6 @@ void mtkts_btsnrpa_prepare_table(int table_num)
 	pr_notice("[Thermal/TZ/BTSNRPA] %s table_num=%d\n",
 						__func__, table_num);
 
-#if 0
-	{
-		int i = 0;
-
-		for (i = 0; i < (ntc_tbl_size
-					/ sizeof(struct BTSNRPA_TEMPERATURE));
-		     i++) {
-			pr_notice(
-				"BTSNRPA_Temperature_Table[%d].APteryTemp =%d\n",
-				i, BTSNRPA_Temperature_Table[i].BTSNRPA_Temp);
-			pr_notice(
-				"BTSNRPA_Temperature_Table[%d].TemperatureR=%d\n",
-				i, BTSNRPA_Temperature_Table[i].TemperatureR);
-		}
-	}
-#endif
 }
 
 static int mtkts_btsnrpa_param_read(struct seq_file *m, void *v)
@@ -1226,7 +1146,7 @@ static int mtkts_btsnrpa_param_read(struct seq_file *m, void *v)
 	seq_printf(m, "%d\n", g_RAP_pull_up_voltage);
 	seq_printf(m, "%d\n", g_TAP_over_critical_low);
 	seq_printf(m, "%d\n", g_RAP_ntc_table);
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	seq_printf(m, "%d\n", g_ADC_channel);
 #else
 	seq_printf(m, "%d\n", g_RAP_ADC_channel);
@@ -1361,37 +1281,12 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
  * }
  */
 
-#if 0
-static void mtkts_btsnrpa_cancel_thermal_timer(void)
-{
-	/* cancel timer
-	 * mtkts_btsnrpa_printk("mtkts_btsnrpa_cancel_thermal_timer\n");
-	 *
-	 * stop thermal framework polling when entering deep idle
-	 * if (thz_dev)
-	 *	cancel_delayed_work(&(thz_dev->poll_queue));
-	 */
-}
-
-
-static void mtkts_btsnrpa_start_thermal_timer(void)
-{
-	/* mtkts_btsnrpa_printk("mtkts_btsnrpa_start_thermal_timer\n");
-	 * resume thermal framework polling when leaving deep idle
-	 * if (thz_dev != NULL && interval != 0)
-	 *	mod_delayed_work(system_freezable_power_efficient_wq,
-	 *			&(thz_dev->poll_queue), round_jiffies(
-	 *			msecs_to_jiffies(3000)));
-	 */
-}
-#endif
-
 static int mtkts_btsnrpa_register_thermal(void)
 {
 	mtkts_btsnrpa_dprintk("[%s]\n", __func__);
 
 	/* trips : trip 0~1 */
-	thz_dev = mtk_thermal_zone_device_register("mtktsbtsnrpa", num_trip,
+	thz_dev = mtk_thermal_zone_device_register("mtktsbtsnrpa", trips, num_trip,
 					NULL, &mtkts_btsnrpa_dev_ops, 0, 0, 0,
 					interval * 1000);
 
@@ -1420,13 +1315,12 @@ static int mtkts_btsnrpa_open(struct inode *inode, struct file *file)
 	return single_open(file, mtkts_btsnrpa_read, NULL);
 }
 
-static const struct file_operations mtkts_btsnrpa_fops = {
-	.owner = THIS_MODULE,
-	.open = mtkts_btsnrpa_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtkts_btsnrpa_write,
-	.release = single_release,
+static const struct proc_ops mtkts_btsnrpa_fops = {
+	.proc_open = mtkts_btsnrpa_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtkts_btsnrpa_write,
+	.proc_release = single_release,
 };
 
 
@@ -1435,17 +1329,16 @@ static int mtkts_btsnrpa_param_open(struct inode *inode, struct file *file)
 	return single_open(file, mtkts_btsnrpa_param_read, NULL);
 }
 
-static const struct file_operations mtkts_btsnrpa_param_fops = {
-	.owner = THIS_MODULE,
-	.open = mtkts_btsnrpa_param_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtkts_btsnrpa_param_write,
-	.release = single_release,
+static const struct proc_ops mtkts_btsnrpa_param_fops = {
+	.proc_open = mtkts_btsnrpa_param_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtkts_btsnrpa_param_write,
+	.proc_release = single_release,
 };
 
 
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 static int mtkts_btsnrpa_probe(struct platform_device *pdev)
 {
 	int err = 0;
@@ -1480,7 +1373,7 @@ static int mtkts_btsnrpa_probe(struct platform_device *pdev)
 	return err;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 const struct of_device_id mt_thermistor_of_match3[2] = {
 	{.compatible = "mediatek,mtboard-thermistor3",},
 	{},
@@ -1496,24 +1389,25 @@ static struct platform_driver mtk_thermal_btsnrpa_driver = {
 	.resume = NULL,
 	.driver = {
 		.name = THERMAL_THERMISTOR_NAME,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 		.of_match_table = mt_thermistor_of_match3,
 #endif
 	},
 };
-#endif /*CONFIG_MEDIATEK_MT6577_AUXADC*/
+#endif /*CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC*/
 
-static int __init mtkts_btsnrpa_init(void)
+int  mtkts_btsnrpa_init(void)
 {
+	int i = 0;
 	struct proc_dir_entry *entry = NULL;
 	struct proc_dir_entry *mtkts_btsnrpa_dir = NULL;
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	int err = 0;
 #endif
 
 	mtkts_btsnrpa_dprintk("[%s]\n", __func__);
 
-#if defined(CONFIG_MEDIATEK_MT6577_AUXADC)
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MEDIATEK_MT6577_AUXADC)
 	err = platform_driver_register(&mtk_thermal_btsnrpa_driver);
 	if (err) {
 		mtkts_btsnrpa_printk("thermal driver callback register failed.\n");
@@ -1539,23 +1433,26 @@ static int __init mtkts_btsnrpa_init(void)
 			proc_set_user(entry, uid, gid);
 	}
 
+
+	for (i = 0; i < num_trip; i++) {
+		trips[i].temperature = trip_temp[i];
+		trips[i].type = g_THERMAL_TRIP[i];
+	}
+
 	mtkts_btsnrpa_register_thermal();
-#if 0
-	mtkTTimer_register("mtktsbtsnrpa", mtkts_btsnrpa_start_thermal_timer,
-					mtkts_btsnrpa_cancel_thermal_timer);
-#endif
+
 	return 0;
 }
 
-static void __exit mtkts_btsnrpa_exit(void)
+void  mtkts_btsnrpa_exit(void)
 {
 	mtkts_btsnrpa_dprintk("[%s]\n", __func__);
 	mtkts_btsnrpa_unregister_thermal();
-#if 0
-	mtkTTimer_unregister("mtktsbtsnrpa");
-#endif
+	platform_driver_unregister(&mtk_thermal_btsnrpa_driver);
 	/* mtkts_btsnrpa_unregister_cooler(); */
 }
 
-module_init(mtkts_btsnrpa_init);
-module_exit(mtkts_btsnrpa_exit);
+//module_init(mtkts_btsnrpa_init);
+//module_exit(mtkts_btsnrpa_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

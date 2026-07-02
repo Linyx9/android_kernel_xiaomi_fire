@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0+
-/*
- * Copyright (c) 2019 MediaTek Inc.
- */
-
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright (c) 2020 MediaTek Inc.
+// Author: Owen Chen <owen.chen@mediatek.com>
 
 #include <linux/clk-provider.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 
 #include "clk-mtk.h"
@@ -14,13 +14,9 @@
 
 #define MT_CLKMGR_MODULE_INIT	0
 
-#define MT_CCF_BRINGUP			1
+#define MT_CCF_BRINGUP		1
 
 #define INV_OFS			-1
-
-/* get spm power status struct to register inside clk_data */
-static struct pwr_status pwr_stat = GATE_PWR_STAT(INV_OFS,
-		INV_OFS, 0x0178, BIT(5), BIT(5));
 
 static const struct mtk_gate_regs apuv_cg_regs = {
 	.set_ofs = 0x4,
@@ -35,7 +31,6 @@ static const struct mtk_gate_regs apuv_cg_regs = {
 		.regs = &apuv_cg_regs,			\
 		.shift = _shift,			\
 		.ops = &mtk_clk_gate_ops_setclr,	\
-		.pwr_stat = &pwr_stat,			\
 	}
 
 static const struct mtk_gate apuv_clks[] = {
@@ -61,8 +56,8 @@ static int clk_mt6853_apuv_probe(struct platform_device *pdev)
 
 	clk_data = mtk_alloc_clk_data(CLK_APUV_NR_CLK);
 
-	mtk_clk_register_gates(node, apuv_clks, ARRAY_SIZE(apuv_clks),
-			clk_data);
+	mtk_clk_register_gates_with_dev(node, apuv_clks, ARRAY_SIZE(apuv_clks),
+			clk_data, &pdev->dev);
 
 	r = of_clk_add_provider(node, of_clk_src_onecell_get, clk_data);
 
@@ -103,10 +98,18 @@ static struct platform_driver clk_mt6853_apuv_drv = {
 		.of_match_table = of_match_clk_mt6853_apuv,
 	},
 };
-static int __init clk_mt6853_apuv_platform_init(void)
+
+static int __init clk_mt6853_apuv_init(void)
 {
 	return platform_driver_register(&clk_mt6853_apuv_drv);
 }
-arch_initcall(clk_mt6853_apuv_platform_init);
 
+static void __exit clk_mt6853_apuv_exit(void)
+{
+	platform_driver_unregister(&clk_mt6853_apuv_drv);
+}
+
+arch_initcall(clk_mt6853_apuv_init);
+module_exit(clk_mt6853_apuv_exit);
+MODULE_LICENSE("GPL");
 #endif	/* MT_CLKMGR_MODULE_INIT */

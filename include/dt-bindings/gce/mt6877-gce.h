@@ -314,8 +314,16 @@
 #define CMDQ_SYNC_TOKEN_MSS				665
 #define CMDQ_SYNC_TOKEN_MSF				666
 
+
+#define CMDQ_SYNC_TOKEN_HISTOGRAM_MDP_WAIT		694
+#define CMDQ_SYNC_TOKEN_HISTOGRAM_MDP_SET		695
+
 /* DISP sw token */
 #define CMDQ_SYNC_TOKEN_SODI				671
+
+ /* VENC sw token */
+#define CMDQ_SYNC_TOKEN_HISTOGRAM_VENC_WAIT		696
+#define CMDQ_SYNC_TOKEN_HISTOGRAM_VENC_SET		697
 
 /* GPR access tokens (for register backup)
  * There are 15 32-bit GPR, 3 GPR form a set

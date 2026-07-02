@@ -2,8 +2,8 @@
 /*
  *  mt6833-afe-gpio.c  --  Mediatek 6833 afe gpio ctrl
  *
- *  Copyright (c) 2020 MediaTek Inc.
- *  Author: Eason Yen <eason.yen@mediatek.com>
+ *  Copyright (c) 2021 MediaTek Inc.
+ *  Author: Yujie Xiao <yujie.xiao@mediatek.com>
  */
 
 #include <linux/gpio.h>
@@ -13,7 +13,6 @@
 #include "mt6833-afe-gpio.h"
 
 struct pinctrl *aud_pinctrl;
-
 struct audio_gpio_attr {
 	const char *name;
 	bool gpio_prepare;
@@ -79,18 +78,21 @@ int mt6833_afe_gpio_init(struct mtk_base_afe *afe)
 	return 0;
 }
 
-bool mt6833_afe_gpio_is_prepare(enum mt6833_afe_gpio type)
+bool mt6833_afe_gpio_is_prepared(enum mt6833_afe_gpio type)
 {
+	if (type < 0)
+		return false;
 	return aud_gpios[type].gpio_prepare;
 }
+EXPORT_SYMBOL(mt6833_afe_gpio_is_prepared);
 
 static int mt6833_afe_gpio_select(struct mtk_base_afe *afe,
 				  enum mt6833_afe_gpio type)
 {
 	int ret = 0;
 
-	if (type < 0 || type >= MT6833_AFE_GPIO_GPIO_NUM) {
-		dev_err(afe->dev, "%s(), error, invaild gpio type %d\n",
+	if (type >= MT6833_AFE_GPIO_GPIO_NUM) {
+		dev_err(afe->dev, "%s(), error, invalid gpio type %d\n",
 			__func__, type);
 		return -EINVAL;
 	}
@@ -103,41 +105,41 @@ static int mt6833_afe_gpio_select(struct mtk_base_afe *afe,
 
 	ret = pinctrl_select_state(aud_pinctrl,
 				   aud_gpios[type].gpioctrl);
-	if (ret) {
+	if (ret)
 		dev_err(afe->dev, "%s(), error, can not set gpio type %d\n",
 			__func__, type);
-		AUDIO_AEE("can not set gpio type");
-	}
+
 	return ret;
 }
 
 static int mt6833_afe_gpio_adda_dl(struct mtk_base_afe *afe, bool enable)
 {
-	if (enable) {
+	if (enable)
 		return mt6833_afe_gpio_select(afe,
 					      MT6833_AFE_GPIO_DAT_MOSI_ON);
-	} else {
+	else
 		return mt6833_afe_gpio_select(afe,
 					      MT6833_AFE_GPIO_DAT_MOSI_OFF);
-	}
 }
 
 static int mt6833_afe_gpio_adda_ul(struct mtk_base_afe *afe, bool enable)
 {
 	int ret = 0;
 
-	if (mt6833_afe_gpio_is_prepare(MT6833_AFE_GPIO_DAT_MISO0_ON))
-		ret = mt6833_afe_gpio_select(afe,
-					     enable ? MT6833_AFE_GPIO_DAT_MISO0_ON :
+	if (mt6833_afe_gpio_is_prepared(MT6833_AFE_GPIO_DAT_MISO0_ON)) {
+		ret = mt6833_afe_gpio_select(afe, enable ?
+					     MT6833_AFE_GPIO_DAT_MISO0_ON :
 					     MT6833_AFE_GPIO_DAT_MISO0_OFF);
-	/* if error happened, skip miso1 select */
-	if (ret)
-		return ret;
+		/* if error happened, skip miso1 select */
+		if (ret)
+			return ret;
+	}
 
-	if (mt6833_afe_gpio_is_prepare(MT6833_AFE_GPIO_DAT_MISO1_ON))
-		ret = mt6833_afe_gpio_select(afe,
-					     enable ? MT6833_AFE_GPIO_DAT_MISO1_ON :
+	if (mt6833_afe_gpio_is_prepared(MT6833_AFE_GPIO_DAT_MISO1_ON))
+		ret = mt6833_afe_gpio_select(afe, enable ?
+					     MT6833_AFE_GPIO_DAT_MISO1_ON :
 					     MT6833_AFE_GPIO_DAT_MISO1_OFF);
+
 	return ret;
 }
 
@@ -198,10 +200,10 @@ int mt6833_afe_gpio_request(struct mtk_base_afe *afe, bool enable,
 	default:
 		mutex_unlock(&gpio_request_mutex);
 		dev_warn(afe->dev, "%s(), invalid dai %d\n", __func__, dai);
-		AUDIO_AEE("invalid dai");
 		return -EINVAL;
 	}
 	mutex_unlock(&gpio_request_mutex);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mt6833_afe_gpio_request);
 

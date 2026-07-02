@@ -29,6 +29,7 @@
 #include <linux/mfd/mt6357/registers.h>
 #include <linux/mfd/mt6397/core.h>
 #include <linux/mfd/mt6357/core.h>
+#include <linux/pinctrl/consumer.h>
 #include "mt6357-accdet.h"
 #include "mt6357.h"
 /* grobal variable definitions */
@@ -147,15 +148,6 @@ const struct of_device_id accdet_of_match[] = {
 		.compatible = "mediatek,mt8173-accdet",
 	}, {
 		/* sentinel */
-	},
-};
-
-static struct snd_soc_jack_pin accdet_jack_pins[] = {
-	{
-		.pin = "Headset",
-		.mask = SND_JACK_HEADSET |
-			SND_JACK_LINEOUT |
-			SND_JACK_MECHANICAL,
 	},
 };
 
@@ -693,6 +685,9 @@ static void accdet_get_efuse(void)
 	}
 	pr_info("%s efuse=0x%x,auxadc_val=%dmv\n", __func__, efuseval,
 		accdet->auxadc_offset);
+
+	// Mark variables as used to prevent warnings
+	(void)ret;
 }
 
 static void accdet_get_efuse_4key(void)
@@ -724,6 +719,9 @@ static void accdet_get_efuse_4key(void)
 	pr_info("accdet key thresh: mid=%dmv,voice=%dmv,up=%dmv,down=%dmv\n",
 		accdet_dts.four_key.mid, accdet_dts.four_key.voice,
 		accdet_dts.four_key.up, accdet_dts.four_key.down);
+
+	// Mark variables as used to prevent warnings
+	(void)ret;
 }
 
 static u32 key_check(u32 v)
@@ -1552,6 +1550,10 @@ void accdet_irq_handle(void)
 	} else {
 		pr_notice("%s no interrupt detected!\n", __func__);
 	}
+
+	// Mark variables as used to prevent warnings
+	(void)acc_sts;
+	(void)eint_sts;
 }
 
 static irqreturn_t mtk_accdet_irq_handler_thread(int irq, void *data)
@@ -1573,7 +1575,7 @@ static irqreturn_t ex_eint_handler(int irq, void *data)
 			irq_set_irq_type(accdet->gpioirq, IRQ_TYPE_LEVEL_HIGH);
 		else
 			irq_set_irq_type(accdet->gpioirq, IRQ_TYPE_LEVEL_LOW);
-		gpio_set_debounce(accdet->gpiopin, accdet->gpio_hp_deb);
+		gpiod_set_debounce(gpio_to_desc(accdet->gpiopin), accdet->gpio_hp_deb);
 
 		accdet->cur_eint_state = EINT_PLUG_OUT;
 	} else {
@@ -1585,7 +1587,7 @@ static irqreturn_t ex_eint_handler(int irq, void *data)
 		else
 			irq_set_irq_type(accdet->gpioirq, IRQ_TYPE_LEVEL_HIGH);
 
-		gpio_set_debounce(accdet->gpiopin,
+		gpiod_set_debounce(gpio_to_desc(accdet->gpiopin),
 				accdet_dts.plugout_deb * 1000);
 
 		accdet->cur_eint_state = EINT_PLUG_IN;
@@ -1597,6 +1599,10 @@ static irqreturn_t ex_eint_handler(int irq, void *data)
 
 	disable_irq_nosync(accdet->gpioirq);
 	ret = queue_work(accdet->eint_workqueue, &accdet->eint_work);
+
+	// Mark variables as used to prevent warnings
+	(void)ret;
+
 	return IRQ_HANDLED;
 }
 
@@ -1635,7 +1641,7 @@ static inline int ext_eint_setup(struct platform_device *platform_device)
 	if (ret < 0)
 		return ret;
 
-	gpio_set_debounce(accdet->gpiopin, accdet->gpio_hp_deb);
+	gpiod_set_debounce(gpio_to_desc(accdet->gpiopin), accdet->gpio_hp_deb);
 
 	accdet->gpioirq = irq_of_parse_and_map(node, 0);
 	ret = of_property_read_u32_array(node, "interrupts", ints,
@@ -1822,6 +1828,14 @@ static void config_eint_init_by_mode(void)
 				ACCDET_EINT0_PWM_IDLE_SFT);
 		accdet_update_bit(ACCDET_EINT0_EN_ADDR,
 				ACCDET_EINT0_EN_SFT);
+		/* select VTH to 2v and 500k, use internal resitance,
+		 * 219C bit[10][11][12] = 1
+		 */
+		accdet_write(RG_AUDACCDETMICBIAS0PULLLOW_ADDR,
+			accdet_read(RG_AUDACCDETMICBIAS0PULLLOW_ADDR) | 0x1C00);
+		pr_info("%s: register 0x%x=0x%x", __func__,
+			RG_AUDACCDETMICBIAS0PULLLOW_ADDR,
+			accdet_read(RG_AUDACCDETMICBIAS0PULLLOW_ADDR));
 	} else if (HAS_CAP(accdet->data->caps, ACCDET_PMIC_EINT1)) {
 		accdet_update_bits(ACCDET_EINT0_PWM_THRESH_ADDR, 0x8, 0x6, 0x6);
 		accdet_update_bits(ACCDET_EINT0_PWM_WIDTH_ADDR, 0xc, 0x2, 0x2);
@@ -1912,7 +1926,6 @@ static void accdet_init_once(void)
 	} else if (HAS_CAP(accdet->data->caps, ACCDET_AP_GPIO_EINT)) {
 		//TBD
 	}
-	pr_info("%s done!\n", __func__);
 }
 
 static void accdet_init_debounce(void)
@@ -1938,7 +1951,7 @@ static inline void accdet_init(void)
 }
 
 /* late init for DC trim, and this API  Will be called by audio */
-void accdet_late_init(unsigned long data)
+void mt6357_accdet_late_init(unsigned long data)
 {
 	pr_info("%s()  now init accdet!\n", __func__);
 	if (atomic_cmpxchg(&accdet_first, 1, 0)) {
@@ -1949,14 +1962,13 @@ void accdet_late_init(unsigned long data)
 	} else
 		pr_info("%s inited dts fail\n", __func__);
 }
-EXPORT_SYMBOL(accdet_late_init);
+EXPORT_SYMBOL(mt6357_accdet_late_init);
 
 static void delay_init_work_callback(struct work_struct *work)
 {
 	accdet_init();
 	accdet_init_debounce();
 	accdet_init_once();
-	pr_info("%s() done\n", __func__);
 }
 
 static void delay_init_timerhandler(struct timer_list *t)
@@ -1969,11 +1981,40 @@ static void delay_init_timerhandler(struct timer_list *t)
 		pr_notice("Error: %s (%d)\n", __func__, ret);
 }
 
+int mt6357_accdet_init(struct snd_soc_component *component,
+			struct snd_soc_card *card)
+{
+	int ret;
+
+	/* Enable Headset and 4 Buttons Jack detection */
+	ret = snd_soc_card_jack_new(card,
+				    "Headset Jack",
+				    SND_JACK_HEADSET |
+				    SND_JACK_LINEOUT |
+				    SND_JACK_MECHANICAL,
+				    &accdet->jack);
+	if (ret) {
+		pr_notice("Property 'mediatek,soc-accdet' missing/invalid\n");
+		return ret;
+	}
+
+	accdet->jack.jack->input_dev->id.bustype = BUS_HOST;
+	snd_jack_set_key(accdet->jack.jack, SND_JACK_BTN_0, KEY_PLAYPAUSE);
+	snd_jack_set_key(accdet->jack.jack, SND_JACK_BTN_1, KEY_VOLUMEDOWN);
+	snd_jack_set_key(accdet->jack.jack, SND_JACK_BTN_2, KEY_VOLUMEUP);
+	snd_jack_set_key(accdet->jack.jack, SND_JACK_BTN_3, KEY_VOICECOMMAND);
+
+	snd_soc_component_set_jack(component, &accdet->jack, NULL);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mt6357_accdet_init);
+
 static int accdet_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct resource *res;
-	struct mt6397_chip *mt6397_chip = dev_get_drvdata(pdev->dev.parent);
+	struct mt6397_chip *mt6397_chip;
 	const struct of_device_id *of_id =
 				of_match_device(accdet_of_match, &pdev->dev);
 	if (!of_id) {
@@ -2014,34 +2055,7 @@ static int accdet_probe(struct platform_device *pdev)
 	mutex_init(&accdet->res_lock);
 
 	platform_set_drvdata(pdev, accdet);
-	snd_soc_card_set_drvdata(&accdet->card, accdet);
-	ret = devm_snd_soc_register_card(&pdev->dev, &accdet->card);
-	if (ret) {
-		dev_dbg(&pdev->dev, "Error: Register card failed (%d)\n",
-				ret);
-		return ret;
-	}
-	accdet->data->snd_card = accdet->card.snd_card;
-	ret = snd_soc_card_jack_new(&accdet->card,
-			accdet_jack_pins[0].pin,
-			accdet_jack_pins[0].mask,
-			&accdet->jack, accdet_jack_pins, 1);
-	if (ret) {
-		dev_dbg(&pdev->dev, "Error: New card jack failed (%d)\n",
-				ret);
-		return ret;
-	}
-	accdet->jack.jack->input_dev->id.bustype = BUS_HOST;
-	snd_jack_set_key(accdet->jack.jack, SND_JACK_BTN_0, KEY_PLAYPAUSE);
-	snd_jack_set_key(accdet->jack.jack, SND_JACK_BTN_1, KEY_VOLUMEDOWN);
-	snd_jack_set_key(accdet->jack.jack, SND_JACK_BTN_2, KEY_VOLUMEUP);
-	snd_jack_set_key(accdet->jack.jack, SND_JACK_BTN_3, KEY_VOICECOMMAND);
 
-	/* Important. must to register */
-	ret = snd_card_register(accdet->card.snd_card);
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	accdet->regmap = mt6397_chip->regmap;
 	accdet->dev = &pdev->dev;
 
 	/* get pmic auxadc iio channel handler */
@@ -2068,8 +2082,22 @@ static int accdet_probe(struct platform_device *pdev)
 
 	accdet_get_efuse();
 
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	accdet->regmap = dev_get_regmap(pdev->dev.parent, NULL);
+	if (!accdet->regmap) {
+		mt6397_chip =  dev_get_drvdata(pdev->dev.parent);
+		if (!mt6397_chip || !mt6397_chip->regmap) {
+			dev_dbg(accdet->dev, "failed to get pmic key regmap\n");
+			return -ENODEV;
+		}
+
+		accdet->regmap = mt6397_chip->regmap;
+	}
+
+
+
 	/* register pmic interrupt */
-	accdet->accdet_irq = platform_get_irq(pdev, 0);
+	accdet->accdet_irq = platform_get_irq_byname(pdev, "ACCDET_IRQ");
 	if (accdet->accdet_irq < 0) {
 		dev_dbg(&pdev->dev,
 			"Error: Get accdet irq failed (%d)\n",
@@ -2088,7 +2116,7 @@ static int accdet_probe(struct platform_device *pdev)
 	}
 
 	if (HAS_CAP(accdet->data->caps, ACCDET_PMIC_EINT0)) {
-		accdet->accdet_eint0 = platform_get_irq(pdev, 1);
+		accdet->accdet_eint0 = platform_get_irq_byname(pdev, "ACCDET_EINT0");
 		if (accdet->accdet_eint0 < 0) {
 			dev_dbg(&pdev->dev,
 				"Error: Get eint0 irq failed (%d)\n",
@@ -2126,7 +2154,7 @@ static int accdet_probe(struct platform_device *pdev)
 			return ret;
 		}
 	} else if (HAS_CAP(accdet->data->caps, ACCDET_PMIC_BI_EINT)) {
-		accdet->accdet_eint0 = platform_get_irq(pdev, 1);
+		accdet->accdet_eint0 = platform_get_irq_byname(pdev, "ACCDET_EINT0");
 		if (accdet->accdet_eint0 < 0) {
 			dev_dbg(&pdev->dev,
 				"Error: Get eint0 irq failed (%d)\n",
@@ -2144,7 +2172,7 @@ static int accdet_probe(struct platform_device *pdev)
 				ret);
 			return ret;
 		}
-		accdet->accdet_eint1 = platform_get_irq(pdev, 2);
+		accdet->accdet_eint1 = platform_get_irq_byname(pdev, "ACCDET_EINT1");
 		if (accdet->accdet_eint1 < 0) {
 			dev_dbg(&pdev->dev,
 				"Error: Get eint1 irq failed (%d)\n",
@@ -2172,7 +2200,7 @@ static int accdet_probe(struct platform_device *pdev)
 	/* create class in sysfs, "sys/class/", so udev in userspace can create
 	 * device node, when device_create is called
 	 */
-	accdet->accdet_class = class_create(THIS_MODULE, ACCDET_DEVNAME);
+	accdet->accdet_class = class_create(ACCDET_DEVNAME);
 	if (!accdet->accdet_class) {
 		dev_dbg(&pdev->dev,
 			"Error: Create class failed (%d)\n", ret);
@@ -2232,7 +2260,9 @@ static int accdet_probe(struct platform_device *pdev)
 	atomic_set(&accdet_first, 1);
 	mod_timer(&accdet_init_timer, (jiffies + ACCDET_INIT_WAIT_TIMER));
 
-	pr_info("%s done!\n", __func__);
+	// Mark variables as used to prevent warnings
+	(void)res;
+
 	return 0;
 
 err_create_workqueue:
@@ -2309,4 +2339,5 @@ module_exit(accdet_soc_exit);
 /* Module information */
 MODULE_DESCRIPTION("MT6357 ALSA SoC accdet driver");
 MODULE_AUTHOR("Argus Lin <argus.lin@mediatek.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
+

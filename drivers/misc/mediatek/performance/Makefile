@@ -1,72 +1,46 @@
-# Copyright (C) 2017 MediaTek Inc.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 2 as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
 
-subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/performance/perf_ioctl/ \
-		    -I$(srctree)/drivers/misc/mediatek/performance/include/ \
-		    -I$(srctree)/drivers/misc/mediatek/base/power/include/ \
-		    -I$(srctree)/drivers/misc/mediatek/include/
-
-ifeq ($(CONFIG_MACH_MT6739),y)
-subdir-ccflags-y += -DMTK_MT6739_MTK_CPU_FREQ
+ifeq ($(CONFIG_MTK_FPSGO_V3),$(filter $(CONFIG_MTK_FPSGO_V3),m))
+ccflags-y += -DCONFIG_MTK_FPSGO_V3
+subdir-ccflags-y += -DCONFIG_MTK_FPSGO_V3
 endif
 
-obj-y += perfmgr_main.o
-obj-y += base/
+MTK_PM_BUILD_FOLDER=$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/performance
 
-obj-$(CONFIG_MTK_PERF_OBSERVER) += observer/
-obj-$(CONFIG_MTK_RESYM) += resym/
-obj-$(CONFIG_MTK_GBE) += gbe/
-obj-y += syslimiter/
+subdir-ccflags-y += \
+	-I$(MTK_PM_BUILD_FOLDER)/perf_ioctl/ \
+	-I$(MTK_PM_BUILD_FOLDER)/include/\
+	-I$(MTK_PM_BUILD_FOLDER)/powerhal_cpu_ctrl/
 
-#ifeq (,$(findstring mt8,$(CONFIG_MTK_PLATFORM)))
-obj-y += boost_ctrl/
-obj-y += tchbst/
-#endif
+# mtk_perf_ioctl
+include $(MTK_PM_BUILD_FOLDER)/perf_ioctl/build.mk
+MTK_PERF_IOCTL = $(mtk_perf_ioctl_objs:%.o=perf_ioctl/%.o)
+MTK_PERF_IOCTL_SRC = $(MTK_PERF_IOCTL)
+obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += mtk_perf_ioctl.o
+mtk_perf_ioctl-objs += $(MTK_PERF_IOCTL_SRC)
 
-obj-y += perf_ioctl/
+# mtk_ioctl_touch_boost
+MTK_IOCTL_TOUCH_BOOST = $(mtk_ioctl_touch_boost_objs:%.o=perf_ioctl/%.o)
+MTK_IOCTL_TOUCH_BOOST_SRC = $(MTK_IOCTL_TOUCH_BOOST)
+obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += mtk_ioctl_touch_boost.o
+mtk_ioctl_touch_boost-objs += $(MTK_IOCTL_TOUCH_BOOST_SRC)
 
-ifeq ($(CONFIG_MACH_MT6893),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6885),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6877),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6781),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6739),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6833),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6768),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6873),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6853),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6771),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else ifeq ($(CONFIG_MACH_MT6785),y)
-obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3_topology/
-else
+# mtk_ioctl_powerhal
+MTK_IOCTL_POWERHAL = $(mtk_ioctl_powerhal_objs:%.o=perf_ioctl/%.o)
+MTK_IOCTL_POWERHAL_SRC = $(MTK_IOCTL_POWERHAL)
+obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += mtk_ioctl_powerhal.o
+mtk_ioctl_powerhal-objs += $(MTK_IOCTL_POWERHAL_SRC)
+
+# mtk_perf_ioctl_magt
+MTK_PERF_IOCTL_MAGT = $(mtk_perf_ioctl_magt_objs:%.o=perf_ioctl/%.o)
+MTK_PERF_IOCTL_MAGT_SRC = $(MTK_PERF_IOCTL_MAGT)
+obj-$(CONFIG_MTK_PERF_IOCTL_MAGT) += mtk_perf_ioctl_magt.o
+mtk_perf_ioctl_magt-objs += $(MTK_PERF_IOCTL_MAGT_SRC)
+
+#Generic subdir build
 obj-$(CONFIG_MTK_FPSGO_V3) += fpsgo_v3/
-endif
-
 obj-$(CONFIG_MTK_FRS) += frs/
-
-ifneq (,$(filter $(CONFIG_MTK_LEGACY_THERMAL_PLATFORM), "mt6779"))
-		obj-$(CONFIG_MTK_EARA_THERMAL) += eara_thermal/
-endif
-
+obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += powerhal_cpu_ctrl/
+obj-$(CONFIG_MTK_PERFORMANCE_MODULE) += touch_boost/
 
 obj-$(CONFIG_MTK_LOAD_TRACKER) += load_track/
 obj-$(CONFIG_MTK_LOAD_TRACKER) += uload_ind/
-

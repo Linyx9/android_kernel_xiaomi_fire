@@ -20,8 +20,15 @@
 #include <linux/uidgid.h>
 #include <linux/slab.h>
 #include <linux/reboot.h>
+
+
+#define CONFIG_MTK_GAUGE_VERSION 30
+#define MAIN_CHARGER 0
+
+
+
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
-#include <mt-plat/v1/mtk_charger.h>
+//#include <mt-plat/v1/mtk_charger.h>
 #else
 #endif
 
@@ -135,10 +142,10 @@ static int mtktscharger_get_hw_temp(void)
 	if (!pthermal_consumer)
 		return t;
 
-#ifdef CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_PUMP_EXPRESS_PLUS_30_SUPPORT)
 	charger_idx = DIRECT_CHARGER;
 #endif
-#ifdef CONFIG_MTK_DUAL_CHARGER_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_DUAL_CHARGER_SUPPORT)
 	charger_idx = SLAVE_CHARGER;
 #endif
 	ret = charger_manager_get_charger_temperature(pthermal_consumer,
@@ -191,11 +198,11 @@ static int mtktscharger_get_temp(struct thermal_zone_device *thermal, int *t)
 		mtktscharger_dprintk_always("HT %d\n", *t);
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = interval * 1000;
+		thermal->polling_delay_jiffies = interval * 1000;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = interval * polling_factor2;
+		thermal->polling_delay_jiffies = interval * polling_factor2;
 	else
-		thermal->polling_delay = interval * polling_factor1;
+		thermal->polling_delay_jiffies = interval * polling_factor1;
 
 	return 0;
 }
@@ -277,14 +284,8 @@ static int mtktscharger_unbind(struct thermal_zone_device *thermal,
 	return 0;
 }
 
-static int mtktscharger_get_mode(
-struct thermal_zone_device *thermal, enum thermal_device_mode *mode)
-{
-	*mode = (kernelmode) ? THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
-	return 0;
-}
 
-static int mtktscharger_set_mode(
+static int mtktscharger_change_mode(
 struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 {
 	kernelmode = mode;
@@ -317,8 +318,7 @@ static struct thermal_zone_device_ops mtktscharger_dev_ops = {
 	.bind = mtktscharger_bind,
 	.unbind = mtktscharger_unbind,
 	.get_temp = mtktscharger_get_temp,
-	.get_mode = mtktscharger_get_mode,
-	.set_mode = mtktscharger_set_mode,
+	.change_mode = mtktscharger_change_mode,
 	.get_trip_type = mtktscharger_get_trip_type,
 	.get_trip_temp = mtktscharger_get_trip_temp,
 	.get_crit_temp = mtktscharger_get_crit_temp,
@@ -481,7 +481,7 @@ struct file *file, const char __user *buffer, size_t count, loff_t *data)
 		if (num_trip < 0 || num_trip > 10) {
 			mtktscharger_dprintk_always("%s bad argument\n",
 								__func__);
-#ifdef CONFIG_MTK_AEE_FEATURE
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
 			aee_kernel_warning_api(__FILE__, __LINE__,
 					DB_OPT_DEFAULT, "mtktscharger_write",
 					"Bad argument");
@@ -575,13 +575,13 @@ static int mtktscharger_open(struct inode *inode, struct file *file)
 	return single_open(file, mtktscharger_read, NULL);
 }
 
-static const struct file_operations mtktscharger_fops = {
-	.owner = THIS_MODULE,
-	.open = mtktscharger_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtktscharger_write,
-	.release = single_release,
+static const struct proc_ops mtktscharger_fops = {
+
+	.proc_open = mtktscharger_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtktscharger_write,
+	.proc_release = single_release,
 };
 
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
@@ -643,7 +643,7 @@ static struct platform_driver mtktscharger_driver = {
 };
 #endif
 
-static int __init mtktscharger_init(void)
+int mtktscharger_init(void)
 {
 	int err = 0;
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
@@ -715,12 +715,12 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtktscharger_exit(void)
+void mtktscharger_exit(void)
 {
 	mtktscharger_dprintk("%s\n", __func__);
 	mtktscharger_unregister_thermal();
 	mtktscharger_unregister_cooler();
 }
 
-late_initcall(mtktscharger_init);
-module_exit(mtktscharger_exit);
+//late_initcall(mtktscharger_init);
+//module_exit(mtktscharger_exit);

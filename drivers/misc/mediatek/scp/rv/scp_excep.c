@@ -10,6 +10,7 @@
 #include <linux/io.h>
 #include <linux/mutex.h>
 #include <mt-plat/aee.h>
+#include <aed.h>
 //#include <mt-plat/sync_write.h>
 #include <linux/sched_clock.h>
 #include <linux/ratelimit.h>
@@ -26,10 +27,10 @@
 #include <linux/of_reserved_mem.h>
 #include "scp_reservedmem_define.h"
 #endif
+#include "sap.h"
 
 #define SCP_SECURE_DUMP_MEASURE 0
-#define POLLING_RETRY 200
-#define SCP_SECURE_DUMP_DEBUG 1
+#define POLLING_RETRY 400
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM) && SCP_SECURE_DUMP_MEASURE
 	struct cal {
 		uint64_t start, end;
@@ -70,6 +71,15 @@ struct reg_save_st reg_save_list[] = {
 	{0x10001B14, 0x10},
 };
 
+const char *scp_dump_dts_str[] = {
+	"scp-dummy",
+	"scp-sram-size",
+	"scp-cache-dump-buf-size",
+	"scp-reg-dump-buf-size",
+	"scp-tbuf-dump-buf-size",
+	"scp-dram-size",
+	"scp-total",
+};
 //static unsigned char *scp_A_dump_buffer;
 struct scp_dump_st scp_dump;
 
@@ -84,6 +94,8 @@ void (*scp_do_tbufdump)(uint32_t*, uint32_t*) = NULL;
 
 int scp_ee_enable;
 int scp_reset_counts = 100000;
+bool scp_need_aed_dump = true;
+bool scp_reset_stress = true;
 static atomic_t coredumping = ATOMIC_INIT(0);
 static DECLARE_COMPLETION(scp_coredump_comp);
 static uint32_t get_MDUMP_size(MDUMP_t type)
@@ -103,17 +115,42 @@ static uint8_t* get_MDUMP_addr(MDUMP_t type)
 
 uint32_t memorydump_size_probe(struct platform_device *pdev)
 {
-	uint32_t i, ret;
+	int ret = 0;
+	bool legacy_probe = false;
+	uint32_t i = 0;
+	uint32_t size = 0;
+
+	scp_dump.prefix[MDUMP_DUMMY] = 0;
 	for (i = MDUMP_L2TCM; i < MDUMP_TOTAL; ++i) {
-		ret = of_property_read_u32_index(pdev->dev.of_node,
-			"memorydump", i - 1, &scp_dump.prefix[i]);
+		ret = of_property_read_u32(pdev->dev.of_node, scp_dump_dts_str[i], &size);
 		if (ret) {
-			pr_notice("[SCP] %s:Cannot get memorydump size(%d)\n", __func__, i - 1);
-			return -1;
+			legacy_probe = true;
+			break;
 		}
-		scp_dump.prefix[i] += scp_dump.prefix[i - 1];
+		scp_dump.prefix[i] = scp_dump.prefix[i -1] + size;
 	}
-	return 0;
+
+	if (legacy_probe) {
+		for (i = MDUMP_L2TCM; i < MDUMP_TOTAL; ++i) {
+			ret = of_property_read_u32_index(pdev->dev.of_node,
+					"memorydump", i - 1, &scp_dump.prefix[i]);
+			if (ret) {
+				pr_notice("[SCP] %s:Cannot get memorydump size(%d)\n", __func__, i - 1);
+				return -1;
+			}
+			scp_dump.prefix[i] += scp_dump.prefix[i - 1];
+		}
+	}
+
+	for (i = MDUMP_L2TCM; i < MDUMP_TOTAL; ++i)
+		pr_notice("scp_dump.prefix[%d] = 0x%08x\n", i, scp_dump.prefix[i]);
+
+	return ret;
+}
+
+uint32_t scp_get_secure_dump_size(void)
+{
+	return get_MDUMP_size_accumulate(MDUMP_TOTAL - 1);
 }
 
 void scp_dump_last_regs(void)
@@ -227,9 +264,9 @@ void scp_show_bus_tracker_status(void)
 	pr_notice("BUS DBG CON: %x\n", bus_tracker->dbg_con);
 	for (i = 3; i >= 0; --i) {
 		offset = i << 3;
-		if (!bus_tracker->dbg_r[offset + 7])
+		if (!bus_tracker->dbg_r[offset + 7] && !bus_tracker->dbg_w[offset + 7])
 			continue;
-		pr_notice("R[%u-%u] %08x %08x %08x %08x %08x %08x %08x %08x\n",
+		pr_usrdebug("R[%u-%u] %08x %08x %08x %08x %08x %08x %08x %08x\n",
 				offset, offset + 7,
 				bus_tracker->dbg_r[offset],
 				bus_tracker->dbg_r[offset + 1],
@@ -239,7 +276,7 @@ void scp_show_bus_tracker_status(void)
 				bus_tracker->dbg_r[offset + 5],
 				bus_tracker->dbg_r[offset + 6],
 				bus_tracker->dbg_r[offset + 7]);
-		pr_notice("W[%u-%u] %08x %08x %08x %08x %08x %08x %08x %08x\n",
+		pr_usrdebug("W[%u-%u] %08x %08x %08x %08x %08x %08x %08x %08x\n",
 				offset, offset + 7,
 				bus_tracker->dbg_w[offset],
 				bus_tracker->dbg_w[offset + 1],
@@ -416,7 +453,7 @@ static unsigned int scp_crash_dump(enum scp_core_id id)
 {
 	unsigned int scp_dump_size;
 	unsigned int scp_awake_fail_flag;
-	uint32_t dram_start = 0;
+	//uint32_t dram_start = 0;
 	uint32_t dram_size = 0;
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM) && SCP_SECURE_DUMP_MEASURE
 	int idx;
@@ -454,7 +491,7 @@ static unsigned int scp_crash_dump(enum scp_core_id id)
 			scpdump_cal[idx].start = ktime_get_boottime_ns();
 #endif
 
-			scp_do_dump();
+			scp_do_dump(DO_DUMP);
 
 #if SCP_SECURE_DUMP_MEASURE
 			scpdump_cal[idx].end = ktime_get_boottime_ns();
@@ -480,13 +517,8 @@ static unsigned int scp_crash_dump(enum scp_core_id id)
 				mdelay(polling);
 				retry--;
 			}
-			if (retry == 0)	{
+			if (retry == 0)
 				pr_notice("[SCP] Dump timed out:%d\n", POLLING_RETRY);
-#if SCP_SECURE_DUMP_DEBUG
-				pr_notice("[SCP] Dump timeout dump once again.\n");
-				print_clk_registers();
-#endif
-			}
 		}
 		dump_end = ktime_get_boottime_ns();
 		pr_notice("[SCP] Dump: %lld ns\n", (dump_end - dump_start));
@@ -548,11 +580,11 @@ static unsigned int scp_crash_dump(enum scp_core_id id)
 		if ((int)(scp_region_info_copy.ap_dram_size) <= 0) {
 			pr_notice("[scp] ap_dram_size <=0\n");
 		} else {
-			dram_start = scp_region_info_copy.ap_dram_start;
+			//dram_start = scp_region_info_copy.ap_dram_start;
 			dram_size = scp_region_info_copy.ap_dram_size;
 			scp_dump_size += roundup(dram_size, 4);
 		}
-
+		scp_dump_size += sap_get_secure_dump_size();
 	} else {
 #else
 	{
@@ -573,13 +605,16 @@ static unsigned int scp_crash_dump(enum scp_core_id id)
 	if ((int)(scp_region_info_copy.ap_dram_size) <= 0) {
 		pr_notice("[scp] ap_dram_size <=0\n");
 	} else {
-		dram_start = scp_region_info_copy.ap_dram_start;
+		//dram_start = scp_region_info_copy.ap_dram_start;
 		dram_size = scp_region_info_copy.ap_dram_size;
 		/* copy dram data*/
 		memcpy((void *)get_MDUMP_addr(MDUMP_DRAM),
 			scp_ap_dram_virt, dram_size);
 		scp_dump_size += roundup(dram_size, 4);
 	}
+
+	scp_dump_size += sap_crash_dump(
+		(uint8_t *)get_MDUMP_addr(MDUMP_DRAM) + scp_dump_size);
 	}
 
 	dsb(SY); /* may take lot of time */
@@ -608,6 +643,8 @@ static void scp_prepare_aed_dump(char *aed_str,
 	pr_debug("[SCP] %s begins:%s\n", __func__, aed_str);
 	scp_dump_last_regs();
 	scp_show_last_regs();
+	sap_dump_last_regs();
+	sap_show_last_regs();
 
 	scp_A_log = scp_pickup_log_for_aee();
 
@@ -650,6 +687,9 @@ core1:
 		"hart1 pc=0x%08x, lr=0x%08x, sp=0x%08x\n",
 		c1_t1_m->pc, c1_t1_m->lr, c1_t1_m->sp), offset);
 end:
+		offset += SCP_CHECK_AED_STR_LEN(sap_dump_detail_buff(scp_dump.detail_buff
+			+ offset, SCP_AED_STR_LEN - offset), offset);
+
 		offset += SCP_CHECK_AED_STR_LEN(snprintf(scp_dump.detail_buff + offset,
 			SCP_AED_STR_LEN - offset, "last log:\n%s", scp_A_log), offset);
 
@@ -660,7 +700,7 @@ end:
 	scp_dump.ramdump_length = 0;
 	scp_dump.ramdump_length = scp_crash_dump(SCP_A_ID);
 
-	pr_notice("[SCP] %s ends, @%p, size = %x\n", __func__,
+	pr_usrdebug("[SCP] %s ends, @%p, size = %x\n", __func__,
 		scp_dump.ramdump, scp_dump.ramdump_length);
 }
 
@@ -679,25 +719,30 @@ void scp_aed(enum SCP_RESET_TYPE type, enum scp_core_id id)
 
 	if (!scp_ee_enable) {
 		pr_debug("[SCP]ee disable value=%d\n", scp_ee_enable);
+		scp_do_dump(SKIP_DUMP);
 		return;
 	}
 
 	/* wait for previous coredump complete */
-	while (1) {
-		ret = wait_for_completion_interruptible_timeout(
-			&scp_coredump_comp, timeout);
-		if (ret == 0) {
-			pr_notice("[SCP] %s:TIMEOUT, skip\n",
-				__func__);
-			break;
-		}
-		if (ret > 0)
-			break;
-		if ((ret == -ERESTARTSYS) && time_before(jiffies, expire)) {
-			pr_debug("[SCP] %s: continue waiting for completion\n",
-				__func__);
-			timeout = expire - jiffies;
-			continue;
+	if(scp_need_aed_dump) {
+		while (1) {
+			if (aee_get_mode() == AEE_MODE_CUSTOMER_USER)
+				break;
+			ret = wait_for_completion_interruptible_timeout(
+				&scp_coredump_comp, timeout);
+			if (ret == 0) {
+				pr_notice("[SCP] %s:TIMEOUT, skip\n",
+					__func__);
+				break;
+			}
+			if (ret > 0)
+				break;
+			if ((ret == -ERESTARTSYS) && time_before(jiffies, expire)) {
+				pr_debug("[SCP] %s: continue waiting for completion\n",
+					__func__);
+				timeout = expire - jiffies;
+				continue;
+			}
 		}
 	}
 	if (atomic_read(&coredumping) == true)
@@ -708,27 +753,27 @@ void scp_aed(enum SCP_RESET_TYPE type, enum scp_core_id id)
 	switch (type) {
 	case RESET_TYPE_WDT:
 		if (id == SCP_A_ID)
-			scp_aed_title = "SCP_A wdt reset";
+			scp_aed_title = "SCP_A wdt timeout";
 		else
-			scp_aed_title = "SCP_B wdt reset";
+			scp_aed_title = "SCP_B wdt timeout";
 		break;
 	case RESET_TYPE_AWAKE:
 		if (id == SCP_A_ID)
-			scp_aed_title = "SCP_A awake reset";
+			scp_aed_title = "SCP_A awake timeout";
 		else
-			scp_aed_title = "SCP_B awake reset";
+			scp_aed_title = "SCP_B awake timeout";
 		break;
 	case RESET_TYPE_CMD:
 		if (id == SCP_A_ID)
-			scp_aed_title = "SCP_A cmd reset";
+			scp_aed_title = "SCP_A cmd timeout";
 		else
-			scp_aed_title = "SCP_B cmd reset";
+			scp_aed_title = "SCP_B cmd timeout";
 		break;
 	case RESET_TYPE_TIMEOUT:
 		if (id == SCP_A_ID)
-			scp_aed_title = "SCP_A timeout reset";
+			scp_aed_title = "SCP_A timeout timeout";
 		else
-			scp_aed_title = "SCP_B timeout reset";
+			scp_aed_title = "SCP_B timeout timeout";
 		break;
 	}
 	scp_get_log(id);
@@ -737,10 +782,14 @@ void scp_aed(enum SCP_RESET_TYPE type, enum scp_core_id id)
 
 	scp_prepare_aed_dump(scp_aed_title, id);
 
-#if IS_ENABLED(CONFIG_MTK_AEE_AED)
-	/* scp aed api, only detail information available*/
-	aed_common_exception_api("scp", NULL, 0, NULL, 0,
+#if IS_ENABLED(CONFIG_MTK_AEE_FEATURE)
+	if(scp_need_aed_dump) {
+		if (!scp_reset_stress)
+			scp_need_aed_dump = false;
+		/* scp aed api, only detail information available*/
+		aed_common_exception_api("scp", NULL, 0, NULL, 0,
 			scp_dump.detail_buff, DB_OPT_DEFAULT);
+	}
 #endif
 
 	pr_debug("[SCP] scp exception dump is done\n");
@@ -767,7 +816,7 @@ static ssize_t scp_A_dump_show(struct file *filep,
 		memset(scp_dump.ramdump + offset, 0x0, size);
 		/* log for the first and latest cleanup */
 		if (offset == 0 || size == (scp_dump.ramdump_length - offset))
-			pr_notice("[SCP] %s ramdump cleaned of:0x%llx sz:0x%lx\n", __func__,
+			pr_notice("[SCP] %s ramdump cleaned of:0x%llx sz:0x%zx\n", __func__,
 				offset, size);
 
 		/* the last time read scp_dump buffer has done
@@ -802,7 +851,7 @@ struct bin_attribute bin_attr_scp_dump = {
  */
 int scp_excep_init(void)
 {
-	int dram_size = 0;
+	//int dram_size = 0;
 	int i;
 	int size_limit = sizeof(reg_save_list) / sizeof(struct reg_save_st);
 
@@ -817,8 +866,10 @@ int scp_excep_init(void)
 		return -1;
 
 	/* support L1C or not? */
+    /*
 	if ((int)(scp_region_info->ap_dram_size) > 0)
 		dram_size = scp_region_info->ap_dram_size;
+    */
 
 #if SCP_RESERVED_MEM && IS_ENABLED(CONFIG_OF_RESERVED_MEM)
 	if (scpreg.secure_dump) {
@@ -830,7 +881,8 @@ int scp_excep_init(void)
 #else
 	{
 #endif
-	scp_dump.ramdump = vmalloc(get_MDUMP_size_accumulate(MDUMP_DRAM));
+	scp_dump.ramdump = vmalloc(get_MDUMP_size_accumulate(MDUMP_DRAM)
+		+ sap_get_coredump_size());
 	if (!scp_dump.ramdump)
 		return -1;
 	}
@@ -866,6 +918,8 @@ int scp_excep_init(void)
 	scp_dump.ramdump_length = 0;
 	/* 1: ee on, 0: ee disable */
 	scp_ee_enable = 1;
+	/* scp reset stress */
+	scp_reset_stress = false;
 	/* all coredump need element is prepare done */
 	complete(&scp_coredump_comp);
 

@@ -73,14 +73,14 @@
  ******************************************************************************/
 #define PROFILE 1
 #if PROFILE
-static struct timeval tv1, tv2;
+static struct timespec64 tv1, tv2;
 static DEFINE_SPINLOCK(kdsensor_drv_lock);
 /******************************************************************************
  *
  ******************************************************************************/
 static void KD_SENSOR_PROFILE_INIT(void)
 {
-	do_gettimeofday(&tv1);
+	ktime_get_real_ts64(&tv1);
 }
 
 /******************************************************************************
@@ -88,17 +88,16 @@ static void KD_SENSOR_PROFILE_INIT(void)
  ******************************************************************************/
 static void KD_SENSOR_PROFILE(char *tag)
 {
-	unsigned long TimeIntervalUS;
+	struct timespec64 diff;
 
 	spin_lock(&kdsensor_drv_lock);
 
-	do_gettimeofday(&tv2);
-	TimeIntervalUS =
-	    (tv2.tv_sec - tv1.tv_sec) * 1000000 + (tv2.tv_usec - tv1.tv_usec);
+	ktime_get_real_ts64(&tv2);
+	diff = timespec64_sub(tv2, tv1);
 	tv1 = tv2;
 
 	spin_unlock(&kdsensor_drv_lock);
-	pr_debug("[%s]Profile = %lu us\n", tag, TimeIntervalUS);
+	pr_debug("[%s]Profile = %llu us\n", tag, timespec64_to_ns(&diff));
 }
 #else
 static void KD_SENSOR_PROFILE_INIT(void)
@@ -514,15 +513,17 @@ static void write_cmos_sensor_twobyte(kal_uint32 addr, kal_uint32 para)
 
 static kal_uint16 table_write_cmos_sensor(kal_uint16 *para, kal_uint32 len)
 {
-
-
-
-	char puSendCmd[I2C_BUFFER_LEN];
+	char *puSendCmd = NULL;
 	kal_uint32 tosend, IDX;
 	kal_uint16 addr = 0, addr_last = 0, data;
 
 	tosend = 0;
 	IDX = 0;
+	puSendCmd = kmalloc(I2C_BUFFER_LEN, GFP_KERNEL);
+	if (puSendCmd == NULL) {
+		pr_info("Error! allocate table failed\n");
+		return 0;
+	}
 
 	while (len > IDX) {
 		addr = para[IDX];
@@ -557,12 +558,12 @@ static kal_uint16 table_write_cmos_sensor(kal_uint16 *para, kal_uint32 len)
 
 #endif
 	}
+	kfree(puSendCmd);
 	return 0;
 }
 
 static void set_dummy(void)
 {
-#if 1
 	pr_debug("dummyline = %d, dummypixels = %d\n",
 		imgsensor.dummy_line, imgsensor.dummy_pixel);
 
@@ -575,15 +576,6 @@ static void set_dummy(void)
 	write_cmos_sensor_twobyte(0x0342, imgsensor.line_length);
 
 	/* write_cmos_sensor(0x0104, 0x00); */
-#endif
-#if 0
-	pr_debug("dummyline = %d, dummypixels = %d\n",
-		imgsensor.dummy_line, imgsensor.dummy_pixel);
-	write_cmos_sensor(0x0104, 0x01);
-	write_cmos_sensor_twobyte(0x0340, imgsensor.frame_length);
-	write_cmos_sensor_twobyte(0x0342, imgsensor.line_length);
-	write_cmos_sensor(0x0104, 0x00);
-#endif
 }				/*    set_dummy  */
 
 static void set_max_framerate(UINT16 framerate, kal_bool min_framelength_en)
@@ -896,7 +888,6 @@ static BOOL is_module_v2(void)
 static void set_mirror_flip(kal_uint8 image_mirror)
 {
 	pr_debug("image_mirror = %d\n", image_mirror);
-#if 1
 	/********************************************************
 	 *
 	 *   0x3820[2] ISP Vertical flip
@@ -929,7 +920,6 @@ static void set_mirror_flip(kal_uint8 image_mirror)
 		pr_debug("Error image_mirror setting\n");
 
 	}
-#endif
 }
 
 /*************************************************************************
@@ -1088,12 +1078,6 @@ static void capture_setting(void)
 			_S5K2L7_MODE3_CAPTURE_;
 	}
 }
-
-#if 0
-static void normal_video_setting_11_new(kal_uint16 currefps)
-{
-}
-#endif
 
 static void hs_video_setting_11(void)
 {
@@ -1295,7 +1279,6 @@ static kal_uint32 open(void)
 
 	pr_debug("s5k2l7,MIPI 4LANE\n");
 	/* LOG_2; */
-#if 1
 	while (imgsensor_info.i2c_addr_table[i] != 0xff) {
 		spin_lock(&imgsensor_drv_lock);
 		imgsensor.i2c_write_id = imgsensor_info.i2c_addr_table[i];
@@ -1334,7 +1317,6 @@ static kal_uint32 open(void)
 
 	if (imgsensor_info.sensor_id != sensor_id && 0x20C1 != sensor_id)
 		return ERROR_SENSOR_CONNECT_FAIL;
-#endif
 
 	write_cmos_sensor_twobyte(0x602C, 0x4000);
 	write_cmos_sensor_twobyte(0x602E, 0x001A);

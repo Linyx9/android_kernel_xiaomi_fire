@@ -19,6 +19,303 @@
 
 #include "rt5509.h"
 
+struct reg_size_table {
+	u32 addr;
+	u8 size;
+};
+
+static const struct reg_size_table rt5509_reg_size_table[] = {
+	{ RT5509_REG_CHIPREV, 1 },
+	{ RT5509_REG_EVENTINFO, 1 },
+	{ RT5509_REG_DMGFLAG, 1 },
+	{ RT5509_REG_CHIPEN, 1, },
+	{ RT5509_REG_AUDFMT, 1, },
+	{ RT5509_REG_AUDSR, 1 },
+	{ RT5509_REG_I2SSEL, 1, },
+	{ RT5509_REG_I2SDOLRSEL, 1 },
+	{ RT5509_REG_I2SDOSEL, 1, },
+	{ RT5509_REG_FUNCEN, 1, },
+	{ RT5509_REG_CLIP_THR, 1, },
+	{ RT5509_REG_CLIP_CTRL, 1, },
+	{ RT5509_REG_CLIP_SLOPE, 2, },
+	{ RT5509_REG_CLIP_VOMIN, 2 },
+	{ RT5509_REG_CLIP_SIGMAX, 2 },
+	{ RT5509_REG_AMPCONF, 1 },
+	{ RT5509_REG_DACRNKGAIN, 1, },
+	{ RT5509_REG_SAMPOFFS, 1, },
+	{ RT5509_REG_SAMPCONF, 1, },
+	{ RT5509_REG_DAGAIN, 2, },
+	{ RT5509_REG_FFGAIN, 2, },
+	{ RT5509_REG_VBATGAIN, 1 },
+	{ RT5509_REG_RLDCOEF1, 1 },
+	{ RT5509_REG_RLDCOEF2, 1 },
+	{ RT5509_REG_BST_MODE, 1 },
+	{ RT5509_REG_BST_TH1, 2 },
+	{ RT5509_REG_BST_TH2, 2 },
+	{ RT5509_REG_BST_TH3, 2 },
+	{ RT5509_REG_BST_CONF1, 1 },
+	{ RT5509_REG_BST_SIG_GAIN, 1 },
+	{ RT5509_REG_BST_CONF2, 1 },
+	{ RT5509_REG_BST_CONF3, 1 },
+	{ RT5509_REG_OCPOTPEN, 1 },
+	{ RT5509_REG_IDAC1TST, 1, },
+	{ RT5509_REG_IDAC2TST, 1, },
+	{ RT5509_REG_IDAC3TST, 1, },
+	{ RT5509_REG_IDACTSTEN, 1, },
+	{ RT5509_REG_CCMAX, 1, },
+	{ RT5509_REG_OCPMAX, 1 },
+	{ RT5509_REG_INTERRUPT, 2 },
+	{ RT5509_REG_INTRMASK, 2 },
+	{ RT5509_REG_DEGLITCH, 2 },
+	{ RT5509_REG_SICRTNSTHACT, 1 },
+	{ RT5509_REG_TIMEDET, 1 },
+	{ RT5509_REG_TDELAY, 2 },
+	{ RT5509_REG_TATKSEL, 1 },
+	{ RT5509_REG_TREL, 2 },
+	{ RT5509_REG_THOLDREL, 2 },
+	{ RT5509_REG_STHLMT, 1 },
+	{ RT5509_REG_XTHLMT, 1 },
+	{ RT5509_REG_STHALC, 1 },
+	{ RT5509_REG_XTHALC, 1 },
+	{ RT5509_REG_INITUDT, 1 },
+	{ RT5509_REG_UDT, 1 },
+	{ RT5509_REG_DNHALFT, 1 },
+	{ RT5509_REG_ALCGAIN, 1 },
+	{ RT5509_REG_ADAPTCONF, 1 },
+	{ RT5509_REG_INITIMPLDMU, 1 },
+	{ RT5509_REG_IMPLDMU, 1 },
+	{ RT5509_REG_GPILOT, 1 },
+	{ RT5509_REG_PILOTEN, 1 },
+	{ RT5509_REG_PILOTNISENSE, 1 },
+	{ RT5509_REG_ISENSEGAIN, 3 },
+	{ RT5509_REG_RAPP, 3 },
+	{ RT5509_REG_DCR_MAX, 1 },
+	{ RT5509_REG_DCR_KD, 2 },
+	{ RT5509_REG_DCR_KP, 2 },
+	{ RT5509_REG_DCR_KI, 1 },
+	{ RT5509_REG_INITDCRIDMU, 1 },
+	{ RT5509_REG_DCRIDMU, 1 },
+	{ RT5509_REG_CALIB_DCR, 3 },
+	{ RT5509_REG_CALIB_BL, 2 },
+	{ RT5509_REG_CALIB_CTRL, 1 },
+	{ RT5509_REG_CALIB_REQ, 2 },
+	{ RT5509_REG_CALIB_GAIN, 2 },
+	{ RT5509_REG_CALIB_OUT0, 4 },
+	{ RT5509_REG_CALIB_OUT1, 4 },
+	{ RT5509_REG_XTHLMTDAM, 1 },
+	{ RT5509_REG_RMAXDAM, 1 },
+	{ RT5509_REG_TSCALEDAM, 1 },
+	{ RT5509_REG_RECOVERT, 1 },
+	{ RT5509_REG_SETRESFREQ, 2 },
+	{ RT5509_REG_GETRESFREQ, 2 },
+	{ RT5509_REG_VOLCTL, 1 },
+	{ RT5509_REG_VOLUME, 1 },
+	{ RT5509_REG_CALIB_OUTX, 4 },
+	{ RT5509_REG_CALIB_OUTY, 4 },
+	{ RT5509_REG_BQ1, 20 },
+	{ RT5509_REG_BQ2, 20 },
+	{ RT5509_REG_BQ3, 20 },
+	{ RT5509_REG_BQ4, 20 },
+	{ RT5509_REG_BQ5, 20 },
+	{ RT5509_REG_BQ6, 20 },
+	{ RT5509_REG_BQ7, 20 },
+	{ RT5509_REG_BQ8, 20 },
+	{ RT5509_REG_BQ9, 20 },
+	{ RT5509_REG_BQ10, 20 },
+	{ RT5509_REG_VBBQ1, 20 },
+	{ RT5509_REG_VBBQ2, 20 },
+	{ RT5509_REG_VBBQ3, 20 },
+	{ RT5509_REG_VBBQ4, 20 },
+	{ RT5509_REG_VBBQ5, 20 },
+	{ RT5509_REG_VBBQ6, 20 },
+	{ RT5509_REG_VBBQ7, 20 },
+	{ RT5509_REG_VBBQ8, 20 },
+	{ RT5509_REG_VBBQ9, 20 },
+	{ RT5509_REG_VBFCN, 24 },
+	{ RT5509_REG_VBGAIN1, 4 },
+	{ RT5509_REG_VBGAIN2, 4 },
+	{ RT5509_REG_VBGAIN3, 4 },
+	{ RT5509_REG_VBGAIN4, 4 },
+	{ RT5509_REG_VBGAIN5, 4 },
+	{ RT5509_REG_VBGAIN6, 4 },
+	{ RT5509_REG_VBGAIN7, 4 },
+	{ RT5509_REG_VBGAIN8, 4 },
+	{ RT5509_REG_VBGAIN9, 4 },
+	{ RT5509_REG_VBGAIN10, 4 },
+	{ RT5509_REG_SLOPCONST, 1 },
+	{ RT5509_REG_BWCOEFF, 1 },
+	{ RT5509_REG_SWRESET, 1 },
+	{ RT5509_REG_SPKGAIN, 1 },
+	{ RT5509_REG_DSPKCONF1, 1 },
+	{ RT5509_REG_DSPKCONF2, 1 },
+	{ RT5509_REG_DSPKCONF3, 1 },
+	{ RT5509_REG_DSPKCONF4, 1 },
+	{ RT5509_REG_DSPKVMID, 1 },
+	{ RT5509_REG_DSPKZCBOOST, 1 },
+	{ RT5509_REG_ISENSE_CTRL, 1 },
+	{ RT5509_REG_DIMADC, 1 },
+	{ RT5509_REG_DSPKEN1, 1 },
+	{ RT5509_REG_VBATDATA, 2 },
+	{ RT5509_REG_VTHRMDATA, 2 },
+	{ RT5509_REG_VBATSENSE, 1 },
+	{ RT5509_REG_IDACTSTNINFO, 1 },
+	{ RT5509_REG_IDACBOOST, 2 },
+	{ RT5509_REG_DSPKEN2, 1 },
+	{ RT5509_REG_DSPKIBCONF1, 1 },
+	{ RT5509_REG_DSPKIBCONF2, 1 },
+	{ RT5509_REG_DSPKIBCONF3, 1 },
+	{ RT5509_REG_DSPKCONF5, 1 },
+	{ RT5509_REG_DSPKCONF6, 1 },
+	{ RT5509_REG_OVPUVPCTRL, 1 },
+	{ RT5509_REG_PLLCONF1, 1 },
+	{ RT5509_REG_PLLCONF2, 1 },
+	{ RT5509_REG_PLLCONF3, 1 },
+	{ RT5509_REG_PLLCONF4, 1 },
+	{ RT5509_REG_PLLINFO, 1 },
+	{ RT5509_REG_PLLDIVISOR, 4 },
+	{ RT5509_REG_ZCCONF, 1 },
+	{ RT5509_REG_DCADJ, 1 },
+	{ RT5509_REG_I2CBCKLRCKCONF, 1 },
+	{ RT5509_REG_TDEN, 1 },
+	{ RT5509_REG_ALPHACONF, 1 },
+	{ RT5509_REG_SPKRPTSEL, 1 },
+	{ RT5509_REG_SPKRPT, 3 },
+	{ RT5509_REG_NDELAY, 3 },
+	{ RT5509_REG_DELAYRES, 3 },
+	{ RT5509_REG_PHI1, 3 },
+	{ RT5509_REG_PHI2, 3 },
+	{ RT5509_REG_PHI3, 3 },
+	{ RT5509_REG_PHI4, 3 },
+	{ RT5509_REG_PHI5, 3 },
+	{ RT5509_REG_ADAPTB0, 3 },
+	{ RT5509_REG_ADAPTB1, 3 },
+	{ RT5509_REG_ADAPTB2, 3 },
+	{ RT5509_REG_ADAPTB3, 3 },
+	{ RT5509_REG_ADAPTB4, 3 },
+	{ RT5509_REG_ADAPTB5, 3 },
+	{ RT5509_REG_COEFSIERA, 1 },
+	{ RT5509_REG_COEFHPF, 1 },
+	{ RT5509_REG_MIMATC_CTRL, 1 },
+	{ RT5509_REG_TDM_CTRL, 1 },
+	{ RT5509_REG_ECO_CTRL, 1 },
+	{ RT5509_REG_BSTTM, 1 },
+	{ RT5509_REG_ALCMINGAIN, 1 },
+	{ RT5509_REG_RESVECO0, 1 },
+	{ RT5509_REG_OTPCONF, 1 },
+	{ RT5509_REG_OTPDIN, 3 },
+	{ RT5509_REG_VBG_TRIM, 1 },
+	{ RT5509_REG_VTEMP_TRIM, 2 },
+	{ RT5509_REG_TCOEFF, 2 },
+	{ RT5509_REG_SPSCONF, 1 },
+	{ RT5509_REG_SPSTHR, 3 },
+	{ RT5509_REG_VTHERMBATEN, 1 },
+	{ RT5509_REG_DBGADS, 2 },
+	{ RT5509_REG_TESTDAC, 3 },
+	{ RT5509_REG_SPKDCS, 2 },
+	{ RT5509_REG_MSKFLAG, 1 },
+	{ RT5509_REG_DRCMINGAIN, 1 },
+	{ RT5509_REG_DRC_SEL, 1 },
+	{ RT5509_REG_DRC_ATTACK, 16 },
+	{ RT5509_REG_DRC_PARAM, 7 },
+	{ RT5509_REG_DRCBQ1, 20 },
+	{ RT5509_REG_DRCBQ2, 20 },
+	{ RT5509_REG_DRCBQ3, 20 },
+	{ RT5509_REG_DRCBQ4, 20 },
+	{ RT5509_REG_DRCBQ5, 20 },
+	{ RT5509_REG_DRCBQ6, 20 },
+	{ RT5509_REG_DRCBQ7, 20 },
+	{ RT5509_REG_DRCBQ8, 20 },
+	{ RT5509_REG_DRCBQ9, 20 },
+	{ RT5509_REG_DRCBQ10, 20 },
+	{ RT5509_REG_DRCBQ11, 20 },
+	{ RT5509_REG_DRCBQ12, 20 },
+	{ RT5509_REG_DRCEN, 2 },
+	{ RT5509_REG_MTPFLOW1, 1 },
+	{ RT5509_REG_MTPFLOW2, 1 },
+	{ RT5509_REG_MTPFLOW3, 1 },
+	{ RT5509_REG_MTPFLOW4, 1 },
+	{ RT5509_REG_MTPFLOW5, 1 },
+	{ RT5509_REG_MTPFLOW6, 1 },
+	{ RT5509_REG_MTPFLOW7, 1 },
+	{ RT5509_REG_MTPFLOW8, 1 },
+	{ RT5509_REG_MTPFLOW9, 1 },
+	{ RT5509_REG_MTPFLOWA, 1 },
+	{ RT5509_REG_MTPFLOWB, 1 },
+	{ RT5509_REG_MTPFLOWC, 2 },
+	{ RT5509_REG_MTPFLOWD, 1 },
+	{ RT5509_REG_MTPFLOWE, 1 },
+	{ RT5509_REG_MTPFLOWF, 3 },
+	{ RT5509_REG_TESTMODE1, 1 },
+	{ RT5509_REG_RAMIND1, 1 },
+	{ RT5509_REG_RAMIND2, 1 },
+	{ RT5509_REG_SCANMODE, 1 },
+	{ RT5509_REG_CLKEN1, 1 },
+	{ RT5509_REG_CLKEN2, 1 },
+	{ RT5509_REG_PADDRV, 1 },
+	{ RT5509_REG_TESTMODE2, 1 },
+	{ RT5509_REG_SLEWRATE1, 1 },
+	{ RT5509_REG_SLEWRATE2, 1 },
+	{ RT5509_REG_BIASRESISTOR, 2 },
+	{ RT5509_REG_SPKDRV, 2 },
+	{ RT5509_REG_BLOCKREF1, 2 },
+	{ RT5509_REG_BLOCKREF2, 1 },
+	{ RT5509_REG_BIASCURRENT, 1 },
+	{ RT5509_REG_BIASOPTION, 1 },
+};
+
+static int rt5509_block_read(void *client, u32 reg, int bytes, void *dest)
+{
+	return i2c_smbus_read_i2c_block_data(client, reg, bytes, dest);
+}
+
+static int rt5509_block_write(void *client, u32 reg, int bytes, const void *src)
+{
+	return i2c_smbus_write_i2c_block_data(client, reg, bytes, src);
+}
+
+static int rt5509_update_bits(struct i2c_client *i2c, u8 reg, u8 mask,
+			      u8 data)
+{
+	struct rt5509_chip *chip = i2c_get_clientdata(i2c);
+	int ret = 0;
+	u8 read_data = 0;
+
+	down(&chip->io_semaphore);
+	ret = rt5509_block_read(i2c, reg, 1, &read_data);
+	if (ret < 0)
+		goto err_bits;
+	read_data &= ~mask;
+	read_data |= (data & mask);
+	ret = rt5509_block_write(i2c, reg, 1, &read_data);
+	if (ret < 0)
+		goto err_bits;
+err_bits:
+	up(&chip->io_semaphore);
+	return ret;
+}
+
+static unsigned int rt5509_io_read(struct snd_soc_component *component,
+				  unsigned int reg)
+{
+	struct rt5509_chip *chip = snd_soc_component_get_drvdata(component);
+	int ret = 0;
+	u8 data = 0;
+
+	ret = rt5509_block_read(chip->i2c, reg, 1, &data);
+	if (ret < 0)
+		dev_err(chip->dev, "%s read failed, reg = %x\n", __func__, reg);
+	return data;
+}
+
+static int rt5509_io_write(struct snd_soc_component *component,
+			   unsigned int reg,
+			   unsigned int data)
+{
+	struct rt5509_chip *chip = snd_soc_component_get_drvdata(component);
+
+	return rt5509_block_write(chip->i2c, reg, 1, &data);
+}
+
 struct reg_config {
 	uint8_t reg_addr;
 	uint32_t reg_data;
@@ -187,143 +484,19 @@ static const struct reg_config revd_general_config[] = {
 	{ 0x2b, 0x67},
 };
 
-static int rt5509_block_read(
-	void *client, u32 reg, int bytes, void *dest)
-{
-#if RT5509_SIMULATE_DEVICE
-	struct rt5509_chip *chip = i2c_get_clientdata(client);
-	int offset = 0, ret = 0;
-
-	offset = rt5509_calculate_offset(reg);
-	if (offset < 0) {
-		dev_err(chip->dev, "%s: unknown register 0x%02x\n", __func__,
-			ret);
-		ret = -EINVAL;
-	} else
-		memcpy(dest, chip->sim + offset, bytes);
-	return ret;
-#else
-	return i2c_smbus_read_i2c_block_data(client, reg, bytes, dest);
-#endif /* #if RT5509_SIMULATE_DEVICE */
-}
-
-static int rt5509_block_write(void *client, u32 reg,
-	int bytes, const void *src)
-{
-#if RT5509_SIMULATE_DEVICE
-	struct rt5509_chip *chip = i2c_get_clientdata(client);
-	int offset = 0, ret = 0;
-
-	offset = rt5509_calculate_offset(reg);
-	if (offset < 0) {
-		dev_err(chip->dev, "%s: unknown register 0x%02x\n", __func__,
-			ret);
-		ret = -EINVAL;
-	} else
-		memcpy(chip->sim + offset, src, bytes);
-	return ret;
-#else
-	return i2c_smbus_write_i2c_block_data(client, reg, bytes, src);
-#endif /* #if RT5509_SIMULATE_DEVICE */
-}
-
-static struct rt_regmap_fops rt5509_regmap_ops = {
-	.read_device = rt5509_block_read,
-	.write_device = rt5509_block_write,
-};
-
-/* Global read/write function */
-static int rt5509_update_bits(struct i2c_client *i2c, u32 reg,
-			   u32 mask, u32 data, int bytes)
-{
-	struct rt5509_chip *chip = i2c_get_clientdata(i2c);
-#ifdef CONFIG_RT_REGMAP
-	struct rt_reg_data rrd;
-
-	return rt_regmap_update_bits(chip->rd, &rrd, reg, mask, data);
-#else
-	u32 read_data = 0;
-	u8 *p_data = (u8 *)&read_data;
-	int i = 0, j = 0, ret = 0;
-
-	down(&chip->io_semaphore);
-	ret = rt5509_block_read(chip->i2c, reg, bytes, &read_data);
-	if (ret < 0)
-		goto err_bits;
-	j = (bytes / 2);
-	for (i = 0; i < j; i++)
-		swap(p_data[i], p_data[bytes - i]);
-	ret = rt5509_block_write(chip->i2c, reg, bytes, &read_data);
-	if (ret < 0)
-		goto err_bits;
-err_bits:
-	up(&chip->io_semaphore);
-	return ret;
-#endif /* #ifdef CONFIG_RT_REGMAP */
-}
-
-static int rt5509_set_bits(struct i2c_client *i2c, u32 reg, u8 mask)
-{
-	return rt5509_update_bits(i2c, reg, mask, mask, 1);
-}
-
-static int rt5509_clr_bits(struct i2c_client *i2c, u32 reg, u8 mask)
-{
-	return rt5509_update_bits(i2c, reg, mask, 0, 1);
-}
-
-static unsigned int rt5509_io_read(struct snd_soc_component *component,
-	 unsigned int reg)
-{
-	struct rt5509_chip *chip = snd_soc_component_get_drvdata(component);
-	int ret = 0;
-#ifdef CONFIG_RT_REGMAP
-	struct rt_reg_data rrd = {0};
-
-	dev_dbg(component->dev, "%s: reg %02x\n", __func__, reg);
-	ret = rt_regmap_reg_read(chip->rd, &rrd, reg);
-	return (ret < 0 ? ret : rrd.rt_data.data_u32);
-#else
-	u8 data = 0;
-
-	down(&chip->io_semaphore);
-	ret = rt5509_block_read(chip->i2c, reg, 1, &data);
-	up(&chip->io_semaphore);
-	return (ret < 0 ? ret : data);
-#endif /* #ifdef CONFIG_RT_REGMAP */
-}
-
-static int rt5509_io_write(struct snd_soc_component *component,
-	unsigned int reg, unsigned int data)
-{
-	struct rt5509_chip *chip = snd_soc_component_get_drvdata(component);
-#ifdef CONFIG_RT_REGMAP
-	struct rt_reg_data rrd = {0};
-
-	dev_dbg(component->dev, "%s: reg %02x data %02x\n",
-		__func__, reg, data);
-	return rt_regmap_reg_write(chip->rd, &rrd, reg, data);
-#else
-	int ret = 0;
-
-	down(&chip->io_semaphore);
-	ret = rt5509_block_write(chip->i2c, reg, 1, &data);
-	up(&chip->io_semaphore);
-	return ret;
-#endif /* #ifdef CONFIG_RT_REGMAP */
-}
-
 static inline int rt5509_power_on(struct rt5509_chip *chip, bool en)
 {
 	int ret = 0;
 
 	dev_dbg(chip->dev, "%s: en %d\n", __func__, en);
-	if (en)
-		ret = rt5509_clr_bits(chip->i2c, RT5509_REG_CHIPEN,
-				RT5509_CHIPPD_ENMASK);
-	else
-		ret = rt5509_set_bits(chip->i2c, RT5509_REG_CHIPEN,
-				RT5509_CHIPPD_ENMASK);
+	if (en) {
+		ret = rt5509_update_bits(chip->i2c, RT5509_REG_CHIPEN,
+					 RT5509_CHIPPD_ENMASK, 0);
+	} else {
+		ret = rt5509_update_bits(chip->i2c, RT5509_REG_CHIPEN,
+					 RT5509_CHIPPD_ENMASK,
+					 RT5509_CHIPPD_ENMASK);
+	}
 	mdelay(1);
 	return ret;
 }
@@ -369,7 +542,7 @@ static int rt5509_set_bias_level(struct snd_soc_component *component,
 		ret = 0;
 		break;
 	case SND_SOC_BIAS_OFF:
-		ret = snd_soc_component_read32(component, RT5509_REG_BST_MODE);
+		ret = snd_soc_component_read(component, RT5509_REG_BST_MODE);
 		if (ret < 0)
 			goto out_set_bias;
 		chip->mode_store = ret;
@@ -390,7 +563,7 @@ static int rt5509_set_bias_level(struct snd_soc_component *component,
 						    ~RT5509_VBG_ENMASK);
 		if (ret < 0)
 			goto out_set_bias;
-		ret = snd_soc_component_read32(component, RT5509_REG_INTERRUPT);
+		ret = snd_soc_component_read(component, RT5509_REG_INTERRUPT);
 		if (ret < 0)
 			goto out_set_bias;
 		ret = rt5509_power_on(chip, false);
@@ -411,7 +584,6 @@ static int rt5509_init_battmode_setting(struct snd_soc_component *component)
 {
 	int i = 0, ret = 0;
 
-	dev_dbg(component->dev, "%s\n", __func__);
 	for (i = 0; i < ARRAY_SIZE(battmode_config); i++) {
 		ret = snd_soc_component_write(component,
 					      battmode_config[i].reg_addr,
@@ -426,7 +598,6 @@ static int rt5509_init_adaptive_setting(struct snd_soc_component *component)
 {
 	int i = 0, ret = 0;
 
-	dev_dbg(component->dev, "%s\n", __func__);
 	for (i = 0; i < ARRAY_SIZE(adaptive_config); i++) {
 		ret = snd_soc_component_write(component,
 					      adaptive_config[i].reg_addr,
@@ -444,7 +615,6 @@ static int rt5509_init_general_setting(struct snd_soc_component *component)
 	int reg_cfg_size = 0;
 	int i = 0, ret = 0;
 
-	dev_dbg(component->dev, "%s\n", __func__);
 	if (chip->chip_rev >= RT5509_CHIP_REVD) {
 		reg_cfg = revd_general_config;
 		reg_cfg_size = ARRAY_SIZE(revd_general_config);
@@ -469,7 +639,6 @@ static int rt5509_do_tcsense_fix(struct snd_soc_component *component)
 	uint32_t tc_sense = 0, vtemp = 0;
 	int ret = 0;
 
-	dev_dbg(component->dev, "%s\n", __func__);
 	ret = snd_soc_component_update_bits(component,
 					    RT5509_REG_MTPFLOWB, 0x40, 0x40);
 	if (ret < 0)
@@ -484,7 +653,7 @@ static int rt5509_do_tcsense_fix(struct snd_soc_component *component)
 					    RT5509_REG_MTPFLOWB, 0x40, 0x00);
 	if (ret < 0)
 		return ret;
-	ret = snd_soc_component_read32(component, RT5509_REG_VTEMP_TRIM);
+	ret = snd_soc_component_read(component, RT5509_REG_VTEMP_TRIM);
 	if (ret < 0)
 		return ret;
 	vtemp = ret & 0xffff;
@@ -506,13 +675,12 @@ static int rt5509_adap_coefficent_fix(struct snd_soc_component *component)
 	int i, ret = 0;
 	int64_t x = 0, y = 0, z = 0, w = 0;
 
-	dev_dbg(component->dev, "%s\n", __func__);
-	ret = snd_soc_component_read32(component, RT5509_REG_ISENSEGAIN);
+	ret = snd_soc_component_read(component, RT5509_REG_ISENSEGAIN);
 	ret &= 0xffffff;
 	dev_info(component->dev, "gsense otp -> 0x%08x\n", ret);
 	/* gsense otp value */
 	x = ret;
-	ret = snd_soc_component_read32(component, RT5509_REG_CALIB_DCR);
+	ret = snd_soc_component_read(component, RT5509_REG_CALIB_DCR);
 	ret &= 0xffffff;
 	dev_info(component->dev, "dcr otp -> 0x%08x\n", ret);
 	if (ret == 0xffffff || ret == 0)
@@ -520,8 +688,7 @@ static int rt5509_adap_coefficent_fix(struct snd_soc_component *component)
 	/* rspk otp value */
 	w = ret;
 	for (i = 0; i < 6; i++) {
-		ret = snd_soc_component_read32(component,
-					       RT5509_REG_ADAPTB0 + i);
+		ret = snd_soc_component_read(component, RT5509_REG_ADAPTB0 + i);
 		ret &= 0xffffff;
 		dev_info(component->dev, "b factor before 0x%08x\n", ret);
 		/* y = phi factor */
@@ -552,13 +719,12 @@ static int rt5509_init_impedance_ctrl_fix(struct snd_soc_component *component)
 	u32 gsense_otp, rspk_otp, result;
 	int ret = 0;
 
-	dev_dbg(component->dev, "%s\n", __func__);
-	ret = snd_soc_component_read32(component, RT5509_REG_ISENSEGAIN);
+	ret = snd_soc_component_read(component, RT5509_REG_ISENSEGAIN);
 	if (ret == 0)
 		ret = 0x800000;
 	gsense_otp = ret & 0xffffff;
 	dev_dbg(component->dev, "gsense otp 0x%08x\n", gsense_otp);
-	ret = snd_soc_component_read32(component, RT5509_REG_CALIB_DCR);
+	ret = snd_soc_component_read(component, RT5509_REG_CALIB_DCR);
 	if (ret == 0)
 		ret = 0x800000;
 	rspk_otp = ret & 0xffffff;
@@ -578,7 +744,6 @@ static int rt5509_init_proprietary_setting(struct snd_soc_component *component)
 	int i = 0, j = 0;
 	int ret = 0;
 
-	dev_dbg(component->dev, "%s\n", __func__);
 	if (!p_param)
 		goto out_init_proprietary;
 	for (i = 0; i < RT5509_CFG_MAX; i++) {
@@ -588,13 +753,8 @@ static int rt5509_init_proprietary_setting(struct snd_soc_component *component)
 			continue;
 		dev_dbg(chip->dev, "%s start\n", prop_str[i]);
 		for (j = 0; j < cfg_size;) {
-#ifdef CONFIG_RT_REGMAP
-			ret = rt_regmap_block_write(chip->rd, cfg[0], cfg[1],
-					      cfg + 2);
-#else
 			ret = rt5509_block_write(chip->i2c, cfg[0], cfg[1],
 					      cfg + 2);
-#endif /* #ifdef CONFIG_RT_REGMAP */
 			if (ret < 0)
 				dev_err(chip->dev, "set %02x fail\n", cfg[0]);
 			j += (2 + cfg[1]);
@@ -628,7 +788,6 @@ static ssize_t rt5509_proprietary_show(struct device *dev,
 	const u8 *cfg;
 	u32 cfg_size;
 
-	dev_dbg(chip->dev, "%s\n", __func__);
 	if (!param) {
 		i += scnprintf(buf + i, PAGE_SIZE - i, "no proprietary parm\n");
 		goto out_show;
@@ -787,7 +946,6 @@ static int rt5509_component_probe(struct snd_soc_component *component)
 	struct rt5509_chip *chip = snd_soc_component_get_drvdata(component);
 	int ret = 0;
 
-	dev_dbg(component->dev, "%s\n", __func__);
 	/* CHIP Enable */
 	ret = snd_soc_component_update_bits(component, RT5509_REG_CHIPEN,
 		RT5509_CHIPPD_ENMASK, ~RT5509_CHIPPD_ENMASK);
@@ -815,7 +973,7 @@ static int rt5509_component_probe(struct snd_soc_component *component)
 	ret = rt5509_calib_create(chip);
 	if (ret < 0)
 		goto err_out_probe;
-	dev_info(component->dev, "%s\n", __func__);
+
 	return rt5509_set_bias_level(component, SND_SOC_BIAS_OFF);
 err_out_probe:
 	dev_info(component->dev, "chip io error\n");
@@ -861,7 +1019,7 @@ static int rt5509_clk_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		ret = snd_soc_component_read32(component, RT5509_REG_OTPCONF);
+		ret = snd_soc_component_read(component, RT5509_REG_OTPCONF);
 		if (ret < 0)
 			return ret;
 		/* check bit 6 and 5 */
@@ -987,7 +1145,7 @@ static int rt5509_boost_event(struct snd_soc_dapm_widget *w,
 						    0x38, 0x38);
 		if (ret < 0)
 			goto out_boost_event;
-		ret = snd_soc_component_read32(component, RT5509_REG_BST_MODE);
+		ret = snd_soc_component_read(component, RT5509_REG_BST_MODE);
 		if (ret < 0)
 			goto out_boost_event;
 		chip->mode_store = ret;
@@ -1036,7 +1194,7 @@ static int rt5509_boost_event(struct snd_soc_dapm_widget *w,
 		}
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
-		ret = snd_soc_component_read32(component, RT5509_REG_CHIPEN);
+		ret = snd_soc_component_read(component, RT5509_REG_CHIPEN);
 		if (ret < 0)
 			goto out_boost_event;
 		if (ret & RT5509_SPKPROT_ENMASK) {
@@ -1240,7 +1398,7 @@ static int rt5509_alcfixed_gain_get(struct snd_kcontrol *kcontrol,
 
 	if (!chip->rlr_func)
 		return -EINVAL;
-	ret = snd_soc_component_read32(component, RT5509_REG_ALCGAIN);
+	ret = snd_soc_component_read(component, RT5509_REG_ALCGAIN);
 	if (ret < 0)
 		return ret;
 	ucontrol->value.integer.value[0] = ret & 0x0f;
@@ -1260,7 +1418,7 @@ static int rt5509_alcfixed_gain_put(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	if (!chip->rlr_func)
 		return -EINVAL;
-	ret = snd_soc_component_read32(component, RT5509_REG_CHIPEN);
+	ret = snd_soc_component_read(component, RT5509_REG_CHIPEN);
 	if (ret < 0)
 		return ret;
 	orig_pwron = (ret & RT5509_CHIPPD_ENMASK) ? 0 : 1;
@@ -1311,7 +1469,7 @@ static int rt5509_rlrfunc_put(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	if (ucontrol->value.enumerated.item[0] == chip->rlr_func)
 		return 0;
-	ret = snd_soc_component_read32(component, RT5509_REG_CHIPEN);
+	ret = snd_soc_component_read(component, RT5509_REG_CHIPEN);
 	if (ret < 0)
 		return ret;
 	orig_pwron = (ret & RT5509_CHIPPD_ENMASK) ? 0 : 1;
@@ -1327,12 +1485,12 @@ static int rt5509_rlrfunc_put(struct snd_kcontrol *kcontrol,
 						    0x1f, 0x12);
 		if (ret < 0)
 			return ret;
-		ret = snd_soc_component_read32(component, RT5509_REG_FUNCEN);
+		ret = snd_soc_component_read(component, RT5509_REG_FUNCEN);
 		if (ret < 0)
 			return ret;
 		if (!(ret & 0x80)) {
-			ret = snd_soc_component_read32(component,
-						       RT5509_REG_NDELAY);
+			ret = snd_soc_component_read(component,
+						     RT5509_REG_NDELAY);
 			if (ret < 0)
 				return ret;
 			ret = snd_soc_component_write(component,
@@ -1341,12 +1499,11 @@ static int rt5509_rlrfunc_put(struct snd_kcontrol *kcontrol,
 			if (ret < 0)
 				return ret;
 		}
-		ret = snd_soc_component_read32(component, RT5509_REG_ALCGAIN);
+		ret = snd_soc_component_read(component, RT5509_REG_ALCGAIN);
 		if (ret < 0)
 			return ret;
 		chip->alc_gain = (u8)ret;
-		ret = snd_soc_component_read32(component,
-					       RT5509_REG_ALCMINGAIN);
+		ret = snd_soc_component_read(component, RT5509_REG_ALCMINGAIN);
 		if (ret < 0)
 			return ret;
 		chip->alc_min_gain = (u8)ret;
@@ -1364,12 +1521,12 @@ static int rt5509_rlrfunc_put(struct snd_kcontrol *kcontrol,
 						    0x1f, 0x1f);
 		if (ret < 0)
 			return ret;
-		ret = snd_soc_component_read32(component, RT5509_REG_FUNCEN);
+		ret = snd_soc_component_read(component, RT5509_REG_FUNCEN);
 		if (ret < 0)
 			return ret;
 		if (!(ret & 0x80)) {
-			ret = snd_soc_component_read32(component,
-						       RT5509_REG_NDELAY);
+			ret = snd_soc_component_read(component,
+						     RT5509_REG_NDELAY);
 			if (ret < 0)
 				return ret;
 			ret = snd_soc_component_write(component,
@@ -1430,7 +1587,7 @@ static int rt5509_recv_config_put(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	if (ucontrol->value.enumerated.item[0] == chip->recv_spec_set)
 		return 0;
-	ret = snd_soc_component_read32(component, RT5509_REG_CHIPEN);
+	ret = snd_soc_component_read(component, RT5509_REG_CHIPEN);
 	if (ret < 0)
 		return ret;
 	orig_pwron = (ret & RT5509_CHIPPD_ENMASK) ? 0 : 1;
@@ -1440,21 +1597,21 @@ static int rt5509_recv_config_put(struct snd_kcontrol *kcontrol,
 		return ret;
 	if (ucontrol->value.enumerated.item[0]) {
 		/* backup gain ++ */
-		ret = snd_soc_component_read32(component, RT5509_REG_SPKGAIN);
+		ret = snd_soc_component_read(component, RT5509_REG_SPKGAIN);
 		if (ret < 0)
 			return ret;
 		chip->classd_gain_store = ret;
-		ret = snd_soc_component_read32(component, RT5509_REG_DSPKCONF1);
+		ret = snd_soc_component_read(component, RT5509_REG_DSPKCONF1);
 		if (ret < 0)
 			return ret;
 		chip->pgain_gain_store = ret;
-		ret = snd_soc_component_read32(component,
-					       RT5509_REG_BST_SIG_GAIN);
+		ret = snd_soc_component_read(component,
+					     RT5509_REG_BST_SIG_GAIN);
 		if (ret < 0)
 			return ret;
 		chip->sig_gain_store = ret;
-		ret = snd_soc_component_read32(component,
-					       RT5509_REG_CLIP_SIGMAX);
+		ret = snd_soc_component_read(component,
+					     RT5509_REG_CLIP_SIGMAX);
 		if (ret < 0)
 			return ret;
 		chip->sig_max_store = ret;
@@ -1562,7 +1719,7 @@ static int rt5509_bypassdsp_put(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	if (ucontrol->value.enumerated.item[0] == chip->bypass_dsp)
 		return 0;
-	ret = snd_soc_component_read32(component, RT5509_REG_CHIPEN);
+	ret = snd_soc_component_read(component, RT5509_REG_CHIPEN);
 	if (ret < 0)
 		return ret;
 	orig_pwron = (ret & RT5509_CHIPPD_ENMASK) ? 0 : 1;
@@ -1571,11 +1728,11 @@ static int rt5509_bypassdsp_put(struct snd_kcontrol *kcontrol,
 	if (ret < 0)
 		return ret;
 	if (ucontrol->value.enumerated.item[0]) {
-		ret = snd_soc_component_read32(component, RT5509_REG_FUNCEN);
+		ret = snd_soc_component_read(component, RT5509_REG_FUNCEN);
 		if (ret < 0)
 			return ret;
 		chip->func_en = ret;
-		ret = snd_soc_component_read32(component, RT5509_REG_CHIPEN);
+		ret = snd_soc_component_read(component, RT5509_REG_CHIPEN);
 		if (ret < 0)
 			return ret;
 		chip->spk_prot_en = ret & RT5509_SPKPROT_ENMASK;
@@ -1680,7 +1837,7 @@ static int rt5509_recv_model_get(struct snd_kcontrol *kcontrol,
 
 	if (!chip->recv_spec_set)
 		return -EINVAL;
-	ret = snd_soc_component_read32(component, RT5509_REG_SPKGAIN);
+	ret = snd_soc_component_read(component, RT5509_REG_SPKGAIN);
 	if (ret < 0)
 		return ret;
 	ucontrol->value.integer.value[0] = (ret & 0xe0) >> 5;
@@ -1700,7 +1857,7 @@ static int rt5509_recv_model_put(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	if (!chip->recv_spec_set)
 		return -EINVAL;
-	ret = snd_soc_component_read32(component, RT5509_REG_CHIPEN);
+	ret = snd_soc_component_read(component, RT5509_REG_CHIPEN);
 	if (ret < 0)
 		return ret;
 	orig_pwron = (ret & RT5509_CHIPPD_ENMASK) ? 0 : 1;
@@ -1818,7 +1975,6 @@ static const struct snd_soc_component_driver rt5509_component_drv = {
 
 	.set_bias_level = rt5509_set_bias_level,
 	.idle_bias_on = false,
-	/* component io */
 	.read = rt5509_io_read,
 	.write = rt5509_io_write,
 };
@@ -1995,14 +2151,12 @@ static int rt5509_aif_prepare(struct snd_pcm_substream *substream,
 static int rt5509_aif_startup(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *dai)
 {
-	dev_dbg(dai->dev, "%s\n", __func__);
 	return rt5509_set_bias_level(dai->component, SND_SOC_BIAS_STANDBY);
 }
 
 static void rt5509_aif_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *dai)
 {
-	dev_dbg(dai->dev, "%s\n", __func__);
 }
 
 static int rt5509_aif_trigger(struct snd_pcm_substream *substream,
@@ -2102,8 +2256,8 @@ static int rt5509_handle_pdata(struct rt5509_chip *chip)
 
 static int rt5509_i2c_initreg(struct rt5509_chip *chip)
 {
-	return rt5509_clr_bits(chip->i2c, RT5509_REG_CHIPEN,
-		RT5509_TRIWAVE_ENMASK);
+	return rt5509_update_bits(chip->i2c, RT5509_REG_CHIPEN,
+				  RT5509_TRIWAVE_ENMASK, 0);
 }
 
 static int rt5509_get_chip_rev(struct rt5509_chip *chip)
@@ -2126,7 +2280,6 @@ static int rt5509_sw_reset(struct rt5509_chip *chip)
 	int ret = 0;
 	u8 data = 0;
 
-	dev_dbg(chip->dev, "%s\n", __func__);
 	ret = rt5509_block_read(chip->i2c, RT5509_REG_SWRESET, 1, &data);
 	if (ret < 0)
 		return ret;
@@ -2141,7 +2294,6 @@ static inline int _rt5509_power_on(struct rt5509_chip *chip, bool en)
 	int ret = 0;
 	u8 data = 0;
 
-	dev_dbg(chip->dev, "%s: en %d\n", __func__, en);
 	ret = rt5509_block_read(chip->i2c, RT5509_REG_CHIPEN, 1, &data);
 	if (ret < 0)
 		return ret;
@@ -2193,6 +2345,89 @@ static inline int rt5509_parse_dt(struct device *dev,
 }
 #endif /* #ifdef CONFIG_OF */
 
+static int rt5509_dbg_io_read(void *drvdata, u16 reg, void *val, u16 size)
+{
+	struct rt5509_chip *chip = (struct rt5509_chip *)drvdata;
+
+	return rt5509_block_read(chip->i2c, reg, size, val);
+}
+
+static int rt5509_dbg_io_write(void *drvdata, u16 reg, const void *val, u16 size)
+{
+	struct rt5509_chip *chip = (struct rt5509_chip *)drvdata;
+
+	return rt5509_block_write(chip->i2c, reg, size, val);
+}
+
+static ssize_t dump_attr_show(struct device *dev,
+			      struct device_attribute *attr, char *buf)
+{
+	struct rt5509_chip *chip = dev_get_drvdata(dev);
+	int i = 0, ret = 0, j = 0;
+	u8 data[24] = {0};
+
+	buf[0] = '\0';
+	for (i = 0; i < ARRAY_SIZE(rt5509_reg_size_table)/2; i++) {
+		ret = rt5509_block_read(chip->i2c, rt5509_reg_size_table[i].addr,
+					rt5509_reg_size_table[i].size, data);
+		if (ret < 0)
+			return ret;
+		ret = snprintf(buf + strlen(buf), PAGE_SIZE, "reg0x%02x = 0x",
+			       rt5509_reg_size_table[i].addr);
+		if (ret < 0)
+			dev_dbg(dev, "snprintf failed\n");
+		for (j = 0; j < rt5509_reg_size_table[i].size; j++) {
+			ret = snprintf(buf + strlen(buf), PAGE_SIZE, "%02x,", data[j]);
+			if (ret < 0)
+				dev_dbg(dev, "snprintf failed\n");
+		}
+		ret = snprintf(buf + strlen(buf), PAGE_SIZE, "\n");
+		if (ret < 0)
+			dev_dbg(dev, "snprintf failed\n");
+	}
+	return ret < 0 ? ret : strlen(buf);
+}
+
+static ssize_t dump2_attr_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct rt5509_chip *chip = dev_get_drvdata(dev);
+	int i = 0, ret = 0, j = 0;
+	u8 data[24] = {0};
+
+	buf[0] = '\0';
+	for (i = ARRAY_SIZE(rt5509_reg_size_table)/2;
+		i < ARRAY_SIZE(rt5509_reg_size_table); i++) {
+		ret = rt5509_block_read(chip->i2c, rt5509_reg_size_table[i].addr,
+					rt5509_reg_size_table[i].size, data);
+		if (ret < 0)
+			return ret;
+		ret = snprintf(buf + strlen(buf), PAGE_SIZE, "reg0x%02x = 0x",
+			       rt5509_reg_size_table[i].addr);
+		if (ret < 0)
+			dev_dbg(dev, "snprintf failed\n");
+		for (j = 0; j < rt5509_reg_size_table[i].size; j++) {
+			ret = snprintf(buf + strlen(buf), PAGE_SIZE, "%02x,", data[j]);
+			if (ret < 0)
+				dev_dbg(dev, "snprintf failed\n");
+		}
+		ret = snprintf(buf + strlen(buf), PAGE_SIZE, "\n");
+		if (ret < 0)
+			dev_dbg(dev, "snprintf failed\n");
+	}
+	return ret < 0 ? ret : strlen(buf);
+}
+
+static const struct device_attribute dump_attr = {
+	.attr = { .name = "dump", .mode = 0444 },
+	.show = dump_attr_show,
+};
+
+static const struct device_attribute dump2_attr = {
+	.attr = { .name = "dump2", .mode = 0444 },
+	.show = dump2_attr_show,
+};
+
 int rt5509_i2c_probe(struct i2c_client *client,
 		     const struct i2c_device_id *id)
 {
@@ -2200,8 +2435,6 @@ int rt5509_i2c_probe(struct i2c_client *client,
 	struct rt5509_chip *chip;
 	static int dev_cnt;
 	int ret = 0;
-
-	pr_info("+%s\n", __func__);
 
 	if (client->dev.of_node) {
 		pdata = devm_kzalloc(&client->dev, sizeof(*pdata), GFP_KERNEL);
@@ -2225,14 +2458,6 @@ int rt5509_i2c_probe(struct i2c_client *client,
 	chip->pdata = pdata;
 	chip->dev_cnt = dev_cnt;
 	i2c_set_clientdata(client, chip);
-#if RT5509_SIMULATE_DEVICE
-	ret = rt5509_calculate_total_size();
-	chip->sim = devm_kzalloc(&client->dev, ret, GFP_KERNEL);
-	if (!chip->sim) {
-		ret = -ENOMEM;
-		goto err_simulate;
-	}
-#endif /* #if RT5509_SIMULATE_DEVICE */
 
 	sema_init(&chip->io_semaphore, 1);
 #ifdef CONFIG_PM_RUNTIME
@@ -2264,14 +2489,31 @@ int rt5509_i2c_probe(struct i2c_client *client,
 		dev_err(chip->dev, "get chip rev fail\n");
 		goto err_sw_reset;
 	}
-	/* register RegMAP */
-	chip->rd = rt5509_regmap_register(
-		&rt5509_regmap_ops, &client->dev, (void *)client, chip);
-	if (!chip->rd) {
-		dev_err(chip->dev, "create regmap device fail\n");
-		ret = -EINVAL;
-		goto err_regmap;
+
+	chip->extdev_desc.dirname = devm_kasprintf(&client->dev,
+						   GFP_KERNEL, "RT5509.%s",
+						   dev_name(&client->dev));
+	chip->extdev_desc.devname = dev_name(&client->dev);
+	chip->extdev_desc.typestr = devm_kasprintf(&client->dev, GFP_KERNEL,
+						   "I2C,RT5509");
+	chip->extdev_desc.rmap = (struct regmap *)chip;
+	chip->extdev_desc.io_read = rt5509_dbg_io_read;
+	chip->extdev_desc.io_write = rt5509_dbg_io_write;
+	chip->extdev = devm_extdev_io_device_register(&client->dev,
+						      &chip->extdev_desc);
+	if (IS_ERR(chip->extdev)) {
+		dev_err(&client->dev, "Failed to register extdev_io device\n");
+		return PTR_ERR(chip->extdev);
 	}
+
+	ret = device_create_file(chip->dev, &dump_attr);
+	if (ret < 0)
+		dev_err(&client->dev, "Failed to add dump attr\n");
+
+	ret = device_create_file(chip->dev, &dump2_attr);
+	if (ret < 0)
+		dev_dbg(&client->dev, "Failed to add dump attr\n");
+
 	ret = rt5509_i2c_initreg(chip);
 	if (ret < 0) {
 		dev_err(chip->dev, "init_reg fail\n");
@@ -2300,10 +2542,6 @@ int rt5509_i2c_probe(struct i2c_client *client,
 err_put_sync:
 err_pdata:
 err_initreg:
-#ifdef CONFIG_RT_REGMAP
-	rt_regmap_device_unregister(chip->rd);
-#endif /* #ifdef CONFIG_RT_REGMAP */
-err_regmap:
 err_pm_init:
 	_rt5509_power_on(chip, false);
 err_sw_reset:
@@ -2313,10 +2551,6 @@ err_sw_reset:
 #else
 	atomic_dec(&chip->power_count);
 #endif /* #ifdef CONFIG_PM_RUNTIME */
-#if RT5509_SIMULATE_DEVICE
-	devm_kfree(chip->dev, chip->sim);
-err_simulate:
-#endif /* #if RT5509_SIMULATE_DEVICE */
 	devm_kfree(&client->dev, chip);
 err_parse_dt:
 	if (client->dev.of_node)
@@ -2332,9 +2566,6 @@ int rt5509_i2c_remove(struct i2c_client *client)
 	struct rt5509_chip *chip = i2c_get_clientdata(client);
 
 	rt5509_component_unregister(chip);
-#ifdef CONFIG_RT_REGMAP
-	rt_regmap_device_unregister(chip->rd);
-#endif /* #ifdef CONFIG_RT_REGMAP */
 #ifdef CONFIG_PM_RUNTIME
 	pm_runtime_disable(chip->dev);
 	pm_runtime_set_suspended(chip->dev);
@@ -2342,9 +2573,6 @@ int rt5509_i2c_remove(struct i2c_client *client)
 	atomic_set(&chip->power_count, 0);
 #endif /* #ifdef CONFIG_PM_RUNTIME */
 	_rt5509_power_on(chip, false);
-#if RT5509_SIMULATE_DEVICE
-	devm_kfree(chip->dev, chip->sim);
-#endif /* #if RT5509_SIMULATE_DEVICE */
 	devm_kfree(chip->dev, chip->pdata);
 	chip->pdata = client->dev.platform_data = NULL;
 	dev_dbg(&client->dev, "driver removed\n");
@@ -2357,7 +2585,6 @@ void rt5509_i2c_shutdown(struct i2c_client *client)
 	struct rt5509_chip *chip = i2c_get_clientdata(client);
 	struct snd_soc_dapm_context *dapm = NULL;
 
-	dev_dbg(&client->dev, "%s\n", __func__);
 	if (chip && chip->component) {
 		dapm = snd_soc_component_get_dapm(chip->component);
 		snd_soc_dapm_disable_pin(dapm, "Speaker");
@@ -2366,20 +2593,7 @@ void rt5509_i2c_shutdown(struct i2c_client *client)
 }
 EXPORT_SYMBOL(rt5509_i2c_shutdown);
 
-static int __init rt5509_driver_init(void)
-{
-	pr_info("%s\n", __func__);
-	return 0;
-}
-module_init(rt5509_driver_init);
-
-static void __exit rt5509_driver_exit(void)
-{
-	pr_info("%s\n", __func__);
-}
-module_exit(rt5509_driver_exit);
-
 MODULE_AUTHOR("CY_Huang <cy_huang@richtek.com>");
 MODULE_DESCRIPTION("RT5509 SPKAMP Driver");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.0.16_M");
+MODULE_VERSION("2.0.0_M");

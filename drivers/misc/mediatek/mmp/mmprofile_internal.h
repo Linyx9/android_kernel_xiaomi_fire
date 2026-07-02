@@ -1,15 +1,17 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
- * Author: Joey Pan <joey.pan@mediatek.com>
  */
+
 
 #ifndef __MMPROFILE_INTERNAL_H__
 #define __MMPROFILE_INTERNAL_H__
 
 #include "mmprofile.h"
-#include "mmprofile_function.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define MMProfileMaxEventCount 1000
 
@@ -121,6 +123,15 @@ struct compat_mmprofile_metalog_t {
 #define MMP_IOC_TRYLOG _IOWR(MMP_IOC_MAGIC, 12, unsigned int)
 #define MMP_IOC_ISENABLE _IOR(MMP_IOC_MAGIC, 13, unsigned int)
 #define MMP_IOC_REMOTESTART _IOW(MMP_IOC_MAGIC, 14, unsigned int)
+#define MMP_IOC_SETRECORDCNT _IOW(MMP_IOC_MAGIC, 15, unsigned int)
+#define MMP_IOC_SETMETABUFSIZE _IOW(MMP_IOC_MAGIC, 16, unsigned int)
 #define MMP_IOC_TEST _IOWR(MMP_IOC_MAGIC, 100, unsigned int)
 
+/* fix build warning: unused */
+/*static void mmprofile_init_buffer(void);*/
+/*static void mmprofile_reset_buffer(void);*/
+
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -91,9 +91,9 @@ static inline int ioctl_check_pointer(unsigned int cmd, int __user *uarg)
 	int err = 0;
 
 	if (_IOC_DIR(cmd) & _IOC_READ)
-		err = !access_ok(VERIFY_WRITE, uarg, _IOC_SIZE(cmd));
+		err = !access_ok(uarg, _IOC_SIZE(cmd));
 	else if (_IOC_DIR(cmd) & _IOC_WRITE)
-		err = !access_ok(VERIFY_READ, uarg, _IOC_SIZE(cmd));
+		err = !access_ok(uarg, _IOC_SIZE(cmd));
 
 	if (err)
 		return -EFAULT;

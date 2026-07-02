@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
  */
@@ -21,7 +20,7 @@
 #include <linux/types.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
-#if defined(CONFIG_MTK_GZ_KREE)
+#if IS_ENABLED(CONFIG_MTK_GZ_KREE)
 #include <tz_cross/ta_mem.h>
 #endif
 
@@ -30,7 +29,7 @@
 #include "private/tmem_error.h"
 #include "private/tmem_utils.h"
 #include "private/tmem_dev_desc.h"
-#ifdef TCORE_UT_TESTS_SUPPORT
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
 #include "tests/ut_common.h"
 #endif
 #include "public/mtee_regions.h"
@@ -97,12 +96,14 @@ int mtee_set_mchunks_region(u64 pa, u32 size, int remote_region_type)
 {
 	struct trusted_driver_cmd_params cmd_params = {0};
 
+#if IS_ENABLED(CONFIG_MTK_GZ_KREE)
 	cmd_params.cmd = TZCMD_MEM_CONFIG_CHUNKMEM_INFO_ION;
+#endif
 	cmd_params.param0 = pa;
 	cmd_params.param1 = size;
 	cmd_params.param2 = remote_region_type;
 
-#ifdef TCORE_UT_TESTS_SUPPORT
+#if IS_ENABLED(CONFIG_TEST_MTK_TRUSTED_MEMORY)
 	if (is_multi_type_alloc_multithread_test_locked()) {
 		pr_debug("%s:%d return for UT purpose!\n", __func__, __LINE__);
 		return TMEM_OK;

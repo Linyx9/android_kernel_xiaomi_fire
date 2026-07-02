@@ -1,72 +1,121 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# Copyright (c) 2019 MediaTek Inc.
+# Copyright (c) 2021 MediaTek Inc.
 #
 
-ifeq ($(CONFIG_MACH_MT6833),y)
-CMDQ_PLATFORM := mt6833
-else ifeq ($(CONFIG_MACH_MT6877),y)
-CMDQ_PLATFORM := mt6877
-else ifeq ($(CONFIG_MACH_MT6781),y)
-CMDQ_PLATFORM := mt6781
-else
-CMDQ_PLATFORM := $(MTK_PLATFORM)
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/iommu \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/iommu/ \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mach/$(MTK_PLATFORM)/include \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mdp/$(MTK_PLATFORM) \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mmp/ \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/smi/ \
+             -I$(DEVICE_MODULES_PATH)/drivers/iommu/arm/arm-smmu-v3 \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/vcp/rv/ \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/vcp/include/
+
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/cmdq/virtio
+
+ifeq ($(CONFIG_VHOST_CMDQ),m)
+ccflags-y += -I$(KERNEL_SRC)/include/
 endif
 
-ifeq ($(CONFIG_MACH_MT6833),y)
-MDP_PLATFORM := "mt6833"
-else ifeq ($(CONFIG_MACH_MT6781),y)
-MDP_PLATFORM := mt6781
-else
-MDP_PLATFORM := $(CONFIG_MTK_PLATFORM)
+ifneq ($(CONFIG_VIRTIO_CMDQ),m)
+ccflags-$(CONFIG_DEBUG_FS) += -DCONFIG_CMDQ_MMPROFILE_SUPPORT
 endif
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/mach/$(CMDQ_PLATFORM)/include \
-             -I$(srctree)/drivers/misc/mediatek/smi/ \
-             -I$(srctree)/drivers/misc/mediatek/mdp/$(MDP_PLATFORM) \
-             -I$(srctree)/drivers/misc/mediatek/mmp/
-ifeq ($(or $(strip $(CONFIG_MTK_SVP_ON_MTEE_SUPPORT)), $(strip $(CONFIG_MTK_CAM_GENIEZONE_SUPPORT))),y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/trustzone/m4u
-ccflags-y += -I$(srctree)/drivers/iommu
+ifneq ($(filter y m,$(CONFIG_MICROTRUST_TEE_SUPPORT)),)
+include $(DEVICE_MODULES_PATH)/drivers/tee/teei/Makefile.include
 endif
 
-
-ifeq ($(or $(strip $(CONFIG_MTK_SVP_ON_MTEE_SUPPORT)), $(strip $(CONFIG_MTK_CAM_GENIEZONE_SUPPORT))),y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/trustzone/m4u
-ccflags-y += -I$(srctree)/drivers/iommu
+ifneq ($(filter y m,$(CONFIG_TRUSTONIC_TEE_SUPPORT)),)
+include $(DEVICE_MODULES_PATH)/drivers/tee/gud/Makefile.include
 endif
 
-ifeq ($(or $(strip $(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT)), $(strip $(CONFIG_MTK_CAM_SECURITY_SUPPORT))),y)
-
-ifeq ($(CONFIG_MICROTRUST_TEE_SUPPORT),y)
-include $(srctree)/drivers/tee/teei/Makefile.include
-endif
-
-ifeq ($(CONFIG_TRUSTONIC_TEE_SUPPORT),y)
-include $(srctree)/drivers/tee/gud/Makefile.include
-endif
-
-ifeq ($(strip $(CONFIG_MTK_ENABLE_GENIEZONE)),y)
-ifeq ($(strip $(CONFIG_MTK_CAM_GENIEZONE_SUPPORT)),y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/geniezone/public
+ifneq ($(filter y m,$(CONFIG_MTK_GZ_TZ_SYSTEM)),)
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/geniezone/public
 ccflags-y += -DCMDQ_SECURE_MTEE_SUPPORT
-obj-y += cmdq_sec_mtee.o
-endif
-endif
-
-ifeq ($(strip $(CONFIG_MTK_SVP_ON_MTEE_SUPPORT)),y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/geniezone/public
-ccflags-y += -DCMDQ_SECURE_MTEE_SUPPORT
-obj-y += cmdq_sec_mtee.o
-endif
 
 ccflags-y += -DCMDQ_SECURE_SUPPORT
-obj-y += cmdq-sec-helper.o
-obj-y += cmdq-sec-mailbox.o
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-sec-drv.o
+cmdq-sec-drv-y := cmdq_sec_mtee.o cmdq_sec_pkvm.o cmdq-sec-mailbox.o cmdq-sec-helper.o
 
-endif # $(CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT) or $(CONFIG_MTK_CAM_SECURITY_SUPPORT)
+ccflags-y += -DCMDQ_SECURE_CPR_SUPPORT
+endif
 
-obj-y += cmdq-test.o
-obj-y += cmdq-util.o
-obj-y += $(CMDQ_PLATFORM)/cmdq-platform.o
-obj-y += cmdq-bw-mon.o
+ccflags-y += -DCMDQ_DCACHE_INVAL
+
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += mtk-cmdq-drv-ext.o
+mtk-cmdq-drv-ext-y := mtk-cmdq-mailbox-ext.o mtk-cmdq-helper-ext.o cmdq-util.o
+
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-test.o
+
+ifeq ($(CONFIG_MTK_CMDQ_MBOX_EXT), y)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT_MT6768) += cmdq-platform-mt6768.o
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT_MT6761) += cmdq-platform-mt6761.o
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT_MT6765) += cmdq-platform-mt6765.o
+else
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6833.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6833.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6873.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6873.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6853.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6853.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6885.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6885.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6893.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6893.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6983.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6983.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6879.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6879.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6895.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6895.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6855.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6855.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6985.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6985.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6886.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6886.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6897.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6897.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6989.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6989.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6878.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6878.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6768.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6768.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6761.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6761.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6991.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6991.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6877.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6877.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6765.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6765.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6781.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6781.o
+endif
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6899.c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6899.o
+endif
+endif

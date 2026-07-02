@@ -18,12 +18,8 @@
 
 #include "mt-plat/mtk_thermal_monitor.h"
 
-#if 1
 #define mtk_cooler_kshutdown_dprintk(fmt, args...)	\
 	pr_notice("thermal/cooler/kshutdown " fmt, ##args)
-#else
-#define mtk_cooler_kshutdown_dprintk(fmt, args...)
-#endif
 
 #define MAX_NUM_INSTANCE_MTK_COOLER_KSHUTDOWN  8
 
@@ -45,13 +41,10 @@ static unsigned long cl_kshutdown_state[MAX_NUM_INSTANCE_MTK_COOLER_KSHUTDOWN]
 	static int mtk_cl_kshutdown_get_cur_state
 (struct thermal_cooling_device *cdev, unsigned long *state)
 {
-#if 1	/* cannot use this way for now
+	/* cannot use this way for now
 	 * since devdata is used by mtk_thermal_monitor
 	 */
 	*state = *((unsigned long *)cdev->devdata);
-#else
-	*state = cl_kshutdown_state[(int)cdev->type[16]];
-#endif
 	/* mtk_cooler_kshutdown_dprintk(
 	 * "mtk_cl_kshutdown_get_cur_state() %s %d\n",
 	 * cdev->type, *state);
@@ -66,17 +59,14 @@ static unsigned long cl_kshutdown_state[MAX_NUM_INSTANCE_MTK_COOLER_KSHUTDOWN]
 	 * "mtk_cl_kshutdown_set_cur_state() %s %d\n",
 	 * cdev->type, state);
 	 */
-#if 1
 	*((unsigned long *)cdev->devdata) = state;
-#else
-	cl_kshutdown_state[(int)cdev->type[16]] = state;
-#endif
 	if (state == 1) {
 		mtk_cooler_kshutdown_dprintk(
 				"%s %s invokes machine_power_off\n", __func__,
 				cdev->type);
 
-		machine_power_off();
+		//machine_power_off();
+		pm_power_off();
 	}
 
 	return 0;
@@ -104,10 +94,6 @@ static int mtk_cooler_kshutdown_register_ltf(void)
 				&mtk_cl_kshutdown_ops);
 	}
 
-#if 0
-	cl_kshutdown_dev = mtk_thermal_cooling_device_register(
-			"mtk-cl-shutdown", NULL, &mtk_cl_kshutdown_ops);
-#endif
 
 	return 0;
 }
@@ -126,16 +112,10 @@ static void mtk_cooler_kshutdown_unregister_ltf(void)
 			cl_kshutdown_state[i] = 0;
 		}
 	}
-#if 0
-	if (cl_kshutdown_dev) {
-		mtk_thermal_cooling_device_unregister(cl_kshutdown_dev);
-		cl_kshutdown_dev = NULL;
-	}
-#endif
 }
 
 
-static int __init mtk_cooler_kshutdown_init(void)
+int  mtk_cooler_kshutdown_init(void)
 {
 	int err = 0;
 	int i;
@@ -160,11 +140,13 @@ err_unreg:
 	return err;
 }
 
-static void __exit mtk_cooler_kshutdown_exit(void)
+void  mtk_cooler_kshutdown_exit(void)
 {
 	mtk_cooler_kshutdown_dprintk("exit\n");
 
 	mtk_cooler_kshutdown_unregister_ltf();
 }
-module_init(mtk_cooler_kshutdown_init);
-module_exit(mtk_cooler_kshutdown_exit);
+//module_init(mtk_cooler_kshutdown_init);
+//module_exit(mtk_cooler_kshutdown_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

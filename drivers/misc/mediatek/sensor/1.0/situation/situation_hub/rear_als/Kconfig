@@ -1,0 +1,7 @@
+config MTK_REAR_ALS_HUB
+	bool "rearalshub for MediaTek package"
+	help
+	  A als is a device,
+	  usually portable and electronic
+	  or electromechanical,
+	  that detect distance between the body and device .

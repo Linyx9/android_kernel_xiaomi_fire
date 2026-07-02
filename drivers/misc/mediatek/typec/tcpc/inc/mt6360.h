@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2020 MediaTek Inc.
  */
 
 #ifndef __LINUX_MT6360_H
@@ -83,7 +83,6 @@ enum mt6360_id_rupsel {
 
 #define MT6360_REG_VBUS_DISC_CTRL			(0xB5)
 #define MT6360_REG_CTD_CTRL1				(0xBD)
-#define MT6360_REG_WATCHDOG_CTRL			(0xBE)
 #define MT6360_REG_I2CRST_CTRL				(0xBF)
 
 #define MT6360_REG_WD_DET_CTRL1				(0xC0)
@@ -174,7 +173,7 @@ enum mt6360_id_rupsel {
 #define MT6360_AUTOIDLE_TOUT			0x07
 
 /* timeout = (tout*2+1) * 6.4ms */
-#ifdef CONFIG_USB_PD_REV30
+#if CONFIG_USB_PD_REV30
 #define MT6360_REG_MODE_CTRL2_SET(ship_dis, auto_idle, tout) \
 	((ship_dis << 5) | (auto_idle << 3) | (tout & MT6360_AUTOIDLE_TOUT) | \
 	 MT6360_WAKEUP_EN | MT6360_ENEXTMSG)
@@ -201,6 +200,7 @@ enum mt6360_id_rupsel {
  * MT6360_REG_MT_MASK1				(0x91)
  */
 
+#define MT6360_M_VBUS_VALID			BIT(5)
 #define MT6360_M_VCONN_SHT_GND			BIT(3)
 #define MT6360_M_VBUS_SAFE0V			BIT(1)
 #define MT6360_M_WAKEUP				BIT(0)
@@ -253,6 +253,7 @@ enum mt6360_id_rupsel {
  * MT6360_REG_MT_ST1				(0x9B)
  */
 
+#define MT6360_ST_VBUS_VALID			BIT(5)
 #define MT6360_ST_VCONN_SHT_GND			BIT(3)
 #define MT6360_ST_VBUS_SAFE0V			BIT(1)
 
@@ -286,16 +287,6 @@ enum mt6360_id_rupsel {
 	(MT6360_ST_HIDET_CC2 | MT6360_ST_HIDET_CC1)
 #define MT6360_ST_LODET_CC \
 	(MT6360_ST_LODET_CC2 | MT6360_ST_LODET_CC1)
-
-/*
- * MT6360_REG_WATCHDOG_CTRL			(0xBE)
- */
-
-#define MT6360_WATCHDOG_SEL			0x0F
-
-/* timeout = (tout+1) * 0.4sec */
-#define MT6360_REG_WATCHDOG_CTRL_SET(tout) \
-	(tout & MT6360_WATCHDOG_SEL)
 
 /*
  * MT6360_REG_I2CRST_CTRL			(0xBF)

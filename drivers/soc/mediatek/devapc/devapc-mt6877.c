@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2021 MediaTek Inc.
+ * Copyright (C) 2019 MediaTek Inc.
  */
 
 #include <linux/bug.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <asm-generic/io.h>
+#include <linux/io.h>
 
 #include "devapc-mt6877.h"
 
@@ -19,11 +19,11 @@ static struct mtk_device_num mtk6877_devices_num[] = {
 };
 
 static struct PERIAXI_ID_INFO peri_mi_id_to_master[] = {
-	{"THERM",        { 0, 1, 1 } },
+	{"THERM2",       { 0, 0, 0 } },
 	{"SPM",          { 0, 1, 0 } },
 	{"CCU",          { 0, 0, 1 } },
-	{"THERM2",       { 0, 0, 0 } },
-	{"SPM",          { 1, 2, 2 } },
+	{"THERM",        { 0, 1, 1 } },
+	{"SPM",          { 1, 1, 0 } },
 };
 
 static struct INFRAAXI_ID_INFO infra_mi_id_to_master[] = {
@@ -54,11 +54,11 @@ static struct INFRAAXI_ID_INFO infra_mi_id_to_master[] = {
 	{"THERM2",            { 0, 0, 1, 0,	0, 1, 0, 0,	0, 1, 2, 2,	0, 0 } },
 	{"DX_CC",             { 0, 0, 1, 0,	1, 1, 0, 2,	2, 2, 2, 0,	0, 0 } },
 	{"GCE",               { 0, 0, 1, 0,	0, 0, 1, 2,	2, 0, 0, 0,	0, 0 } },
-	{"CPUEB",             { 0, 0, 1, 0,	1, 0, 1, 2,	2, 2, 2, 2,	2, 0 } },
+	{"MCUPM",             { 0, 0, 1, 0,	1, 0, 1, 2,	2, 2, 2, 2,	2, 0 } },
 	{"DPMAIF",            { 0, 1, 1, 0,	2, 2, 2, 2,	0, 0, 0, 0,	0, 0 } },
 	{"SCP_SSPM",          { 0, 0, 0, 1,	2, 2, 0, 0,	0, 0, 0, 0,	0, 0 } },
 	{"UFS",               { 0, 1, 0, 1,	2, 2, 0, 0,	0, 0, 0, 0,	0, 0 } },
-	{"CPUEB_2",           { 0, 0, 1, 1,	2, 2, 2, 2,	2, 2, 0, 0,	0, 0 } },
+	{"MCUPM_2",           { 0, 0, 1, 1,	2, 2, 2, 2,	2, 2, 0, 0,	0, 0 } },
 	{"MFG_M0_M",          { 0, 1, 1, 1,	2, 2, 2, 2,	2, 2, 2, 0,	0, 0 } },
 	{"APMCU_Write",       { 1, 2, 2, 2,	2, 0, 0, 0,	0, 0, 0, 0,	0, 0 } },
 	{"APMCU_Write",       { 1, 2, 2, 2,	2, 0, 0, 1,	0, 0, 0, 0,	0, 0 } },
@@ -135,17 +135,14 @@ static const char *peri_mi_trans(uint32_t bus_id)
 }
 
 static const char *mt6877_bus_id_to_master(uint32_t bus_id, uint32_t vio_addr,
-		int slave_type, int shift_sta_bit, int domain)
+		int slave_type, int shift_sta_bit, uint32_t domain)
 {
 	const char *err_master = "UNKNOWN_MASTER";
-	uint8_t h_1byte;
 
 	pr_debug(PFX "%s:0x%x, %s:0x%x, %s:0x%x, %s:%d\n",
 		"bus_id", bus_id, "vio_addr", vio_addr,
 		"slave_type", slave_type,
 		"shift_sta_bit", shift_sta_bit);
-
-	h_1byte = (vio_addr >> 24) & 0xFF;
 
 	if ((vio_addr >= TINYSYS_START_ADDR && vio_addr <= TINYSYS_END_ADDR) ||
 	    (vio_addr >= MD_START_ADDR && vio_addr <= MD_END_ADDR)) {
@@ -265,7 +262,7 @@ static void mm2nd_vio_handler(void __iomem *infracfg,
 	int i;
 
 	if (!infracfg) {
-		pr_err(PFX "%s, param check failed, infracfg ptr is NULL\n",
+		pr_info(PFX "%s, param check failed, infracfg ptr is NULL\n",
 				__func__);
 		return;
 	}
@@ -274,16 +271,16 @@ static void mm2nd_vio_handler(void __iomem *infracfg,
 		vio_sta_num = INFRACFG_MDP_VIO_STA_NUM;
 		vio0_offset = INFRACFG_MDP_SEC_VIO0_OFFSET;
 
-		strncpy(mm_str, "INFRACFG_MDP_SEC_VIO", sizeof(mm_str));
+		strscpy(mm_str, "INFRACFG_MDP_SEC_VIO", sizeof(mm_str));
 
 	} else if (mmsys_vio) {
 		vio_sta_num = INFRACFG_MM_VIO_STA_NUM;
 		vio0_offset = INFRACFG_MM_SEC_VIO0_OFFSET;
 
-		strncpy(mm_str, "INFRACFG_MM_SEC_VIO", sizeof(mm_str));
+		strscpy(mm_str, "INFRACFG_MM_SEC_VIO", sizeof(mm_str));
 
 	} else {
-		pr_err(PFX "%s: param check failed, %s:%s, %s:%s, %s:%s\n",
+		pr_info(PFX "%s: param check failed, %s:%s, %s:%s, %s:%s\n",
 				__func__,
 				"mdp_vio", mdp_vio ? "true" : "false",
 				"disp2_vio", disp2_vio ? "true" : "false",
@@ -323,7 +320,7 @@ static void mm2nd_vio_handler(void __iomem *infracfg,
 static uint32_t mt6877_shift_group_get(int slave_type, uint32_t vio_idx)
 {
 	if (slave_type == SLAVE_TYPE_INFRA) {
-		if (vio_idx >= 0 && vio_idx <= 3)
+		if (vio_idx <= 3)
 			return 0;
 		else if (vio_idx >= 4 && vio_idx <= 5)
 			return 1;
@@ -350,11 +347,11 @@ static uint32_t mt6877_shift_group_get(int slave_type, uint32_t vio_idx)
 		else if (vio_idx >= 91 && vio_idx <= 415)
 			return 8;
 
-		pr_err(PFX "%s:%d Wrong vio_idx:0x%x\n",
+		pr_info(PFX "%s:%d Wrong vio_idx:0x%x\n",
 				__func__, __LINE__, vio_idx);
 
 	} else if (slave_type == SLAVE_TYPE_PERI) {
-		if ((vio_idx >= 0 && vio_idx <= 2) ||
+		if ((vio_idx <= 2) ||
 		    (vio_idx >= 125 && vio_idx <= 128) ||
 		    vio_idx == 175)
 			return 0;
@@ -392,11 +389,11 @@ static uint32_t mt6877_shift_group_get(int slave_type, uint32_t vio_idx)
 			vio_idx == 179)
 			return 10;
 
-		pr_err(PFX "%s:%d Wrong vio_idx:0x%x\n",
+		pr_info(PFX "%s:%d Wrong vio_idx:0x%x\n",
 				__func__, __LINE__, vio_idx);
 
 	} else if (slave_type == SLAVE_TYPE_PERI2) {
-		if ((vio_idx >= 0 && vio_idx <= 2) ||
+		if ((vio_idx <= 2) ||
 		    (vio_idx >= 108 && vio_idx <= 111) ||
 		    vio_idx == 216)
 			return 0;
@@ -433,11 +430,11 @@ static uint32_t mt6877_shift_group_get(int slave_type, uint32_t vio_idx)
 			 vio_idx == 223)
 			return 9;
 
-		pr_err(PFX "%s:%d Wrong vio_idx:0x%x\n",
+		pr_info(PFX "%s:%d Wrong vio_idx:0x%x\n",
 				__func__, __LINE__, vio_idx);
 
 	} else if (slave_type == SLAVE_TYPE_PERI_PAR) {
-		if (vio_idx >= 0 && vio_idx <= 3)
+		if (vio_idx <= 3)
 			return 0;
 		else if ((vio_idx >= 4 && vio_idx <= 6) ||
 			 (vio_idx >= 32 && vio_idx <= 34) ||
@@ -452,12 +449,12 @@ static uint32_t mt6877_shift_group_get(int slave_type, uint32_t vio_idx)
 			 vio_idx == 64)
 			return 3;
 
-		pr_err(PFX "%s:%d Wrong vio_idx:0x%x\n",
+		pr_info(PFX "%s:%d Wrong vio_idx:0x%x\n",
 				__func__, __LINE__, vio_idx);
 
 	}
 
-	pr_err(PFX "%s:%d Wrong slave_type:0x%x\n",
+	pr_info(PFX "%s:%d Wrong slave_type:0x%x\n",
 			__func__, __LINE__, slave_type);
 
 	return 31;
@@ -471,6 +468,7 @@ static struct mtk_devapc_dbg_status mt6877_devapc_dbg_stat = {
 	.enable_dapc = PLAT_DBG_DAPC_DEFAULT,
 };
 
+
 void devapc_catch_illegal_range(phys_addr_t phys_addr, size_t size)
 {
 	struct mtk_devapc_dbg_status *dbg_stat = &mt6877_devapc_dbg_stat;
@@ -479,7 +477,7 @@ void devapc_catch_illegal_range(phys_addr_t phys_addr, size_t size)
 	 * Catch BROM addr mapped
 	 */
 	if (phys_addr >= 0x0 && phys_addr < SRAM_START_ADDR) {
-		pr_err(PFX "%s: %s %s:(%pa), %s:(0x%lx)\n",
+		pr_info(PFX "%s: %s %s:(%pa), %s:(0x%lx)\n",
 				"catch BROM address mapped!",
 				__func__, "phys_addr", &phys_addr,
 				"size", size);
@@ -488,7 +486,6 @@ void devapc_catch_illegal_range(phys_addr_t phys_addr, size_t size)
 			BUG_ON(1);
 	}
 }
-EXPORT_SYMBOL(devapc_catch_illegal_range);
 
 static const char * const slave_type_to_str[] = {
 	"SLAVE_TYPE_INFRA",
@@ -595,5 +592,5 @@ static struct platform_driver mt6877_devapc_driver = {
 module_platform_driver(mt6877_devapc_driver);
 
 MODULE_DESCRIPTION("Mediatek MT6877 Device APC Driver");
-MODULE_AUTHOR("Jackson Chang <jackson-kt.chang@mediatek.com>");
+MODULE_AUTHOR("Neal Liu <neal.liu@mediatek.com>");
 MODULE_LICENSE("GPL");

@@ -115,7 +115,7 @@ static unsigned int adda_dl_rate_transform(struct mtk_base_afe *afe,
 	case 192000:
 		return MTK_AFE_ADDA_DL_RATE_192K;
 	default:
-		dev_warn(afe->dev, "%s(), rate %d invalid, use 48kHz!!!\n",
+		dev_info(afe->dev, "%s(), rate %d invalid, use 48kHz!!!\n",
 			 __func__, rate);
 		return MTK_AFE_ADDA_DL_RATE_48K;
 	}
@@ -138,7 +138,7 @@ static unsigned int adda_ul_rate_transform(struct mtk_base_afe *afe,
 	case 192000:
 		return MTK_AFE_ADDA_UL_RATE_192K;
 	default:
-		dev_warn(afe->dev, "%s(), rate %d invalid, use 48kHz!!!\n",
+		dev_info(afe->dev, "%s(), rate %d invalid, use 48kHz!!!\n",
 			 __func__, rate);
 		return MTK_AFE_ADDA_UL_RATE_48K;
 	}
@@ -498,7 +498,7 @@ static int mtk_adda_mtkaif_cfg_event(struct snd_soc_dapm_widget *w,
 			/* If only 1 miso is used, there is no need to do phase delay. */
 			if (strcmp(w->name, "ADDA_MTKAIF_CFG") == 0 &&
 			    !is_adda_mtkaif_need_phase_delay(afe_priv)) {
-				dev_warn(afe->dev,
+				dev_info(afe->dev,
 					 "%s(), check adda mtkaif_chosen_phase[0/1]:%d/%d\n",
 					 __func__,
 					 afe_priv->mtkaif_chosen_phase[0],
@@ -507,7 +507,7 @@ static int mtk_adda_mtkaif_cfg_event(struct snd_soc_dapm_widget *w,
 			} else if (strcmp(w->name, "ADDA6_MTKAIF_CFG") == 0 &&
 				   afe_priv->mtkaif_chosen_phase[2] < 0) {
 				AUDIO_AEE("adda6 mtkaif calib fail");
-				dev_warn(afe->dev,
+				dev_info(afe->dev,
 					 "%s(), check adda6 mtkaif_chosen_phase[2]:%d\n",
 					 __func__,
 					 afe_priv->mtkaif_chosen_phase[2]);
@@ -657,7 +657,7 @@ static int stf_positive_gain_set(struct snd_kcontrol *kcontrol,
 				   POSITIVE_GAIN_MASK_SFT,
 				   (gain_db / 6) << POSITIVE_GAIN_SFT);
 	} else {
-		dev_warn(afe->dev, "%s(), gain_db %d invalid\n",
+		dev_info(afe->dev, "%s(), gain_db %d invalid\n",
 			 __func__, gain_db);
 	}
 	return 0;
@@ -866,7 +866,7 @@ static int mtk_stf_event(struct snd_soc_dapm_widget *w,
 				if (new_w_ready == old_w_ready) {
 					udelay(3);
 					if (try_cnt == 9) {
-						dev_warn(afe->dev,
+						dev_info(afe->dev,
 							 "%s(), write coeff not ready",
 							 __func__);
 					}
@@ -1357,8 +1357,8 @@ static int mtk_dai_adda_hw_params(struct snd_pcm_substream *substream,
 			regmap_update_bits(
 				afe->regmap,
 				AFE_ADDA_DL_SDM_AUTO_RESET_CON,
-				SDM_AUTO_RESET_TEST_ON_MASK_SFT,
-				0x1 << SDM_AUTO_RESET_TEST_ON_SFT);
+				ADDA_SDM_AUTO_RESET_ONOFF_MASK_SFT,
+				0x1 << ADDA_SDM_AUTO_RESET_ONOFF_SFT);
 		} else {
 			/* clean predistortion */
 			regmap_write(afe->regmap,
@@ -1391,8 +1391,8 @@ static int mtk_dai_adda_hw_params(struct snd_pcm_substream *substream,
 			regmap_update_bits(
 				afe->regmap,
 				AFE_ADDA_3RD_DAC_DL_SDM_AUTO_RESET_CON,
-				SDM_AUTO_RESET_TEST_ON_MASK_SFT,
-				0x1 << SDM_AUTO_RESET_TEST_ON_SFT);
+				ADDA_3RD_DAC_SDM_AUTO_RESET_ONOFF_MASK_SFT,
+				0x1 << ADDA_3RD_DAC_SDM_AUTO_RESET_ONOFF_SFT);
 		}
 	} else {
 		unsigned int voice_mode = 0;
@@ -1578,7 +1578,7 @@ int mt6877_dai_adda_register(struct mtk_base_afe *afe)
 	struct mt6877_afe_private *afe_priv = afe->platform_priv;
 	int ret;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe_priv %p\n", __func__, afe_priv);
 
 	dai = devm_kzalloc(afe->dev, sizeof(*dai), GFP_KERNEL);
 	if (!dai)

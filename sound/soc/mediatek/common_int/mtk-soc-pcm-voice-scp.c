@@ -47,7 +47,7 @@
 #include "mtk-soc-pcm-platform.h"
 #include <linux/dma-mapping.h>
 
-#ifdef CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
 #include "scp_helper.h"
 #include <audio_ipi_client_spkprotect.h>
 #include <audio_task_manager.h>
@@ -85,7 +85,7 @@ struct SPK_PROTECT_SERVICE {
 	bool ipiresult;
 };
 
-#ifdef CONFIG_MTK_TINYSYS_SCP_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
 static const int scpvoiceDL1BufferOffset = SCPDL1_MAX_BUFFER_SIZE;
 static int scp_voice_Irq_mode = Soc_Aud_IRQ_MCU_MODE_IRQ7_MCU_MODE;
 #endif
@@ -260,7 +260,6 @@ static int mtk_pcm_scp_voice_stop(struct snd_pcm_substream *substream)
 {
 	scp_voice_irq_user_id = NULL;
 
-	pr_debug("%s\n", __func__);
 	irq_remove_user(substream, scp_voice_Irq_mode);
 
 	SetMemoryPathEnable(Soc_Aud_Digital_Block_MEM_DL1, false);
@@ -286,7 +285,7 @@ static int mtk_pcm_scp_voice_stop(struct snd_pcm_substream *substream)
 
 	ClearMemBlock(Soc_Aud_Digital_Block_MEM_DL1);
 
-#ifdef CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
 	spkproc_service_ipicmd_send(AUDIO_IPI_MSG_ONLY,
 				    AUDIO_IPI_MSG_DIRECT_SEND,
 				    SPK_PROTECT_SPEECH_STOP, 1, 0, NULL);
@@ -447,7 +446,7 @@ static int mtk_pcm_scp_voice_hw_params(struct snd_pcm_substream *substream,
 				       struct snd_pcm_hw_params *hw_params)
 {
 	int ret = 0;
-#ifdef CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
 	unsigned int payloadlen = 0;
 
 	audio_task_register_callback(TASK_SCENE_SPEAKER_PROTECTION,
@@ -578,21 +577,18 @@ static int mtk_pcm_scp_voice_open(struct snd_pcm_substream *substream)
 
 	scp_register_feature(SPEAKER_PROTECT_FEATURE_ID);
 
-#ifdef CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
 	spkproc_service_ipicmd_send(AUDIO_IPI_MSG_ONLY, AUDIO_IPI_MSG_NEED_ACK,
 				    SPK_PROTECT_SPEECH_OPEN,
 				    Soc_Aud_IRQ_MCU_MODE_IRQ7_MCU_MODE,
 				    0, NULL);
 #endif
 
-	pr_debug("%s return\n", __func__);
-
 	return 0;
 }
 
 static int mtk_pcm_voice_scp_close(struct snd_pcm_substream *substream)
 {
-	pr_debug("%s\n", __func__);
 
 	if (mscp_voice_PrepareDone == true) {
 		if (mscp_voice_hdoutput_control == true) {
@@ -606,7 +602,7 @@ static int mtk_pcm_voice_scp_close(struct snd_pcm_substream *substream)
 		mscp_voice_PrepareDone = false;
 	}
 
-#ifdef CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
 	spkproc_service_ipicmd_send(AUDIO_IPI_MSG_ONLY, AUDIO_IPI_MSG_NEED_ACK,
 				    SPK_PROTECT_SPEECH_CLOSE, 1, 0, NULL);
 #endif
@@ -797,7 +793,7 @@ static int mtk_pcm_scp_voice_prepare(struct snd_pcm_substream *substream)
 		mscp_voice_PrepareDone = true;
 	}
 
-#ifdef CONFIG_MTK_TINYSYS_SCP_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_TINYSYS_SCP_SUPPORT)
 	payloadlen = spkproc_ipi_pack_payload(SPK_PROTECT_SPEECH_PREPARE, 0, 0,
 					      NULL, substream);
 	spkproc_service_ipicmd_send(AUDIO_IPI_PAYLOAD, AUDIO_IPI_MSG_BYPASS_ACK,
@@ -828,7 +824,6 @@ static int mtk_pcm_scp_voice_start(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 
-	pr_debug("%s\n", __func__);
 
 	SetIntfConnection(Soc_Aud_InterCon_Connection,
 			  Soc_Aud_AFE_IO_Block_MEM_DL1,
@@ -840,7 +835,7 @@ static int mtk_pcm_scp_voice_start(struct snd_pcm_substream *substream)
 			  Soc_Aud_AFE_IO_Block_MEM_DL1,
 			  Soc_Aud_AFE_IO_Block_I2S3);
 
-#ifdef CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT
+#if IS_ENABLED(CONFIG_MTK_AUDIO_SCP_SPKPROTECT_SUPPORT)
 	spkproc_service_ipicmd_send(
 			AUDIO_IPI_MSG_ONLY, AUDIO_IPI_MSG_DIRECT_SEND,
 			SPK_PROTECT_SPEECH_START, 1, 0, NULL);
@@ -895,7 +890,7 @@ static int mtk_pcm_scp_voice_copy(struct snd_pcm_substream *substream,
 	return count;
 }
 
-static struct snd_pcm_ops mtk_scp_voice_ops = {
+static const struct snd_pcm_ops mtk_scp_voice_ops = {
 	.open = mtk_pcm_scp_voice_open,
 	.close = mtk_pcm_voice_scp_close,
 	.ioctl = snd_pcm_lib_ioctl,
@@ -904,10 +899,10 @@ static struct snd_pcm_ops mtk_scp_voice_ops = {
 	.prepare = mtk_pcm_scp_voice_prepare,
 	.trigger = mtk_pcm_scp_voice_trigger,
 	.pointer = mtk_pcm_scp_voice_pointer,
-	.copy_user = mtk_pcm_scp_voice_copy,
+	.copy = mtk_pcm_scp_voice_copy,
 };
 
-static struct snd_soc_component_driver mtk_scp_voice_soc_component = {
+static const struct snd_soc_component_driver mtk_scp_voice_soc_component = {
 	.name = AFE_PCM_NAME,
 	.ops = &mtk_scp_voice_ops,
 	.pcm_new = mtk_asoc_pcm_voice_scp_new,
@@ -916,7 +911,6 @@ static struct snd_soc_component_driver mtk_scp_voice_soc_component = {
 
 static int mtk_scp_voice_probe(struct platform_device *pdev)
 {
-	pr_debug("%s\n", __func__);
 
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	if (!pdev->dev.dma_mask)
@@ -939,13 +933,11 @@ static int mtk_asoc_pcm_voice_scp_new(struct snd_soc_pcm_runtime *rtd)
 {
 	int ret = 0;
 
-	pr_debug("%s\n", __func__);
 	return ret;
 }
 
 static int mtk_afe_voice_scp_component_probe(struct snd_soc_component *component)
 {
-	pr_debug("%s\n", __func__);
 	snd_soc_add_platform_controls(component, Audio_Scp_voice_controls,
 				      ARRAY_SIZE(Audio_Scp_voice_controls));
 #ifdef use_wake_lock
@@ -956,7 +948,6 @@ static int mtk_afe_voice_scp_component_probe(struct snd_soc_component *component
 
 static int mtk_scp_voice_remove(struct platform_device *pdev)
 {
-	pr_debug("%s\n", __func__);
 #ifdef use_wake_lock
 	aud_wake_lock_destroy(&scp_voice_suspend_lock);
 #endif
@@ -964,7 +955,7 @@ static int mtk_scp_voice_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 static const struct of_device_id mt_soc_pcm_scp_voice_of_ids[] = {
 	{
 		.compatible = "mediatek,mt_soc_pcm_voice_scp",
@@ -977,7 +968,7 @@ static struct platform_driver mtk_scp_voice_driver = {
 
 			.name = MT_SOC_SCP_VOICE_PCM,
 			.owner = THIS_MODULE,
-#ifdef CONFIG_OF
+#if IS_ENABLED(CONFIG_OF)
 			.of_match_table = mt_soc_pcm_scp_voice_of_ids,
 #endif
 		},
@@ -993,7 +984,6 @@ static int __init mtk_scp_voice_soc_platform_init(void)
 {
 	int ret = 0;
 
-	pr_debug("%s\n", __func__);
 
 #ifndef CONFIG_OF
 	soc_mtk_scp_voice_dev = platform_device_alloc(MT_SOC_SCP_VOICE_PCM, -1);

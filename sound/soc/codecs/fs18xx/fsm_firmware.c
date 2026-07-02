@@ -10,6 +10,8 @@
 #include <linux/firmware.h>
 #include <linux/slab.h>
 
+#define FW_ACTION_HOTPLUG 1
+
 static int g_fsm_fw_init;
 
 #ifdef FSM_UNUSED_CODE

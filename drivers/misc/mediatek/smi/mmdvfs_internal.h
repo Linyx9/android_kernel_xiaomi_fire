@@ -25,11 +25,7 @@
 #define MMDVFSTMP(string, args...) \
 	pr_debug("[pid=%d]"string, current->tgid, ##args)
 
-#define MMDVFSERR(string, args...) \
-	do {\
-		pr_notice("error: "string, ##args); \
-		aee_kernel_warning(MMDVFS_LOG_TAG, "error: "string, ##args); \
-	} while (0)
+#define MMDVFSERR(string, args...) pr_notice("error: "string, ##args)
 
 extern void mmdvfs_internal_handle_state_change(
 	struct mmdvfs_state_change_event *event);

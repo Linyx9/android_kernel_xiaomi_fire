@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2018 MediaTek Inc.
  */
 
-#include <mt-plat/mtk_io.h>
-#include <mt-plat/sync_write.h>
-/* #include <mt-plat/mtk_secure_api.h> */
-#include <mtk_dcm.h>
+#include <linux/io.h>
+#include <linux/export.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/cpumask.h>
+#include <linux/cpu.h>
 
 #include <mt6765_dcm_internal.h>
 #include <mt6765_dcm_autogen.h>
+#include <mtk_dcm.h>
 
 /* Below from DCM autogen. */
 #define INFRACFG_AO_AUDIO_REG0_MASK ((0x1 << 29))
@@ -161,6 +166,9 @@ void dcm_infracfg_ao_infra_md(int on)
 	}
 }
 
+/*
+ * Align MT6739 and MT6763, only control bit 27.
+ */
 #define INFRACFG_AO_INFRA_MEM_REG0_MASK (0x1 << 27)
 #define INFRACFG_AO_INFRA_MEM_REG0_ON (0x1 << 27)
 #define INFRACFG_AO_INFRA_MEM_REG0_OFF (0x0 << 27)
@@ -1210,4 +1218,5 @@ void dcm_chn1_emi_dcm_emi_group(int on)
 			CHN1_EMI_DCM_EMI_GROUP_REG0_OFF);
 	}
 }
+
 

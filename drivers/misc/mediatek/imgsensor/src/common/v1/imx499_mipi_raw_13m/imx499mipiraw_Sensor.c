@@ -1759,10 +1759,9 @@ static kal_uint32 set_test_pattern_mode(kal_uint32 modes,
 			write_cmos_sensor(0x0608, (Color_Gb >> 8) & 0x3);
 			write_cmos_sensor(0x0609, Color_Gb & 0xFF);
 		}
-	}
-	else
+	} else {
 		write_cmos_sensor(0x0601, 0x00); /*No pattern*/
-
+	}
 	spin_lock(&imgsensor_drv_lock);
 	imgsensor.test_pattern = modes;
 	spin_unlock(&imgsensor_drv_lock);

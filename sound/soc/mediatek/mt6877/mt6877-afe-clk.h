@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * mt6877-afe-clk.h  --  Mediatek 6833 afe clock ctrl definition
+ * mt6877-afe-clk.h  --  Mediatek 6877 afe clock ctrl definition
  *
  * Copyright (c) 2020 MediaTek Inc.
  * Author: Eason Yen <eason.yen@mediatek.com>

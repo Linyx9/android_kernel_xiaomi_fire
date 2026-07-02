@@ -1,0 +1,6 @@
+#include $(srctree)/oem/config.conf
+
+ifdef CONFIG_NXP_NFC_I2C
+	obj-y += nxppn560/
+endif
+

@@ -8,6 +8,7 @@
 
 #include "port_ipc.h"		/*mediatek/kernel/drivers/eccci */
 #include "ccci_ipc_task_ID.h"	/*mediatek/kernel/drivers/eccci */
+
 #define uint32 unsigned int
 #define uint8 unsigned char
 #define uint16 unsigned short

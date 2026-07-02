@@ -10,20 +10,20 @@
 #include <linux/clk.h>
 #include <linux/pm_qos.h>
 
-#include <mt-plat/mtk_chip.h>
-
-#include <aee.h>
-
-#include "mtk_gpu_utility.h"
-#include "mtk_smi.h"
-/*#include "mtk_vcorefs_manager.h"*/
+#include "mtk-smi-bwc.h"
 #ifdef PLL_HOPPING_READY
 #include "mtk_freqhopping_drv.h"
 #endif
 #include "mmdvfs_mgr.h"
 #include "mmdvfs_config_util.h"
 #include "mmdvfs_internal.h"
-#include "mmdvfs_pmqos.h"
+
+void mmdvfs_qos_enable(bool enable)
+{
+	// TODO implement this
+	pr_notice("WARN: %s: %d\n", __func__, enable);
+}
+
 
 #undef pr_fmt
 #define pr_fmt(fmt) "[" MMDVFS_LOG_TAG "]" fmt
@@ -254,7 +254,7 @@ static void mmdvfs_start_cam_monitor(int scen, int delay_hz)
 
 int mmdvfs_set_corse_step(int scenario, enum mmdvfs_voltage_enum step)
 {
-	int fine_step_opp = MMDVFS_FINE_STEP_UNREQUEST;
+	int fine_step_opp __maybe_unused = MMDVFS_FINE_STEP_UNREQUEST;
 
 	if (step == MMDVFS_VOLTAGE_HIGH)
 		fine_step_opp = MMDVFS_FINE_STEP_OPP0;
@@ -271,6 +271,7 @@ int mmdvfs_set_step(enum MTK_SMI_BWC_SCEN scenario,
 {
 	return mmdvfs_set_corse_step(scenario, step);
 }
+EXPORT_SYMBOL_GPL(mmdvfs_set_step);
 
 int mmdvfs_internal_set_fine_step(const char *adaptor_name,
 	struct mmdvfs_adaptor *adaptor, struct mmdvfs_step_util *step_util,
@@ -430,7 +431,7 @@ int mmdvfs_set_fine_step(enum MTK_SMI_BWC_SCEN smi_scenario, int mmdvfs_step)
 		smi_scenario, mmdvfs_step);
 
 }
-
+EXPORT_SYMBOL_GPL(mmdvfs_set_fine_step);
 
 int mmdvfs_set_fine_step_non_force(
 	enum MTK_SMI_BWC_SCEN smi_scenario, int mmdvfs_step)
@@ -544,10 +545,11 @@ void mmdvfs_handle_cmd(struct MTK_MMDVFS_CMD *cmd)
 		/* save cmd */
 		mmdvfs_update_cmd(cmd);
 		if (!(g_mmdvfs_concurrency & (1 << cmd->scen))) {
-			/*MMDVFSMSG("invalid set scen %d\n", cmd->scen); */
+			MMDVFSMSG("invalid set scen %d\n", cmd->scen);
 			cmd->ret = -1;
 		} else {
 			/* determine the step and apply the HW setting */
+			MMDVFSMSG("mmdvfs_set_fine_step\n");
 			cmd->ret = mmdvfs_set_fine_step(
 				cmd->scen, mmdvfs_query(cmd->scen, cmd));
 		}
@@ -601,6 +603,7 @@ void mmdvfs_handle_cmd(struct MTK_MMDVFS_CMD *cmd)
 
 	case MTK_MMDVFS_CMD_TYPE_STEP_SET:
 		/* Get the target step from step field */
+		MMDVFSMSG("MTK_MMDVFS_CMD_TYPE_STEP_SET\n");
 		cmd->ret = handle_step_mmmclk_set(cmd);
 		break;
 
@@ -665,7 +668,7 @@ void mmdvfs_notify_scenario_exit(enum MTK_SMI_BWC_SCEN scen)
 		mmdvfs_set_fine_step_non_force(
 		scen, MMDVFS_FINE_STEP_UNREQUEST);
 	/* reset scenario voltage to default when it exits */
-	/* Also force the system to leave low low mode */
+	/* Also force the system to leave low-low mode */
 
 }
 
@@ -881,6 +884,8 @@ void mmdvfs_init(void)
 	if (mmdvfs_get_mmdvfs_profile() == MMDVFS_PROFILE_SYL)
 		g_mmdvfs_mgr->is_mmdvfs_start = 1;
 	if (mmdvfs_get_mmdvfs_profile() == MMDVFS_PROFILE_CAN)
+		g_mmdvfs_mgr->is_mmdvfs_start = 1;
+	if (mmdvfs_get_mmdvfs_profile() == MMDVFS_PROFILE_CER)
 		g_mmdvfs_mgr->is_mmdvfs_start = 1;
 }
 
@@ -1238,6 +1243,8 @@ int mmdvfs_get_mmdvfs_profile(void)
 	mmdvfs_profile_id = MMDVFS_PROFILE_SYL;
 #elif defined(SMI_CAN)
 	mmdvfs_profile_id = MMDVFS_PROFILE_CAN;
+#elif defined(SMI_CER)
+	mmdvfs_profile_id = MMDVFS_PROFILE_CER;
 #endif
 
 	MMDVFSDEBUG(4, "Segment_code=%d,mmdvfs_profile_id=%d\n", segment_code,

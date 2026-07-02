@@ -3,6 +3,7 @@
  * Copyright (c) 2015-2016, Linaro Limited
  * Copyright (c) 2015-2019, MICROTRUST Incorporated
  *
+ *
  */
 #include <linux/version.h>
 #include <linux/device.h>
@@ -11,6 +12,7 @@
 #include <linux/idr.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/dma-buf.h>
 #include <tee_drv.h>
 #include <imsg_log.h>
 #include "tee_private.h"
@@ -79,11 +81,6 @@ static void tee_shm_op_release(struct dma_buf *dmabuf)
 	tee_shm_release(shm);
 }
 
-static void *tee_shm_op_kmap(struct dma_buf *dmabuf, unsigned long pgnum)
-{
-	return NULL;
-}
-
 static int tee_shm_op_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 {
 	struct tee_shm *shm = dmabuf->priv;
@@ -102,15 +99,6 @@ static struct dma_buf_ops tee_shm_dma_buf_ops = {
 	.map_dma_buf = tee_shm_op_map_dma_buf,
 	.unmap_dma_buf = tee_shm_op_unmap_dma_buf,
 	.release = tee_shm_op_release,
-#if KERNEL_VERSION(4, 19, 0) <= LINUX_VERSION_CODE
-	.map = tee_shm_op_kmap,
-#elif KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
-	.map_atomic = tee_shm_op_kmap_atomic,
-	.map = tee_shm_op_kmap,
-#else
-	.kmap_atomic = tee_shm_op_kmap_atomic,
-	.kmap = tee_shm_op_kmap,
-#endif
 	.mmap = tee_shm_op_mmap,
 };
 
@@ -192,6 +180,8 @@ void isee_shm_kfree(struct tee_shm *shm)
 }
 EXPORT_SYMBOL_GPL(isee_shm_kfree);
 
+
+
 /**
  * isee_shm_alloc() - Allocate shared memory
  * @ctx:	Context that allocates the shared memory
@@ -255,7 +245,6 @@ struct tee_shm *isee_shm_alloc_noid(struct tee_context *ctx, size_t size, u32 fl
 	shm->id = -1;
 
 	if (flags & TEE_SHM_DMA_BUF) {
-#if KERNEL_VERSION(4, 4, 1) <= LINUX_VERSION_CODE
 		DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 
 		exp_info.ops = &tee_shm_dma_buf_ops;
@@ -264,10 +253,7 @@ struct tee_shm *isee_shm_alloc_noid(struct tee_context *ctx, size_t size, u32 fl
 		exp_info.priv = shm;
 
 		shm->dmabuf = dma_buf_export(&exp_info);
-#else
-		shm->dmabuf = dma_buf_export(shm, &tee_shm_dma_buf_ops,
-						shm->size, O_RDWR, NULL);
-#endif
+
 		if (IS_ERR(shm->dmabuf)) {
 			ret = ERR_CAST(shm->dmabuf);
 			goto err_rem;
@@ -288,6 +274,7 @@ err_dev_put:
 }
 EXPORT_SYMBOL_GPL(isee_shm_alloc_noid);
 
+
 struct tee_shm *isee_shm_alloc(struct tee_context *ctx, size_t size, u32 flags)
 {
 	struct tee_device *teedev = ctx->teedev;
@@ -296,7 +283,7 @@ struct tee_shm *isee_shm_alloc(struct tee_context *ctx, size_t size, u32 flags)
 
 	shm = isee_shm_alloc_noid(ctx, size, flags);
 	if (IS_ERR(shm)) {
-		IMSG_ERROR("Failed to alloc shm %lld\n", PTR_ERR(shm));
+		IMSG_ERROR("Failed to alloc shm %ld\n", PTR_ERR(shm));
 		return shm;
 	}
 

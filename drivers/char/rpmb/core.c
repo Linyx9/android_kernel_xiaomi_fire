@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2015-2016 Intel Corp. All rights reserved
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
+ * Copyright (c) 2021 MediaTek Inc.
  */
 
 #include <linux/module.h>
@@ -110,7 +102,18 @@ static int rpmb_request_verify(struct rpmb_dev *rdev, struct rpmb_data *rpmbd)
 		dev_notice(&rdev->dev, "NOTSUPPORTED rpmb resut read = 0x%1x blk = %d\n",
 			req_type, block_count);
 		return -EOPNOTSUPP;
-
+	case RPMB_PURGE_STATUS_READ:
+	case RPMB_PURGE_ENABLE:
+		if (block_count != 1) {
+			dev_notice(&rdev->dev, "rpmb purge ops invalid block_count=%d\n",
+				block_count);
+			return -EINVAL;
+		}
+		if (addr != 0) {
+			dev_notice(&rdev->dev, "rpmb purge ops invalid addr=0x%x\n", addr);
+			return -EINVAL;
+		}
+		break;
 	default:
 		dev_notice(&rdev->dev, "Error rpmb invalid command = 0x%1x blk = %d\n",
 			req_type, block_count);
@@ -161,7 +164,8 @@ static void rpmb_cmd_fixup(struct rpmb_dev *rdev,
  *         -EOPNOTSUPP if device doesn't support the requested operation
  *         < 0 if the operation fails
  */
-int rpmb_cmd_seq(struct rpmb_dev *rdev, struct rpmb_cmd *cmds, u32 ncmds)
+int rpmb_cmd_seq(struct rpmb_dev *rdev, struct rpmb_cmd *cmds, u32 ncmds,
+	u8 region)
 {
 	int err;
 
@@ -172,7 +176,7 @@ int rpmb_cmd_seq(struct rpmb_dev *rdev, struct rpmb_cmd *cmds, u32 ncmds)
 	err = -EOPNOTSUPP;
 	if (rdev->ops && rdev->ops->cmd_seq) {
 		rpmb_cmd_fixup(rdev, cmds, ncmds);
-		err = rdev->ops->cmd_seq(rdev->dev.parent, cmds, ncmds);
+		err = rdev->ops->cmd_seq(rdev->dev.parent, cmds, ncmds, region);
 	}
 	mutex_unlock(&rdev->lock);
 	return err;
@@ -223,7 +227,7 @@ static void rpmb_dump_frame(u8 *data_frame)
  *         -EOPNOTSUPP if device doesn't support the requested operation
  *         < 0 if the operation fails
  */
-int rpmb_cmd_req(struct rpmb_dev *rdev, struct rpmb_data *rpmbd)
+int rpmb_cmd_req(struct rpmb_dev *rdev, struct rpmb_data *rpmbd, u8 region)
 {
 	struct rpmb_cmd cmd[3];
 	struct rpmb_frame *res_frame;
@@ -237,6 +241,10 @@ int rpmb_cmd_req(struct rpmb_dev *rdev, struct rpmb_data *rpmbd)
 				__func__, __LINE__);
 		return -EINVAL;
 	}
+
+	/* RPMB allows maximun of 4 regions */
+	if (region > 3)
+		return -EINVAL;
 
 	ret = rpmb_request_verify(rdev, rpmbd);
 	if (ret)
@@ -254,7 +262,7 @@ int rpmb_cmd_req(struct rpmb_dev *rdev, struct rpmb_data *rpmbd)
 	case RPMB_PROGRAM_KEY:
 		cnt_in = 1;
 		cnt_out = 1;
-		/* fall through */
+		fallthrough;
 	case RPMB_WRITE_DATA:
 		rpmb_cmd_set(&cmd[0], RPMB_F_WRITE | RPMB_F_REL_WRITE,
 			     rpmbd->icmd.frames, cnt_in);
@@ -267,10 +275,12 @@ int rpmb_cmd_req(struct rpmb_dev *rdev, struct rpmb_data *rpmbd)
 		rpmb_cmd_set(&cmd[2], 0, rpmbd->ocmd.frames, cnt_out);
 		ncmds = 3;
 		break;
+	case RPMB_PURGE_STATUS_READ:
+	case RPMB_PURGE_ENABLE:
 	case RPMB_GET_WRITE_COUNTER:
 		cnt_in = 1;
 		cnt_out = 1;
-		/* fall through */
+		fallthrough;
 	case RPMB_READ_DATA:
 		rpmb_cmd_set(&cmd[0], RPMB_F_WRITE, rpmbd->icmd.frames, cnt_in);
 		rpmb_cmd_set(&cmd[1], 0, rpmbd->ocmd.frames, cnt_out);
@@ -283,7 +293,7 @@ int rpmb_cmd_req(struct rpmb_dev *rdev, struct rpmb_data *rpmbd)
 	}
 
 	mutex_lock(&rdev->lock);
-	ret = rdev->ops->cmd_seq(rdev->dev.parent, cmd, ncmds);
+	ret = rdev->ops->cmd_seq(rdev->dev.parent, cmd, ncmds, region);
 	mutex_unlock(&rdev->lock);
 #ifdef RPMB_DEBUG
 	rpmb_dump_frame((u8 *)(rpmbd->ocmd.frames));
@@ -307,8 +317,11 @@ static void rpmb_dev_release(struct device *dev)
 }
 
 struct class rpmb_class = {
+#if IS_ENABLED(CONFIG_ARCH_MEDIATEK)
 	.name = "rpmb_dummy",
-	.owner = THIS_MODULE,
+#else
+	.name = "rpmb",
+#endif
 	.dev_release = rpmb_dev_release,
 };
 EXPORT_SYMBOL(rpmb_class);
@@ -519,7 +532,11 @@ struct rpmb_dev *rpmb_dev_register(struct device *dev,
 	rdev->ops = ops;
 	rdev->id = id;
 
+#if IS_ENABLED(CONFIG_ARCH_MEDIATEK)
 	dev_set_name(&rdev->dev, "rpmb_dummy%d", id);
+#else
+	dev_set_name(&rdev->dev, "rpmb%d", id);
+#endif
 	rdev->dev.class = &rpmb_class;
 	rdev->dev.parent = dev;
 	rdev->dev.groups = rpmb_attr_groups;
@@ -546,9 +563,10 @@ EXPORT_SYMBOL_GPL(rpmb_dev_register);
 
 static int __init rpmb_init(void)
 {
+	int err;
 	ida_init(&rpmb_ida);
-	class_register(&rpmb_class);
-	return rpmb_cdev_init();
+	err = class_register(&rpmb_class);
+	return err ? err : rpmb_cdev_init();
 }
 
 static void __exit rpmb_exit(void)

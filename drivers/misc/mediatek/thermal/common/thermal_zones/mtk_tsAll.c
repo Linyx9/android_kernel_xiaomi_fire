@@ -33,6 +33,7 @@ struct thz_data {
 	char thz_name[20];
 	int trip_temp[10];
 	int trip_type[10];	/*ACTIVE, PASSIVE, HOT, and Critical*/
+	struct thermal_trip trips[10];
 	char bind[10][20];
 	int num_trip;
 	unsigned int interval;	/* mseconds, 0 : no auto polling */
@@ -113,7 +114,7 @@ static int tsallts_get_temp(struct thermal_zone_device *thermal, int *t)
 	*t = curr_temp;
 
 #if AUTO_GEN_COOLERS
-	thermal->polling_delay = g_tsData[index].interval;
+	thermal->polling_delay_jiffies = g_tsData[index].interval;
 #endif
 	return 0;
 }
@@ -183,19 +184,9 @@ struct thermal_zone_device *thermal, struct thermal_cooling_device *cdev)
 	return 0;
 }
 
-static int tsallts_get_mode(
-struct thermal_zone_device *thermal, enum thermal_device_mode *mode)
-{
-	int index;
 
-	index = tsallts_get_index(thermal);
 
-	*mode = (g_tsData[index].kernelmode) ?
-			THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
-	return 0;
-}
-
-static int tsallts_set_mode(
+static int tsallts_change_mode(
 struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 {
 	int index;
@@ -203,26 +194,6 @@ struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 	index = tsallts_get_index(thermal);
 
 	g_tsData[index].kernelmode = mode;
-	return 0;
-}
-
-static int tsallts_get_trip_type(struct thermal_zone_device *thermal, int trip,
-		enum thermal_trip_type *type)
-{
-	int index;
-
-	index = tsallts_get_index(thermal);
-	*type = g_tsData[index].trip_type[trip];
-	return 0;
-}
-
-static int tsallts_get_trip_temp(
-struct thermal_zone_device *thermal, int trip, int *temp)
-{
-	int index;
-
-	index = tsallts_get_index(thermal);
-	*temp = g_tsData[index].trip_temp[trip];
 	return 0;
 }
 
@@ -278,10 +249,7 @@ static struct thermal_zone_device_ops tsallts_dev_ops = {
 	.bind = tsallts_bind,
 	.unbind = tsallts_unbind,
 	.get_temp = tsallts_get_temp,
-	.get_mode = tsallts_get_mode,
-	.set_mode = tsallts_set_mode,
-	.get_trip_type = tsallts_get_trip_type,
-	.get_trip_temp = tsallts_get_trip_temp,
+	.change_mode = tsallts_change_mode,
 	.get_crit_temp = tsallts_get_crit_temp,
 };
 
@@ -386,6 +354,10 @@ struct file *file, const char __user *buffer, size_t count,	\
 						pTempD->t_type[i];	\
 			g_tsData[(num - 1)].trip_temp[i] =	\
 						pTempD->trip[i];	\
+			g_tsData[(num - 1)].trips[i].type =	\
+						pTempD->t_type[i];	\
+			g_tsData[(num - 1)].trips[i].temperature =	\
+						pTempD->trip[i];	\
 		}	\
 \
 		for (i = 0; i < 10; i++) {	\
@@ -428,6 +400,7 @@ struct file *file, const char __user *buffer, size_t count,	\
 			g_tsData[(num - 1)].thz_dev =	\
 				mtk_thermal_zone_device_register(	\
 					g_tsData[(num - 1)].thz_name,\
+					g_tsData[(num - 1)].trips,	\
 					g_tsData[(num - 1)].num_trip,	\
 					NULL, &tsallts_dev_ops, 0,	\
 				0, 0, g_tsData[(num - 1)].interval);	\
@@ -447,15 +420,14 @@ static int tz ## num ## _proc_open(	\
 struct inode *inode, struct file *file)	\
 {	\
 	return single_open(file, tz ## num ## _proc_read,	\
-			PDE_DATA(inode));	\
+			pde_data(inode));	\
 }	\
-static const struct file_operations tz ## num ## _proc_fops = {	\
-	.owner          = THIS_MODULE,	\
-	.open           = tz ## num ## _proc_open,	\
-	.read           = seq_read,	\
-	.llseek         = seq_lseek,	\
-	.release        = single_release,	\
-	.write          = tz ## num ## _proc_write,	\
+static const struct proc_ops tz ## num ## _proc_fops = {	\
+	.proc_open           = tz ## num ## _proc_open,	\
+	.proc_read           = seq_read,	\
+	.proc_lseek         = seq_lseek,	\
+	.proc_release        = single_release,	\
+	.proc_write          = tz ## num ## _proc_write,	\
 }
 
 #define FOPS(num)	(&tz ## num ## _proc_fops)
@@ -482,7 +454,7 @@ PROC_FOPS_RW(19);
 PROC_FOPS_RW(20);
 PROC_FOPS_RW(21);
 
-static const struct file_operations *thz_fops[RESERVED_TZS] = {
+static const struct proc_ops *thz_fops[RESERVED_TZS] = {
 	FOPS(1),
 	FOPS(2),
 	FOPS(3),
@@ -577,13 +549,12 @@ static int thz_enable_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, thz_enable_read, NULL);
 }
-static const struct file_operations thz_enable_fops = {
-	.owner = THIS_MODULE,
-	.open = thz_enable_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = thz_enable_write,
-	.release = single_release,
+static const struct proc_ops thz_enable_fops = {
+	.proc_open = thz_enable_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = thz_enable_write,
+	.proc_release = single_release,
 };
 static int clnothings_get_index(struct thermal_cooling_device *cdev)
 {
@@ -643,7 +614,7 @@ static struct thermal_cooling_device_ops clnothings_ops = {
 };
 #endif
 
-static int __init tsallts_init(void)
+int tsallts_init(void)
 {
 	int i, j;
 	struct proc_dir_entry *entry = NULL;
@@ -720,6 +691,8 @@ static int __init tsallts_init(void)
 		g_tsData[i].num_trip = 1;
 		g_tsData[i].trip_type[0] =  0;
 		g_tsData[i].trip_temp[0] = 150000;
+		g_tsData[i].trips[0].type =  0;
+		g_tsData[i].trips[0].temperature = 150000;
 		sprintf(g_tsData[i].bind[0], "clnothing%d", (i + 1));
 
 		if (tztsAll_enable_switch == 1) {
@@ -743,6 +716,7 @@ static void tsX_register(int index)
 	if (g_tsData[index].thz_dev == NULL) {
 		g_tsData[index].thz_dev = mtk_thermal_zone_device_register(
 			g_tsData[index].thz_name,
+			g_tsData[index].trips,
 			g_tsData[index].num_trip,
 			NULL, &tsallts_dev_ops, 0,
 			0, 0, g_tsData[index].interval);
@@ -772,11 +746,13 @@ static void tsallts_unregister_thermal(void)
 	}
 }
 
-static void __exit tsallts_exit(void)
+void tsallts_exit(void)
 {
 	tsallts_dprintk("[%s]\n", __func__);
 	tsallts_unregister_thermal();
 	mtkTTimer_unregister("tztsAll");
 }
-module_init(tsallts_init);
-module_exit(tsallts_exit);
+//module_init(tsallts_init);
+//module_exit(tsallts_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

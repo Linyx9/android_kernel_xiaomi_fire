@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2015 MediaTek Inc.
  */
@@ -44,10 +44,9 @@ struct ring_ctrl {
 struct frame {
 	enum FRAME_STATUS_ENUM state;
 	void *data; /* points to engine data */
-	/* TODO: back pointer to engine_request for cmdq_cb_data.data ? */
 };
 
-struct request {
+struct request_mfb {
 	enum REQUEST_STATE_ENUM state;
 	pid_t pid;
 	struct ring_ctrl fctl;
@@ -64,7 +63,7 @@ struct engine_ops {
 
 struct engine_requests {
 	struct ring_ctrl req_ctl;
-	struct request reqs[MFB_MAX_REQUEST_SIZE_PER_ENGINE];
+	struct request_mfb reqs[MFB_MAX_REQUEST_SIZE_PER_ENGINE];
 	const struct engine_ops *ops;
 	struct completion req_handler_done;
 
@@ -73,7 +72,7 @@ struct engine_requests {
 };
 
 signed int mfb_init_ring_ctl(struct ring_ctrl *rctl);
-signed int mfb_init_request(struct request *req);
+signed int mfb_init_request(struct request_mfb *req);
 signed int mfb_set_frame_data(struct frame *f, void *engine);
 signed int mfb_register_requests(struct engine_requests *eng, size_t size);
 signed int mfb_unregister_requests(struct engine_requests *eng);

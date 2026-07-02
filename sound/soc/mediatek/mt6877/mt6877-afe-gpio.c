@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  mt6877-afe-gpio.c  --  Mediatek 6833 afe gpio ctrl
+ *  mt6877-afe-gpio.c  --  Mediatek 6877 afe gpio ctrl
  *
  *  Copyright (c) 2020 MediaTek Inc.
  *  Author: Eason Yen <eason.yen@mediatek.com>
@@ -13,7 +13,6 @@
 #include "mt6877-afe-gpio.h"
 
 struct pinctrl *aud_pinctrl;
-
 struct audio_gpio_attr {
 	const char *name;
 	bool gpio_prepare;
@@ -63,7 +62,7 @@ int mt6877_afe_gpio_init(struct mtk_base_afe *afe)
 	aud_pinctrl = devm_pinctrl_get(afe->dev);
 	if (IS_ERR(aud_pinctrl)) {
 		ret = PTR_ERR(aud_pinctrl);
-		dev_err(afe->dev, "%s(), ret %d, cannot get aud_pinctrl!\n",
+		dev_info(afe->dev, "%s(), ret %d, cannot get aud_pinctrl!\n",
 			__func__, ret);
 		return -ENODEV;
 	}
@@ -73,7 +72,7 @@ int mt6877_afe_gpio_init(struct mtk_base_afe *afe)
 							     aud_gpios[i].name);
 		if (IS_ERR(aud_gpios[i].gpioctrl)) {
 			ret = PTR_ERR(aud_gpios[i].gpioctrl);
-			dev_err(afe->dev, "%s(), pinctrl_lookup_state %s fail, ret %d\n",
+			dev_info(afe->dev, "%s(), pinctrl_lookup_state %s fail, ret %d\n",
 				__func__, aud_gpios[i].name, ret);
 		} else {
 			aud_gpios[i].gpio_prepare = true;
@@ -93,27 +92,75 @@ static int mt6877_afe_gpio_select(struct mtk_base_afe *afe,
 	int ret = 0;
 
 	if (type < 0 || type >= MT6877_AFE_GPIO_GPIO_NUM) {
-		dev_err(afe->dev, "%s(), error, invaild gpio type %d\n",
+		dev_info(afe->dev, "%s(), error, invalid gpio type %d\n",
 			__func__, type);
 		return -EINVAL;
 	}
 
-	if (!aud_gpios[type].gpio_prepare)
+	if (!aud_gpios[type].gpio_prepare) {
+		dev_info(afe->dev, "%s(), error, gpio type %d not prepared\n",
+			 __func__, type);
 		return -EIO;
+	}
 
 	ret = pinctrl_select_state(aud_pinctrl,
 				   aud_gpios[type].gpioctrl);
-	if (ret) {
-		dev_err(afe->dev, "%s(), error, can not set gpio type %d\n",
+	if (ret)
+		dev_info(afe->dev, "%s(), error, can not set gpio type %d\n",
 			__func__, type);
-		AUDIO_AEE("can not set gpio type");
-	}
+
 	return ret;
 }
 
-bool mt6877_afe_gpio_is_prepared(enum mt6877_afe_gpio type)
+static int mt6877_afe_gpio_adda_dl(struct mtk_base_afe *afe, bool enable)
 {
-	return aud_gpios[type].gpio_prepare;
+	if (enable)
+		return mt6877_afe_gpio_select(afe,
+					      MT6877_AFE_GPIO_DAT_MOSI_ON);
+	else
+		return mt6877_afe_gpio_select(afe,
+					      MT6877_AFE_GPIO_DAT_MOSI_OFF);
+}
+
+static int mt6877_afe_gpio_adda_ul(struct mtk_base_afe *afe, bool enable)
+{
+	int ret = 0;
+
+	if (mt6877_afe_gpio_is_prepared(MT6877_AFE_GPIO_DAT_MISO0_ON)) {
+		ret = mt6877_afe_gpio_select(afe, enable ?
+					     MT6877_AFE_GPIO_DAT_MISO0_ON :
+					     MT6877_AFE_GPIO_DAT_MISO0_OFF);
+		/* if error happened, skip miso1 select */
+		if (ret)
+			return ret;
+	}
+
+	if (mt6877_afe_gpio_is_prepared(MT6877_AFE_GPIO_DAT_MISO1_ON))
+		ret = mt6877_afe_gpio_select(afe, enable ?
+					     MT6877_AFE_GPIO_DAT_MISO1_ON :
+					     MT6877_AFE_GPIO_DAT_MISO1_OFF);
+
+	return ret;
+}
+
+static int mt6877_afe_gpio_adda_ch34_dl(struct mtk_base_afe *afe, bool enable)
+{
+	if (enable)
+		return mt6877_afe_gpio_select(afe,
+			MT6877_AFE_GPIO_DAT_MOSI_CH34_ON);
+	else
+		return mt6877_afe_gpio_select(afe,
+			MT6877_AFE_GPIO_DAT_MOSI_CH34_OFF);
+}
+
+static int mt6877_afe_gpio_adda_ch34_ul(struct mtk_base_afe *afe, bool enable)
+{
+	if (enable)
+		return mt6877_afe_gpio_select(afe,
+			MT6877_AFE_GPIO_DAT_MISO2_ON);
+	else
+		return mt6877_afe_gpio_select(afe,
+			MT6877_AFE_GPIO_DAT_MISO2_OFF);
 }
 
 int mt6877_afe_gpio_request(struct mtk_base_afe *afe, bool enable,
@@ -122,72 +169,70 @@ int mt6877_afe_gpio_request(struct mtk_base_afe *afe, bool enable,
 	mutex_lock(&gpio_request_mutex);
 	switch (dai) {
 	case MT6877_DAI_ADDA:
-		if (uplink) {
-			mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_DAT_MISO0_ON :
-			       MT6877_AFE_GPIO_DAT_MISO0_OFF);
-			mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_DAT_MISO1_ON :
-			       MT6877_AFE_GPIO_DAT_MISO1_OFF);
-		} else
-			mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_DAT_MOSI_ON :
-			       MT6877_AFE_GPIO_DAT_MOSI_OFF);
+		if (uplink)
+			mt6877_afe_gpio_adda_ul(afe, enable);
+		else
+			mt6877_afe_gpio_adda_dl(afe, enable);
 		break;
 	case MT6877_DAI_ADDA_CH34:
 		if (uplink)
-			mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_DAT_MISO2_ON :
-			       MT6877_AFE_GPIO_DAT_MISO2_OFF);
+			mt6877_afe_gpio_adda_ch34_ul(afe, enable);
 		else
-			mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_DAT_MOSI_CH34_ON :
-			       MT6877_AFE_GPIO_DAT_MOSI_CH34_OFF);
+			mt6877_afe_gpio_adda_ch34_dl(afe, enable);
 		break;
 	case MT6877_DAI_I2S_0:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S0_ON :
-			       MT6877_AFE_GPIO_I2S0_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S0_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S0_OFF);
 		break;
 	case MT6877_DAI_I2S_1:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S1_ON :
-			       MT6877_AFE_GPIO_I2S1_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S1_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S1_OFF);
 		break;
 	case MT6877_DAI_I2S_2:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S2_ON :
-			       MT6877_AFE_GPIO_I2S2_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S2_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S2_OFF);
 		break;
 	case MT6877_DAI_I2S_3:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S3_ON :
-			       MT6877_AFE_GPIO_I2S3_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S3_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S3_OFF);
 		break;
 	case MT6877_DAI_I2S_5:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S5_ON :
-			       MT6877_AFE_GPIO_I2S5_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S5_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S5_OFF);
 		break;
 	case MT6877_DAI_I2S_6:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S6_ON :
-			       MT6877_AFE_GPIO_I2S6_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S6_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S6_OFF);
 		break;
 	case MT6877_DAI_I2S_7:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S7_ON :
-			       MT6877_AFE_GPIO_I2S7_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S7_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S7_OFF);
 		break;
 	case MT6877_DAI_I2S_8:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S8_ON :
-			       MT6877_AFE_GPIO_I2S8_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S8_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S8_OFF);
 		break;
 	case MT6877_DAI_I2S_9:
-		mt6877_afe_gpio_select(afe, enable ?
-			       MT6877_AFE_GPIO_I2S9_ON :
-			       MT6877_AFE_GPIO_I2S9_OFF);
+		if (enable)
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S9_ON);
+		else
+			mt6877_afe_gpio_select(afe, MT6877_AFE_GPIO_I2S9_OFF);
 		break;
 	case MT6877_DAI_VOW:
 		mt6877_afe_gpio_select(afe, enable ?
@@ -196,11 +241,17 @@ int mt6877_afe_gpio_request(struct mtk_base_afe *afe, bool enable,
 		break;
 	default:
 		mutex_unlock(&gpio_request_mutex);
-		dev_warn(afe->dev, "%s(), invalid dai %d\n", __func__, dai);
-		AUDIO_AEE("invalid dai");
+		dev_info(afe->dev, "%s(), invalid dai %d\n", __func__, dai);
 		return -EINVAL;
 	}
 	mutex_unlock(&gpio_request_mutex);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mt6877_afe_gpio_request);
+
+bool mt6877_afe_gpio_is_prepared(enum mt6877_afe_gpio type)
+{
+	return aud_gpios[type].gpio_prepare;
+}
+EXPORT_SYMBOL(mt6877_afe_gpio_is_prepared);
 

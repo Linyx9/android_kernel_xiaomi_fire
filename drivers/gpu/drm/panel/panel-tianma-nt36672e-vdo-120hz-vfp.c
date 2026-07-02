@@ -1,13 +1,15 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #include <linux/backlight.h>
 #include <linux/delay.h>
-#include <drm/drmP.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_modes.h>
+#include <drm/drm_connector.h>
+#include <drm/drm_device.h>
 
 #include <video/mipi_display.h>
 #include <video/of_videomode.h>
@@ -22,13 +24,12 @@
 
 #define CONFIG_MTK_PANEL_EXT
 #if defined(CONFIG_MTK_PANEL_EXT)
-#include "../mediatek/mtk_panel_ext.h"
-#include "../mediatek/mtk_log.h"
-#include "../mediatek/mtk_drm_graphics_base.h"
+#include "../mediatek/mediatek_v2/mtk_panel_ext.h"
+#include "../mediatek/mediatek_v2/mtk_drm_graphics_base.h"
 #include "include/panel-tianma-nt36672e-vdo-120hz-vfp.h"
 #endif
 
-#if defined(CONFIG_RT4831A_I2C)
+#if IS_ENABLED(CONFIG_RT4831A_I2C)
 #include "../../../misc/mediatek/gate_ic/gate_i2c.h"
 #endif
 
@@ -44,6 +45,7 @@ struct tianma {
 	struct backlight_device *backlight;
 	struct gpio_desc *pm_enable_gpio;
 	struct gpio_desc *reset_gpio;
+	struct gpio_desc *bias_pos, *bias_neg;
 
 	bool prepared;
 	bool enabled;
@@ -130,7 +132,8 @@ static void tianma_dcs_write(struct tianma *ctx, const void *data, size_t len)
 	}
 }
 
-#if defined(CONFIG_RT5081_PMU_DSV) || defined(CONFIG_MT6370_PMU_DSV)
+#if !IS_ENABLED(CONFIG_RT4831A_I2C)
+#if IS_ENABLED(CONFIG_RT5081_PMU_DSV) || IS_ENABLED(CONFIG_DEVICE_MODULES_REGULATOR_MT6370)
 static struct regulator *disp_bias_pos;
 static struct regulator *disp_bias_neg;
 
@@ -146,14 +149,14 @@ static int lcm_panel_bias_regulator_init(void)
 	disp_bias_pos = regulator_get(NULL, "dsv_pos");
 	if (IS_ERR(disp_bias_pos)) { /* handle return value */
 		ret = PTR_ERR(disp_bias_pos);
-		pr_err("get dsv_pos fail, error: %d\n", ret);
+		pr_info("get dsv_pos fail, error: %d\n", ret);
 		return ret;
 	}
 
 	disp_bias_neg = regulator_get(NULL, "dsv_neg");
 	if (IS_ERR(disp_bias_neg)) { /* handle return value */
 		ret = PTR_ERR(disp_bias_neg);
-		pr_err("get dsv_neg fail, error: %d\n", ret);
+		pr_info("get dsv_neg fail, error: %d\n", ret);
 		return ret;
 	}
 
@@ -171,23 +174,23 @@ static int lcm_panel_bias_enable(void)
 	/* set voltage with min & max*/
 	ret = regulator_set_voltage(disp_bias_pos, 5400000, 5400000);
 	if (ret < 0)
-		pr_err("set voltage disp_bias_pos fail, ret = %d\n", ret);
+		pr_info("set voltage disp_bias_pos fail, ret = %d\n", ret);
 	retval |= ret;
 
 	ret = regulator_set_voltage(disp_bias_neg, 5400000, 5400000);
 	if (ret < 0)
-		pr_err("set voltage disp_bias_neg fail, ret = %d\n", ret);
+		pr_info("set voltage disp_bias_neg fail, ret = %d\n", ret);
 	retval |= ret;
 
 	/* enable regulator */
 	ret = regulator_enable(disp_bias_pos);
 	if (ret < 0)
-		pr_err("enable regulator disp_bias_pos fail, ret = %d\n", ret);
+		pr_info("enable regulator disp_bias_pos fail, ret = %d\n", ret);
 	retval |= ret;
 
 	ret = regulator_enable(disp_bias_neg);
 	if (ret < 0)
-		pr_err("enable regulator disp_bias_neg fail, ret = %d\n", ret);
+		pr_info("enable regulator disp_bias_neg fail, ret = %d\n", ret);
 	retval |= ret;
 
 	return retval;
@@ -202,18 +205,18 @@ static int lcm_panel_bias_disable(void)
 
 	ret = regulator_disable(disp_bias_neg);
 	if (ret < 0)
-		pr_err("disable regulator disp_bias_neg fail, ret = %d\n", ret);
+		pr_info("disable regulator disp_bias_neg fail, ret = %d\n", ret);
 	retval |= ret;
 
 	ret = regulator_disable(disp_bias_pos);
 	if (ret < 0)
-		pr_err("disable regulator disp_bias_pos fail, ret = %d\n", ret);
+		pr_info("disable regulator disp_bias_pos fail, ret = %d\n", ret);
 	retval |= ret;
 
 	return retval;
 }
 #endif
-
+#endif
 
 #define HFP_SUPPORT 1
 
@@ -623,7 +626,7 @@ static int tianma_unprepare(struct drm_panel *panel)
 
 	if (!ctx->prepared)
 		return 0;
-	pr_info("%s\n", __func__);
+	pr_info("%s+ start\n", __func__);
 
 	tianma_dcs_write_seq_static(ctx, 0x28);
 	tianma_dcs_write_seq_static(ctx, 0x10);
@@ -631,17 +634,17 @@ static int tianma_unprepare(struct drm_panel *panel)
 
 	ctx->error = 0;
 	ctx->prepared = false;
-#if defined(CONFIG_RT5081_PMU_DSV) || defined(CONFIG_MT6370_PMU_DSV)
-	lcm_panel_bias_disable();
-#elif defined(CONFIG_RT4831A_I2C)
+#if IS_ENABLED(CONFIG_RT4831A_I2C)
 	/*this is rt4831a*/
 	_gate_ic_i2c_panel_bias_enable(0);
 	_gate_ic_Power_off();
+#elif IS_ENABLED(CONFIG_RT5081_PMU_DSV) || IS_ENABLED(CONFIG_DEVICE_MODULES_REGULATOR_MT6370)
+	lcm_panel_bias_disable();
 #else
 	ctx->reset_gpio =
 		devm_gpiod_get(ctx->dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->reset_gpio)) {
-		dev_err(ctx->dev, "%s: cannot get reset_gpio %ld\n",
+		dev_info(ctx->dev, "%s: cannot get reset_gpio %ld\n",
 			__func__, PTR_ERR(ctx->reset_gpio));
 		return PTR_ERR(ctx->reset_gpio);
 	}
@@ -652,7 +655,7 @@ static int tianma_unprepare(struct drm_panel *panel)
 	ctx->bias_neg = devm_gpiod_get_index(ctx->dev,
 		"bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(ctx->dev, "%s: cannot get bias_neg %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias_neg %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
@@ -664,7 +667,7 @@ static int tianma_unprepare(struct drm_panel *panel)
 	ctx->bias_pos = devm_gpiod_get_index(ctx->dev,
 		"bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(ctx->dev, "%s: cannot get bias_pos %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias_pos %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -679,21 +682,20 @@ static int tianma_prepare(struct drm_panel *panel)
 	struct tianma *ctx = panel_to_tianma(panel);
 	int ret;
 
-	pr_info("%s\n", __func__);
+	pr_info("%s+ start\n", __func__);
 	if (ctx->prepared)
 		return 0;
-
-#if defined(CONFIG_RT5081_PMU_DSV) || defined(CONFIG_MT6370_PMU_DSV)
-	lcm_panel_bias_enable();
-#elif defined(CONFIG_RT4831A_I2C)
+#if IS_ENABLED(CONFIG_RT4831A_I2C)
 	_gate_ic_Power_on();
 	/*rt4831a co-work with leds_i2c*/
 	_gate_ic_i2c_panel_bias_enable(1);
+#elif IS_ENABLED(CONFIG_RT5081_PMU_DSV) || IS_ENABLED(CONFIG_DEVICE_MODULES_REGULATOR_MT6370)
+	lcm_panel_bias_enable();
 #else
 	ctx->bias_pos = devm_gpiod_get_index(ctx->dev,
 		"bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(ctx->dev, "%s: cannot get bias_pos %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias_pos %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -705,7 +707,7 @@ static int tianma_prepare(struct drm_panel *panel)
 	ctx->bias_neg = devm_gpiod_get_index(ctx->dev,
 		"bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(ctx->dev, "%s: cannot get bias_neg %ld\n",
+		dev_info(ctx->dev, "%s: cannot get bias_neg %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
@@ -749,7 +751,7 @@ static int tianma_enable(struct drm_panel *panel)
 }
 
 static const struct drm_display_mode default_mode = {
-	.clock = 289452,
+	.clock = 389373,
 	.hdisplay = FRAME_WIDTH,
 	.hsync_start = FRAME_WIDTH + MODE_0_HFP,
 	.hsync_end = FRAME_WIDTH + MODE_0_HFP + HSA,
@@ -758,11 +760,10 @@ static const struct drm_display_mode default_mode = {
 	.vsync_start = FRAME_HEIGHT + MODE_0_VFP,
 	.vsync_end = FRAME_HEIGHT + MODE_0_VFP + VSA,
 	.vtotal = FRAME_HEIGHT + MODE_0_VFP + VSA + VBP,
-	.vrefresh = MODE_0_FPS,
 };
 
 static const struct drm_display_mode performance_mode_1 = {
-	.clock = 336420,
+	.clock = 389219,
 	.hdisplay = FRAME_WIDTH,
 	.hsync_start = FRAME_WIDTH + MODE_1_HFP,
 	.hsync_end = FRAME_WIDTH + MODE_1_HFP + HSA,
@@ -771,13 +772,10 @@ static const struct drm_display_mode performance_mode_1 = {
 	.vsync_start = FRAME_HEIGHT + MODE_1_VFP,
 	.vsync_end = FRAME_HEIGHT + MODE_1_VFP + VSA,
 	.vtotal = FRAME_HEIGHT + MODE_1_VFP + VSA + VBP,
-	.vrefresh = MODE_1_FPS,
-
-
 };
 
 static const struct drm_display_mode performance_mode_2 = {
-	.clock = 383239,
+	.clock = 390603,
 	.hdisplay = FRAME_WIDTH,
 	.hsync_start = FRAME_WIDTH + MODE_2_HFP,
 	.hsync_end = FRAME_WIDTH + MODE_2_HFP + HSA,
@@ -786,8 +784,6 @@ static const struct drm_display_mode performance_mode_2 = {
 	.vsync_start = FRAME_HEIGHT + MODE_2_VFP,
 	.vsync_end = FRAME_HEIGHT + MODE_2_VFP + VSA,
 	.vtotal = FRAME_HEIGHT + MODE_2_VFP + VSA + VBP,
-	.vrefresh = MODE_2_FPS,
-
 };
 
 #if defined(CONFIG_MTK_PANEL_EXT)
@@ -982,13 +978,13 @@ static int tianma_setbacklight_cmdq(void *dsi, dcs_write_gce cb,
 	return 0;
 }
 
-struct drm_display_mode *get_mode_by_id(struct drm_panel *panel,
+struct drm_display_mode *get_mode_by_id(struct drm_connector *connector,
 	unsigned int mode)
 {
 	struct drm_display_mode *m;
 	unsigned int i = 0;
 
-	list_for_each_entry(m, &panel->connector->modes, head) {
+	list_for_each_entry(m, &connector->modes, head) {
 		if (i == mode)
 			return m;
 		i++;
@@ -997,23 +993,23 @@ struct drm_display_mode *get_mode_by_id(struct drm_panel *panel,
 }
 
 static int mtk_panel_ext_param_set(struct drm_panel *panel,
-			 unsigned int mode)
+			 struct drm_connector *connector, unsigned int mode)
 {
 	struct mtk_panel_ext *ext = find_panel_ext(panel);
 	int ret = 0;
-	struct drm_display_mode *m = get_mode_by_id(panel, mode);
+	struct drm_display_mode *m = get_mode_by_id(connector, mode);
 
 
-	if (m->vrefresh == MODE_0_FPS)
+	if (drm_mode_vrefresh(m) == MODE_0_FPS)
 		ext->params = &ext_params;
-	else if (m->vrefresh == MODE_1_FPS)
+	else if (drm_mode_vrefresh(m) == MODE_1_FPS)
 		ext->params = &ext_params_mode_1;
-	else if (m->vrefresh == MODE_2_FPS)
+	else if (drm_mode_vrefresh(m) == MODE_2_FPS)
 		ext->params = &ext_params_mode_2;
 	else
 		ret = 1;
 	if (!ret)
-		current_fps = m->vrefresh;
+		current_fps = drm_mode_vrefresh(m);
 	return ret;
 }
 
@@ -1043,12 +1039,12 @@ static int panel_ata_check(struct drm_panel *panel)
 		return 0;
 	}
 
-	DDPINFO("ATA read data %x %x %x\n", data[0], data[1], data[2]);
+	pr_info("ATA read data %x %x %x\n", data[0], data[1], data[2]);
 
 	if (data[0] == id[0])
 		return 1;
 
-	DDPINFO("ATA expect read data is %x %x %x\n",
+	pr_info("ATA expect read data is %x %x %x\n",
 			id[0], id[1], id[2]);
 
 	return 0;
@@ -1093,50 +1089,51 @@ struct panel_desc {
 	} delay;
 };
 
-static int tianma_get_modes(struct drm_panel *panel)
+static int tianma_get_modes(struct drm_panel *panel,
+						struct drm_connector *connector)
 {
 	struct drm_display_mode *mode;
 	struct drm_display_mode *mode_1;
 	struct drm_display_mode *mode_2;
 
-	mode = drm_mode_duplicate(panel->drm, &default_mode);
+	mode = drm_mode_duplicate(connector->dev, &default_mode);
 	if (!mode) {
-		dev_info(panel->drm->dev, "failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			default_mode.hdisplay, default_mode.vdisplay,
-			default_mode.vrefresh);
+			drm_mode_vrefresh(&default_mode));
 		return -ENOMEM;
 	}
 	drm_mode_set_name(mode);
 	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	drm_mode_probed_add(panel->connector, mode);
+	drm_mode_probed_add(connector, mode);
 
-	mode_1 = drm_mode_duplicate(panel->drm, &performance_mode_1);
+	mode_1 = drm_mode_duplicate(connector->dev, &performance_mode_1);
 	if (!mode_1) {
-		dev_info(panel->drm->dev, "failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			performance_mode_1.hdisplay,
 			performance_mode_1.vdisplay,
-			performance_mode_1.vrefresh);
+			drm_mode_vrefresh(&performance_mode_1));
 		return -ENOMEM;
 	}
 	drm_mode_set_name(mode_1);
 	mode_1->type = DRM_MODE_TYPE_DRIVER;
-	drm_mode_probed_add(panel->connector, mode_1);
+	drm_mode_probed_add(connector, mode_1);
 
 
-	mode_2 = drm_mode_duplicate(panel->drm, &performance_mode_2);
+	mode_2 = drm_mode_duplicate(connector->dev, &performance_mode_2);
 	if (!mode_2) {
-		dev_info(panel->drm->dev, "failed to add mode %ux%ux@%u\n",
+		dev_info(connector->dev->dev, "failed to add mode %ux%ux@%u\n",
 			performance_mode_2.hdisplay,
 			performance_mode_2.vdisplay,
-			performance_mode_2.vrefresh);
+			drm_mode_vrefresh(&performance_mode_2));
 		return -ENOMEM;
 	}
 	drm_mode_set_name(mode_2);
 	mode_2->type = DRM_MODE_TYPE_DRIVER;
-	drm_mode_probed_add(panel->connector, mode_2);
+	drm_mode_probed_add(connector, mode_2);
 
-	panel->connector->display_info.width_mm = 64;
-	panel->connector->display_info.height_mm = 129;
+	connector->display_info.width_mm = 64;
+	connector->display_info.height_mm = 129;
 
 	return 3;
 }
@@ -1152,10 +1149,12 @@ static const struct drm_panel_funcs tianma_drm_funcs = {
 static int tianma_probe(struct mipi_dsi_device *dsi)
 {
 	struct device *dev = &dsi->dev;
+	struct device_node *dsi_node, *remote_node = NULL, *endpoint = NULL;
 	struct tianma *ctx;
 	struct device_node *backlight;
 	int ret;
-	struct device_node *dsi_node, *remote_node = NULL, *endpoint = NULL;
+
+	pr_info("%s+ tianma,nt36672e,vdo,120hz\n", __func__);
 
 	dsi_node = of_get_parent(dev->of_node);
 	if (dsi_node) {
@@ -1173,7 +1172,7 @@ static int tianma_probe(struct mipi_dsi_device *dsi)
 		pr_info("%s+ skip probe due to not current lcm\n", __func__);
 		return -ENODEV;
 	}
-	pr_info("%s+\n", __func__);
+
 	ctx = devm_kzalloc(dev, sizeof(struct tianma), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
@@ -1184,7 +1183,7 @@ static int tianma_probe(struct mipi_dsi_device *dsi)
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST
-			 | MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_EOT_PACKET
+			 | MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_NO_EOT_PACKET
 			 | MIPI_DSI_CLOCK_NON_CONTINUOUS;
 
 	backlight = of_parse_phandle(dev->of_node, "backlight", 0);
@@ -1203,12 +1202,14 @@ static int tianma_probe(struct mipi_dsi_device *dsi)
 		return PTR_ERR(ctx->reset_gpio);
 	}
 	devm_gpiod_put(dev, ctx->reset_gpio);
-#if defined(CONFIG_RT5081_PMU_DSV) || defined(CONFIG_MT6370_PMU_DSV)
+
+#if !IS_ENABLED(CONFIG_RT4831A_I2C)
+#if IS_ENABLED(CONFIG_RT5081_PMU_DSV) || IS_ENABLED(CONFIG_DEVICE_MODULES_REGULATOR_MT6370)
 	lcm_panel_bias_enable();
-#elif !defined(CONFIG_RT4831A_I2C)
+#else
 	ctx->bias_pos = devm_gpiod_get_index(dev, "bias", 0, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_pos)) {
-		dev_err(dev, "%s: cannot get bias-pos 0 %ld\n",
+		dev_info(dev, "%s: cannot get bias-pos 0 %ld\n",
 			__func__, PTR_ERR(ctx->bias_pos));
 		return PTR_ERR(ctx->bias_pos);
 	}
@@ -1216,23 +1217,20 @@ static int tianma_probe(struct mipi_dsi_device *dsi)
 
 	ctx->bias_neg = devm_gpiod_get_index(dev, "bias", 1, GPIOD_OUT_HIGH);
 	if (IS_ERR(ctx->bias_neg)) {
-		dev_err(dev, "%s: cannot get bias-neg 1 %ld\n",
+		dev_info(dev, "%s: cannot get bias-neg 1 %ld\n",
 			__func__, PTR_ERR(ctx->bias_neg));
 		return PTR_ERR(ctx->bias_neg);
 	}
 	devm_gpiod_put(dev, ctx->bias_neg);
 #endif
+#endif
 
 	ctx->prepared = true;
 	ctx->enabled = true;
 
-	drm_panel_init(&ctx->panel);
-	ctx->panel.dev = dev;
-	ctx->panel.funcs = &tianma_drm_funcs;
+	drm_panel_init(&ctx->panel, dev, &tianma_drm_funcs, DRM_MODE_CONNECTOR_DSI);
 
-	ret = drm_panel_add(&ctx->panel);
-	if (ret < 0)
-		return ret;
+	drm_panel_add(&ctx->panel);
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
@@ -1250,14 +1248,19 @@ static int tianma_probe(struct mipi_dsi_device *dsi)
 	return ret;
 }
 
-static int tianma_remove(struct mipi_dsi_device *dsi)
+static void tianma_remove(struct mipi_dsi_device *dsi)
 {
 	struct tianma *ctx = mipi_dsi_get_drvdata(dsi);
+#if defined(CONFIG_MTK_PANEL_EXT)
+	struct mtk_panel_ctx *ext_ctx = find_panel_ctx(&ctx->panel);
+#endif
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
-
-	return 0;
+#if defined(CONFIG_MTK_PANEL_EXT)
+	mtk_panel_detach(ext_ctx);
+	mtk_panel_remove(ext_ctx);
+#endif
 }
 
 static const struct of_device_id tianma_of_match[] = {
@@ -1282,5 +1285,4 @@ module_mipi_dsi_driver(tianma_driver);
 
 MODULE_AUTHOR("Jingjing Liu <jingjing.liu@mediatek.com>");
 MODULE_DESCRIPTION("tianma nt36672E vdo 120hz Panel Driver");
-MODULE_LICENSE("GPL v2");
-
+MODULE_LICENSE("GPL");

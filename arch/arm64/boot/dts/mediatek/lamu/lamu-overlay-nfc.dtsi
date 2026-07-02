@@ -1,0 +1,15 @@
+/*[TN.NJDC] nfc overlay file.start*/
+/*yangyong add for NXP NFC pn560uk begin*/
+&i2c3 {
+        clock-frequency = <400000>;
+
+        pn560: pn560@29 {
+                compatible = "nxp,sn-nci";
+                reg = <0x29>;
+                nxp,sn-irq = <&pio 5 0>;
+                nxp,sn-ven-rstn = <&pio 1  0>;
+                status = "okay";
+        };
+};
+/*yangyong add for NXP NFC pn560uk end*/
+/*[TN.NJDC] nfc overlay file.end*/

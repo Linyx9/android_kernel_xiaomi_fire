@@ -31,47 +31,36 @@ enum MD_COMM_TYPE {
 	CCIF_MPU_INTR,
 };
 
-enum LOW_POEWR_NOTIFY_TYPE {
-	LOW_BATTERY,
-	BATTERY_PERCENT,
-};
-
 enum MODEM_EE_FLAG {
 	EE_FLAG_ENABLE_WDT = (1 << 0),
 	EE_FLAG_DISABLE_WDT = (1 << 1),
 };
 
 enum LOGGING_MODE {
-	MODE_UNKNOWN = -1,	  /* -1 */
-	MODE_IDLE,			  /* 0 */
-	MODE_USB,			   /* 1 */
-	MODE_SD,				/* 2 */
-	MODE_POLLING,		   /* 3 */
-	MODE_WAITSD,			/* 4 */
+	MODE_UNKNOWN = -1,	/* -1 */
+	MODE_IDLE,	/* 0 */
+	MODE_USB,	/* 1 */
+	MODE_SD,	/* 2 */
+	MODE_POLLING,	/* 3 */
+	MODE_WAITSD,	/* 4 */
 };
 
-#define NORMAL_BOOT_ID 0
-#define META_BOOT_ID 1
-#define FACTORY_BOOT_ID	2
-
-#define MD_SETTING_ENABLE (1<<0)
-#define MD_SETTING_RELOAD (1<<1)
-#define MD_SETTING_FIRST_BOOT (1<<2)	/* this is the first time of boot up */
-#define MD_SETTING_DUMMY  (1<<7)
-
-#define MD_IMG_DUMP_SIZE (1<<8)
-#define DSP_IMG_DUMP_SIZE (1<<9)
+#define MD_SETTING_ENABLE	(1<<0)
+#define MD_SETTING_RELOAD	(1<<1)
+#define MD_SETTING_FIRST_BOOT	(1<<2)/* this is the first time of boot up */
+#define MD_SETTING_DUMMY	(1<<7)
+#define MD_IMG_DUMP_SIZE	(1<<8)
+#define DSP_IMG_DUMP_SIZE	(1<<9)
 
 struct ccci_force_assert_shm_fmt {
 	unsigned int  error_code;
 	unsigned int  param[3];
-	unsigned char reserved[0];
+	unsigned char reserved[];
 };
 
 extern int current_time_zone;
 
 struct ccci_dev_cfg {
-	unsigned int index;
 	unsigned int major;
 	unsigned int minor_base;
 	unsigned int capability;
@@ -91,30 +80,15 @@ struct ccci_modem_ops {
 		unsigned char qno, enum DIRECTION dir);
 	int (*send_runtime_data)(struct ccci_modem *md, unsigned int tx_ch,
 		unsigned int txqno, int skb_from_pool);
-	int (*ee_handshake)(struct ccci_modem *md, int timeout);
+
 	int (*force_assert)(struct ccci_modem *md, enum MD_COMM_TYPE type);
 	int (*dump_info)(struct ccci_modem *md, enum MODEM_DUMP_FLAG flag,
 		void *buff, int length);
-	int (*low_power_notify)(struct ccci_modem *md,
-		enum LOW_POEWR_NOTIFY_TYPE type, int level);
-	int (*ee_callback)(struct ccci_modem *md, enum MODEM_EE_FLAG flag);
-	int (*send_ccb_tx_notify)(struct ccci_modem *md, int core_id);
 	int (*reset_pccif)(struct ccci_modem *md);
 };
 
 struct md_sys1_info {
-		void __iomem *ap_ccif_base;
-		void __iomem *md_ccif_base;
 		int channel_id;		/* CCIF channel */
-		atomic_t ccif_irq_enabled;
-		unsigned int ap_ccif_irq_id;
-		unsigned long ap_ccif_irq_flags;
-
-#ifdef FEATURE_SCP_CCCI_SUPPORT
-		struct work_struct scp_md_state_sync_work;
-#endif
-		void __iomem *md_rgu_base;
-		void __iomem *l1_rgu_base;
 		void __iomem *md_global_con0;
 
 #ifdef MD_PEER_WAKEUP
@@ -129,20 +103,9 @@ struct md_sys1_info {
 		void __iomem *md_ost_status;
 		void __iomem *md_pll;
 		struct md_pll_reg *md_pll_base;
-
-		void __iomem *md_boot_slave_Vector;
-		void __iomem *md_boot_slave_Key;
-		void __iomem *md_boot_slave_En;
-};
-
-struct md_sys3_info {
-		void __iomem *md_rgu_base;
-		void __iomem *ccirq_base[4];
-		void __iomem *c2k_cgbr1_addr;
 };
 
 struct ccci_modem {
-	unsigned char index;
 	unsigned char *private_data;
 
 	struct ccci_modem_ops *ops;
@@ -181,9 +144,31 @@ struct ccci_modem {
 	struct md_hw_info *hw_info;
 
 	struct ccci_per_md per_md_data;
+	void *ioremap_buff_src;
 };
 
-extern struct ccci_modem *modem_sys[MAX_MD_NUM];
+struct md_wdt_record {
+	unsigned int isr_cnt;
+	unsigned int routine_cnt;
+	/* When FSM receives a reset event followed by a WDT event
+	 * with an EPON flag, and the reset event precedes the WDT
+	 * event, md will reset and lost the EPON flag. so need a
+	 * reset_flg to record this scenario.
+	 */
+	unsigned int reset_flg;
+	/* used to save wdt key time
+	 * id setting:
+	 * 0: wdt isr time
+	 * 1: disable wdt irq time
+	 * 2: enable wdt irq time
+	 */
+	unsigned long long time[3];
+};
+
+extern struct md_wdt_record md_wdt_rec;
+extern struct ccci_modem *modem_sys;
+extern struct ccci_plat_val md_cd_plat_val_ptr;
+
 
 /****************************************************************************/
 /* API Region called by sub-modem class, reuseable API */
@@ -191,73 +176,47 @@ extern struct ccci_modem *modem_sys[MAX_MD_NUM];
 struct ccci_modem *ccci_md_alloc(int private_size);
 int ccci_md_register(struct ccci_modem *modem);
 
-static inline struct ccci_modem *ccci_md_get_modem_by_id(int md_id)
+static inline struct ccci_modem *ccci_get_modem(void)
 {
-	if (md_id >= MAX_MD_NUM || md_id < 0)
-		return NULL;
-	return modem_sys[md_id];
+	return modem_sys;
 }
 
-static inline struct device *ccci_md_get_dev_by_id(int md_id)
+static inline struct device *ccci_md_get_dev(void)
 {
-	if (md_id >= MAX_MD_NUM || md_id < 0)
-		return NULL;
-	return &modem_sys[md_id]->plat_dev->dev;
+	return &(modem_sys->plat_dev->dev);
 }
 
-static inline int ccci_md_in_ee_dump(int md_id)
+static inline void *ccci_md_get_hw_info(void)
 {
-	if (md_id >= MAX_MD_NUM || md_id < 0)
-		return -CCCI_ERR_MD_INDEX_NOT_FOUND;
-	return modem_sys[md_id]->per_md_data.is_in_ee_dump;
+	return modem_sys->hw_info;
 }
-
-static inline void *ccci_md_get_hw_info(int md_id)
-{
-	if (md_id >= MAX_MD_NUM || md_id < 0)
-		return NULL;
-	return modem_sys[md_id]->hw_info;
-}
-
-static inline int ccci_md_recv_skb(unsigned char md_id,
-	unsigned char hif_id, struct sk_buff *skb)
-{
-	int flag = NORMAL_DATA;
-
-	if (hif_id == MD1_NET_HIF)
-		flag = CLDMA_NET_DATA;
-	return ccci_port_recv_skb(md_id, hif_id, skb, flag);
-}
-
-/****************************************************************************/
-/* API Region called by port_proxy class */
-/****************************************************************************/
-struct ccci_modem *ccci_md_get_another(int md_id);
-void ccci_md_set_reload_type(struct ccci_modem *md, int type);
-
-int ccci_md_check_ee_done(struct ccci_modem *md, int timeout);
-int ccci_md_store_load_type(struct ccci_modem *md, int type);
-int ccci_md_get_ex_type(struct ccci_modem *md);
 
 /***************************************************************************/
 /* API Region called by ccci modem object */
 /***************************************************************************/
+extern int ccci_modem_init_common(struct platform_device *plat_dev,
+	struct ccci_dev_cfg *dev_cfg, struct md_hw_info *md_hw);
 
-#if defined(FEATURE_SYNC_C2K_MEID)
-extern unsigned char tc1_read_meid_syncform(unsigned char *meid, int leng);
+extern int mrdump_mini_add_extra_file(unsigned long vaddr, unsigned long paddr,
+	unsigned long size, const char *name);
+#if IS_ENABLED(CONFIG_MTK_IRQ_DBG)
+extern void mt_irq_dump_status(unsigned int irq);
 #endif
-
-#if defined(FEATURE_TC1_CUSTOMER_VAL)
-extern int get_md_customer_val(unsigned char *value, unsigned int len);
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_MTK_DEVAPC)
+extern atomic_t en_flight_timeout;
+extern atomic_t md_dapc_ke_occurred;
 #endif
-extern bool spm_is_md1_sleep(void);
+extern void port_kernel_user_interface_init(struct device_node *mddriver_node);
 
-extern unsigned int trace_sample_time;
+int ccci_md_start(void);
+int ccci_md_soft_start(unsigned int sim_mode);
+int ccci_md_send_runtime_data(void);
+void ccci_md_dump_info(enum MODEM_DUMP_FLAG flag,
+	void *buff, int length);
+int ccci_md_pre_stop(unsigned int stop_type);
+int ccci_md_stop(unsigned int stop_type);
+int ccci_md_soft_stop(unsigned int sim_mode);
+int ccci_md_pre_start(void);
+int ccci_md_post_start(void);
 
-extern u32 mt_irq_get_pending(unsigned int irq);
-
-#define GF_PORT_LIST_MAX 128
-extern int gf_port_list_reg[GF_PORT_LIST_MAX];
-extern int gf_port_list_unreg[GF_PORT_LIST_MAX];
-extern int ccci_ipc_set_garbage_filter(struct ccci_modem *md, int reg);
 #endif	/* __CCCI_MODEM_H__ */

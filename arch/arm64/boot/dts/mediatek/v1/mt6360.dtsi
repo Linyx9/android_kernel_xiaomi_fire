@@ -1,24 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2021 MediaTek Inc.
-*/
+ */
 
 &i2c5 {
 	mt6360_pmu: mt6360_pmu_dts {
 		status = "ok";
-#if defined (CONFIG_MACH_MT6877)
 		mt6360,intr_gpio_num = <4>; /* direct defined GPIO num */
 		mt6360,intr_gpio = <&pio 4 0x0>; /* GPIO */
-#elif defined (CONFIG_MACH_MT6833)
-		mt6360,intr_gpio_num = <10>; /* direct defined GPIO num */
-		mt6360,intr_gpio = <&pio 10 0x0>; /* GPIO */
-#elif defined (CONFIG_MACH_MT6873)
-		mt6360,intr_gpio_num = <24>; /* direct defined GPIO num */
-		mt6360,intr_gpio = <&pio 24 0x0>;
-#else
-		mt6360,intr_gpio_num = <3>; /* direct defined GPIO num */
-		mt6360,intr_gpio = <&pio 3 0x0>; /* GPIO */
-#endif
 		interrupt-controller;
 		#interrupt-cells = <2>;
 		adc: adc {
@@ -67,11 +56,9 @@
 			batoc_notify = <0>;
 			charger = <&mt6360_chg>;
 			bc12_sel = <0>;
-#if !defined (CONFIG_MACH_MT6833)
 			phys = <&u2port0 PHY_TYPE_USB2>;
 			phy-names = "usb2-phy";
 			usb = <&ssusb>;
-#endif
 			otg_vbus: usb-otg-vbus {
 				regulator-compatible = "usb-otg-vbus";
 				regulator-name = "usb-otg-vbus";

@@ -10,83 +10,49 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
+#
 
-MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 
-$(info $(srctree))
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/m4u/$(MTK_PLATFORM)/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmp/
-ifeq ($(CONFIG_MACH_MT6757),y)
-  ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/v2/
-  ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/v2/$(MTK_PLATFORM)/
-else
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/v3/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/cmdq/v3/$(MTK_PLATFORM)/
-endif
-ccflags-y += -I$(srctree)/drivers/staging/android/ion \
-             -I$(srctree)/drivers/staging/android/ion/mtk
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/smi/
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmdvfs/
-ccflags-$(CONFIG_MTK_IOMMU_V2) += -I$(srctree)/drivers/iommu
-ccflags-$(CONFIG_MTK_IOMMU_V2) += -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/
 
-obj-y := cameradpe_dummy.o
+$(info $(DEVICE_MODULES_PATH))
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/m4u/$(MTK_PLATFORM)/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mmp/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/cmdq/v3/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/cmdq/v3/$(MTK_PLATFORM)/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/staging/android/ion \
+             -I$(DEVICE_MODULES_PATH)/drivers/staging/android/ion/mtk
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/smi/
+ccflags-$(CONFIG_MTK_IOMMU_V2) += -I$(DEVICE_MODULES_PATH)/drivers/iommu
+ccflags-$(CONFIG_MTK_IOMMU_V2) += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include/
 
-ifeq ($(CONFIG_MACH_MT6771),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_50/camera_dpe.o
-else ifeq ($(CONFIG_MACH_MT6775),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_50/camera_dpe.o
-else ifeq ($(CONFIG_MACH_MT6765),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += mt6765/camera_dpe.o
-else ifeq ($(CONFIG_MACH_MT6757),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += mt6757/camera_dpe.o
-else ifeq ($(CONFIG_MACH_MT6762),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += mt6765/camera_dpe.o
-else ifeq ($(CONFIG_MACH_MT6785),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_50/camera_dpe.o
-else ifeq ($(CONFIG_MACH_MT6768),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += mt6768/camera_dpe.o
-else ifeq ($(CONFIG_MACH_MT6885),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/engine_request.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/camera_dpe.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/videobuf2-dma-contig.o
-else ifeq ($(CONFIG_MACH_MT6893),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/engine_request.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/camera_dpe.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/videobuf2-dma-contig.o
-else ifeq ($(CONFIG_MACH_MT6873),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/engine_request.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/camera_dpe.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/videobuf2-dma-contig.o
-else ifeq ($(CONFIG_MACH_MT6853),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/engine_request.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/camera_dpe.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/videobuf2-dma-contig.o
-else ifeq ($(CONFIG_MACH_MT6877),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/engine_request.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/camera_dpe.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/videobuf2-dma-contig.o
-else ifeq ($(CONFIG_MACH_MT6833),y)
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/engine_request.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/camera_dpe.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += isp_60/videobuf2-dma-contig.o
-else
-	obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += $(MTK_PLATFORM)/engine_request.o
-  obj-$(CONFIG_MTK_CAMERA_ISP_DPE_SUPPORT) += $(MTK_PLATFORM)/camera_dpe.o
+#ifeq ($(CONFIG_MTK_CAMERA_DPE_ISP7S),m)
+
+#obj-$(CONFIG_MTK_CAMERA_DPE_ISP7S) += camera_dpe_isp7s.o
+#camera_dpe_isp7s-objs += isp_7s/engine_request.o
+#camera_dpe_isp7s-objs  += isp_7s/camera_dpe.o
+#camera_dpe_isp7s-objs += isp_7s/videobuf2-dma-contig.o
+
+#endif
+
+ifeq ($(CONFIG_MTK_CAMERA_DPE_ISP7),m)
+obj-$(CONFIG_MTK_CAMERA_DPE_ISP7) += camera_dpe_isp70.o
+camera_dpe_isp70-objs += isp_70/engine_request.o
+camera_dpe_isp70-objs  += isp_70/camera_dpe.o
+camera_dpe_isp70-objs += isp_70/videobuf2-dma-contig.o
 endif
 
-ifeq ($(CONFIG_MACH_MT6885),y)
-  MTK_DPE_VER := 0
-else ifeq ($(CONFIG_MACH_MT6893),y)
-  MTK_DPE_VER := 0
-else ifeq ($(CONFIG_MACH_MT6873),y)
-  MTK_DPE_VER := 1
-else ifeq ($(CONFIG_MACH_MT6853),y)
-  MTK_DPE_VER := 1
-else ifeq ($(CONFIG_MACH_MT6877),y)
-  MTK_DPE_VER := 1
-else ifeq ($(CONFIG_MACH_MT6833),y)
-  MTK_DPE_VER := 1
+ifeq ($(CONFIG_MTK_CAMERA_DPE_ISP6S),m)
+obj-$(CONFIG_MTK_CAMERA_DPE_ISP6S) += camera_dpe_isp60.o
+camera_dpe_isp60-objs += isp_60/engine_request.o
+camera_dpe_isp60-objs  += isp_60/camera_dpe.o
+camera_dpe_isp60-objs += isp_60/videobuf2-dma-contig.o
 endif
 
-subdir-ccflags-y += -DMTK_DPE_VER=$(MTK_DPE_VER)
+ifeq ($(CONFIG_MTK_CAMERA_DPE_ISP40),m)
+obj-$(CONFIG_MTK_CAMERA_DPE_ISP40) += camera_dpe_isp40.o
+camera_dpe_isp40-objs += isp_40/camera_dpe.o
+else ifeq ($(CONFIG_MTK_CAMERA_DPE_ISP40), y)
+obj-$(CONFIG_MTK_CAMERA_DPE_ISP40) += camera_dpe_isp40.o
+camera_dpe_isp40-objs += isp_40/camera_dpe.o
+endif
+

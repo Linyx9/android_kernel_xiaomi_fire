@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2014 Goodix Technology.
+ * Copyright (C) 2019 MediaTek Inc.
  */
 
 #include <linux/delay.h>

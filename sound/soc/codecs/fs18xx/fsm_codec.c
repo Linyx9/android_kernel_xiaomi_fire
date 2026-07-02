@@ -583,10 +583,10 @@ static struct snd_soc_dai_driver fsm_aif_dai[] = {
 			.formats = FSM_FORMATS,
 		},
 		.ops = &fsm_aif_dai_ops,
-		.symmetric_rates = 1,
+		.symmetric_rate = 1,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 		.symmetric_channels = 1,
-		.symmetric_samplebits = 1,
+		.symmetric_sample_bits = 1,
 #endif
 	},
 };

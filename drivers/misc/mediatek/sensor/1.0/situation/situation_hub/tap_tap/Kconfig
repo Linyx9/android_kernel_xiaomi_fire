@@ -1,0 +1,8 @@
+
+config MTK_TAP_TAP_HUB
+	bool "TAP_TAP for MediaTek package"
+	help
+	  TAP_TAP is a device,
+	  usually portable and electronic
+	  or electromechanical,
+	  that detect device back is taped twice.

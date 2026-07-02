@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2021 MediaTek Inc.
+ * Copyright (c) 2015 MediaTek Inc.
  */
 
-#include <linux/mailbox/mtk-cmdq-mailbox.h>
-#include <linux/soc/mediatek/mtk-cmdq.h>
+#include <linux/mailbox/mtk-cmdq-mailbox-ext.h>
+#include <linux/soc/mediatek/mtk-cmdq-ext.h>
 #include <linux/mailbox_controller.h>
 #include <linux/sched/clock.h>
 #include <linux/interrupt.h>
@@ -116,11 +116,13 @@ inline u32 spi_read_reg(const u32 addr)
 	spislv_read_register(addr, &val);
 	return val;
 }
+EXPORT_SYMBOL(spi_read_reg);
 
 inline s32 spi_write_reg(const u32 addr, const u32 val)
 {
 	return spislv_write_register(addr, val);
 }
+EXPORT_SYMBOL(spi_write_reg);
 
 inline s32 spi_read_mem(const u32 addr, void *val, const s32 len)
 {
@@ -135,13 +137,13 @@ inline s32 spi_write_mem(const u32 addr, void *val, const s32 len)
 static inline u32 cmdq_bdg_thread_get_reg(struct cmdq_thread *thread,
 	const u32 addr)
 {
-	return spi_read_reg((uintptr_t)thread->base + addr);
+	return spi_read_reg((*((u32 *)&thread->base)) + addr);
 }
 
 static inline void cmdq_bdg_thread_set_reg(struct cmdq_thread *thread,
 	const u32 addr, const u32 val)
 {
-	spi_write_reg((uintptr_t)thread->base + addr, val);
+	spi_write_reg((*((u32 *)&thread->base)) + addr, val);
 }
 
 static s32 cmdq_bdg_thread_warm_reset(struct cmdq_thread *thread)
@@ -288,7 +290,7 @@ static void cmdq_bdg_dump_sysbuf(const phys_addr_t base, const size_t size)
 	if (!command)
 		return;
 
-	cmdq_msg("%s: base:%pa size:%ld", __func__, &base, size);
+	cmdq_msg("%s: base:%pa size:%ld", __func__, &base, (long)size);
 	spi_read_mem(base, command, size);
 	for (i = 0; i < size / CMDQ_INST_SIZE; i++)
 		cmdq_msg("%s: inst[%d]:%#llx", __func__, i, *(command + i));
@@ -330,7 +332,7 @@ EXPORT_SYMBOL(cmdq_bdg_client_get_irq);
 static inline void cmdq_bdg_dump_gce(void)
 {
 	const u32 irq = spi_read_reg(GCE_BASE + CMDQ_THR_IRQ_FLAG);
-#if 0
+
 	u32 dbg0[3], dbg2[6], i;
 
 	for (i = 0; i < 6; i++) {
@@ -346,7 +348,7 @@ static inline void cmdq_bdg_dump_gce(void)
 		"%s: gce:%#x irq:%#x dbg0:%#x %#x %#x dbg2:%#x %#x %#x %#x %#x %#x",
 		__func__, GCE_BASE, irq, dbg0[0], dbg0[1], dbg0[2],
 		dbg2[0], dbg2[1], dbg2[2], dbg2[3], dbg2[4], dbg2[5]);
-#endif
+
 	cmdq_msg("%s: gce:%#x irq:%#x", __func__, GCE_BASE, irq);
 }
 
@@ -356,10 +358,10 @@ static inline u32 cmdq_bdg_dump_thread(struct cmdq_thread *thread)
 	u64 inst;
 
 	spi_read_mem(
-		(uintptr_t)thread->base + CMDQ_THR_STATUS, val, sizeof(u32) * 10);
+		(*((u32 *)&thread->base)) + CMDQ_THR_STATUS, val, sizeof(u32) * 10);
 	pc = cmdq_bdg_thread_get_pc(thread);
 	end = cmdq_bdg_thread_get_end(thread);
-	spi_read_mem((uintptr_t)thread->base + CMDQ_THR_SPR0, spr, sizeof(u32) * 4);
+	spi_read_mem((*((u32 *)&thread->base)) + CMDQ_THR_SPR0, spr, sizeof(u32) * 4);
 	spi_read_mem(pc, &inst, CMDQ_INST_SIZE);
 
 	cmdq_msg(
@@ -521,7 +523,7 @@ s32 cmdq_bdg_irq_handler(void)
 			&cmdq->base_pa, ret);
 
 	irq = spi_read_reg(cmdq->base_pa + CMDQ_THR_IRQ_FLAG);
-	cmdq_msg("%s: cmdq:%pa usage:%#x irq:%#x:%#x",
+	cmdq_msg("%s: cmdq:%pa usage:%#x irq:%#x:%#lx",
 		__func__, &cmdq->base_pa, ret, CMDQ_THR_IRQ_FLAG, irq);
 
 	if (irq == UINT_MAX)
@@ -781,7 +783,7 @@ static int cmdq_bdg_mbox_send_data(struct mbox_chan *chan, void *data)
 	struct cmdq_sysbuf *buf, *temp;
 	struct list_head *pos;
 	phys_addr_t pc, end;
-	unsigned long flags;
+	unsigned long flags = 0;
 	s32 count, remain;
 
 	if (!pkt) {
@@ -837,8 +839,8 @@ static int cmdq_bdg_mbox_send_data(struct mbox_chan *chan, void *data)
 		if (remain < count) {
 			cmdq_err(
 				"thread:%u pkt:%p cmd_buf_size:%ld cmd_size:%ld count:%d without enough sysbuf:%d",
-				thread->idx, pkt, pkt->cmd_buf_size,
-				task->cmd_size, count, remain);
+				thread->idx, pkt, (long)pkt->cmd_buf_size,
+				(long)task->cmd_size, count, remain);
 
 			cmdq_bdg_task_callback(pkt, -ENOMEM);
 			kfree(task);
@@ -848,8 +850,8 @@ static int cmdq_bdg_mbox_send_data(struct mbox_chan *chan, void *data)
 		remain = atomic_sub_return(count, &cmdq->buf_count);
 		cmdq_msg(
 			"%s: thread:%u pkt:%p cmd_buf_size:%ld cmd_size:%ld count:%d remain:%d",
-			__func__, thread->idx, pkt, pkt->cmd_buf_size,
-			task->cmd_size, count, remain);
+			__func__, thread->idx, pkt, (long)pkt->cmd_buf_size,
+			(long)task->cmd_size, count, remain);
 
 		list_for_each_entry_safe(buf, temp, &cmdq->sysbuf, list_entry) {
 			list_move_tail(&buf->list_entry, &task->sysbuf);
@@ -1118,3 +1120,5 @@ static __init int cmdq_bdg_init(void)
 	return ret;
 }
 arch_initcall(cmdq_bdg_init);
+
+MODULE_LICENSE("GPL v2");

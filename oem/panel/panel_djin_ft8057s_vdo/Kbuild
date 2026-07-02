@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_PANEL
+	PANEL_DJIN_FT8057S_OBJS += panel-djin-ft8057s-vdo.o
+endif
+
+obj-$(CONFIG_OEM_PANEL) += panel_djin_ft8057s_vdo.o
+panel_djin_ft8057s_vdo-y := $(PANEL_DJIN_FT8057S_OBJS)
+

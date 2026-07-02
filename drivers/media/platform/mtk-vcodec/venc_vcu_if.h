@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: PoChun Lin <pochun.lin@mediatek.com>
  */
 
 #ifndef _VENC_VCU_IF_H_
@@ -27,19 +28,22 @@
  */
 struct venc_vcu_inst {
 	wait_queue_head_t wq_hd;
+	bool in_ipi;
 	int signaled;
 	int failure;
 	int bs_size;
 	int is_key_frm;
-	unsigned int inst_addr;
+	__u64 inst_addr;
 	void *vsi;
 	enum ipi_id id;
 	struct mtk_vcodec_ctx *ctx;
 	struct platform_device *dev;
+	bool init_done;
 	bool abort;
 	int daemon_pid;
 	ipi_handler_t handler;
-	struct mutex *ctx_ipi_binding;
+	struct mutex *ctx_ipi_lock;
+	struct list_head bufs;
 };
 int vcu_enc_ipi_handler(void *data, unsigned int len, void *priv);
 int vcu_enc_init(struct venc_vcu_inst *vcu);

@@ -23,6 +23,21 @@
 #define MAINPLL_273M			(273)
 #define UNIVPLL_416M			(416)
 
+#include <linux/arm-smccc.h>
+#define MTK_SIP_SMC_CMD(fn_id) \
+	ARM_SMCCC_CALL_VAL(ARM_SMCCC_FAST_CALL, MTK_SIP_SMC_CONVENTION, \
+			   ARM_SMCCC_OWNER_SIP, fn_id)
+#define MTK_SIP_KERNEL_SCP_DVFS_CTRL \
+	MTK_SIP_SMC_CMD(0x232)
+enum scp_req_r {
+	SCP_REQ_RELEASE = 0,
+	SCP_REQ_26M = 1 << 0,
+	SCP_REQ_IFR = 1 << 1,
+	SCP_REQ_SYSPLL1 = 1 << 2,
+	SCP_REQ_MAX	= 1 << 3,
+};
+extern int scp_resource_req(unsigned int req_type);
+
 enum scp_state_enum {
 	IN_DEBUG_IDLE = 1,
 	ENTERING_SLEEP = 2,
@@ -39,46 +54,18 @@ enum {
 	CLK_HIGH_IRQ_EN_BIT = 17,
 };
 
-#if (defined(CONFIG_MACH_MT6781) || defined(CONFIG_MACH_MT6785))
-#include <linux/arm-smccc.h>
-enum scp_req_r {
-	SCP_REQ_RELEASE = 0,
-	SCP_REQ_26M = 1 << 0,
-	SCP_REQ_IFR = 1 << 1,
-	SCP_REQ_SYSPLL1 = 1 << 2,
-	SCP_REQ_MAX	= 1 << 3,
-};
-extern int scp_resource_req(unsigned int req_type);
-
-
-#endif
-
 enum clk_opp_enum {
-   #if defined(CONFIG_MACH_MT6781)
-   CLK_OPP0 = 125,
-   CLK_OPP1 = 250,
-   CLK_OPP2 = 273,
-   CLK_OPP3 = 330,
-   CLK_OPP4 = 416,
-   CLK_MAX_OPP = CLK_OPP4,
-   CLK_MAINPLL = CLK_OPP2,
-   CLK_UNIVPLL = CLK_OPP4,
- #else
-   CLK_OPP0 = 110,
-   CLK_OPP1 = 130,
-   CLK_OPP2 = 165,
-   CLK_OPP3 = 218,
-   CLK_OPP4 = 330,
-   CLK_OPP5 = 416,
-   CLK_MAX_OPP = CLK_OPP5,
-   CLK_MAINPLL = CLK_OPP3,
-   CLK_UNIVPLL = CLK_OPP5,
- #endif
-   CLK_UNINIT = 0xffff,
- };
-
-
-
+	CLK_OPP0 = 110,
+	CLK_OPP1 = 130,
+	CLK_OPP2 = 165,
+	CLK_OPP3 = 218,
+	CLK_OPP4 = 330,
+	CLK_OPP5 = 416,
+	CLK_MAX_OPP = CLK_OPP5,
+	CLK_MAINPLL = CLK_OPP3,
+	CLK_UNIVPLL = CLK_OPP5,
+	CLK_UNINIT = 0xffff,
+};
 
 
 enum clk_div_enum {
@@ -162,6 +149,8 @@ struct dvfs_data {
 	struct dvfs_opp *opp;
 	int scp_opp_num;
 	int dvfsrc_opp_num;
+	bool legacy_support_v1;
+	bool legacy_support_v2;
 };
 
 extern int scp_pll_ctrl_set(unsigned int pll_ctrl_flag, unsigned int pll_sel);
@@ -173,6 +162,7 @@ extern void scp_pll_mux_set(unsigned int pll_ctrl_flag);
 extern void wait_scp_dvfs_init_done(void);
 extern int __init scp_dvfs_init(void);
 extern void __exit scp_dvfs_exit(void);
+extern void spm_set_scp_ipi_id_cb(void (*scp_callback)(void));
 
 /* scp dvfs variable*/
 extern unsigned int scp_expected_freq;

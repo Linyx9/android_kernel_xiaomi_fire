@@ -1,7 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2014 MediaTek Inc.
+ * Author: James Liao <jamesjj.liao@mediatek.com>
+ */
 
 #ifndef __DRV_CLK_GATE_H
 #define __DRV_CLK_GATE_H
@@ -11,28 +12,37 @@
 
 struct clk;
 
-/*
- * define pwr status information.
- * including offsets/mask.
- */
-
-struct pwr_status {
-	u32 pwr_ofs;
-	u32 pwr2_ofs;
-	s32 other_ofs;
-	u32 mask;
-	u32 val;
-};
-
 struct mtk_clk_gate {
 	struct clk_hw	hw;
+	unsigned long	flags;
 	struct regmap	*regmap;
+	struct regmap	*hwv_regmap;
 	int		set_ofs;
 	int		clr_ofs;
 	int		sta_ofs;
+	int		hwv_set_ofs;
+	int		hwv_clr_ofs;
+	int		hwv_sta_ofs;
 	u8		bit;
-	struct pwr_status	*pwr_stat;
-	struct regmap	*pwr_regmap;
+};
+
+struct mtk_gate_regs {
+	u32 sta_ofs;
+	u32 clr_ofs;
+	u32 set_ofs;
+};
+
+struct mtk_gate {
+	int id;
+	const char *name;
+	const char *parent_name;
+	const char *hwv_comp;
+	const struct mtk_gate_regs *regs;
+	const struct mtk_gate_regs *hwv_regs;
+	int shift;
+	const struct clk_ops *ops;
+	const struct clk_ops *dma_ops;
+	unsigned long flags;
 };
 
 static inline struct mtk_clk_gate *to_mtk_clk_gate(struct clk_hw *hw)
@@ -40,25 +50,36 @@ static inline struct mtk_clk_gate *to_mtk_clk_gate(struct clk_hw *hw)
 	return container_of(hw, struct mtk_clk_gate, hw);
 }
 
-extern const struct clk_ops mtk_clk_gate_ops_setclr;
+extern const struct clk_ops mtk_clk_gate_ops_setclr_dummys;
 extern const struct clk_ops mtk_clk_gate_ops_setclr_dummy;
+extern const struct clk_ops mtk_clk_gate_ops_hwv;
+extern const struct clk_ops mtk_clk_gate_ops_hwv_inv;
+extern const struct clk_ops mtk_clk_gate_ops_hwv_dummy;
+extern const struct clk_ops mtk_clk_gate_ops_setclr;
 extern const struct clk_ops mtk_clk_gate_ops_setclr_inv;
 extern const struct clk_ops mtk_clk_gate_ops_setclr_inv_dummy;
 extern const struct clk_ops mtk_clk_gate_ops_no_setclr;
 extern const struct clk_ops mtk_clk_gate_ops_no_setclr_inv;
 
-struct clk *mtk_clk_register_gate(
-		const char *name,
-		const char *parent_name,
+struct clk *mtk_clk_register_gate_hwv(
+		const struct mtk_gate *gate,
 		struct regmap *regmap,
-		int set_ofs,
-		int clr_ofs,
-		int sta_ofs,
-		u8 bit,
-		const struct clk_ops *ops,
-		unsigned long flags,
-		struct pwr_status *pwr_stat,
-		struct regmap *pwr_regmap);
+		struct regmap *hwv_regmap,
+		struct device *dev);
+
+struct clk *mtk_clk_register_gate(
+		const struct mtk_gate *gate,
+		struct regmap *regmap,
+		struct device *dev);
+
+int mtk_clk_register_gates(struct device_node *node,
+			const struct mtk_gate *clks, int num,
+			struct clk_onecell_data *clk_data);
+
+int mtk_clk_register_gates_with_dev(struct device_node *node,
+		const struct mtk_gate *clks,
+		int num, struct clk_onecell_data *clk_data,
+		struct device *dev);
 
 #define GATE_MTK_FLAGS(_id, _name, _parent, _regs, _shift,	\
 			_ops, _flags) {				\
@@ -71,15 +92,7 @@ struct clk *mtk_clk_register_gate(
 		.flags = _flags,				\
 	}
 
-#define GATE_MTK(_id, _name, _parent, _regs, _shift, _ops)	\
+#define GATE_MTK(_id, _name, _parent, _regs, _shift, _ops)		\
 	GATE_MTK_FLAGS(_id, _name, _parent, _regs, _shift, _ops, 0)
-
-#define GATE_PWR_STAT(_pwr_ofs, _pwr2_ofs, _other_ofs, _mask, _val) {	\
-		.pwr_ofs = _pwr_ofs,				\
-		.pwr2_ofs = _pwr2_ofs,				\
-		.other_ofs = _other_ofs,			\
-		.mask = _mask,				\
-		.val = _val,				\
-}
 
 #endif /* __DRV_CLK_GATE_H */

@@ -11,15 +11,15 @@
  *
  * Project:
  * --------
- *	 ALPS MT6735
+ *	 ALPS MT6..7..3..5
  *
  * Description:
  * ------------
  *	 Source code of Sensor driver
  *
  *	PengtaoFan
- *  1511041520 modify code style from 3m3@mt6755 and move to mt6797
- *  1512291720 update setting from samsung
+ *  1511041520 modify code style from 3m3@mt6..7..5..5 and move to mt6..7..9..7
+ *  1512291720 update setting from s..a..m..s..u..n..g
  *----------------------------------------------------------------------------
  * Upper this line, this part is controlled by CC/CQ. DO NOT MODIFY!!
  *============================================================================
@@ -35,6 +35,9 @@
 #include <linux/uaccess.h>
 #include <linux/fs.h>
 #include <linux/atomic.h>
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#include <linux/err.h>
 
 #include "kd_camera_typedef.h"
 #include "kd_imgsensor.h"
@@ -148,39 +151,6 @@ static struct imgsensor_info_struct imgsensor_info = {
 		 .max_framerate = 240,
 		 },
 
-#if 0
-	/*
-	 * capture for PIP 15ps relative information,
-	 * capture1 mode must use same framelength,
-	 * linelength with Capture mode for shutter calculate
-	 */
-	.cap2 = {
-		 .pclk = 400000000,	/* record different mode's pclk */
-		 .linelength = 9408,  /* record different mode's linelength */
-
-		 /* record different mode's framelength */
-		 .framelength = 3401,
-
-		 /* record different mode's startx of grabwindow */
-		.startx = 18,
-
-		 /* record different mode's starty of grabwindow */
-		 .starty = 0,
-
-		 /* 4208,     //record different mode's width of grabwindow */
-		 .grabwindow_width = 4172,
-
-		 /* record different mode's height of grabwindow */
-		 .grabwindow_height = 3120,
-
-		 /* following for MIPIDataLowPwr2HighSpeedSettleDelayCount
-		  * by different scenario
-		  */
-		 .mipi_data_lp2hs_settle_dc = 85,
-		 /*       following for GetDefaultFramerateByScenario()  */
-		 .max_framerate = 150,
-		 },
-#endif
 	.normal_video = {
 			 /* record different mode's pclk */
 			 .pclk = 480000000,
@@ -550,14 +520,14 @@ static struct SET_PD_BLOCK_INFO_T imgsensor_pd_info = {
  *****************************************************************************/
 #define PROFILE 1
 #if PROFILE
-static struct timeval tv1, tv2;
+static struct timespec64 tv1, tv2;
 static DEFINE_SPINLOCK(kdsensor_drv_lock);
 /****************************************************************************
  *
  ****************************************************************************/
 static void KD_SENSOR_PROFILE_INIT(void)
 {
-	do_gettimeofday(&tv1);
+	ktime_get_real_ts64(&tv1);
 }
 
 /****************************************************************************
@@ -565,17 +535,16 @@ static void KD_SENSOR_PROFILE_INIT(void)
  *****************************************************************************/
 static void KD_SENSOR_PROFILE(char *tag)
 {
-	unsigned long TimeIntervalUS;
+	struct timespec64 diff;
 
 	spin_lock(&kdsensor_drv_lock);
 
-	do_gettimeofday(&tv2);
-	TimeIntervalUS =
-	  (tv2.tv_sec - tv1.tv_sec) * 1000000 + (tv2.tv_usec - tv1.tv_usec);
+	ktime_get_real_ts64(&tv2);
+	diff = timespec64_sub(tv2, tv1);
 	tv1 = tv2;
 
 	spin_unlock(&kdsensor_drv_lock);
-	pr_debug("[%s]Profile = %lu us\n", tag, TimeIntervalUS);
+	pr_debug("[%s]Profile = %lld us\n", tag, timespec64_to_ns(&diff));
 }
 #else
 static void KD_SENSOR_PROFILE_INIT(void)
@@ -1424,12 +1393,7 @@ static kal_uint32 capture(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
 	set_mirror_flip(IMAGE_NORMAL);
 	mdelay(10);
 
-#if 0
-	if (imgsensor.test_pattern == KAL_TRUE)
-		/* write_cmos_sensor(0x5002,0x00); */
-#endif
-
-		return ERROR_NONE;
+	return ERROR_NONE;
 }				/* capture() */
 
 static kal_uint32 normal_video(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
@@ -2045,8 +2009,6 @@ static kal_uint32 set_max_framerate_by_scenario(
 		    (frame_length > imgsensor_info.custom1.framelength)
 		  ? (frame_length - imgsensor_info.custom1.framelength) : 0;
 
-		if (imgsensor.dummy_line < 0)
-			imgsensor.dummy_line = 0;
 		imgsensor.frame_length =
 		    imgsensor_info.custom1.framelength + imgsensor.dummy_line;
 
@@ -2063,8 +2025,6 @@ static kal_uint32 set_max_framerate_by_scenario(
 		    (frame_length > imgsensor_info.custom2.framelength)
 		  ? (frame_length - imgsensor_info.custom2.framelength) : 0;
 
-		if (imgsensor.dummy_line < 0)
-			imgsensor.dummy_line = 0;
 		imgsensor.frame_length =
 		    imgsensor_info.custom2.framelength + imgsensor.dummy_line;
 
@@ -2081,8 +2041,6 @@ static kal_uint32 set_max_framerate_by_scenario(
 		    (frame_length > imgsensor_info.custom3.framelength)
 		  ? (frame_length - imgsensor_info.custom3.framelength) : 0;
 
-		if (imgsensor.dummy_line < 0)
-			imgsensor.dummy_line = 0;
 		imgsensor.frame_length =
 		    imgsensor_info.custom3.framelength + imgsensor.dummy_line;
 
@@ -2099,8 +2057,6 @@ static kal_uint32 set_max_framerate_by_scenario(
 		    (frame_length > imgsensor_info.custom4.framelength)
 		  ? (frame_length - imgsensor_info.custom4.framelength) : 0;
 
-		if (imgsensor.dummy_line < 0)
-			imgsensor.dummy_line = 0;
 		imgsensor.frame_length =
 		    imgsensor_info.custom4.framelength + imgsensor.dummy_line;
 
@@ -2117,8 +2073,6 @@ static kal_uint32 set_max_framerate_by_scenario(
 		    (frame_length > imgsensor_info.custom5.framelength)
 		  ? (frame_length - imgsensor_info.custom5.framelength) : 0;
 
-		if (imgsensor.dummy_line < 0)
-			imgsensor.dummy_line = 0;
 		imgsensor.frame_length =
 		    imgsensor_info.custom1.framelength + imgsensor.dummy_line;
 

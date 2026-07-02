@@ -1,19 +1,37 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  mt6833-afe-clk.c  --  Mediatek 6833 afe clock ctrl
+ *  mt6833-afe-clk.c  --  Mediatek 6885 afe clock ctrl
  *
- *  Copyright (c) 2020 MediaTek Inc.
- *  Author: Eason Yen <eason.yen@mediatek.com>
+ *  Copyright (c) 2021 MediaTek Inc.
+ *  Author: Yujie Xiao <yujie.xiao@mediatek.com>
  */
 
 #include <linux/clk.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 #include <linux/arm-smccc.h> /* for Kernel Native SMC API */
-#include <mt-plat/mtk_secure_api.h> /* for SMC ID table */
+#include <linux/soc/mediatek/mtk_sip_svc.h> /* for SMC ID table */
 
 #include "mt6833-afe-common.h"
 #include "mt6833-afe-clk.h"
+
+#if defined(CONFIG_FPGA_EARLY_PORTING)
+int mt6833_init_clock(struct mtk_base_afe *afe) { return 0; }
+int mt6833_afe_enable_clock(struct mtk_base_afe *afe) { return 0; }
+void mt6833_afe_disable_clock(struct mtk_base_afe *afe) {}
+int mt6833_afe_dram_request(struct device *dev) { return 0; }
+int mt6833_afe_dram_release(struct device *dev) { return 0; }
+int mt6833_apll1_enable(struct mtk_base_afe *afe) { return 0; }
+void mt6833_apll1_disable(struct mtk_base_afe *afe) {}
+int mt6833_apll2_enable(struct mtk_base_afe *afe) { return 0; }
+void mt6833_apll2_disable(struct mtk_base_afe *afe) {}
+int mt6833_get_apll_rate(struct mtk_base_afe *afe, int apll) { return 0; }
+int mt6833_get_apll_by_rate(struct mtk_base_afe *afe, int rate) { return 0; }
+int mt6833_get_apll_by_name(struct mtk_base_afe *afe, const char *name) { return 0; }
+int mt6833_mck_enable(struct mtk_base_afe *afe, int mck_id, int rate) { return 0; }
+void mt6833_mck_disable(struct mtk_base_afe *afe, int mck_id) {}
+int mt6833_set_audio_int_bus_parent(struct mtk_base_afe *afe, int clk_id) { return 0; }
+#else
 
 static DEFINE_MUTEX(mutex_request_dram);
 
@@ -64,6 +82,12 @@ int mt6833_set_audio_int_bus_parent(struct mtk_base_afe *afe,
 {
 	struct mt6833_afe_private *afe_priv = afe->platform_priv;
 	int ret;
+
+	if (clk_id < 0) {
+		dev_info(afe->dev, "%s clk id = %d is negative value\n",
+			__func__, clk_id);
+		return -EINVAL;
+	}
 
 	ret = clk_set_parent(afe_priv->clk[CLK_MUX_AUDIOINTBUS],
 			     afe_priv->clk[clk_id]);
@@ -205,7 +229,7 @@ int mt6833_afe_enable_clock(struct mtk_base_afe *afe)
 	struct mt6833_afe_private *afe_priv = afe->platform_priv;
 	int ret = 0;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe_priv %p\n", __func__, afe_priv);
 
 	ret = clk_prepare_enable(afe_priv->clk[CLK_SCP_SYS_AUD]);
 	if (ret) {
@@ -249,8 +273,7 @@ int mt6833_afe_enable_clock(struct mtk_base_afe *afe)
 			__func__, aud_clks[CLK_MUX_AUDIOINTBUS], ret);
 		goto CLK_MUX_AUDIO_INTBUS_ERR;
 	}
-	ret = mt6833_set_audio_int_bus_parent(afe,
-					      CLK_CLK26M);
+	ret = mt6833_set_audio_int_bus_parent(afe, CLK_CLK26M);
 
 	ret = clk_set_parent(afe_priv->clk[CLK_TOP_MUX_AUDIO_H],
 			     afe_priv->clk[CLK_TOP_APLL2_CK]);
@@ -283,7 +306,6 @@ CLK_INFRA_SYS_AUDIO_ERR:
 	clk_disable_unprepare(afe_priv->clk[CLK_INFRA_SYS_AUDIO]);
 CLK_SCP_SYS_AUD_ERR:
 	clk_disable_unprepare(afe_priv->clk[CLK_SCP_SYS_AUD]);
-
 	return ret;
 }
 
@@ -291,7 +313,7 @@ void mt6833_afe_disable_clock(struct mtk_base_afe *afe)
 {
 	struct mt6833_afe_private *afe_priv = afe->platform_priv;
 
-	dev_info(afe->dev, "%s()\n", __func__);
+	dev_info(afe->dev, "%s() afe_priv %p\n", __func__, afe_priv);
 
 	clk_disable_unprepare(afe_priv->clk[CLK_AFE]);
 
@@ -500,6 +522,7 @@ struct mt6833_mck_div {
 	int div_apll_sel_sft;
 };
 
+
 static const struct mt6833_mck_div mck_div[MT6833_MCK_NUM] = {
 	[MT6833_I2S0_MCK] = {
 		.m_sel_id = CLK_TOP_I2S0_M_SEL,
@@ -597,9 +620,18 @@ int mt6833_mck_enable(struct mtk_base_afe *afe, int mck_id, int rate)
 	int apll = mt6833_get_apll_by_rate(afe, rate);
 	int apll_clk_id = apll == MT6833_APLL1 ?
 			  CLK_TOP_MUX_AUD_1 : CLK_TOP_MUX_AUD_2;
-	int m_sel_id = mck_div[mck_id].m_sel_id;
-	int div_clk_id = mck_div[mck_id].div_clk_id;
-	int ret;
+	int m_sel_id = 0;
+	int div_clk_id = 0;
+	int ret = 0;
+
+	if (mck_id < 0) {
+		dev_info(afe->dev, "%s mck id = %d is negative value\n",
+			__func__, mck_id);
+		return -EINVAL;
+	}
+
+	m_sel_id = mck_div[mck_id].m_sel_id;
+	div_clk_id = mck_div[mck_id].div_clk_id;
 
 	/* select apll */
 	if (m_sel_id >= 0) {
@@ -620,18 +652,20 @@ int mt6833_mck_enable(struct mtk_base_afe *afe, int mck_id, int rate)
 	}
 
 	/* enable div, set rate */
-	ret = clk_prepare_enable(afe_priv->clk[div_clk_id]);
-	if (ret) {
-		dev_err(afe->dev, "%s(), clk_prepare_enable %s fail %d\n",
-			__func__, aud_clks[div_clk_id], ret);
-		return ret;
-	}
-	ret = clk_set_rate(afe_priv->clk[div_clk_id], rate);
-	if (ret) {
-		dev_err(afe->dev, "%s(), clk_set_rate %s, rate %d, fail %d\n",
-			__func__, aud_clks[div_clk_id],
-			rate, ret);
-		return ret;
+	if (div_clk_id >= 0) {
+		ret = clk_prepare_enable(afe_priv->clk[div_clk_id]);
+		if (ret) {
+			dev_err(afe->dev, "%s(), clk_prepare_enable %s fail %d\n",
+				__func__, aud_clks[div_clk_id], ret);
+			return ret;
+		}
+		ret = clk_set_rate(afe_priv->clk[div_clk_id], rate);
+		if (ret) {
+			dev_err(afe->dev, "%s(), clk_set_rate %s, rate %d, fail %d\n",
+				__func__, aud_clks[div_clk_id],
+				rate, ret);
+			return ret;
+		}
 	}
 
 	return 0;
@@ -640,12 +674,19 @@ int mt6833_mck_enable(struct mtk_base_afe *afe, int mck_id, int rate)
 void mt6833_mck_disable(struct mtk_base_afe *afe, int mck_id)
 {
 	struct mt6833_afe_private *afe_priv = afe->platform_priv;
-	int m_sel_id = mck_div[mck_id].m_sel_id;
-	int div_clk_id = mck_div[mck_id].div_clk_id;
+	int m_sel_id = 0;
+	int div_clk_id = 0;
 
-	clk_disable_unprepare(afe_priv->clk[div_clk_id]);
-	if (m_sel_id >= 0)
-		clk_disable_unprepare(afe_priv->clk[m_sel_id]);
+	if (mck_id >= 0) {
+		m_sel_id = mck_div[mck_id].m_sel_id;
+		div_clk_id = mck_div[mck_id].div_clk_id;
+
+		if (div_clk_id >= 0)
+			clk_disable_unprepare(afe_priv->clk[div_clk_id]);
+
+		if (m_sel_id >= 0)
+			clk_disable_unprepare(afe_priv->clk[m_sel_id]);
+	}
 }
 
 int mt6833_init_clock(struct mtk_base_afe *afe)
@@ -670,9 +711,9 @@ int mt6833_init_clock(struct mtk_base_afe *afe)
 	}
 
 	afe_priv->apmixed = syscon_regmap_lookup_by_phandle(afe->dev->of_node,
-							    "apmixed");
+							    "apmixedsys");
 	if (IS_ERR(afe_priv->apmixed)) {
-		dev_err(afe->dev, "%s() Cannot find apmixed controller: %ld\n",
+		dev_err(afe->dev, "%s() Cannot find apmixedsys: %ld\n",
 			__func__, PTR_ERR(afe_priv->apmixed));
 		return PTR_ERR(afe_priv->apmixed);
 	}
@@ -685,14 +726,16 @@ int mt6833_init_clock(struct mtk_base_afe *afe)
 		return PTR_ERR(afe_priv->topckgen);
 	}
 
-	afe_priv->infracfg_ao = syscon_regmap_lookup_by_phandle(
+	afe_priv->infracfg = syscon_regmap_lookup_by_phandle(
 				afe->dev->of_node,
-				"infracfg_ao");
-	if (IS_ERR(afe_priv->infracfg_ao)) {
-		dev_err(afe->dev, "%s() Cannot find infracfg_ao: %ld\n",
-			__func__, PTR_ERR(afe_priv->infracfg_ao));
-		return PTR_ERR(afe_priv->infracfg_ao);
+				"infracfg");
+	if (IS_ERR(afe_priv->infracfg)) {
+		dev_err(afe->dev, "%s() Cannot find infracfg: %ld\n",
+			__func__, PTR_ERR(afe_priv->infracfg));
+		return PTR_ERR(afe_priv->infracfg);
 	}
 
 	return 0;
 }
+#endif
+

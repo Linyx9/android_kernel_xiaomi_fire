@@ -5,6 +5,7 @@
  *
  */
 
+#include <linux/module.h>
 #include "pinctrl-mtk-mt6853.h"
 #include "pinctrl-paris.h"
 
@@ -1201,16 +1202,7 @@ static const struct mtk_eh_pin_pinmux mt6853_eh_pin_pinmux_list[] = {
 	{118, 2},
 	{141, 1},
 	{142, 1},
-	{0xffff, 0}, /* indicate end of array */
 };
-
-static const struct mtk_eint_hw mt6853_eint_hw = {
-	.port_mask = 7,
-	.ports     = 7,
-	.ap_num    = 128,
-	.db_cnt    = 32,
-};
-
 
 static const struct mtk_pin_reg_calc mt6853_reg_cals[PINCTRL_PIN_REG_MAX] = {
 	[PINCTRL_PIN_REG_MODE] = MTK_RANGE(mt6853_pin_mode_range),
@@ -1234,15 +1226,14 @@ static const struct mtk_pin_soc mt6853_data = {
 	.pins = mtk_pins_mt6853,
 	.npins = ARRAY_SIZE(mtk_pins_mt6853),
 	.ngrps = ARRAY_SIZE(mtk_pins_mt6853),
-	.eint_hw = &mt6853_eint_hw,
 	.nfuncs = 8,
 	.gpio_m = 0,
-	.race_free_access = true,
+	.capability_flags = FLAG_RACE_FREE_ACCESS
+				| FLAG_DRIVE_SET_RAW,
 	.eh_pin_pinmux = mt6853_eh_pin_pinmux_list,
+	.neh_pins = ARRAY_SIZE(mt6853_eh_pin_pinmux_list),
 	.bias_set_combo = mtk_pinconf_bias_set_combo,
 	.bias_get_combo = mtk_pinconf_bias_get_combo,
-	.drive_set = mtk_pinconf_drive_set_raw,
-	.drive_get = mtk_pinconf_drive_get_raw,
 	.adv_pull_get = mtk_pinconf_adv_pull_get,
 	.adv_pull_set = mtk_pinconf_adv_pull_set,
 	.adv_drive_get = mtk_pinconf_adv_drive_get,
@@ -1250,22 +1241,18 @@ static const struct mtk_pin_soc mt6853_data = {
 };
 
 static const struct of_device_id mt6853_pinctrl_of_match[] = {
-	{ .compatible = "mediatek,mt6853-pinctrl", },
+	{ .compatible = "mediatek,mt6853-pinctrl", .data = &mt6853_data },
 	{ }
 };
 
-static int mt6853_pinctrl_probe(struct platform_device *pdev)
-{
-	return mtk_paris_pinctrl_probe(pdev, &mt6853_data);
-}
 
 static struct platform_driver mt6853_pinctrl_driver = {
 	.driver = {
 		.name = "mt6853-pinctrl",
 		.of_match_table = mt6853_pinctrl_of_match,
-		.pm = &mtk_eint_pm_ops_v2,
+		.pm = &mtk_paris_pinctrl_pm_ops,
 	},
-	.probe = mt6853_pinctrl_probe,
+	.probe = mtk_paris_pinctrl_probe,
 };
 
 static int __init mt6853_pinctrl_init(void)
@@ -1273,3 +1260,6 @@ static int __init mt6853_pinctrl_init(void)
 	return platform_driver_register(&mt6853_pinctrl_driver);
 }
 arch_initcall(mt6853_pinctrl_init);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("MediaTek MT6853 Pinctrl Driver");

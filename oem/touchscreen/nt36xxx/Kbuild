@@ -1,0 +1,10 @@
+ifdef CONFIG_OEM_LAMU_TOUCHSCREEN
+	NVT_OBJS += nt36xxx.o \
+		nt36xxx_fw_update.o \
+		nt36xxx_ext_proc.o \
+		nt36xxx_mp_ctrlram.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_TOUCHSCREEN) += nt36xxx_tp.o
+nt36xxx_tp-y := $(NVT_OBJS)
+

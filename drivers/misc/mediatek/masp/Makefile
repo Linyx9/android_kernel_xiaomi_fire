@@ -1,37 +1,16 @@
-#
-# Copyright (C) 2015 MediaTek Inc.
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 2 as
-# published by the Free Software Foundation.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2021 MediaTek Inc.
 
-ifeq ($(CONFIG_MTK_SECURITY_SW_SUPPORT), y)
-#######################################
-# Specify source files
-#######################################
-#include $(MTK_ROOT_BUILD)/Makefile
+MASP_DRIVER_DIR := $(DEVICE_MODULES_PATH)/drivers/misc/mediatek/masp
+ASF_VER := asfv3
 
-MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
-MASP_CORE_DRIVER_DIR := $(srctree)/drivers/misc/mediatek/masp
+subdir-ccflags-y += \
+             -I$(MASP_DRIVER_DIR)/$(ASF_VER)/inc \
+             -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include
 
-#Kernel 3.18 always use asfv2
-asf_link := asfv2
+include $(MASP_DRIVER_DIR)/$(ASF_VER)/Makefile.sec
 
-############################################
-#[core_obj] include all the files under asf/core
-################################################
-include $(MASP_CORE_DRIVER_DIR)/$(asf_link)/Makefile.core
-include $(MASP_CORE_DRIVER_DIR)/$(asf_link)/Makefile.mach
+sec-y += $(sec_obj)
 
-# INCLUDE ASP LIBRARY
-sec-y += $(core_obj) $(mach_obj)
+obj-$(CONFIG_MTK_SECURITY_SW_SUPPORT) += sec.o
 
-# BUILD-IN
-obj-y += sec.o
-endif

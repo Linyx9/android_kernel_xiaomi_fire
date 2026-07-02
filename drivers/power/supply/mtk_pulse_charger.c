@@ -73,8 +73,8 @@ struct pcharger_data {
 	unsigned int cc_charging_time;
 	unsigned int topoff_charging_time;
 	unsigned int full_charging_time;
-	struct timespec topoff_begin_time;
-	struct timespec charging_begin_time;
+	struct timespec64 topoff_begin_time;
+	struct timespec64 charging_begin_time;
 
 	int recharge_offset; /* uv */
 	int topoff_voltage; /* uv */
@@ -204,9 +204,7 @@ static bool pchr_select_charging_current_limit(struct mtk_charger *info,
 	} else
 		info->setting.input_current_limit1 = -1;
 
-	if (info->pd_type == MTK_PD_CONNECT_PE_READY_SNK ||
-		info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30 ||
-		info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO)
+	if (info->ta_status[info->select_adapter_idx] == TA_ATTACH)
 		is_basic = false;
 
 done:
@@ -219,12 +217,13 @@ done:
 	if (ret != -ENOTSUPP && pdata->input_current_limit < aicr1_min)
 		pdata->input_current_limit = 0;
 
-	chr_err("thermal:%d %d setting:%d %d type:%d:%d usb_unlimited:%d usbif:%d usbsm:%d aicl:%d atm:%d bm:%d b:%d\n",
+	chr_err("thermal:%d %d setting:%d %d type:%d:%d:%d usb_unlimited:%d usbif:%d usbsm:%d aicl:%d atm:%d bm:%d b:%d\n",
 		_uA_to_mA(pdata->thermal_input_current_limit),
 		_uA_to_mA(pdata->thermal_charging_current_limit),
 		_uA_to_mA(pdata->input_current_limit),
 		_uA_to_mA(pdata->charging_current_limit),
-		info->chr_type, info->pd_type,
+		info->chr_type, info->select_adapter_idx,
+		info->ta_status[info->select_adapter_idx],
 		info->usb_unlimited,
 		IS_ENABLED(CONFIG_USBIF_COMPLIANCE), info->usb_state,
 		pdata->input_current_limit_by_aicl, info->atm_enabled,
@@ -270,7 +269,8 @@ static void linear_chg_turn_on_charging(struct mtk_charger *info)
 
 static int mtk_linear_chr_cc(struct mtk_charger *info)
 {
-	struct timespec time_now, charging_time;
+	ktime_t ktime_now, ktime_diff;
+	struct timespec64 charging_time;
 	u32 vbat;
 	struct pcharger_data *algo_data;
 
@@ -281,8 +281,10 @@ static int mtk_linear_chr_cc(struct mtk_charger *info)
 		algo_data->topoff_charging_time,
 		algo_data->full_charging_time);
 
-	get_monotonic_boottime(&time_now);
-	charging_time = timespec_sub(time_now, algo_data->charging_begin_time);
+	ktime_now = ktime_get_boottime();
+	ktime_diff = ktime_sub(ktime_now, timespec64_to_ktime(algo_data->charging_begin_time));
+	charging_time = ktime_to_timespec64(ktime_diff);
+
 
 	algo_data->cc_charging_time = charging_time.tv_sec;
 	algo_data->topoff_charging_time = 0;
@@ -295,7 +297,8 @@ static int mtk_linear_chr_cc(struct mtk_charger *info)
 	vbat = get_battery_voltage(info) * 1000; /* uV */
 	if (vbat > algo_data->topoff_voltage) {
 		algo_data->state = CHR_TOPOFF;
-		get_monotonic_boottime(&algo_data->topoff_begin_time);
+		ktime_now = ktime_get_boottime();
+		algo_data->topoff_begin_time = ktime_to_timespec64(ktime_now);
 		pr_notice("%s: enter TOPOFF mode on vbat = %d uV\n",
 			__func__, vbat);
 	}
@@ -327,18 +330,21 @@ static bool charging_full_check(struct mtk_charger *info)
 
 static int mtk_linear_chr_topoff(struct mtk_charger *info)
 {
+	ktime_t ktime_now, ktime_diff;
 	struct pcharger_data *algo_data = info->algo.algo_data;
-	struct timespec time_now, charging_time, topoff_time;
-
+	struct timespec64 charging_time, topoff_time;
 
 	pr_notice("%s time:%d %d %d %d\n", __func__,
 		algo_data->total_charging_time,
 		algo_data->cc_charging_time,
 		algo_data->topoff_charging_time,
 		algo_data->full_charging_time);
-	get_monotonic_boottime(&time_now);
-	charging_time = timespec_sub(time_now, algo_data->charging_begin_time);
-	topoff_time = timespec_sub(time_now, algo_data->topoff_begin_time);
+	ktime_now = ktime_get_boottime();
+	ktime_diff = ktime_sub(ktime_now, timespec64_to_ktime(algo_data->charging_begin_time));
+	charging_time = ktime_to_timespec64(ktime_diff);
+
+	ktime_diff = ktime_sub(ktime_now, timespec64_to_ktime(algo_data->topoff_begin_time));
+	topoff_time = ktime_to_timespec64(ktime_diff);
 
 	algo_data->cc_charging_time = 0;
 	algo_data->topoff_charging_time = topoff_time.tv_sec;
@@ -363,6 +369,7 @@ static int mtk_linear_chr_full(struct mtk_charger *info)
 	struct pcharger_data *algo_data = info->algo.algo_data;
 	u32 vbat;
 	bool is_recharging = false;
+	ktime_t ktime_now;
 
 	algo_data->total_charging_time = 0;
 	algo_data->cc_charging_time = 0;
@@ -392,7 +399,8 @@ static int mtk_linear_chr_full(struct mtk_charger *info)
 
 	if (is_recharging) {
 		algo_data->state = CHR_CC;
-		get_monotonic_boottime(&algo_data->charging_begin_time);
+		ktime_now = ktime_get_boottime();
+		algo_data->charging_begin_time = ktime_to_timespec64(ktime_now);
 		pr_notice("battery recharging on vbat = %d uV\n", vbat);
 		info->polling_interval = CHARGING_INTERVAL;
 	}
@@ -409,6 +417,7 @@ static void pchr_disable_all_charging(struct mtk_charger *info)
 static int mtk_linear_chr_err(struct mtk_charger *info)
 {
 	struct pcharger_data *algo_data = info->algo.algo_data;
+	ktime_t ktime_now;
 
 	pr_notice("%s time:%d %d %d %d\n", __func__,
 		algo_data->total_charging_time,
@@ -427,7 +436,8 @@ static int mtk_linear_chr_err(struct mtk_charger *info)
 			(info->sw_jeita.sm != TEMP_ABOVE_T4)) {
 			info->sw_jeita.error_recovery_flag = true;
 			algo_data->state = CHR_CC;
-			get_monotonic_boottime(&algo_data->charging_begin_time);
+			ktime_now = ktime_get_boottime();
+			algo_data->charging_begin_time = ktime_to_timespec64(ktime_now);
 		}
 	}
 
@@ -444,7 +454,7 @@ static int pchr_do_algorithm(struct mtk_charger *info)
 {
 	struct charger_data *pdata;
 	bool is_basic = true;
-	int ret;
+	int ret = 0;
 	struct pcharger_data *algo_data = info->algo.algo_data;
 
 	charger_dev_kick_wdt(info->chg1_dev);
@@ -479,14 +489,14 @@ static int pchr_do_algorithm(struct mtk_charger *info)
 	}
 
 	charger_dev_dump_registers(info->chg1_dev);
-	return 0;
+	return ret;
 }
 
 static void mtk_pulse_charger_parse_dt(struct mtk_charger *info,
 				struct device *dev)
 {
 	struct device_node *np = dev->of_node;
-	u32 val = 0;
+	u32 val;
 	struct pcharger_data *algo_data;
 
 	algo_data = info->algo.algo_data;
@@ -518,12 +528,14 @@ static int mtk_linear_charging_do_charging(struct mtk_charger *info,
 						bool en)
 {
 	struct pcharger_data *algo_data = info->algo.algo_data;
+	ktime_t ktime_now;
 
 	pr_info("%s en:%d %s\n", __func__, en, info->algorithm_name);
 	if (en) {
 		algo_data->disable_charging = false;
 		algo_data->state = CHR_CC;
-		get_monotonic_boottime(&algo_data->charging_begin_time);
+		ktime_now = ktime_get_boottime();
+		algo_data->charging_begin_time = ktime_to_timespec64(ktime_now);
 
 	} else {
 		algo_data->disable_charging = true;
@@ -549,6 +561,3 @@ int mtk_pulse_charger_init(struct mtk_charger *info)
 
 	return 0;
 }
-
-
-

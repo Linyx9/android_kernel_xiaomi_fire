@@ -3,6 +3,7 @@
  * Copyright (c) 2019 MediaTek Inc.
  */
 
+
 #ifndef _IMX576MIPI_SENSOR_H
 #define _IMX576MIPI_SENSOR_H
 

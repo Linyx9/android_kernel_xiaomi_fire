@@ -25,20 +25,13 @@ else
 CCCI_OBJ=n
 endif
 
-ifneq ($(CONFIG_MTK_ENG_BUILD),y)
-  ifeq ($(CONFIG_EXTREME_LOW_RAM), y)
-         ccflags-y += -DCCCI_LOG_DISABLE
-  endif
-endif
-
 ifneq ($(CCCI_OBJ), n)
 
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/ccci_util
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/memory-amms
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/ccci_util
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/
 
 ifeq ($(CONFIG_MTK_SECURITY_SW_SUPPORT), y)
-ccflags-y += -I$(srctree)/drivers/misc/mediatek/masp/asfv2/asf_export_inc
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/masp/asfv2/asf_export_inc
 ccflags-y += -DENABLE_MD_IMG_SECURITY_FEATURE
 endif
 
@@ -51,16 +44,17 @@ ccci_util_lib-$(CCCI_OBJ) := ccci_util_lib_fo.o \
 			ccci_util_lib_load_img.o \
 			ccci_util_lib_sys.o \
 			ccci_private_log.o \
-			ccci_util_lib_time.o \
 			ccci_util_lib_main.o \
 			ccci_util_ld_md_errno.o \
 			ccci_util_broadcast.o \
 			ccci_util_pin_broadcast.o \
 			ccci_util_sib.o \
-			ccci_util_md_rat.o
+			ccci_util_lib_reserved_mem.o \
+			ccci_util_md_rat.o \
+			ccci_util_boot_args.o \
+			ccci_util_img_parsing.o \
+			ccci_util_md_mem.o
 
 endif
 endif
 
-obj-y += CCCI_UTIL_DUMMY.o # avoid build error
-CCCI_UTIL_DUMMY-y := ccci_util_dummy.o

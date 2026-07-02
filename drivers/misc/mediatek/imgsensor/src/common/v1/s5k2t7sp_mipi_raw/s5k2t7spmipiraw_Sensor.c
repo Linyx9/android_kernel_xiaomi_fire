@@ -48,9 +48,9 @@
 #define MULTI_WRITE 1
 
 #if MULTI_WRITE
-static const int I2C_BUFFER_LEN = 1020; /*trans# max is 255, each 4 bytes*/
+#define I2C_BUFFER_LEN 1020 /*trans# max is 255, each 4 bytes*/
 #else
-static const int I2C_BUFFER_LEN = 4;
+#define I2C_BUFFER_LEN 4
 #endif
 
 /*
@@ -332,8 +332,9 @@ static void write_cmos_sensor_8(kal_uint16 addr, kal_uint8 para)
 
 static void set_dummy(void)
 {
-	pr_debug("dummyline = %d, dummypixels = %d\n",
-		imgsensor.dummy_line, imgsensor.dummy_pixel);
+	/* pr_debug("dummyline = %d, dummypixels = %d\n",
+	 *	imgsensor.dummy_line, imgsensor.dummy_pixel);
+	 */
 
 	/* return; //for test */
 	write_cmos_sensor(0x0340, imgsensor.frame_length);
@@ -346,8 +347,9 @@ static void set_max_framerate(UINT16 framerate, kal_bool min_framelength_en)
 
 	kal_uint32 frame_length = imgsensor.frame_length;
 
-	pr_debug("framerate = %d, min framelength should enable %d\n",
-		framerate, min_framelength_en);
+	/* pr_debug("framerate = %d, min framelength should enable %d\n",
+	 *	framerate, min_framelength_en);
+	 */
 
 	frame_length = imgsensor.pclk / framerate * 10 / imgsensor.line_length;
 	spin_lock(&imgsensor_drv_lock);
@@ -409,8 +411,8 @@ static void write_shutter(kal_uint16 shutter)
 	}
 	/* Update Shutter */
 	write_cmos_sensor(0x0202, shutter);
-	pr_debug("shutter =%d, framelength =%d\n",
-		shutter, imgsensor.frame_length);
+	pr_debug("shutter =%d, framelength =%d, dummyline = %d, dummypixels = %d\n",
+		shutter, imgsensor.frame_length, imgsensor.dummy_line, imgsensor.dummy_pixel);
 
 }				/*      write_shutter  */
 
@@ -574,12 +576,17 @@ static kal_uint32 streaming_control(kal_bool enable)
 
 static kal_uint16 table_write_cmos_sensor(kal_uint16 *para, kal_uint32 len)
 {
-	char puSendCmd[I2C_BUFFER_LEN];
+	char *puSendCmd = NULL;
 	kal_uint32 tosend, IDX;
 	kal_uint16 addr = 0, addr_last = 0, data;
 
 	tosend = 0;
 	IDX = 0;
+	puSendCmd = kmalloc(I2C_BUFFER_LEN, GFP_KERNEL);
+	if (puSendCmd == NULL) {
+		pr_info("Error! allocate table failed\n");
+		return 0;
+	}
 
 	while (len > IDX) {
 		addr = para[IDX];
@@ -609,6 +616,7 @@ static kal_uint16 table_write_cmos_sensor(kal_uint16 *para, kal_uint32 len)
 #endif
 
 	}
+	kfree(puSendCmd);
 	return 0;
 }
 

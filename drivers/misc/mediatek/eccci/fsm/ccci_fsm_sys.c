@@ -5,21 +5,17 @@
 #include <linux/kobject.h>
 #include "ccci_fsm_internal.h"
 #include "ccci_fsm_sys.h"
+#include "port_rpc.h"
 
 #define CCCI_KOBJ_NAME "md"
 
 struct mdee_info_collect mdee_collect;
 
-void fsm_sys_mdee_info_notify(char *buf)
+void fsm_sys_mdee_info_notify(const char *buf)
 {
-	int ret = 0;
-
 	spin_lock(&mdee_collect.mdee_info_lock);
 	memset(mdee_collect.mdee_info, 0x0, AED_STR_LEN);
-	ret = snprintf(mdee_collect.mdee_info, AED_STR_LEN, "%s", buf);
-	if (ret < 0 || ret >= AED_STR_LEN)
-		CCCI_ERROR_LOG(-1, FSM,
-			"%s-%d:snprintf fail,ret = %d\n", __func__, __LINE__, ret);
+	scnprintf(mdee_collect.mdee_info, AED_STR_LEN, "%s", buf);
 	spin_unlock(&mdee_collect.mdee_info_lock);
 }
 
@@ -81,30 +77,32 @@ static ssize_t ccci_mdee_info_show(char *buf)
 	int curr = 0;
 
 	spin_lock(&mdee_collect.mdee_info_lock);
-	curr = snprintf(buf, AED_STR_LEN, "%s\n", mdee_collect.mdee_info);
-	if (curr < 0 || curr >= AED_STR_LEN) {
-		CCCI_ERROR_LOG(-1, FSM,
-			"%s-%d:snprintf fail,curr = %d\n", __func__, __LINE__, curr);
-		spin_unlock(&mdee_collect.mdee_info_lock);
-		return -1;
-	}
+	curr = scnprintf(buf, AED_STR_LEN, "%s\n", mdee_collect.mdee_info);
 	spin_unlock(&mdee_collect.mdee_info_lock);
 
 	return curr;
 }
+
+#if IS_ENABLED(CONFIG_MTK_ECCCI_DEBUG_LOG)
+CCCI_ATTR(ecid, 0444, &port_rpc_ecid_show, NULL);
+#endif
 
 CCCI_ATTR(mdee, 0444, &ccci_mdee_info_show, NULL);
 
 /* Sys -- Add to group */
 static struct attribute *ccci_default_attrs[] = {
 	&ccci_attr_mdee.attr,
+#if IS_ENABLED(CONFIG_MTK_ECCCI_DEBUG_LOG)
+	&ccci_attr_ecid.attr,
+#endif
 	NULL
 };
+ATTRIBUTE_GROUPS(ccci_default);
 
 static struct kobj_type fsm_ktype = {
 	.release = fsm_obj_release,
 	.sysfs_ops = &fsm_sysfs_ops,
-	.default_attrs = ccci_default_attrs
+	.default_groups = ccci_default_groups,
 };
 
 int fsm_sys_init(void)

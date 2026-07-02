@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef _DT_BINDINGS_CLK_MT6768_H
 #define _DT_BINDINGS_CLK_MT6768_H

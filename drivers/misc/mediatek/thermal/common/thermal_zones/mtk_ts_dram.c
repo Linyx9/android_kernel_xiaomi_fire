@@ -242,7 +242,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 
 	}
 	return 0;
@@ -528,3 +528,6 @@ static void __exit mtktsdram_exit(void)
 }
 late_initcall(mtktsdram_init);
 module_exit(mtktsdram_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");
+

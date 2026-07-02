@@ -45,14 +45,13 @@ void fpsgo_sysfs_create_file(struct kobject *parent,
 		struct kobj_attribute *kobj_attr)
 {
 	if (kobj_attr == NULL) {
-		FPSGO_LOGE("Failed to create '%s' sysfs file kobj_attr=NULL\n");
+		FPSGO_LOGE("Failed to create '%s' sysfs file kobj_attr=NULL\n", FPSGO_SYSFS_DIR_NAME);
 		return;
 	}
 
 	parent = (parent != NULL) ? parent : fpsgo_kobj;
 	if (sysfs_create_file(parent, &(kobj_attr->attr))) {
-		FPSGO_LOGE("Failed to create '%s' sysfs file\n",
-				(kobj_attr->attr).name);
+		FPSGO_LOGE("Failed to create sysfs file\n");
 		return;
 	}
 

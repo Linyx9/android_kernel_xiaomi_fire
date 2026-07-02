@@ -26,21 +26,6 @@
 #include "kd_imgsensor_api.h"
 
 /*=============================================================
- * Weak function
- *=============================================================
- */
-MUINT32 __attribute__ ((weak))
-Get_Camera_Temperature(
-enum CAMERA_DUAL_CAMERA_SENSOR_ENUM senDevId, MUINT8 *valid, MUINT32 *temp)
-{
-	*valid = SENSOR_TEMPERATURE_CANNOT_SEARCH_SENSOR;
-	*temp = -127;
-	pr_notice("[Thermal/TZ/IMGS] E_WF: %s doesn't exist\n", __func__);
-
-	return -1;
-}
-
-/*=============================================================
  * Macro
  *=============================================================
  */
@@ -77,6 +62,7 @@ struct thz_data {
 	char thz_name[20];
 	int trip_temp[10];
 	int trip_type[10];	/*ACTIVE, PASSIVE, HOT, and Critical*/
+	struct thermal_trip trips[10];
 	char bind[10][20];
 	int num_trip;
 	unsigned int interval;	/* mseconds, 0 : no auto polling */
@@ -175,13 +161,12 @@ static int mtk_imgs_open_log(struct inode *inode, struct file *file)
 	return single_open(file, mtk_imgs_read_log, NULL);
 }
 
-static const struct file_operations mtk_imgs_log_fops = {
-	.owner = THIS_MODULE,
-	.open = mtk_imgs_open_log,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.write = mtk_imgs_write_log,
-	.release = single_release,
+static const struct proc_ops mtk_imgs_log_fops = {
+	.proc_open = mtk_imgs_open_log,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_write = mtk_imgs_write_log,
+	.proc_release = single_release,
 };
 /*=============================================================
  * Image sensor on/off status
@@ -264,8 +249,16 @@ static int mtk_imgs_get_temp(struct thermal_zone_device *thermal, int *t)
 		 */
 		curr_temp = mtk_imgs_get_max_temp();
 	} else {
+
+#if IS_ENABLED(CONFIG_MTK_IMGSENSOR) && !IS_ENABLED(CONFIG_MTK_PLAT_POWER_6893)
 		ret = Get_Camera_Temperature(
 				1 << (index - 1), &invalid, &curr_temp);
+
+#else
+		invalid = SENSOR_TEMPERATURE_CANNOT_SEARCH_SENSOR;
+		curr_temp = -127;
+		ret = -1;
+#endif
 
 		curr_temp *= 1000;
 
@@ -290,7 +283,7 @@ static int mtk_imgs_get_temp(struct thermal_zone_device *thermal, int *t)
 			curr_temp = -127000;
 			g_tsData[index].cTemp = curr_temp;
 			*t = curr_temp;
-			thermal->polling_delay = 0;
+			thermal->polling_delay_jiffies = 0;
 
 			set_image_sensor_state(index, power_off);
 			return 0;
@@ -338,12 +331,12 @@ static int mtk_imgs_get_temp(struct thermal_zone_device *thermal, int *t)
 	*t = curr_temp;
 
 	if ((int)*t >= polling_trip_temp1)
-		thermal->polling_delay = g_tsData[index].interval;
+		thermal->polling_delay_jiffies = g_tsData[index].interval;
 	else if ((int)*t < polling_trip_temp2)
-		thermal->polling_delay = g_tsData[index].interval *
+		thermal->polling_delay_jiffies = g_tsData[index].interval *
 							polling_factor2;
 	else
-		thermal->polling_delay = g_tsData[index].interval *
+		thermal->polling_delay_jiffies = g_tsData[index].interval *
 							polling_factor1;
 
 	return 0;
@@ -413,19 +406,8 @@ struct thermal_zone_device *thermal, struct thermal_cooling_device *cdev)
 	return 0;
 }
 
-static int mtk_imgs_get_mode(
-struct thermal_zone_device *thermal, enum thermal_device_mode *mode)
-{
-	int index;
 
-	index = mtk_imgs_get_index(thermal);
-
-	*mode = (g_tsData[index].kernelmode) ?
-			THERMAL_DEVICE_ENABLED : THERMAL_DEVICE_DISABLED;
-	return 0;
-}
-
-static int mtk_imgs_set_mode(
+static int mtk_imgs_change_mode(
 struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 {
 	int index;
@@ -433,26 +415,6 @@ struct thermal_zone_device *thermal, enum thermal_device_mode mode)
 	index = mtk_imgs_get_index(thermal);
 
 	g_tsData[index].kernelmode = mode;
-	return 0;
-}
-
-static int mtk_imgs_get_trip_type(struct thermal_zone_device *thermal, int trip,
-		enum thermal_trip_type *type)
-{
-	int index;
-
-	index = mtk_imgs_get_index(thermal);
-	*type = g_tsData[index].trip_type[trip];
-	return 0;
-}
-
-static int mtk_imgs_get_trip_temp(
-struct thermal_zone_device *thermal, int trip, int *temp)
-{
-	int index;
-
-	index = mtk_imgs_get_index(thermal);
-	*temp = g_tsData[index].trip_temp[trip];
 	return 0;
 }
 
@@ -510,10 +472,7 @@ static struct thermal_zone_device_ops mtk_imgs_dev_ops = {
 	.bind = mtk_imgs_bind,
 	.unbind = mtk_imgs_unbind,
 	.get_temp = mtk_imgs_get_temp,
-	.get_mode = mtk_imgs_get_mode,
-	.set_mode = mtk_imgs_set_mode,
-	.get_trip_type = mtk_imgs_get_trip_type,
-	.get_trip_temp = mtk_imgs_get_trip_temp,
+	.change_mode = mtk_imgs_change_mode,
 	.get_crit_temp = mtk_imgs_get_crit_temp,
 };
 
@@ -620,6 +579,8 @@ struct file *file, const char __user *buffer, size_t count,	\
 		for (i = 0; i < g_tsData[num].num_trip; i++) {	\
 			g_tsData[num].trip_type[i] = pTempD->t_type[i];	\
 			g_tsData[num].trip_temp[i] = pTempD->trip[i];	\
+			g_tsData[num].trips[i].type = pTempD->t_type[i];	\
+			g_tsData[num].trips[i].temperature = pTempD->trip[i];	\
 		}	\
 \
 		for (i = 0; i < 10; i++) {	\
@@ -661,7 +622,7 @@ struct file *file, const char __user *buffer, size_t count,	\
 		if (g_tsData[num].thz_dev == NULL) {	\
 			g_tsData[num].thz_dev =	\
 			mtk_thermal_zone_device_register(	\
-				g_tsData[num].thz_name,\
+				g_tsData[num].thz_name, g_tsData[num].trips,	\
 				g_tsData[num].num_trip, NULL,	\
 				&mtk_imgs_dev_ops, 0,\
 				0, 0, g_tsData[num].interval);	\
@@ -684,15 +645,14 @@ static int tz ## num ## _proc_open(	\
 struct inode *inode, struct file *file)	\
 {	\
 	return single_open(file, tz ## num ## _proc_read,	\
-			PDE_DATA(inode));	\
+			pde_data(inode));	\
 }	\
-static const struct file_operations tz ## num ## _proc_fops = {	\
-	.owner          = THIS_MODULE,	\
-	.open           = tz ## num ## _proc_open,	\
-	.read           = seq_read,	\
-	.llseek         = seq_lseek,	\
-	.release        = single_release,	\
-	.write          = tz ## num ## _proc_write,	\
+static const struct proc_ops tz ## num ## _proc_fops = {	\
+	.proc_open           = tz ## num ## _proc_open,	\
+	.proc_read           = seq_read,	\
+	.proc_lseek         = seq_lseek,	\
+	.proc_release        = single_release,	\
+	.proc_write          = tz ## num ## _proc_write,	\
 }
 
 #define FOPS(num)	(&tz ## num ## _proc_fops)
@@ -718,7 +678,7 @@ PROC_FOPS_RW(17);
 PROC_FOPS_RW(18);
 PROC_FOPS_RW(19);
 
-static const struct file_operations *thz_fops[RESERVED_TZS] = {
+static const struct proc_ops *thz_fops[RESERVED_TZS] = {
 	FOPS(0),
 	FOPS(1),
 	FOPS(2),
@@ -800,7 +760,7 @@ struct thermal_cooling_device *cdev, unsigned long state)
 		/* To trigger data abort to reset the system
 		 * for thermal protection.
 		 */
-		BUG();
+		BUG_ON(1);
 	}
 	return 0;
 }
@@ -812,7 +772,7 @@ static struct thermal_cooling_device_ops mtk_imgs_cooling_sysrst_ops = {
 };
 
 /*=============================================================*/
-static int __init mtk_imgs_init(void)
+int mtk_imgs_init(void)
 {
 	int i, j, ret;
 	struct proc_dir_entry *entry = NULL;
@@ -836,6 +796,8 @@ static int __init mtk_imgs_init(void)
 		for (j = 0; j < 10; j++) {
 			g_tsData[i].trip_temp[j] = 0;
 			g_tsData[i].trip_type[j] = 0;
+			g_tsData[i].trips[j].temperature = 0;
+			g_tsData[i].trips[j].type = 0;
 			g_tsData[i].bind[j][0] = '\0';
 		}
 		g_tsData[i].num_trip = 0;
@@ -859,6 +821,7 @@ static int __init mtk_imgs_init(void)
 		/* Assign a default thermal policy */
 		g_tsData[i].num_trip = 1;
 		g_tsData[i].trip_temp[0] = 130000;
+		g_tsData[i].trips[0].temperature = 130000;
 		sprintf(g_tsData[i].bind[0], "tzimgs%d-sysrst", i);
 		g_tsData[i].interval = 1000;
 	}
@@ -890,7 +853,7 @@ static int __init mtk_imgs_init(void)
 	/* Register thermal zones */
 	for (i = 0; i < g_img_max; i++) {
 		g_tsData[i].thz_dev = mtk_thermal_zone_device_register(
-						g_tsData[i].thz_name,
+						g_tsData[i].thz_name, g_tsData[i].trips,
 						g_tsData[i].num_trip, NULL,
 						&mtk_imgs_dev_ops, 0, 0, 0,
 						g_tsData[i].interval);
@@ -902,7 +865,7 @@ static int __init mtk_imgs_init(void)
 	return 0;
 }
 
-static void __exit mtk_imgs_exit(void)
+void  mtk_imgs_exit(void)
 {
 	int i;
 
@@ -928,5 +891,7 @@ static void __exit mtk_imgs_exit(void)
 	/* Unregister timers */
 	mtkTTimer_unregister("mtk_imgs");
 }
-module_init(mtk_imgs_init);
-module_exit(mtk_imgs_exit);
+//module_init(mtk_imgs_init);
+//module_exit(mtk_imgs_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MediaTek Inc.");

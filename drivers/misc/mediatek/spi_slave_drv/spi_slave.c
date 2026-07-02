@@ -1,10 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2021 MediaTek Inc.
-*/
+ * Copyright (c) 2022 MediaTek Inc.
+ */
 #define SPI_SLAVE_DRV_NAME	"spi-slave"
 #define pr_fmt(fmt) SPI_SLAVE_DRV_NAME ": " fmt
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -66,11 +65,9 @@
 #define IOCFG_BASE_ADDR	0x00005000
 #define DRV_CFG0	(IOCFG_BASE_ADDR + 0x0)
 #define SPIS_SLVO_MASK	(0x7 << 21)
-
 #define SPISLV_BASE_ADDR	0x00002000
 #define SPISLV_CTRL	(SPISLV_BASE_ADDR + 0x0)
 #define EARLY_TRANS_MASK	(0x1 << 16)
-
 /* specific SPI data */
 struct mtk_spi_slave_data {
 	struct spi_device *spi;
@@ -86,7 +83,6 @@ struct mtk_spi_slave_data {
 	u8 tx_nbits:3;
 	u8 rx_nbits:3;
 };
-
 static struct mtk_spi_slave_data slv_data = {
 	.spi = NULL,
 	.tx_speed_hz = SPI_TX_LOW_SPEED_HZ,
@@ -104,22 +100,20 @@ static struct mtk_spi_slave_data slv_data = {
  * supplies it.
  */
 static struct mtk_chip_config spislv_chip_info = {
-	.rx_mlsb = 0,
-	.tx_mlsb = 0,
+	//.rx_mlsb = 0,
+	//.tx_mlsb = 0,
 	.sample_sel = 0,
 	.cs_setuptime = 0,
 	.cs_holdtime = 0,
 	.cs_idletime = 0,
-	.deassert_mode = false,
+	//.deassert_mode = false,
 	.tick_delay = 0,
 };
-
 static u8 cmd_trans_type_4byte_single[2] = {CMD_CT, 0x04};
 static u8 tx_cmd_read_sta[2] = {CMD_RS, 0x00};
 static u8 rx_cmd_read_sta[2] = {0x00, 0x00};
 static struct spi_transfer CT_TRANSFER = {0};
 static struct spi_transfer RS_TRANSFER = {0};
-
 static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 {
 	int ret = 0, i = 0;
@@ -131,18 +125,15 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 	u8 status = 0;
 	u32 retry = 0;
 	u8 cmd_config[9] = {0};
-
 	/* CR or CW */
 	if (is_read)
 		cmd_config[0] = CMD_CR;
 	else
 		cmd_config[0] = CMD_CW;
-
 	for (i = 0; i < 4; i++) {
 		cmd_config[1 + i] = (addr & (0xff << (i * 8))) >> (i * 8);
 		cmd_config[5 + i] = ((len - 1) & (0xff << (i * 8))) >> (i * 8);
 	}
-
 	x[0].tx_buf	= cmd_config;
 	x[0].len	= ARRAY_SIZE(cmd_config);
 	x[0].tx_nbits	= slv_data.tx_nbits;
@@ -151,15 +142,12 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 	x[0].cs_change = 1;
 	spi_message_init(&msg);
 	spi_message_add_tail(&x[0], &msg);
-
 	/* RS */
 	rx_cmd_read_sta[1] = 0;
 	spi_message_add_tail(&RS_TRANSFER, &msg);
-
 	ret = spi_sync(slv_data.spi, &msg);
 	if (ret)
 		goto tail;
-
 	status = rx_cmd_read_sta[1];
 	/* ignore status for set early transfer bit */
 	if (addr == SPISLV_CTRL && !is_read)
@@ -170,7 +158,6 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 		ret = SPI_READ_STA_ERR_RET;
 		goto tail;
 	}
-
 	/* RD or WD */
 	if (len > MTK_SPI_BUFSIZ - 1) {
 		local_buf = kzalloc(len + 1, GFP_KERNEL);
@@ -182,7 +169,6 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 		local_buf = mtk_spi_buffer;
 		memset(local_buf, 0, MTK_SPI_BUFSIZ);
 	}
-
 	if (is_read) {
 		*((u8 *)local_buf) = CMD_RD;
 		x[1].tx_buf = local_buf;
@@ -198,17 +184,14 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 	x[1].rx_nbits = slv_data.rx_nbits;
 	x[1].len = len + 1;
 	x[1].cs_change = 1;
-
 	spi_message_init(&msg);
 	spi_message_add_tail(&x[1], &msg);
-
 	/* RS */
 	rx_cmd_read_sta[1] = 0;
 	spi_message_add_tail(&RS_TRANSFER, &msg);
 	ret = spi_sync(slv_data.spi, &msg);
 	if (ret)
 		goto tail;
-
 	status = rx_cmd_read_sta[1];
 	/* ignore status for set early transfer bit */
 	if (addr == SPISLV_CTRL && !is_read)
@@ -216,10 +199,8 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 	if (((status & SR_RD_ERR) == SR_RD_ERR) ||
 		((status & SR_WR_ERR) == SR_WR_ERR) ||
 		((status & SR_TIMEOUT_ERR) == SR_TIMEOUT_ERR)) {
-
 		pr_notice("SPI %s error, status: 0x%x, latched by %dHZ, err addr: 0x%x\n",
 				is_read ? "read" : "write", status, slv_data.rx_speed_hz, addr);
-
 		/* WS */
 		x[2].tx_buf	= cmd_write_sta;
 		x[2].len	= ARRAY_SIZE(cmd_write_sta);
@@ -231,7 +212,6 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 		ret = spi_sync(slv_data.spi, &msg);
 		if (ret)
 			goto tail;
-
 		ret = SPI_READ_STA_ERR_RET;
 	} else {
 		while (((status & SR_RDWR_FINISH) != SR_RDWR_FINISH)) {
@@ -243,7 +223,6 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 				goto tail;
 			}
 			mdelay(1);
-
 			/* RS */
 			rx_cmd_read_sta[1] = 0;
 			spi_message_init(&msg);
@@ -254,17 +233,14 @@ static int spislv_sync_sub(u32 addr, void *val, u32 len, bool is_read)
 			status = rx_cmd_read_sta[1];
 		}
 	}
-
 tail:
 	/* Only for successful read */
 	if (is_read && !ret)
 		memcpy(val, ((u8 *)x[1].rx_buf + 1), len);
-
 	if (local_buf != mtk_spi_buffer)
 		kfree(local_buf);
 	return ret;
 }
-
 static int spislv_sync(u32 addr, void *val, u32 len, bool is_read)
 {
 	int ret = 0;
@@ -274,10 +250,8 @@ static int spislv_sync(u32 addr, void *val, u32 len, bool is_read)
 	u32 try = 0;
 
 	mutex_lock(&slv_data.spislv_mutex);
-
 	if (len_local < MAX_SPI_XFER_SIZE_ONCE)
 		goto transfer_drect;
-
 	while (len_local > MAX_SPI_XFER_SIZE_ONCE) {
 		ret = spislv_sync_sub(addr_local, val_local, MAX_SPI_XFER_SIZE_ONCE, is_read);
 		while (ret) {
@@ -292,7 +266,6 @@ static int spislv_sync(u32 addr, void *val, u32 len, bool is_read)
 		val_local = (u8 *)val_local + MAX_SPI_XFER_SIZE_ONCE;
 		len_local = len_local - MAX_SPI_XFER_SIZE_ONCE;
 	}
-
 transfer_drect:
 	try = 0;
 	ret = spislv_sync_sub(addr_local, val_local, len_local, is_read);
@@ -303,12 +276,10 @@ transfer_drect:
 			goto tail;
 		ret = spislv_sync_sub(addr_local, val_local, len_local, is_read);
 	}
-
 tail:
 	mutex_unlock(&slv_data.spislv_mutex);
 	return ret;
 }
-
 int spislv_init(void)
 {
 	struct spi_message msg;
@@ -318,23 +289,20 @@ int spislv_init(void)
 	slv_data.tx_speed_hz = SPI_TX_LOW_SPEED_HZ;
 	slv_data.rx_speed_hz = SPI_RX_LOW_SPEED_HZ;
 	RS_TRANSFER.speed_hz = slv_data.rx_speed_hz;
-
 	spi_message_init(&msg);
 	spi_message_add_tail(&CT_TRANSFER, &msg);
 	ret = spi_sync(slv_data.spi, &msg);
 	if (ret)
 		return ret;
-
 	ret = spislv_write_register(SPISLV_CTRL, (0x40 & (~(EARLY_TRANS_MASK)))
 		| ((slv_data.low_speed_early_trans << 16) & (EARLY_TRANS_MASK)));
 	if (ret)
 		return ret;
-
 	ret = spislv_write_register_mask(DRV_CFG0,
 		(slv_data.slave_drive_strength << 21), SPIS_SLVO_MASK);
 	return ret;
 }
-
+EXPORT_SYMBOL(spislv_init);
 int spislv_switch_speed_hz(u32 tx_speed_hz, u32 rx_speed_hz)
 {
 	int ret = 0;
@@ -353,30 +321,29 @@ int spislv_switch_speed_hz(u32 tx_speed_hz, u32 rx_speed_hz)
 	slv_data.rx_speed_hz =
 		(rx_speed_hz > SPI_RX_MAX_SPEED_HZ ? SPI_RX_MAX_SPEED_HZ : rx_speed_hz);
 	RS_TRANSFER.speed_hz = slv_data.rx_speed_hz;
-
 	return ret;
 }
-
+EXPORT_SYMBOL(spislv_switch_speed_hz);
 int spislv_write(u32 addr, void *val, u32 len)
 {
 	return spislv_sync(addr, val, len, 0);
 }
-
+EXPORT_SYMBOL(spislv_write);
 int spislv_read(u32 addr, void *val, u32 len)
 {
 	return spislv_sync(addr, val, len, 1);
 }
-
+EXPORT_SYMBOL(spislv_read);
 int spislv_read_register(u32 addr, u32 *val)
 {
 	return spislv_read(addr, (u8 *)val, 4);
 }
-
+EXPORT_SYMBOL(spislv_read_register);
 int spislv_write_register(u32 addr, u32 val)
 {
 	return spislv_write(addr, (u8 *)&val, 4);
 }
-
+EXPORT_SYMBOL(spislv_write_register);
 int spislv_write_register_mask(u32 addr, u32 val, u32 msk)
 {
 	u32 ret = 0;
@@ -386,10 +353,9 @@ int spislv_write_register_mask(u32 addr, u32 val, u32 msk)
 	if (ret)
 		return ret;
 	ret = spislv_write_register(addr, ((read_val & (~(msk))) | ((val) & (msk))));
-
 	return ret;
 }
-
+EXPORT_SYMBOL(spislv_write_register_mask);
 static int spi_slave_probe(struct spi_device *spi)
 {
 	int ret = 0;
@@ -403,45 +369,38 @@ static int spi_slave_probe(struct spi_device *spi)
 		pr_info("slave-drive-strength isn't setting!\n");
 	else
 		pr_info("slave-drive-strength = %d\n", slv_data.slave_drive_strength);
-
 	ret = of_property_read_u8(nc, "high-speed-tick-delay", &(slv_data.high_speed_tick_delay));
 	if (ret)
 		pr_info("high-speed-tick-delay isn't setting!\n");
 	else
 		pr_info("high-speed-tick-delay = %d\n", slv_data.high_speed_tick_delay);
-
 	ret = of_property_read_u8(nc, "low-speed-tick-delay", &(slv_data.low_speed_tick_delay));
 	if (ret)
 		pr_info("low-speed-tick-delay isn't setting!\n");
 	else
 		pr_info("low-speed-tick-delay = %d\n", slv_data.low_speed_tick_delay);
-
 	ret = of_property_read_u8(nc, "high-speed-early-trans", &(slv_data.high_speed_early_trans));
 	if (ret)
 		pr_info("high-speed-early-trans isn't setting!\n");
 	else
 		pr_info("high-speed-early-trans = %d\n", slv_data.high_speed_early_trans);
-
 	ret = of_property_read_u8(nc, "low-speed-early-trans", &(slv_data.low_speed_early_trans));
 	if (ret)
 		pr_info("low-speed-early-trans isn't setting!\n");
 	else
 		pr_info("low-speed-early-trans = %d\n", slv_data.low_speed_early_trans);
-
 	if (spi->mode & SPI_TX_DUAL)
 		slv_data.tx_nbits = SPI_NBITS_DUAL;
 	else if (spi->mode & SPI_TX_QUAD)
 		slv_data.tx_nbits = SPI_NBITS_QUAD;
 	else
 		slv_data.tx_nbits = SPI_NBITS_SINGLE;
-
 	if (spi->mode & SPI_RX_DUAL)
 		slv_data.rx_nbits = SPI_NBITS_DUAL;
 	else if (spi->mode & SPI_RX_QUAD)
 		slv_data.rx_nbits = SPI_NBITS_QUAD;
 	else
 		slv_data.rx_nbits = SPI_NBITS_SINGLE;
-
 	/* set spi master driving */
 	spislv_pinctrl = devm_pinctrl_get(slv_data.spi->controller->dev.parent);
 	if (IS_ERR_OR_NULL(spislv_pinctrl))
@@ -450,7 +409,6 @@ static int spi_slave_probe(struct spi_device *spi)
 	ret = pinctrl_select_state(spislv_pinctrl, pin_spi_mode);
 	if (ret < 0)
 		pr_notice("Failed to select pinctrl!\n");
-
 	/* init transfers */
 	if (slv_data.tx_nbits == SPI_NBITS_SINGLE) {
 		CT_TRANSFER.tx_buf = cmd_trans_type_4byte_single;
@@ -468,30 +426,24 @@ static int spi_slave_probe(struct spi_device *spi)
 	RS_TRANSFER.tx_nbits = slv_data.tx_nbits;
 	RS_TRANSFER.rx_nbits = slv_data.rx_nbits;
 	RS_TRANSFER.speed_hz = slv_data.rx_speed_hz;
-
 	/* fix 6382 Screen still be black when lock phone and select power on key */
 	spi->mode = 0x08;
 	spi->bits_per_word = 8;
 	spi->controller_data = (void *)&spislv_chip_info;
 	spislv_chip_info.tick_delay = slv_data.low_speed_tick_delay;
 	mutex_init(&slv_data.spislv_mutex);
-
 	return 0;
 }
-
-static int spi_slave_remove(struct spi_device *spi)
+static void spi_slave_remove(struct spi_device *spi)
 {
 	if (spi && spi->controller_data)
 		kfree(spi->controller_data);
-	return 0;
 }
-
 static const struct of_device_id spi_slave_of_ids[] = {
 	{ .compatible = "mediatek,spi_slave" },
 	{}
 };
 MODULE_DEVICE_TABLE(of, spi_slave_of_ids);
-
 static struct spi_driver spi_slave_drv = {
 	.driver = {
 		.name	= SPI_SLAVE_DRV_NAME,
@@ -506,4 +458,3 @@ module_spi_driver(spi_slave_drv);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Shi Ma <shi.ma@mediatek.com>");
 MODULE_DESCRIPTION("SPI driver for mt6382");
-

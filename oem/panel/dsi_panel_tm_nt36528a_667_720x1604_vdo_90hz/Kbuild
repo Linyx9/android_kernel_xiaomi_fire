@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_LAMU_PANEL
+	PANEL_TM_NT36528A_OBJS += dsi-panel-tm-nt36528a-667-720x1604-vdo-90hz.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_PANEL) += dsi_panel_tm_nt36528a_667_720x1604_vdo_90hz.o
+dsi_panel_tm_nt36528a_667_720x1604_vdo_90hz-y := $(PANEL_TM_NT36528A_OBJS)
+

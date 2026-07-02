@@ -51,7 +51,7 @@ int mt6781_afe_gpio_init(struct mtk_base_afe *afe)
 	aud_pinctrl = devm_pinctrl_get(afe->dev);
 	if (IS_ERR(aud_pinctrl)) {
 		ret = PTR_ERR(aud_pinctrl);
-		dev_err(afe->dev, "%s(), ret %d, cannot get aud_pinctrl!\n",
+		dev_info(afe->dev, "%s(), ret %d, cannot get aud_pinctrl!\n",
 			__func__, ret);
 		return -ENODEV;
 	}
@@ -61,7 +61,7 @@ int mt6781_afe_gpio_init(struct mtk_base_afe *afe)
 							     aud_gpios[i].name);
 		if (IS_ERR(aud_gpios[i].gpioctrl)) {
 			ret = PTR_ERR(aud_gpios[i].gpioctrl);
-			dev_err(afe->dev, "%s(), pinctrl_lookup_state %s fail, ret %d\n",
+			dev_info(afe->dev, "%s(), pinctrl_lookup_state %s fail, ret %d\n",
 				__func__, aud_gpios[i].name, ret);
 		} else {
 			aud_gpios[i].gpio_prepare = true;
@@ -81,13 +81,13 @@ static int mt6781_afe_gpio_select(struct mtk_base_afe *afe,
 	int ret = 0;
 
 	if (type < 0 || type >= MT6781_AFE_GPIO_GPIO_NUM) {
-		dev_err(afe->dev, "%s(), error, invaild gpio type %d\n",
+		dev_info(afe->dev, "%s(), error, invalid gpio type %d\n",
 			__func__, type);
 		return -EINVAL;
 	}
 
 	if (!aud_gpios[type].gpio_prepare) {
-		dev_warn(afe->dev, "%s(), error, gpio type %d not prepared\n",
+		dev_info(afe->dev, "%s(), error, gpio type %d not prepared\n",
 			 __func__, type);
 		return -EIO;
 	}
@@ -95,7 +95,7 @@ static int mt6781_afe_gpio_select(struct mtk_base_afe *afe,
 	ret = pinctrl_select_state(aud_pinctrl,
 				   aud_gpios[type].gpioctrl);
 	if (ret) {
-		dev_err(afe->dev, "%s(), error, can not set gpio type %d\n",
+		dev_info(afe->dev, "%s(), error, can not set gpio type %d\n",
 			__func__, type);
 		AUDIO_AEE("can not set gpio type");
 	}
@@ -162,11 +162,12 @@ int mt6781_afe_gpio_request(struct mtk_base_afe *afe, bool enable,
 		break;
 	default:
 		mutex_unlock(&gpio_request_mutex);
-		dev_warn(afe->dev, "%s(), invalid dai %d\n", __func__, dai);
+		dev_info(afe->dev, "%s(), invalid dai %d\n", __func__, dai);
 		AUDIO_AEE("invalid dai");
 		return -EINVAL;
 	}
 	mutex_unlock(&gpio_request_mutex);
 	return 0;
 }
+EXPORT_SYMBOL(mt6781_afe_gpio_request);
 

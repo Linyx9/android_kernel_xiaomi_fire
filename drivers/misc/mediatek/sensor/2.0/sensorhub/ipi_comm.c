@@ -26,6 +26,7 @@ struct ipi_controller {
 struct ipi_hw_transfer {
 	struct completion done;
 	int count;
+	int64_t wakeup_time;
 	/* data buffers */
 	int id;
 	const unsigned char *tx;
@@ -68,6 +69,8 @@ static int ipi_transfer_buffer(struct ipi_transfer *t)
 	int timeout;
 	unsigned long flags;
 	struct ipi_hw_transfer *hw = &hw_transfer;
+	int64_t wakeup_time = 0, now_time = 0;
+	const uint64_t timeout_ns = 20000000;
 
 	spin_lock_irqsave(&hw_transfer_lock, flags);
 	hw->id = t->id;
@@ -77,6 +80,7 @@ static int ipi_transfer_buffer(struct ipi_transfer *t)
 	hw->rx_len = t->rx_len;
 
 	reinit_completion(&hw->done);
+	hw->wakeup_time = 0;
 	hw->context = &hw->done;
 	spin_unlock_irqrestore(&hw_transfer_lock, flags);
 
@@ -87,14 +91,16 @@ static int ipi_transfer_buffer(struct ipi_transfer *t)
 	timeout = wait_for_completion_timeout(&hw->done,
 			msecs_to_jiffies(100));
 	spin_lock_irqsave(&hw_transfer_lock, flags);
-	if (!timeout) {
+	if (!timeout)
 		hw->count = -ETIMEDOUT;
-		pr_err_ratelimited("timeout %u %u %u %u %u\n",
-			hw->tx[0], hw->tx[1], hw->tx[2],
-			hw->tx[3], hw->tx[4]);
-	}
 	hw->context = NULL;
+	wakeup_time = hw->wakeup_time;
+	now_time = ktime_get_boottime_ns();
 	spin_unlock_irqrestore(&hw_transfer_lock, flags);
+
+	if (now_time - wakeup_time > timeout_ns)
+		pr_err_ratelimited("wakeup too long, now %lld, wakeup %lld\n",
+			now_time, wakeup_time);
 	return hw->count;
 }
 
@@ -219,6 +225,11 @@ int ipi_comm_async(struct ipi_message *m)
 	return ipi_async(m);
 }
 
+unsigned int ipi_comm_size(unsigned int size)
+{
+	return roundup(size, MBOX_SLOT_SIZE);
+}
+
 int ipi_comm_noack(int id, unsigned char *tx, unsigned int n_tx)
 {
 	return ipi_retry_transfer(id, tx, n_tx);
@@ -229,14 +240,13 @@ static void ipi_comm_complete(unsigned char *buffer, unsigned int len)
 	struct ipi_hw_transfer *hw = &hw_transfer;
 
 	spin_lock(&hw_transfer_lock);
-	if (!hw->context) {
-		pr_err("dropped transfer\n");
+	if (!hw->context)
 		goto out;
-	}
 	/* only copy hw->rx_len bytes to hw->rx to avoid memory corruption */
 	memcpy(hw->rx, buffer, hw->rx_len);
 	/* hw->count give real len */
 	hw->count = len;
+	hw->wakeup_time = ktime_get_boottime_ns();
 	complete(hw->context);
 out:
 	spin_unlock(&hw_transfer_lock);

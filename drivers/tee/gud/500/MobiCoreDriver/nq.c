@@ -51,7 +51,6 @@
 #define NQ_TEE_WORKER_THREADS	4
 #endif
 
-#define MC_BIG_CORE 0x6
 static struct {
 	struct mutex buffer_mutex;	/* Lock on SWd communication buffer */
 	struct mcp_buffer *mcp_buffer;
@@ -292,7 +291,7 @@ cpumask_t tee_set_affinity(void)
 	cpumask_t old_affinity;
 	unsigned long affinity = get_tee_affinity();
 
-	old_affinity = current->cpus_allowed;
+	old_affinity = current->cpus_mask;
 	mc_dev_devel("aff = %lx mask = %lx curr_aff = %*pbl (pid = %u)",
 		     affinity,
 		     l_ctx.default_affinity_mask,
@@ -305,7 +304,7 @@ cpumask_t tee_set_affinity(void)
 
 void tee_restore_affinity(cpumask_t old_affinity)
 {
-	cpumask_t current_affinity = current->cpus_allowed;
+	cpumask_t current_affinity = current->cpus_mask;
 
 	(void)current_affinity;
 	mc_dev_devel("aff = %*pbl mask = %lx curr_aff = %*pbl (pid = %u)",
@@ -1141,9 +1140,7 @@ int nq_start(void)
 		l_ctx.tee_worker[cnt] = kthread_create(tee_worker,
 						       (void *)((uintptr_t)cnt),
 						       worker_name);
-		#if defined(TEE_WORKER_BIG_CORE)
-			kthread_bind(l_ctx.tee_worker[cnt], MC_BIG_CORE);
-		#endif
+
 		if (IS_ERR(l_ctx.tee_worker[cnt])) {
 			ret = PTR_ERR(l_ctx.tee_worker[cnt]);
 			mc_dev_err(ret, "tee_worker thread creation failed");

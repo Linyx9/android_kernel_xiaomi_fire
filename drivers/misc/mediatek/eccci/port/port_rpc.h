@@ -50,7 +50,12 @@ enum RPC_OP_ID {
 	IPC_RPC_QUERY_AP_SYS_PROPERTY = 0x400F,
 	IPC_RPC_SAR_TABLE_IDX_QUERY_OP = 0x4010,
 	IPC_RPC_EFUSE_BLOWING = 0x4011,
+	IPC_RPC_TRNG = 0x4012,
 	IPC_RPC_QUERY_CARD_TYPE = 0x4013,
+	IPC_RPC_AMMS_DRDI_CONTROL = 0x4014,
+	IPC_RPC_SAVE_MD_CAPID = 0x4015,
+	IPC_RPC_RF_ECID_DATA_OP = 0X4016,
+	IPC_RPC_AFC_UFC_IO_BLOCK_OP = 0X4017,
 	IPC_RPC_IT_OP = 0x4321,
 };
 
@@ -63,8 +68,25 @@ struct rpc_buffer {
 	struct ccci_header header;
 	u32 op_id;
 	u32 para_num;
-	u8 buffer[0];
+	u8 buffer[];
 } __packed;
+
+struct rpc_fe_vpa_public_ecid_info {
+	u8 mipi_port;
+	u8 new_usid;
+	u8 vpa_type_name[32];
+	u16 vpa_type_id;
+	u16 ecid_x_pox;
+	u16 ecid_y_pox;
+};
+
+struct rpc_ecid_info {
+	char sub6_rf_name[32];
+	u32 sub6_rf_ecid_i;
+	u32 sub6_rf_ecid_h;
+	u32 vpa_info_num;
+	struct rpc_fe_vpa_public_ecid_info rpc_vpa_public_info[10];
+};
 
 /* hardcode, becarefull with data size, should not exceed tmp_data[]
  * in ccci_rpc_work_helper()
@@ -233,18 +255,24 @@ struct eint_struct {
 };
 struct eint_node_name {
 	char *node_name;	/*node name in dtsi */
-	int md_id;		/* md_id in node_name, no use currently */
 	int sim_id;		/* sim_id in node_name, no use currently */
 };
 struct eint_node_struct {
 	unsigned int ExistFlag;	/* if node exist */
 	struct eint_node_name *name;
+	struct eint_node_name *map_name_for_md;
 	struct eint_struct *eint_value;
 };
 
 struct gpio_item {
 	char gpio_name_from_md[64];
-	char gpio_name_from_dts[64];
+	char gpio_mid_line_name_from_dts[64];
+	char gpio_under_line_name_from_dts[64];
+};
+
+enum name_convert_style {
+	NAME_CONVERT_STYLE_UNDER_LINE = 0,
+	NAME_CONVERT_STYLE_MID_LINE,
 };
 
 extern int IMM_get_adc_channel_num(char *channel_name, int len);
@@ -254,5 +282,8 @@ extern void clk_buf_get_rf_drv_curr(void *rf_drv_curr);
 extern void clk_buf_save_afc_val(unsigned int afcdac);
 extern int ccci_get_adc_val(void);
 
+#if IS_ENABLED(CONFIG_MTK_ECCCI_DEBUG_LOG)
+ssize_t port_rpc_ecid_show(char *buf);
+#endif
 
 #endif	/* __PORT_RPC_H__ */

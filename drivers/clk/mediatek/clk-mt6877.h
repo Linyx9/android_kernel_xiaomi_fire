@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2019 MediaTek Inc.
-*/
+ */
 
 #ifndef __DRV_CLK_MT6877_H
 #define __DRV_CLK_MT6877_H
@@ -30,8 +30,7 @@
 #define PLL_PWR(_id, _name, _reg, _en_reg, _en_mask,		\
 			_pwr_reg, _flags,		\
 			_pd_reg, _pd_shift,			\
-			_pcw_reg, _pcw_shift, _pcwbits,			\
-			_pwr_stat) {					\
+			_pcw_reg, _pcw_shift, _pcwbits, _div_table) {			\
 		.id = _id,						\
 		.name = _name,						\
 		.reg = _reg,						\
@@ -47,7 +46,7 @@
 		.pcw_shift = _pcw_shift,				\
 		.pcwbits = _pcwbits,					\
 		.pcwibits = MT6877_INTEGER_BITS,			\
-		.pwr_stat = _pwr_stat,					\
+		.div_table = _div_table,					\
 	}
 
 

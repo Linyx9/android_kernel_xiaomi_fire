@@ -1,0 +1,7 @@
+ifdef CONFIG_OEM_LAMU_PANEL
+	PANEL_DJN_TD4160_OBJS += dsi-panel-djn-td4160-667-720x1604-vdo-90hz.o
+endif
+
+obj-$(CONFIG_OEM_LAMU_PANEL) += dsi_panel_djn_td4160_667_720x1604_vdo_90hz.o
+dsi_panel_djn_td4160_667_720x1604_vdo_90hz-y := $(PANEL_DJN_TD4160_OBJS)
+

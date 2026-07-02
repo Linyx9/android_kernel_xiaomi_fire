@@ -1,124 +1,55 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2019 MediaTek Inc.
-*/
+ * Copyright (c) 2020 MediaTek Inc.
+ */
 
-#include <linux/platform_device.h>
-#include <linux/fs.h>
 #include <linux/cdev.h>
+#include <linux/dma-buf.h>
 #include <linux/errno.h>
-#include <linux/slab.h>
-#include <linux/vmalloc.h>
-#include <linux/spinlock.h>
+#include <linux/fs.h>
+#include <linux/platform_device.h>
 #include <linux/sched/clock.h>
+#include <linux/slab.h>
+#include <linux/spinlock.h>
+#include <mtk_heap.h>
+#include <mtk-smmu-v3.h>
 
-#ifdef CONFIG_MTK_CMDQ_MBOX_EXT
+#if IS_ENABLED(CONFIG_MTK_CMDQ_MBOX_EXT)
 #include "mdp_def.h"
 #include "mdp_common.h"
 #include "mdp_driver.h"
-#include "mdp_cmdq_helper_ext.h"
-#include "mdp_cmdq_record.h"
-#include "mdp_cmdq_device.h"
 #include "mdp_pmqos.h"
 #else
 #include "cmdq_def.h"
 #include "cmdq_mdp_common.h"
 #include "cmdq_driver.h"
-#include "cmdq_record.h"
-#ifndef MDP_META_IN_LEGACY_V2
-#include "cmdq_helper_ext.h"
-#include "cmdq_mdp_pmqos.h"
-#else
-#include "cmdq_core.h"
-#endif
-#include "cmdq_device.h"
 #endif
 #include "mdp_def_ex.h"
 #include "mdp_ioctl_ex.h"
 #include "cmdq_struct.h"
-#include "mdp_m4u.h"
-#include "ion_sec_heap.h"
+#include "cmdq_helper_ext.h"
+#include "cmdq_record.h"
+#include "cmdq_device.h"
+
+#include "mdp_rdma_ex.h"
+
+#ifdef CMDQ_SECURE_PATH_SUPPORT
+#include "mtk_heap.h"
+#endif
 
 #define MDP_TASK_PAENDING_TIME_MAX	100000000
 
-/* compatible with cmdq legacy driver */
-#ifndef CMDQ_TRACE_FORCE_BEGIN
-#define CMDQ_TRACE_FORCE_BEGIN(...)
-#endif
-#ifndef CMDQ_TRACE_FORCE_END
-#define CMDQ_TRACE_FORCE_END(...)
-#endif
+#define RDMA_CPR_PREBUILT(mod, pipe, index) \
+	((index) < CMDQ_CPR_PREBUILT_REG_CNT ? \
+	CMDQ_CPR_PREBUILT(mod, (pipe & 0x1), index) : \
+	CMDQ_CPR_PREBUILT_EXT(mod, (pipe & 0x1), (index) - CMDQ_CPR_PREBUILT_REG_CNT))
 
-#ifdef MDP_M4U_TEE_SUPPORT
-static atomic_t m4u_init = ATOMIC_INIT(0);
-#endif
-#if defined(MDP_M4U_MTEE_SEC_CAM_SUPPORT)
-static atomic_t m4u_gz_init_sec_cam = ATOMIC_INIT(0);
-#endif
-
-static int mdp_limit_open(struct inode *pInode, struct file *pFile)
-{
-	struct cmdqFileNodeStruct *pNode = NULL;
-
-	CMDQ_VERBOSE("mdp limit driver open fd=%p begin\n", pFile);
-
-	pFile->private_data = kzalloc(sizeof(struct cmdqFileNodeStruct),
-		GFP_KERNEL);
-	if (!pFile->private_data) {
-		CMDQ_ERR("Can't allocate memory for mdp limit file node\n");
-		return -ENOMEM;
-	}
-
-	pNode = (struct cmdqFileNodeStruct *)pFile->private_data;
-	pNode->userPID = current->pid;
-	pNode->userTGID = current->tgid;
-
-	INIT_LIST_HEAD(&(pNode->taskList));
-	spin_lock_init(&pNode->nodeLock);
-
-	CMDQ_VERBOSE("mdp limit driver open end\n");
-
-	return 0;
-}
-
-
-static int mdp_limit_release(struct inode *pInode, struct file *pFile)
-{
-	struct cmdqFileNodeStruct *pNode = NULL;
-	unsigned long flags;
-
-	CMDQ_LOG("mdp limit driver release fd=%p begin\n", pFile);
-
-	pNode = (struct cmdqFileNodeStruct *)pFile->private_data;
-
-	if (!pNode) {
-		CMDQ_ERR("mdp limit file node NULL\n");
-		return -EFAULT;
-	}
-
-	spin_lock_irqsave(&pNode->nodeLock, flags);
-
-	/* note that we did not release CMDQ tasks
-	 * issued by this file node,
-	 * since their HW operation may be pending.
-	 */
-
-	spin_unlock_irqrestore(&pNode->nodeLock, flags);
-
-	/* scan through tasks that created by
-	 * this file node and release them
-	 */
-	cmdq_mdp_release_task_by_file_node((void *)pNode);
-
-	kfree(pFile->private_data);
-	pFile->private_data = NULL;
-
-	cmdq_free_write_addr_by_node(CMDQ_CLT_MDP, pFile);
-
-	CMDQ_LOG("CMDQ driver release end\n");
-
-	return 0;
-}
+struct mdpsys_con_context {
+	struct device *dev;
+	struct device *mmu_dev;
+	struct device *mmu_dev_sec;
+};
+struct mdpsys_con_context mdpsys_con_ctx;
 
 #define MAX_HANDLE_NUM 10
 
@@ -128,9 +59,13 @@ struct mdp_job_mapping {
 	u64 id;
 	struct cmdqRecStruct *job;
 	struct list_head list_entry;
-	struct ion_handle *handles[MAX_HANDLE_NUM];
+
+	struct dma_buf *dma_bufs[MAX_HANDLE_NUM];
+	struct dma_buf_attachment *attaches[MAX_HANDLE_NUM];
+	struct sg_table *sgts[MAX_HANDLE_NUM];
+
 	int fds[MAX_HANDLE_NUM];
-	u32 mvas[MAX_HANDLE_NUM];
+	unsigned long mvas[MAX_HANDLE_NUM];
 	u32 handle_count;
 	void *node;
 };
@@ -141,19 +76,21 @@ static DEFINE_MUTEX(mdp_job_mapping_list_mutex);
 #define MAX_COUNT_IN_RB_SLOT 0x1000 /* 4KB */
 #define SLOT_ID_SHIFT 16
 #define SLOT_OFFSET_MASK 0xFFFF
-#define MAX_REF_COUNT 100000
 
 struct mdp_readback_slot {
 	u32 count;
 	dma_addr_t pa_start;
 	void *fp;
-	u32 ref_cnt;
 };
 
 static struct mdp_readback_slot rb_slot[MAX_RB_SLOT_NUM];
 static u64 alloc_slot[SLOT_GROUP_NUM];
 static u64 alloc_slot_group;
 static DEFINE_MUTEX(rb_slot_list_mutex);
+
+/* These are for pq vcp readback */
+dma_addr_t vcp_paStart;
+static u64 rb_slot_vcp[SLOT_GROUP_NUM];
 
 static dma_addr_t translate_read_id_ex(u32 read_id, u32 *slot_offset)
 {
@@ -181,11 +118,22 @@ static dma_addr_t translate_read_id(u32 read_id)
 		+ slot_offset * sizeof(u32);
 }
 
+static u32 translate_engine_rdma(u32 engine)
+{
+	s32 rdma_idx = cmdq_mdp_get_rdma_idx(engine);
+
+	if (rdma_idx < 0) {
+		CMDQ_ERR("invalia rdma idx, set rdma0 as default\n");
+		rdma_idx = 0;
+	}
+	return rdma_idx;
+}
+
 static s32 mdp_process_read_request(struct mdp_read_readback *req_user)
 {
 	/* create kernel-space buffer for working */
 	u32 *ids = NULL;
-	u32 *addrs = NULL;
+	dma_addr_t *addrs = NULL;
 	u32 *values = NULL;
 	void *ids_user = NULL;
 	void *values_user = NULL;
@@ -218,7 +166,7 @@ static s32 mdp_process_read_request(struct mdp_read_readback *req_user)
 			break;
 		}
 
-		addrs = kcalloc(count, sizeof(u32), GFP_KERNEL);
+		addrs = kcalloc(count, sizeof(dma_addr_t), GFP_KERNEL);
 		if (!addrs) {
 			CMDQ_ERR("[READ_PA] fail to alloc addr buf\n");
 			status = -ENOMEM;
@@ -254,7 +202,7 @@ static s32 mdp_process_read_request(struct mdp_read_readback *req_user)
 		CMDQ_SYSTRACE_BEGIN("%s_copy_to_user_%u\n", __func__, count);
 
 		cmdqCoreReadWriteAddressBatch(addrs, count, values);
-		cmdq_driver_dump_readback(ids, addrs, count, values);
+		cmdq_driver_dump_readback(addrs, count, values);
 
 		/* copy value to user */
 		if (copy_to_user(values_user, values, count * sizeof(u32))) {
@@ -273,16 +221,89 @@ static s32 mdp_process_read_request(struct mdp_read_readback *req_user)
 	return status;
 }
 
-static unsigned long translate_fd(struct op_meta *meta,
-				struct mdp_job_mapping *mapping_job)
+static bool mdp_ion_get_dma_buf(struct device *dev, int fd,
+	struct dma_buf **buf_out, struct dma_buf_attachment **attach_out,
+	struct sg_table **sgt_out)
 {
-	struct ion_handle *ion_h = NULL;
-	unsigned long mva = 0;
-	u32 i;
-	u32 port = cmdq_mdp_get_hw_port(meta->engine);
+	struct dma_buf *buf = NULL;
+	struct dma_buf_attachment *attach = NULL;
+	struct sg_table *sgt = NULL;
 
-	if (!port)
-		return 0;
+	if (fd <= 0) {
+		CMDQ_ERR("ion error fd %d\n", fd);
+		goto err;
+	}
+
+	buf = dma_buf_get(fd);
+	if (IS_ERR(buf)) {
+		CMDQ_ERR("ion buf get fail %ld\n", PTR_ERR(buf));
+		goto err;
+	}
+
+	mtk_dma_buf_set_name(buf, "mdp");
+
+	attach = dma_buf_attach(buf, dev);
+	if (IS_ERR(attach)) {
+		CMDQ_ERR("ion buf attach fail %ld", PTR_ERR(attach));
+		goto err_attach;
+	}
+
+	sgt =  dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(sgt)) {
+		CMDQ_ERR("ion buf map fail %ld", PTR_ERR(sgt));
+		goto err_map;
+	}
+
+	*buf_out = buf;
+	*attach_out = attach;
+	*sgt_out = sgt;
+
+	return true;
+
+err_map:
+	dma_buf_detach(buf, attach);
+
+err_attach:
+	dma_buf_put(buf);
+err:
+	return false;
+}
+
+static void mdp_ion_free_dma_buf(struct dma_buf *buf,
+	struct dma_buf_attachment *attach, struct sg_table *sgt)
+{
+	mtk_dma_buf_set_name(buf, NULL);
+	dma_buf_unmap_attachment_unlocked(attach, sgt, DMA_BIDIRECTIONAL);
+	dma_buf_detach(buf, attach);
+	dma_buf_put(buf);
+}
+
+static unsigned long translate_fd(struct op_meta *meta,
+				struct mdp_job_mapping *mapping_job,
+				struct cmdqRecStruct *handle)
+{
+	struct dma_buf *buf = NULL;
+	struct dma_buf_attachment *attach = NULL;
+	struct sg_table *sgt = NULL;
+	struct device *dev = NULL;
+	dma_addr_t ion_addr;
+	u32 i;
+
+	if (!mdpsys_con_ctx.dev) {
+		CMDQ_ERR("%s mdpsys_config not ready\n", __func__);
+		return -EINVAL;
+	}
+
+	dev = mdpsys_con_ctx.mmu_dev;
+
+	if (smmu_v3_enabled() &&
+		handle->secData.is_secure && mdpsys_con_ctx.mmu_dev_sec)
+			dev = mdpsys_con_ctx.mmu_dev_sec;
+
+	if (!dev) {
+		CMDQ_ERR("%s mmu_dev not ready\n", __func__);
+		return -EINVAL;
+	}
 
 	for (i = 0; i < mapping_job->handle_count; i++)
 		if (mapping_job->fds[i] == meta->fd)
@@ -293,37 +314,41 @@ static unsigned long translate_fd(struct op_meta *meta,
 			CMDQ_ERR("%s no more handle room\n", __func__);
 			return 0;
 		}
-		/* need to map ion handle and mva */
-		ion_h = mdp_ion_import_handle(meta->fd);
-		if (!ion_h)
+		/* need to map ion fd to iova */
+		if (!mdp_ion_get_dma_buf(dev, meta->fd, &buf, &attach, &sgt))
 			return 0;
 
-		mdp_ion_get_mva(ion_h, &mva, 0, port);
-		if (mva) {
+		ion_addr = sg_dma_address(sgt->sgl);
+		if (ion_addr) {
 			mapping_job->fds[i] = meta->fd;
-			mapping_job->handles[i] = ion_h;
-			mapping_job->mvas[i] = mva;
+			mapping_job->attaches[i] = attach;
+			mapping_job->dma_bufs[i] = buf;
+			mapping_job->sgts[i] = sgt;
+			mapping_job->mvas[i] = ion_addr;
 			mapping_job->handle_count++;
+
+			CMDQ_MME_MSG("%s op:%u fd_offset:%d fd:%d -> iova:%#llx\n",
+				__func__, meta->op, meta->fd_offset, meta->fd, (u64)ion_addr);
+			CMDQ_MSG("%s fd:%d -> iova:%#llx\n",
+				__func__, meta->fd, (u64)ion_addr);
 		} else {
-			mdp_ion_free_handle(ion_h);
+			CMDQ_ERR("%s fail to get iova for fd:%d\n",
+				__func__, meta->fd);
+			mdp_ion_free_dma_buf(buf, attach, sgt);
 			return 0;
 		}
 	} else {
-		mva = mapping_job->mvas[i];
+		ion_addr = mapping_job->mvas[i];
 	}
+	ion_addr += meta->fd_offset;
 
-	if (meta->fd_offset >= U32_MAX)
-		return 0;
-
-	mva += meta->fd_offset;
-
-	return mva;
+	return ion_addr;
 }
 
 static s32 translate_meta(struct op_meta *meta,
-			struct mdp_job_mapping *mapping_job,
-			struct cmdqRecStruct *handle,
-			struct cmdq_command_buffer *cmd_buf)
+			  struct mdp_job_mapping *mapping_job,
+			  struct cmdqRecStruct *handle,
+			  struct cmdq_command_buffer *cmd_buf)
 {
 	u32 reg_addr;
 	s32 status = 0;
@@ -331,22 +356,150 @@ static s32 translate_meta(struct op_meta *meta,
 	switch (meta->op) {
 	case CMDQ_MOP_WRITE_FD:
 	{
-		unsigned long mva = translate_fd(meta, mapping_job);
+		u32 reg_addr_msb = 0;
+		unsigned long mva = translate_fd(meta, mapping_job, handle);
 
-		reg_addr = cmdq_mdp_get_hw_reg(meta->engine, meta->offset);
-		if (!reg_addr || !mva)
+		if (!mva) {
+			CMDQ_ERR("%s: op:%u, get mva fail, engine %d, fd 0x%x, fd_offset 0x%x\n",
+				 __func__, meta->op, meta->engine, meta->fd, meta->fd_offset);
 			return -EINVAL;
-		status = cmdq_op_write_reg_ex(handle, cmd_buf,
-			reg_addr, mva, ~0);
+		}
+
+		/* check platform support LSB/MSB or not */
+		if (gMdpRegMSBSupport) {
+
+			reg_addr = cmdq_mdp_get_hw_reg(meta->engine, meta->offset);
+			if (reg_addr) {
+				status = cmdq_op_write_reg_ex(
+					handle, cmd_buf, reg_addr, mva & U32_MAX, ~0);
+			} else {
+				CMDQ_ERR("%s: op:%u, get reg_addr fail, eng:%d, offset 0x%x\n",
+					__func__, meta->op, meta->engine, meta->offset);
+				return -EINVAL;
+			}
+
+			reg_addr_msb = cmdq_mdp_get_hw_reg_msb(meta->engine, meta->offset);
+			if (reg_addr_msb) {
+				status = cmdq_op_write_reg_ex(
+					handle, cmd_buf, reg_addr_msb, DO_SHIFT_RIGHT(mva, 32), ~0);
+			} else {
+				CMDQ_ERR("%s: op:%u, get reg_addr_msb fail, eng:%d, offset 0x%x\n",
+					__func__, meta->op, meta->engine, meta->offset);
+				return -EINVAL;
+			}
+		} else {
+			reg_addr = cmdq_mdp_get_hw_reg(meta->engine, meta->offset);
+			if (reg_addr) {
+				status = cmdq_op_write_reg_ex(
+					handle, cmd_buf, reg_addr, mva, ~0);
+			} else {
+				CMDQ_ERR("%s: op:%u, get reg_addr fail, eng:%d, offset 0x%x\n",
+					__func__, meta->op, meta->engine, meta->offset);
+				return -EINVAL;
+			}
+		}
+
 		break;
 	}
 	case CMDQ_MOP_WRITE:
+	{
 		reg_addr = cmdq_mdp_get_hw_reg(meta->engine, meta->offset);
+
 		if (!reg_addr)
 			return -EINVAL;
-		status = cmdq_op_write_reg_ex(handle, cmd_buf, reg_addr,
-					meta->value, meta->mask);
+
+		status = cmdq_op_write_reg_ex(handle, cmd_buf, reg_addr, meta->value, meta->mask);
 		break;
+	}
+	case CMDQ_MOP_WRITE_FD_RDMA:
+	{
+		u32 src_base_lsb, src_base_msb;
+		unsigned long mva = translate_fd(meta, mapping_job, handle);
+		s32 rdma_idx = translate_engine_rdma(meta->engine);
+
+		if (!mva) {
+			CMDQ_ERR("%s: op:%u, get mva fail, engine %d, fd 0x%x, fd_offset 0x%x\n",
+				 __func__, meta->op, meta->engine, meta->fd, meta->fd_offset);
+			return -EINVAL;
+		}
+
+		if ((rdma_idx != 0) && (rdma_idx != 1)) {
+			CMDQ_ERR("%s: op:%u, engine %d, rdma_idx %d invalid\n",
+				 __func__, meta->op, meta->engine, rdma_idx);
+			return -EINVAL;
+		}
+
+		if ((meta->cpr_idx >= CPR_MDP_RDMA_SRC_BASE_0) &&
+		    (meta->cpr_idx <= CPR_MDP_RDMA_UFO_DEC_LENGTH_BASE_C)) {
+
+			/* check platform support LSB/MSB or not */
+			if (gMdpRegMSBSupport) {
+				src_base_msb = DO_SHIFT_RIGHT(mva, 32);
+				src_base_lsb = mva & U32_MAX;
+			} else {
+				src_base_msb = 0;
+				src_base_lsb = mva;
+			}
+
+			status = cmdq_op_assign_reg_idx_ex(handle, cmd_buf,
+					RDMA_CPR_PREBUILT(CMDQ_PREBUILT_MDP,
+							  meta->pipe_idx, meta->cpr_idx),
+					src_base_lsb);
+
+			status = cmdq_op_assign_reg_idx_ex(handle, cmd_buf,
+					RDMA_CPR_PREBUILT(CMDQ_PREBUILT_MDP,
+							  meta->pipe_idx, meta->cpr_idx + 5),
+					src_base_msb);
+		} else {
+			CMDQ_ERR("%s: op:%u, engine %d, rdma_idx %d, cpr_idx %d invalid\n",
+				 __func__, meta->op, meta->engine, rdma_idx, meta->cpr_idx);
+			return -EINVAL;
+		}
+		break;
+	}
+	case CMDQ_MOP_WRITE_RDMA:
+	{
+		u32 src_base_lsb, src_base_msb;
+		u32 rdma_idx = translate_engine_rdma(meta->engine);
+
+		if ((rdma_idx != 0) && (rdma_idx != 1)) {
+			CMDQ_ERR("%s: op:%u, engine %d, rdma_idx %d invalid\n",
+				 __func__, meta->op, meta->engine, rdma_idx);
+			return -EINVAL;
+		}
+
+		if (meta->cpr_idx > CPR_MDP_RDMA_PIPE_IDX) {
+			CMDQ_ERR("%s: op:%u, engine %d, rdma_idx %d, cpr_idx %d invalid\n",
+				 __func__, meta->op, meta->engine, rdma_idx, meta->cpr_idx);
+			return -EINVAL;
+		}
+
+		if (meta->cpr_idx == CPR_MDP_RDMA_PIPE_IDX) {
+			status = cmdq_op_assign_reg_idx_ex(handle, cmd_buf,
+					CMDQ_CPR_PREBUILT_PIPE(CMDQ_PREBUILT_MDP), meta->pipe_idx);
+		} else if ((meta->cpr_idx >= CPR_MDP_RDMA_SRC_BASE_0) &&
+			   (meta->cpr_idx <= CPR_MDP_RDMA_UFO_DEC_LENGTH_BASE_C)) {
+
+			src_base_msb = 0x0;
+			src_base_lsb = meta->value;
+
+			status = cmdq_op_assign_reg_idx_ex(handle, cmd_buf,
+					RDMA_CPR_PREBUILT(CMDQ_PREBUILT_MDP,
+							  meta->pipe_idx, meta->cpr_idx),
+					src_base_lsb);
+
+			status = cmdq_op_assign_reg_idx_ex(handle, cmd_buf,
+					RDMA_CPR_PREBUILT(CMDQ_PREBUILT_MDP,
+							  meta->pipe_idx, meta->cpr_idx + 5),
+					src_base_msb);
+		} else {
+			status = cmdq_op_assign_reg_idx_ex(handle, cmd_buf,
+					RDMA_CPR_PREBUILT(CMDQ_PREBUILT_MDP,
+							  meta->pipe_idx, meta->cpr_idx),
+					meta->value);
+		}
+		break;
+	}
 	case CMDQ_MOP_READ:
 	{
 		u32 offset;
@@ -357,32 +510,77 @@ static s32 translate_meta(struct op_meta *meta,
 		if (!reg_addr || !dram_addr)
 			return -EINVAL;
 		status = cmdq_op_read_reg_to_mem_ex(handle, cmd_buf,
-						dram_addr, offset, reg_addr);
+						dram_addr + gce_mminfra, offset, reg_addr);
 		break;
 	}
 	case CMDQ_MOP_READBACK:
 	{
 		dma_addr_t dram_addr;
 		u32 offset;
+		u32 vcp_offset = 0;
 
-		dram_addr = translate_read_id_ex(meta->readback_id, &offset);
-		if (!dram_addr)
+		if (!cmdq_mdp_eng_readback_support(meta->engine)) {
+			CMDQ_ERR("Asking readback from ENG those not support readback %d\n",
+				meta->engine);
 			return -EINVAL;
+		}
 
-		/* flush first since readback add commands to pkt */
-		cmdq_handle_flush_cmd_buf(handle, cmd_buf);
+		if (!cmdq_mdp_vcp_pq_readback_support()) {
+			dram_addr = translate_read_id_ex(meta->readback_id, &offset);
+			if (!dram_addr)
+				return -EINVAL;
 
-		cmdq_mdp_op_readback(handle, meta->engine,
-			dram_addr + offset * sizeof(u32), meta->mask);
+#if defined(CMDQ_SECURE_PATH_SUPPORT)
+			if (handle->secData.is_secure) {
+				cmdq_op_set_event(handle, mdp_get_rb_event_lock());
+				cmdq_op_wait(handle, mdp_get_rb_event_unlock());
+			}
+#endif
+			/* flush first since readback add commands to pkt */
+			cmdq_handle_flush_cmd_buf(handle, cmd_buf);
+
+			cmdq_mdp_op_readback(handle, meta->engine,
+				dram_addr + offset * sizeof(u32) + gce_mminfra, meta->mask);
+		} else {
+			dram_addr = translate_read_id_ex(meta->readback_id, &offset);
+			if (!dram_addr)
+				return -EINVAL;
+
+			/* flush first since readback add commands to pkt */
+			cmdq_handle_flush_cmd_buf(handle, cmd_buf);
+
+			vcp_offset = (dram_addr - vcp_paStart) + offset * sizeof(u32);
+
+			CMDQ_LOG_PQ("%s: engine:%d, rb_id:0x%x, dram_addr:%pa, offset:0x%x\n",
+				__func__, meta->engine, meta->readback_id,
+				&dram_addr, offset);
+			CMDQ_LOG_PQ("%s: engine:%d, rb_id:0x%x, vcp_offset:0x%x, vcp_pa:%#llx\n",
+				__func__, meta->engine, meta->readback_id,
+				vcp_offset, (u64)(vcp_paStart + vcp_offset));
+
+			cmdq_mdp_vcp_pq_readback(handle, meta->engine,
+				vcp_offset, MAX_COUNT_IN_RB_SLOT);
+		}
+
 		break;
 	}
 	case CMDQ_MOP_POLL:
+	{
+		u32 gpr;
+
 		reg_addr = cmdq_mdp_get_hw_reg(meta->engine, meta->offset);
 		if (!reg_addr)
 			return -EINVAL;
+
+		/* get gpr based on meta->engine */
+		gpr = cmdq_mdp_get_poll_gpr(meta->engine, reg_addr);
+		if (!gpr)
+			return -EINVAL;
+
 		status = cmdq_op_poll_ex(handle, cmd_buf, reg_addr,
-					meta->value, meta->mask);
+			meta->value, meta->mask, gpr);
 		break;
+	}
 	case CMDQ_MOP_WAIT:
 		status = cmdq_op_wait_ex(handle, cmd_buf, meta->event);
 		break;
@@ -401,7 +599,7 @@ static s32 translate_meta(struct op_meta *meta,
 	case CMDQ_MOP_WRITE_FROM_REG:
 	{
 		u32 from_reg = cmdq_mdp_get_hw_reg(meta->from_engine,
-						meta->from_offset);
+			meta->from_offset);
 
 		reg_addr = cmdq_mdp_get_hw_reg(meta->engine, meta->offset);
 		if (!reg_addr || !from_reg)
@@ -429,6 +627,40 @@ static s32 translate_meta(struct op_meta *meta,
 	}
 	case CMDQ_MOP_NOP:
 		break;
+#ifdef CMDQ_SECURE_PATH_SUPPORT
+	case CMDQ_MOP_WRITE_SEC_FD:
+	{
+		struct dma_buf *buf;
+
+		/* secure fd -> secure handle */
+		buf = dma_buf_get(meta->fd);
+		if (IS_ERR(buf)) {
+			CMDQ_ERR("%s: fail to get dma_buf:%ld, meta->fd:%d\n",
+				__func__, PTR_ERR(buf), meta->fd);
+			return -EINVAL;
+		}
+		meta->sec_handle = dmabuf_to_secure_handle(buf);
+		CMDQ_MSG("CMDQ_MOP_WRITE_SEC_FD: translate fd %d to sec_handle %d\n",
+			meta->fd, meta->sec_handle);
+		dma_buf_put(buf);
+
+		reg_addr = cmdq_mdp_get_hw_reg(meta->engine, meta->offset);
+		if (!reg_addr)
+			return -EINVAL;
+		status = cmdq_op_write_reg_ex(handle, cmd_buf, reg_addr,
+					meta->sec_handle, ~0);
+
+		/* use total buffer size count in translation */
+		if (!status) {
+			/* flush to make sure count is correct */
+			cmdq_handle_flush_cmd_buf(handle, cmd_buf);
+			status = cmdq_mdp_update_sec_addr_index(handle,
+				meta->sec_handle, meta->sec_index,
+				cmdq_mdp_handle_get_instr_count(handle) - 1);
+		}
+		break;
+	}
+#endif
 	default:
 		CMDQ_ERR("invalid meta op:%u\n", meta->op);
 		status = -EINVAL;
@@ -445,7 +677,7 @@ static s32 translate_user_job(struct mdp_submit *user_job,
 {
 	struct op_meta *metas;
 	s32 status = 0;
-	u32 i, copy_size, copy_count, remain_count, slot_id, j;
+	u32 i, copy_size, copy_count, remain_count;
 	void *cur_src = CMDQ_U32_PTR(user_job->metas);
 	const u32 meta_count_in_page = PAGE_SIZE / sizeof(struct op_meta);
 
@@ -454,7 +686,6 @@ static s32 translate_user_job(struct mdp_submit *user_job,
 		CMDQ_ERR("allocate metas fail\n");
 		return -ENOMEM;
 	}
-	cmdq_mdp_meta_replace_sec_addr(metas, user_job, handle);
 
 	remain_count = user_job->meta_count;
 	while (remain_count > 0) {
@@ -482,33 +713,6 @@ static s32 translate_user_job(struct mdp_submit *user_job,
 					metas[i].value, metas[i].mask);
 				break;
 			}
-			mutex_lock(&rb_slot_list_mutex);
-			if (metas[i].op == CMDQ_MOP_READ || metas[i].op == CMDQ_MOP_READBACK) {
-				slot_id = metas[i].readback_id >> SLOT_ID_SHIFT;
-				if (unlikely(slot_id >= MAX_RB_SLOT_NUM)) {
-					mutex_unlock(&rb_slot_list_mutex);
-					continue;
-				}
-				if (rb_slot[slot_id].ref_cnt == MAX_REF_COUNT) {
-					CMDQ_ERR("readback slot [%d] reach maximum ref_cnt\n",
-						slot_id);
-					mutex_unlock(&rb_slot_list_mutex);
-					kfree(metas);
-					return -EINVAL;
-				}
-				for (j = 0; j < ARRAY_SIZE(handle->slot_ids); j++) {
-					if (slot_id == handle->slot_ids[j])
-						break;
-					if (handle->slot_ids[j] == -1) {
-						handle->slot_ids[j] = slot_id;
-						rb_slot[slot_id].ref_cnt++;
-						CMDQ_MSG("slot id %d, count++ > %d\n", slot_id,
-							rb_slot[slot_id].ref_cnt);
-						break;
-					}
-				}
-			}
-			mutex_unlock(&rb_slot_list_mutex);
 		}
 		remain_count -= copy_count;
 		cur_src += copy_size;
@@ -522,16 +726,11 @@ static s32 cmdq_mdp_handle_setup(struct mdp_submit *user_job,
 				struct task_private *desc_private,
 				struct cmdqRecStruct *handle)
 {
-#ifndef MDP_META_IN_LEGACY_V2
-	const u64 inorder_mask = 1ll << CMDQ_ENG_INORDER;
 	u32 iprop_size = sizeof(struct mdp_pmqos);
 
-	handle->engineFlag = user_job->engine_flag & ~inorder_mask;
+	handle->engineFlag = user_job->engine_flag;
 	handle->pkt->priority = user_job->priority;
 	handle->user_debug_str = NULL;
-
-	if (user_job->engine_flag & inorder_mask)
-		handle->force_inorder = true;
 
 	if (desc_private)
 		handle->node_private = desc_private->node_private_data;
@@ -550,97 +749,9 @@ static s32 cmdq_mdp_handle_setup(struct mdp_submit *user_job,
 		handle->prop_addr = NULL;
 		handle->prop_size = 0;
 	}
-#else
-	handle->engineFlag = user_job->engine_flag;
-	handle->priority = user_job->priority;
-#endif
+
 	return 0;
 }
-
-static s32 mdp_init_secure_id(struct cmdqRecStruct *handle)
-{
-#ifdef CMDQ_SECURE_PATH_SUPPORT
-	u32 i;
-	uint32_t trustmem_type = 0;
-	int sec = 0;
-	int iommu_sec_id = 0;
-	ion_phys_addr_t sec_handle;
-	struct cmdqSecAddrMetadataStruct *secMetadatas = NULL;
-
-	if (!handle->secData.is_secure)
-		return 0;
-	secMetadatas = (struct cmdqSecAddrMetadataStruct *)handle->secData.addrMetadatas;
-	for (i = 0; i < handle->secData.addrMetadataCount; i++) {
-		secMetadatas[i].useSecIdinMeta = 1;
-		if (secMetadatas[i].ionFd <= 0) {
-			secMetadatas[i].sec_id = 0;
-#ifdef MDP_M4U_TEE_SUPPORT
-			// if camera scenario and type is DP_SECURE, set sec id as MEM_2D_FR
-			if ((handle->engineFlag & ((1LL << CMDQ_ENG_MDP_CAMIN)
-			| CMDQ_ENG_ISP_GROUP_BITS))
-			&& secMetadatas[i].type == CMDQ_SAM_H_2_MVA) {
-				secMetadatas[i].sec_id = 3;
-				CMDQ_LOG("%s,port:%d,ionFd:%d,sec_id:%d,sec_handle:0x%#llx",
-						__func__, secMetadatas[i].port,
-						secMetadatas[i].ionFd,
-						secMetadatas[i].sec_id,
-						secMetadatas[i].baseHandle);
-			}
-#endif
-			continue;
-		}
-
-		trustmem_type = ion_fd2sec_type(secMetadatas[i].ionFd, &sec,
-			&iommu_sec_id, &sec_handle);
-		secMetadatas[i].baseHandle = (uint64_t)sec_handle;
-#ifdef CONFIG_MTK_CMDQ_MBOX_EXT
-		secMetadatas[i].sec_id = iommu_sec_id;
-#else
-		secMetadatas[i].sec_id = trustmem_type;
-#endif
-		CMDQ_MSG("%s,port:%d,ionFd:%d,sec_id:%d,sec_handle:0x%#llx",
-				__func__, secMetadatas[i].port,
-				secMetadatas[i].ionFd,
-				secMetadatas[i].sec_id,
-				secMetadatas[i].baseHandle);
-	}
-	return 1;
-#else
-	return 0;
-#endif
-}
-
-#ifdef CONFIG_MTK_IN_HOUSE_TEE_SUPPORT
-static s32 mdp_init_secure_id_in_house(struct cmdqRecStruct *handle)
-{
-	u32 i;
-	ion_phys_addr_t sec_handle;
-	struct cmdqSecAddrMetadataStruct *secMetadatas = NULL;
-
-	if (!handle->secData.is_secure)
-		return 0;
-	secMetadatas = (struct cmdqSecAddrMetadataStruct *)handle->secData.addrMetadatas;
-
-	for (i = 0; i < handle->secData.addrMetadataCount; i++) {
-		secMetadatas[i].useSecIdinMeta = 1;
-		if (secMetadatas[i].ionFd <= 0) {
-			secMetadatas[i].sec_id = 0;
-			continue;
-		}
-
-		mdp_ion_import_sec_handle(secMetadatas[i].ionFd, &sec_handle);
-		secMetadatas[i].baseHandle = (uint64_t)sec_handle;
-
-		CMDQ_MSG("%s,port:%d,ionFd:%d,sec_id:%d,sec_handle:0x%#llx",
-				__func__, secMetadatas[i].port,
-				secMetadatas[i].ionFd,
-				secMetadatas[i].sec_id,
-				secMetadatas[i].baseHandle);
-	}
-	return 1;
-}
-#endif
-
 
 static int mdp_implement_read_v1(struct mdp_submit *user_job,
 				struct cmdqRecStruct *handle,
@@ -690,7 +801,8 @@ static int mdp_implement_read_v1(struct mdp_submit *user_job,
 			CMDQ_ERR("%s read:%d engine:%d offset:%#x addr:%#x\n",
 				__func__, i, hw_metas[i].engine,
 				hw_metas[i].offset, reg_addr);
-			continue;
+			status = -EINVAL;
+			break;
 		}
 		CMDQ_MSG("%s read:%d engine:%d offset:%#x addr:%#x\n",
 			__func__, i, hw_metas[i].engine,
@@ -768,20 +880,6 @@ s32 mdp_ioctl_async_exec(struct file *pf, unsigned long param)
 		goto done;
 	}
 
-#ifdef MDP_M4U_TEE_SUPPORT
-	if (atomic_cmpxchg(&m4u_init, 0, 1) == 0) {
-		m4u_sec_init();
-		CMDQ_LOG("[SEC] m4u_sec_init is called\n");
-	}
-#endif
-#ifdef MDP_M4U_MTEE_SEC_CAM_SUPPORT
-	if (atomic_cmpxchg(&m4u_gz_init_sec_cam, 0, 1) == 0) {
-		// 0: SEC_ID_SEC_CAM
-		m4u_gz_sec_init(0);
-		CMDQ_LOG("[SEC] m4u_gz_sec_init SEC_ID_SEC_CAM is called\n");
-	}
-#endif
-
 	/* setup secure data */
 	status = cmdq_mdp_handle_sec_setup(&user_job.secData, handle);
 	if (status < 0) {
@@ -792,10 +890,10 @@ s32 mdp_ioctl_async_exec(struct file *pf, unsigned long param)
 		goto done;
 	}
 
-	mdp_init_secure_id(handle);
-
-#ifdef CONFIG_MTK_IN_HOUSE_TEE_SUPPORT
-	mdp_init_secure_id_in_house(handle);
+#if IS_ENABLED(CONFIG_MTK_CMDQ_MBOX_EXT)
+	/* add perf begin for this handle->pkt while non-secure case */
+	if (!handle->secData.is_secure)
+		cmdq_pkt_perf_begin(handle->pkt);
 #endif
 
 	/* Make command from user job */
@@ -837,10 +935,6 @@ s32 mdp_ioctl_async_exec(struct file *pf, unsigned long param)
 
 	if (status < 0) {
 		CMDQ_ERR("%s flush fail:%d\n", __func__, status);
-#ifndef MDP_META_IN_LEGACY_V2
-		if (handle->thread != CMDQ_INVALID_THREAD)
-			cmdq_mdp_unlock_thread(handle);
-#endif
 		cmdq_task_destroy(handle);
 		kfree(mapping_job);
 		goto done;
@@ -878,7 +972,6 @@ done:
 	return status;
 }
 
-#ifdef CONFIG_MTK_CMDQ_MBOX_EXT
 void mdp_check_pending_task(struct mdp_job_mapping *mapping_job)
 {
 	struct cmdqRecStruct *handle = mapping_job->job;
@@ -899,10 +992,10 @@ void mdp_check_pending_task(struct mdp_job_mapping *mapping_job)
 
 	list_del(&mapping_job->list_entry);
 	for (i = 0; i < mapping_job->handle_count; i++)
-		mdp_ion_free_handle(mapping_job->handles[i]);
+		mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
+			mapping_job->attaches[i], mapping_job->sgts[i]);
 	kfree(mapping_job);
 }
-#endif
 
 s32 mdp_ioctl_async_wait(unsigned long param)
 {
@@ -933,9 +1026,7 @@ s32 mdp_ioctl_async_wait(unsigned long param)
 			break;
 		}
 
-#ifdef CONFIG_MTK_CMDQ_MBOX_EXT
 		mdp_check_pending_task(mapping_job);
-#endif
 	}
 	mutex_unlock(&mdp_job_mapping_list_mutex);
 
@@ -944,6 +1035,9 @@ s32 mdp_ioctl_async_wait(unsigned long param)
 		status = -EFAULT;
 		goto done;
 	}
+
+	/* prevent ioctl release when waiting for task done */
+	cmdq_remove_handle_from_handle_active(handle);
 
 	do {
 		/* wait for task done */
@@ -975,16 +1069,6 @@ s32 mdp_ioctl_async_wait(unsigned long param)
 
 		/* copy read result to user space */
 		status = mdp_process_read_request(&job_result.read_result);
-		mutex_lock(&rb_slot_list_mutex);
-		/* reference count for slot */
-		for (i = 0; i < ARRAY_SIZE(handle->slot_ids); i++) {
-			if (handle->slot_ids[i] != -1) {
-				rb_slot[handle->slot_ids[i]].ref_cnt--;
-				CMDQ_MSG("slot id %d, count-- by read > %d\n", handle->slot_ids[i],
-					rb_slot[handle->slot_ids[i]].ref_cnt);
-			}
-		}
-		mutex_unlock(&rb_slot_list_mutex);
 	} while (0);
 	exec_cost = div_u64(sched_clock() - exec_cost, 1000);
 	if (exec_cost > 150000)
@@ -992,7 +1076,8 @@ s32 mdp_ioctl_async_wait(unsigned long param)
 			exec_cost, handle);
 
 	for (i = 0; i < mapping_job->handle_count; i++)
-		mdp_ion_free_handle(mapping_job->handles[i]);
+		mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
+			mapping_job->attaches[i], mapping_job->sgts[i]);
 
 	kfree(mapping_job);
 	CMDQ_SYSTRACE_BEGIN("%s destroy\n", __func__);
@@ -1006,13 +1091,53 @@ done:
 	return status;
 }
 
+
+static s32 mdp_get_free_slots(u32 *rb_slot_index)
+{
+	u32 free_slot, free_slot_group;
+
+	mutex_lock(&rb_slot_list_mutex);
+	CMDQ_MSG("%s: start, rb_slot_vcp[0]:0x%llx, rb_slot_vcp[1]:0x%llx\n",
+		__func__, rb_slot_vcp[0], rb_slot_vcp[1]);
+
+	if (rb_slot_vcp[0] != ULLONG_MAX) {
+		CMDQ_MSG("%s: group 0 is not full, use group 0\n", __func__);
+		free_slot_group = 0;
+	} else if (rb_slot_vcp[1] != ULLONG_MAX) {
+		CMDQ_MSG("%s: group 1 is not full, use group 1\n", __func__);
+		free_slot_group = 1;
+	} else {
+		CMDQ_ERR("%s: group 0 and group 1 are both full\n", __func__);
+		mutex_unlock(&rb_slot_list_mutex);
+		return -EFAULT;
+	}
+
+	/* find slot id */
+	free_slot = ffz(rb_slot_vcp[free_slot_group]);
+	*rb_slot_index = free_slot + free_slot_group * SLOT_GROUP_NUM;
+
+	/* set rb_slot_vcp[free_slot_group] is used */
+	rb_slot_vcp[free_slot_group] |= 1LL << free_slot;
+	if (rb_slot_vcp[free_slot_group] == ULLONG_MAX)
+		CMDQ_MSG("%s: group %d is full\n", __func__, free_slot_group);
+
+	CMDQ_MSG("%s: return alloc_slot_index:%x, free_slot:%u, free_slot_group:%u\n",
+		 __func__, *rb_slot_index, free_slot, free_slot_group);
+	mutex_unlock(&rb_slot_list_mutex);
+
+	return 0;
+
+}
+
 s32 mdp_ioctl_alloc_readback_slots(void *fp, unsigned long param)
 {
 	struct mdp_readback rb_req;
 	dma_addr_t paStart = 0;
 	s32 status;
 	u32 free_slot, free_slot_group, alloc_slot_index;
-	u64 exec_cost = sched_clock();
+	u64 exec_cost = sched_clock(), alloc;
+	dma_addr_t vcp_iova_base = 0;
+	void *vcp_va_base;
 
 	if (copy_from_user(&rb_req, (void *)param, sizeof(rb_req))) {
 		CMDQ_ERR("%s copy_from_user failed\n", __func__);
@@ -1024,52 +1149,85 @@ s32 mdp_ioctl_alloc_readback_slots(void *fp, unsigned long param)
 		return -EINVAL;
 	}
 
-	status = cmdq_alloc_write_addr(rb_req.count, &paStart,
-		CMDQ_CLT_MDP, fp);
-	if (status != 0) {
-		CMDQ_ERR("%s alloc write address failed\n", __func__);
-		return status;
-	}
+	if (!cmdq_mdp_vcp_pq_readback_support()) {
+		status = cmdq_alloc_write_addr(rb_req.count, &paStart,
+			CMDQ_CLT_MDP, fp);
+		if (status != 0) {
+			CMDQ_ERR("%s alloc write address failed\n", __func__);
+			return status;
+		}
+		alloc = div_u64(sched_clock() - exec_cost, 1000);
 
-	mutex_lock(&rb_slot_list_mutex);
-	free_slot_group = ffz(alloc_slot_group);
-	if (unlikely(alloc_slot_group == ~0UL)) {
-		CMDQ_ERR("%s no free slot:%#llx\n", __func__, alloc_slot_group);
-		cmdq_free_write_addr(paStart, CMDQ_CLT_MDP);
-		mutex_unlock(&rb_slot_list_mutex);
-		return -ENOMEM;
-	}
-	/* find slot id */
-	free_slot = ffz(alloc_slot[free_slot_group]);
-	if (unlikely(alloc_slot[free_slot_group] == ~0UL)) {
-		CMDQ_ERR("%s not found free slot in %u: %#llx\n", __func__,
-			free_slot_group, alloc_slot[free_slot_group]);
-		cmdq_free_write_addr(paStart, CMDQ_CLT_MDP);
-		mutex_unlock(&rb_slot_list_mutex);
-		return -EFAULT;
-	}
-	alloc_slot[free_slot_group] |= 1LL << free_slot;
-	if (alloc_slot[free_slot_group] == ~0UL)
-		alloc_slot_group |= 1LL << free_slot_group;
+		mutex_lock(&rb_slot_list_mutex);
+		free_slot_group = ffz(alloc_slot_group);
+		if (unlikely(alloc_slot_group == ~0UL)) {
+			CMDQ_ERR("%s no free slot:%#llx\n", __func__, alloc_slot_group);
+			cmdq_free_write_addr(paStart, CMDQ_CLT_MDP);
+			mutex_unlock(&rb_slot_list_mutex);
+			return -ENOMEM;
+		}
+		/* find slot id */
+		free_slot = ffz(alloc_slot[free_slot_group]);
+		if (unlikely(alloc_slot[free_slot_group] == ~0UL)) {
+			CMDQ_ERR("%s not found free slot in %u: %#llx\n", __func__,
+				free_slot_group, alloc_slot[free_slot_group]);
+			cmdq_free_write_addr(paStart, CMDQ_CLT_MDP);
+			mutex_unlock(&rb_slot_list_mutex);
+			return -EFAULT;
+		}
+		alloc_slot[free_slot_group] |= 1LL << free_slot;
+		if (alloc_slot[free_slot_group] == ~0UL)
+			alloc_slot_group |= 1LL << free_slot_group;
 
-	alloc_slot_index = free_slot + free_slot_group * 64;
-	if (rb_slot[alloc_slot_index].ref_cnt) {
-		CMDQ_ERR("%s alloc slot which is being used, slot id: %d\n",
-			__func__, alloc_slot_index);
-		mutex_unlock(&rb_slot_list_mutex);
-		return -ENOMEM;
-	}
-	rb_slot[alloc_slot_index].count = rb_req.count;
-	rb_slot[alloc_slot_index].pa_start = paStart;
-	rb_slot[alloc_slot_index].fp = fp;
-	CMDQ_MSG("%s get 0x%pa in %d, fp:%p\n", __func__,
-		&paStart, alloc_slot_index, fp);
-	CMDQ_MSG("%s alloc slot[%d] %#llx, %#llx\n", __func__, free_slot_group,
-		alloc_slot[free_slot_group], alloc_slot_group);
-	mutex_unlock(&rb_slot_list_mutex);
+		alloc_slot_index = free_slot + free_slot_group * 64;
 
-	rb_req.start_id = alloc_slot_index << SLOT_ID_SHIFT;
-	CMDQ_MSG("%s get 0x%08x\n", __func__, rb_req.start_id);
+		rb_slot[alloc_slot_index].count = rb_req.count;
+		rb_slot[alloc_slot_index].pa_start = paStart;
+		rb_slot[alloc_slot_index].fp = fp;
+		CMDQ_MSG("%s get 0x%pa in %d, fp:%p\n", __func__,
+			&paStart, alloc_slot_index, fp);
+		CMDQ_MSG("%s alloc slot[%d] %#llx, %#llx\n", __func__, free_slot_group,
+			alloc_slot[free_slot_group], alloc_slot_group);
+		mutex_unlock(&rb_slot_list_mutex);
+
+		rb_req.start_id = alloc_slot_index << SLOT_ID_SHIFT;
+		CMDQ_MSG("%s get 0x%08x\n", __func__, rb_req.start_id);
+
+	} else {
+
+		free_slot = 0;
+		free_slot_group = 0;
+
+		/* find vcp base addr (va/iova) */
+		cmdq_vcp_enable(true);
+		vcp_va_base = cmdq_get_vcp_buf(CMDQ_VCP_ENG_MDP_HDR0, &vcp_iova_base);
+		vcp_paStart = vcp_iova_base;
+		cmdq_vcp_enable(false);
+
+		/* find slot id */
+		status = mdp_get_free_slots(&alloc_slot_index);
+		if (status != 0) {
+			CMDQ_ERR("%s get free rb_slot failed\n", __func__);
+			return status;
+		}
+
+		/* update paStart, and store to cmdq_ctx.writeAddrList */
+		status = cmdqCoreWriteAddressVcpAlloc(rb_req.count, &paStart,
+			CMDQ_CLT_MDP, fp, vcp_iova_base, vcp_va_base, alloc_slot_index);
+
+		alloc = div_u64(sched_clock() - exec_cost, 1000);
+
+		/* store to rb_slot[] */
+		rb_slot[alloc_slot_index].count = rb_req.count;
+		rb_slot[alloc_slot_index].pa_start = paStart;
+		rb_slot[alloc_slot_index].fp = fp;
+
+		rb_req.start_id = alloc_slot_index << SLOT_ID_SHIFT;
+
+		CMDQ_LOG_PQ("%s: rb_slot[%d], fp:%p, start_id:0x%x => pa:%pa, vcp_paStart:%pa\n",
+			__func__, alloc_slot_index, fp, rb_req.start_id, &paStart, &vcp_paStart);
+
+	}
 
 	if (copy_to_user((void *)param, &rb_req, sizeof(rb_req))) {
 		CMDQ_ERR("%s copy_to_user failed\n", __func__);
@@ -1078,8 +1236,8 @@ s32 mdp_ioctl_alloc_readback_slots(void *fp, unsigned long param)
 
 	exec_cost = div_u64(sched_clock() - exec_cost, 1000);
 	if (exec_cost > 10000)
-		CMDQ_LOG("[warn]%s cost:%lluus\n",
-			__func__, exec_cost);
+		CMDQ_LOG("[warn]%s cost:%lluus (%lluus)\n",
+			__func__, exec_cost, alloc);
 
 	return 0;
 }
@@ -1104,48 +1262,94 @@ s32 mdp_ioctl_free_readback_slots(void *fp, unsigned long param)
 		return -EINVAL;
 	}
 
-	mutex_lock(&rb_slot_list_mutex);
-	free_slot_group = free_slot_index >> 6;
-	free_slot = free_slot_index & 0x3f;
-	if (free_slot_group >= SLOT_GROUP_NUM) {
-		mutex_unlock(&rb_slot_list_mutex);
-		CMDQ_ERR("%s invalid group:%x\n", __func__, free_slot_group);
-		return -EINVAL;
-	}
-	if (!(alloc_slot[free_slot_group] & (1LL << free_slot))) {
-		mutex_unlock(&rb_slot_list_mutex);
-		CMDQ_ERR("%s %d not in group[%d]:%llx\n", __func__,
-			free_req.start_id, free_slot_group,
-			alloc_slot[free_slot_group]);
-		return -EINVAL;
-	}
-	if (rb_slot[free_slot_index].fp != fp) {
-		mutex_unlock(&rb_slot_list_mutex);
-		CMDQ_ERR("%s fp %p different:%p\n", __func__,
-			fp, rb_slot[free_slot_index].fp);
-		return -EINVAL;
-	}
-	if (rb_slot[free_slot_index].ref_cnt) {
-		CMDQ_ERR("%s slot id[%d] is in use, using slot count : %d\n", __func__,
-			free_slot_index, rb_slot[free_slot_index].ref_cnt);
-		mutex_unlock(&rb_slot_list_mutex);
-		return -EINVAL;
-	}
-	alloc_slot[free_slot_group] &= ~(1LL << free_slot);
-	if (alloc_slot[free_slot_group] != ~0UL)
-		alloc_slot_group &= ~(1LL << free_slot_group);
+	if (!cmdq_mdp_vcp_pq_readback_support()) {
+		mutex_lock(&rb_slot_list_mutex);
+		free_slot_group = free_slot_index >> 6;
+		free_slot = free_slot_index & 0x3f;
+		if (free_slot_group >= SLOT_GROUP_NUM) {
+			mutex_unlock(&rb_slot_list_mutex);
+			CMDQ_ERR("%s invalid group:%x\n", __func__, free_slot_group);
+			return -EINVAL;
+		}
+		if (!(alloc_slot[free_slot_group] & (1LL << free_slot))) {
+			mutex_unlock(&rb_slot_list_mutex);
+			CMDQ_ERR("%s %d not in group[%d]:%llx\n", __func__,
+				free_req.start_id, free_slot_group,
+				alloc_slot[free_slot_group]);
+			return -EINVAL;
+		}
+		if (rb_slot[free_slot_index].fp != fp) {
+			mutex_unlock(&rb_slot_list_mutex);
+			CMDQ_ERR("%s fp %p different:%p\n", __func__,
+				fp, rb_slot[free_slot_index].fp);
+			return -EINVAL;
+		}
+		alloc_slot[free_slot_group] &= ~(1LL << free_slot);
+		if (alloc_slot[free_slot_group] != ~0UL)
+			alloc_slot_group &= ~(1LL << free_slot_group);
 
-	paStart = rb_slot[free_slot_index].pa_start;
-	rb_slot[free_slot_index].count = 0;
-	rb_slot[free_slot_index].pa_start = 0;
-	CMDQ_MSG("%s free 0x%pa in %d, fp:%p\n", __func__,
-		&paStart, free_slot_index, rb_slot[free_slot_index].fp);
-	rb_slot[free_slot_index].fp = NULL;
-	CMDQ_MSG("%s alloc slot[%d] %#llx, %#llx\n", __func__, free_slot_group,
-		alloc_slot[free_slot_group], alloc_slot_group);
-	mutex_unlock(&rb_slot_list_mutex);
+		paStart = rb_slot[free_slot_index].pa_start;
 
-	return cmdq_free_write_addr(paStart, CMDQ_CLT_MDP);
+		rb_slot[free_slot_index].count = 0;
+		rb_slot[free_slot_index].pa_start = 0;
+		CMDQ_MSG("%s free 0x%pa in %d, fp:%p\n", __func__,
+			&paStart, free_slot_index, rb_slot[free_slot_index].fp);
+		rb_slot[free_slot_index].fp = NULL;
+		CMDQ_MSG("%s alloc slot[%d] %#llx, %#llx\n", __func__, free_slot_group,
+			alloc_slot[free_slot_group], alloc_slot_group);
+		mutex_unlock(&rb_slot_list_mutex);
+
+		return cmdq_free_write_addr(paStart, CMDQ_CLT_MDP);
+
+	} else {
+
+		mutex_lock(&rb_slot_list_mutex);
+
+		if (free_slot_index < 64) {
+			free_slot_group = 0;
+			free_slot = free_slot_index;
+		} else if (free_slot_index < 128) {
+			free_slot_group = 1;
+			free_slot = free_slot_index - 64;
+		} else {
+			mutex_unlock(&rb_slot_list_mutex);
+			CMDQ_ERR("%s: wrong:%x, start:%x\n", __func__,
+				free_slot_index, free_req.start_id);
+			return -EINVAL;
+		}
+
+		if (!(rb_slot_vcp[free_slot_group] & (1LL << free_slot))) {
+			mutex_unlock(&rb_slot_list_mutex);
+			CMDQ_ERR("%s: %d not in group[%d]:%llx\n", __func__,
+				free_slot_index, free_slot_group,
+				rb_slot_vcp[free_slot_group]);
+			return -EINVAL;
+		}
+
+		if (rb_slot[free_slot_index].fp != fp) {
+			mutex_unlock(&rb_slot_list_mutex);
+			CMDQ_ERR("%s: free slot %d, fp:%p different:%p\n", __func__,
+				free_slot_index, fp, rb_slot[free_slot_index].fp);
+			return -EINVAL;
+		}
+
+		/* set rb_slot_vcp[free_slot_group] is un-used */
+		rb_slot_vcp[free_slot_group] &= ~(1LL << free_slot);
+
+		paStart = rb_slot[free_slot_index].pa_start;
+
+		CMDQ_LOG_PQ("%s: rb_slot[%d], fp:%p, start_id:0x%x => pa:%pa\n",
+			__func__, free_slot_index, rb_slot[free_slot_index].fp,
+			free_req.start_id, &paStart);
+
+		rb_slot[free_slot_index].count = 0;
+		rb_slot[free_slot_index].pa_start = 0;
+		rb_slot[free_slot_index].fp = NULL;
+		mutex_unlock(&rb_slot_list_mutex);
+
+		return cmdqCoreWriteAddressVcpFree(paStart, CMDQ_CLT_MDP);
+	}
+
 }
 
 s32 mdp_ioctl_read_readback_slots(unsigned long param)
@@ -1298,7 +1502,8 @@ void mdp_ioctl_free_job_by_node(void *node)
 
 		list_del(&mapping_job->list_entry);
 		for (i = 0; i < mapping_job->handle_count; i++)
-			mdp_ion_free_handle(mapping_job->handles[i]);
+			mdp_ion_free_dma_buf(mapping_job->dma_bufs[i],
+				mapping_job->attaches[i], mapping_job->sgts[i]);
 		kfree(mapping_job);
 	}
 	mutex_unlock(&mdp_job_mapping_list_mutex);
@@ -1306,191 +1511,165 @@ void mdp_ioctl_free_job_by_node(void *node)
 
 void mdp_ioctl_free_readback_slots_by_node(void *fp)
 {
-	u32 i, free_slot_group, free_slot;
+	u32 i, free_slot_group = 0, free_slot = 0;
 	dma_addr_t paStart = 0;
 	u32 count = 0;
 
 	CMDQ_MSG("%s, node:%p\n", __func__, fp);
 
 	mutex_lock(&rb_slot_list_mutex);
-	for (i = 0; i < ARRAY_SIZE(rb_slot); i++) {
-		if (rb_slot[i].fp != fp || rb_slot[i].ref_cnt)
-			continue;
 
-		free_slot_group = i >> 6;
-		free_slot = i & 0x3f;
-		alloc_slot[free_slot_group] &= ~(1LL << free_slot);
-		if (alloc_slot[free_slot_group] != ~0UL)
-			alloc_slot_group &= ~(1LL << free_slot_group);
-		paStart = rb_slot[i].pa_start;
-		rb_slot[i].count = 0;
-		rb_slot[i].pa_start = 0;
-		rb_slot[i].fp = NULL;
-		CMDQ_MSG("%s free %pa in %u alloc slot[%d] %#llx, %#llx\n",
-			__func__, &paStart, i, free_slot_group,
-			alloc_slot[free_slot_group], alloc_slot_group);
-		cmdq_free_write_addr(paStart, CMDQ_CLT_MDP);
-		count++;
+	if (!cmdq_mdp_vcp_pq_readback_support()) {
+		for (i = 0; i < ARRAY_SIZE(rb_slot); i++) {
+			if (rb_slot[i].fp != fp)
+				continue;
+
+			free_slot_group = i >> 6;
+			free_slot = i & 0x3f;
+			alloc_slot[free_slot_group] &= ~(1LL << free_slot);
+			if (alloc_slot[free_slot_group] != ~0UL)
+				alloc_slot_group &= ~(1LL << free_slot_group);
+			paStart = rb_slot[i].pa_start;
+			rb_slot[i].count = 0;
+			rb_slot[i].pa_start = 0;
+			rb_slot[i].fp = NULL;
+			CMDQ_MSG("%s free %pa in %u alloc slot[%d] %#llx, %#llx\n",
+				__func__, &paStart, i, free_slot_group,
+				alloc_slot[free_slot_group], alloc_slot_group);
+			cmdq_free_write_addr(paStart, CMDQ_CLT_MDP);
+			count++;
+		}
+	} else {
+		for (i = 0; i < ARRAY_SIZE(rb_slot); i++) {
+			if (rb_slot[i].fp != fp)
+				continue;
+
+			if (i < 64) {
+				free_slot_group = 0;
+				free_slot = i;
+			} else if (i < 128) {
+				free_slot_group = 1;
+				free_slot = i - 64;
+			}
+
+			/* set rb_slot_vcp[free_slot_group] is un-used */
+			rb_slot_vcp[free_slot_group] &= ~(1LL << free_slot);
+
+			paStart = rb_slot[i].pa_start;
+			rb_slot[i].count = 0;
+			rb_slot[i].pa_start = 0;
+			rb_slot[i].fp = NULL;
+			CMDQ_LOG_PQ("%s free %pa in %u alloc slot[%d] %#llx\n",
+				__func__, &paStart, i, free_slot_group,
+				rb_slot_vcp[free_slot_group]);
+
+			cmdqCoreWriteAddressVcpFree(paStart, CMDQ_CLT_MDP);
+			count++;
+		}
 	}
 	mutex_unlock(&rb_slot_list_mutex);
 
 	CMDQ_LOG("%s free %u slot group by node %p\n", __func__, count, fp);
 }
 
-static long mdp_limit_ioctl(struct file *pf, unsigned int code,
-	unsigned long param)
+int mdp_limit_dev_create(struct platform_device *device)
 {
-	s32 status = 0;
-
-	CMDQ_VERBOSE("%s code:0x%08x f:0x%p\n", __func__, code, pf);
-
-	switch (code) {
-	case CMDQ_IOCTL_QUERY_USAGE:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_QUERY_USAGE\n");
-		status = cmdq_driver_ioctl_query_usage(pf, param);
-		break;
-	case CMDQ_IOCTL_QUERY_CAP_BITS:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_QUERY_CAP_BITS\n");
-		status = cmdq_driver_ioctl_query_cap_bits(param);
-		break;
-	case CMDQ_IOCTL_QUERY_DTS:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_QUERY_DTS\n");
-		status = cmdq_driver_ioctl_query_dts(param);
-		break;
-	case CMDQ_IOCTL_NOTIFY_ENGINE:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_NOTIFY_ENGINE\n");
-		status = cmdq_driver_ioctl_notify_engine(param);
-		break;
-	case CMDQ_IOCTL_ASYNC_EXEC:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_ASYNC_EXEC\n");
-		CMDQ_SYSTRACE_BEGIN("%s_async_exec\n", __func__);
-		status = mdp_ioctl_async_exec(pf, param);
-		CMDQ_SYSTRACE_END();
-		break;
-	case CMDQ_IOCTL_ASYNC_WAIT:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_ASYNC_WAIT\n");
-		CMDQ_SYSTRACE_BEGIN("%s_async_wait\n", __func__);
-		status = mdp_ioctl_async_wait(param);
-		CMDQ_SYSTRACE_END();
-		break;
-	case CMDQ_IOCTL_ALLOC_READBACK_SLOTS:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_ALLOC_READBACK_SLOTS\n");
-		status = mdp_ioctl_alloc_readback_slots(pf, param);
-		break;
-	case CMDQ_IOCTL_FREE_READBACK_SLOTS:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_FREE_READBACK_SLOTS\n");
-		status = mdp_ioctl_free_readback_slots(pf, param);
-		break;
-	case CMDQ_IOCTL_READ_READBACK_SLOTS:
-		CMDQ_MSG("ioctl CMDQ_IOCTL_READ_READBACK_SLOTS\n");
-		status = mdp_ioctl_read_readback_slots(param);
-		break;
-	default:
-		CMDQ_ERR("unrecognized ioctl 0x%08x\n", code);
-		return -ENOIOCTLCMD;
-	}
-
-	if (status < 0)
-		CMDQ_ERR("ioctl return fail:%d\n", status);
-
-	return status;
-}
-
-#ifdef CONFIG_COMPAT
-static long mdp_limit_ioctl_compat(struct file *pFile, unsigned int code,
-	unsigned long param)
-{
-	switch (code) {
-	case CMDQ_IOCTL_QUERY_USAGE:
-	case CMDQ_IOCTL_QUERY_CAP_BITS:
-	case CMDQ_IOCTL_QUERY_DTS:
-	case CMDQ_IOCTL_NOTIFY_ENGINE:
-	case CMDQ_IOCTL_ASYNC_EXEC:
-	case CMDQ_IOCTL_ASYNC_WAIT:
-	case CMDQ_IOCTL_ALLOC_READBACK_SLOTS:
-	case CMDQ_IOCTL_FREE_READBACK_SLOTS:
-	case CMDQ_IOCTL_READ_READBACK_SLOTS:
-		/* All ioctl structures should be the same size in
-		 * 32-bit and 64-bit linux.
-		 */
-		return mdp_limit_ioctl(pFile, code, param);
-	case CMDQ_IOCTL_LOCK_MUTEX:
-	case CMDQ_IOCTL_UNLOCK_MUTEX:
-		CMDQ_ERR("[COMPAT]deprecated ioctl 0x%08x\n", code);
-		return -ENOIOCTLCMD;
-	default:
-		CMDQ_ERR("[COMPAT]unrecognized ioctl 0x%08x\n", code);
-		return -ENOIOCTLCMD;
-	}
-
-	CMDQ_ERR("[COMPAT]unrecognized ioctl 0x%08x\n", code);
-	return -ENOIOCTLCMD;
-}
-#endif
-
-static const struct file_operations mdp_op_ex = {
-	.owner = THIS_MODULE,
-	.open = mdp_limit_open,
-	.release = mdp_limit_release,
-	.unlocked_ioctl = mdp_limit_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl = mdp_limit_ioctl_compat,
-#endif
-};
-
-static struct cdev *mdp_limit_cdev;
-#ifdef MDP_LIMIT_NODE
-static dev_t mdp_limit_dev_no;
-static struct class *mdp_limit_class;
-#endif
-
-int mdp_limit_late_init(void)
-{
-	mdp_ion_create("MDP");
+	INIT_LIST_HEAD(&job_mapping_list);
 
 	return 0;
 }
 
-int mdp_limit_dev_create(struct platform_device *device)
+static struct device *mdp_smmu_get_shared_device(struct device *dev, const char *name)
 {
-	int status = 0;
+	struct device_node *node;
+	struct platform_device *shared_pdev;
+	struct device *shared_dev = dev;
 
-	mdp_limit_cdev = cdev_alloc();
-	mdp_limit_cdev->owner = THIS_MODULE;
-	mdp_limit_cdev->ops = &mdp_op_ex;
+	node = of_parse_phandle(dev->of_node, name, 0);
+	if (node) {
+		shared_pdev = of_find_device_by_node(node);
+		if (shared_pdev)
+			shared_dev = &shared_pdev->dev;
+	}
 
-#ifdef MDP_LIMIT_NODE
-	status = alloc_chrdev_region(&mdp_limit_dev_no, 0, 1,
-		MDP_LIMIT_DRIVER_DEVICE_NAME);
-	if (status != 0)
-		CMDQ_ERR("Get MDP device major number(%d) failed(%d)\n",
-			mdp_limit_dev_no, status);
-	else
-		CMDQ_MSG("Get MDP device major number(%d) success(%d)\n",
-			mdp_limit_dev_no, status);
-
-	status = cdev_add(mdp_limit_cdev, mdp_limit_dev_no, 1);
-
-	mdp_limit_class = class_create(THIS_MODULE,
-		MDP_LIMIT_DRIVER_DEVICE_NAME);
-	device_create(mdp_limit_class, NULL, mdp_limit_dev_no, NULL,
-		MDP_LIMIT_DRIVER_DEVICE_NAME);
-#endif
-	INIT_LIST_HEAD(&job_mapping_list);
-
-	CMDQ_LOG("MDP limit dev create end\n");
-
-	return status;
+	return shared_dev;
 }
 
-void mdp_limit_dev_destroy(void)
+static int mdpsys_con_probe(struct platform_device *pdev)
 {
-#ifdef MDP_LIMIT_NODE
-	device_destroy(mdp_limit_class, mdp_limit_dev_no);
-	class_destroy(mdp_limit_class);
-	unregister_chrdev_region(mdp_limit_dev_no, 1);
-#endif
-	cdev_del(mdp_limit_cdev);
-	mdp_limit_cdev = NULL;
-	mdp_ion_destroy();
+	struct device *dev = &pdev->dev;
+	u32 dma_mask_bit = 0;
+	s32 ret;
+
+	CMDQ_LOG("%s\n", __func__);
+
+	mdpsys_con_ctx.dev = dev;
+
+	if (smmu_v3_enabled()) {
+		CMDQ_LOG("smmu on\n");
+		mdpsys_con_ctx.mmu_dev = mdp_smmu_get_shared_device(dev, "mtk,smmu-shared");
+		mdpsys_con_ctx.mmu_dev_sec = mdp_smmu_get_shared_device(dev, "mtk,smmu-shared-sec");
+	} else {
+		mdpsys_con_ctx.mmu_dev = dev;
+		ret = of_property_read_u32(dev->of_node, "dma-mask-bit",
+			&dma_mask_bit);
+		/* if not assign from dts, give default */
+		if (ret != 0 || !dma_mask_bit)
+			dma_mask_bit = MDP_DEFAULT_MASK_BITS;
+		ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(dma_mask_bit));
+		CMDQ_LOG("%s set dma mask bit:%u result:%d\n",
+			__func__, dma_mask_bit, ret);
+	}
+
+	CMDQ_LOG("%s done\n", __func__);
+
+	return 0;
 }
+
+static int mdpsys_con_remove(struct platform_device *pdev)
+{
+	CMDQ_LOG("%s\n", __func__);
+
+	mdpsys_con_ctx.dev = NULL;
+	mdpsys_con_ctx.mmu_dev = NULL;
+	mdpsys_con_ctx.mmu_dev_sec = NULL;
+
+	CMDQ_LOG("%s done\n", __func__);
+
+	return 0;
+}
+
+static const struct of_device_id mdpsyscon_of_ids[] = {
+	{.compatible = "mediatek,mdpsys_config",},
+	{}
+};
+
+static struct platform_driver mdpsyscon = {
+	.probe = mdpsys_con_probe,
+	.remove = mdpsys_con_remove,
+	.driver = {
+		.name = "mtk_mdpsys_con",
+		.owner = THIS_MODULE,
+		.pm = NULL,
+		.of_match_table = mdpsyscon_of_ids,
+	}
+};
+
+void mdpsyscon_init(void)
+{
+	int status;
+
+	status = platform_driver_register(&mdpsyscon);
+	if (status != 0) {
+		CMDQ_ERR("Failed to register the CMDQ driver(%d)\n", status);
+		return;
+	}
+}
+
+void mdpsyscon_deinit(void)
+{
+	platform_driver_unregister(&mdpsyscon);
+}
+
+MODULE_IMPORT_NS(DMA_BUF);
+MODULE_LICENSE("GPL");
