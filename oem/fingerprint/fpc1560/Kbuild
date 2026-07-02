@@ -1,7 +1,7 @@
-ifdef CONFIG_OEM_LAMU_FINGERPRINT
+ifneq ($(filter y m,$(CONFIG_OEM_LAMU_FINGERPRINT) $(CONFIG_OEM_FIRE_FINGERPRINT)),)
 	FP_OBJS += mtk_spi.o
 endif
 
 obj-$(CONFIG_OEM_LAMU_FINGERPRINT) += fpc_fingerprint.o
+obj-$(CONFIG_OEM_FIRE_FINGERPRINT) += fpc_fingerprint.o
 fpc_fingerprint-y := $(FP_OBJS)
-

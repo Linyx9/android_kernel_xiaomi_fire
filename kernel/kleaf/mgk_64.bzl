@@ -1719,6 +1719,17 @@ def get_overlay_modules_list():
 
     if "mt6768_overlay.config" in DEFCONFIG_OVERLAYS:
         mgk_64_kleaf_modules.append("//vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/build/connac1x/6768:wlan_drv_gen4m_6768")
+        for module in [
+            "//vendor/mediatek/kernel_modules/connectivity/gps/data_link/plat/v010:gps_drv_dl_v010",
+            "//vendor/mediatek/kernel_modules/connectivity/gps/data_link/plat/v030:gps_drv_dl_v030",
+            "//vendor/mediatek/kernel_modules/connectivity/gps/data_link/plat/v050:gps_drv_dl_v050",
+            "//vendor/mediatek/kernel_modules/connectivity/gps/data_link/plat/v051:gps_drv_dl_v051",
+            "//vendor/mediatek/kernel_modules/connectivity/gps/data_link/plat/v060:gps_drv_dl_v060",
+            "//vendor/mediatek/kernel_modules/connectivity/gps/data_link/plat/v061:gps_drv_dl_v061",
+            "//vendor/mediatek/kernel_modules/connectivity/gps/data_link/plat/v062:gps_drv_dl_v062",
+        ]:
+            if module in mgk_64_kleaf_modules:
+                mgk_64_kleaf_modules.remove(module)
         mgk_64_kleaf_modules.remove("//vendor/mediatek/kernel_modules/gpu:gpu")
         mgk_64_kleaf_modules.append("//vendor/mediatek/kernel_modules/gpu:gpu_mt6768")
         mgk_64_kleaf_modules.remove("//vendor/mediatek/kernel_modules/mtkcam/mtk-aie:mtk-aie")
@@ -2218,8 +2229,47 @@ def get_overlay_modules_list():
         mgk_64_platform_device_modules.pop("drivers/soc/mediatek/devapc/device-apc-mt6991.ko")
 
     if "fire_overlay.config" in DEFCONFIG_OVERLAYS:
+        for module in [
+            "//vendor/mediatek/kernel_modules/afs_common_utils:jank_detection_common_utils",
+            "//vendor/mediatek/kernel_modules/met_drv_secure_v3:met_drv_secure_v3",
+            "//vendor/mediatek/kernel_modules/met_drv_v3:met_drv_v3",
+        ]:
+            if module in mgk_64_kleaf_modules:
+                mgk_64_kleaf_modules.remove(module)
+        for module in [
+            "drivers/gpu/drm/mediatek/mediatek_v2/mediatek-drm.ko",
+            "drivers/gpu/drm/mediatek/mediatek_v2/mtk_disp_notify.ko",
+            "drivers/gpu/drm/mediatek/mediatek_v2/mtk_disp_sec.ko",
+            "drivers/gpu/drm/mediatek/mediatek_v2/mtk_panel_ext.ko",
+            "drivers/gpu/drm/mediatek/mediatek_v2/mtk_sync.ko",
+            "drivers/memory/mediatek/emi_legacy/emi-dummy.ko",
+            "drivers/memory/mediatek/emi_legacy/emi_legacy_v1/emicen.ko",
+            "drivers/memory/mediatek/emi_legacy/emi_legacy_v1/emictrl.ko",
+            "drivers/memory/mediatek/emi_legacy/emi_legacy_v1/emiisu.ko",
+            "drivers/memory/mediatek/emi_legacy/emi_legacy_v1/emimpu.ko",
+            "drivers/memory/mediatek/mtk_dramc.ko",
+            "drivers/misc/mediatek/aee/aed/aee_aed.ko",
+            "drivers/misc/mediatek/aee/aed/aee_rs.ko",
+            "drivers/misc/mediatek/btif/common/btif_drv.ko",
+            "drivers/misc/mediatek/conn_md/conn_md_drv.ko",
+            "drivers/misc/mediatek/conn_scp/connscp.ko",
+            "drivers/misc/mediatek/connectivity/connadp.ko",
+            "drivers/misc/mediatek/eccci/ccci_auxadc.ko",
+            "drivers/misc/mediatek/eccci/ccci_md_all.ko",
+            "drivers/misc/mediatek/eccci/fsm/ccci_fsm_scp.ko",
+            "drivers/misc/mediatek/eccci/hif/ccci_ccif.ko",
+            "drivers/misc/mediatek/eccci/hif/ccci_cldma.ko",
+            "drivers/misc/mediatek/eccci/hif/ccci_dpmaif.ko",
+        ]:
+            if module not in mgk_64_device_modules:
+                mgk_64_device_modules.append(module)
         mgk_64_device_modules.append("oem/devinfo/oem_devinfo.ko")
+        mgk_64_device_modules.append("oem/fingerprint/fpc1560/fpc_fingerprint.ko")
         mgk_64_device_modules.append("oem/fingerprint/goodix/gf_tee.ko")
+        mgk_64_device_modules.append("oem/panel/ocp2131_i2c.ko")
+        mgk_64_device_modules.append("oem/panel/dsi_panel_djn_nt36672s_672_1080x2400_vdo_60hz/dsi_panel_djn_nt36672s_672_1080x2400_vdo_60hz.ko")
+        mgk_64_device_modules.append("oem/panel/dsi_panel_tm_nt36528a_667_720x1604_vdo_90hz/dsi_panel_tm_nt36528a_667_720x1604_vdo_90hz.ko")
+        mgk_64_device_modules.append("oem/tinno_charger/oem_tinno_charger.ko")
         mgk_64_device_modules.append("oem/tinno_charger/typec/husb320/husb320.ko")
         mgk_64_device_modules.append("oem/touchscreen/nt36xxx/nt36xxx_tp.ko")
 

@@ -63,6 +63,13 @@ config OEM_FIRE_TOUCHSCREEN
 	help
 	  support fire oem_touch
 
+config OEM_FIRE_PANEL
+	tristate "oem fire panel"
+	depends on PROJECT_FIRE
+	default m
+	help
+	  support fire oem_panel
+
 config OEM_LAMU_PANEL
 	tristate "oem panel"
 	depends on PROJECT_LAMU

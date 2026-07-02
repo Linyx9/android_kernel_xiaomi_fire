@@ -730,6 +730,7 @@ static int mtk6797_probe(struct spi_device *spidev)
 {
 	struct device *dev = &spidev->dev;
 	struct device_node *fpc_node;
+	struct device_node *legacy_node;
 	struct fpc_data *fpc;
 	int rc = 0;
 	
@@ -744,7 +745,9 @@ static int mtk6797_probe(struct spi_device *spidev)
 	fpsensor_log(INFO_LOG, "fpc %s entry.\n", __func__);
 
 	fpc_node = spidev->dev.of_node;
-	spidev->dev.of_node = of_find_compatible_node(NULL, NULL, "mediatek,fpsensor");
+	legacy_node = of_find_compatible_node(NULL, NULL, "mediatek,fpsensor");
+	if (legacy_node)
+		spidev->dev.of_node = legacy_node;
 	if (!fpc_node) {
 		fpsensor_log(ERROR_LOG, "%s, no of node found\n", __func__);
 		rc = -EINVAL;
@@ -894,6 +897,7 @@ void mtk6797_remove(struct spi_device *spidev)
 
 static struct of_device_id mt6797_of_match[] = {
 	{ .compatible = "mediatek,fingerprint", },
+	{ .compatible = "fpc,fpc_spi", },
 	{}
 };
 MODULE_DEVICE_TABLE(of, mt6797_of_match);

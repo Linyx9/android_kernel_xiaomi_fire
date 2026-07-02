@@ -553,12 +553,15 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	fpc_spi@0 {
-		compatible = "fpc,fpc_spi";
+		compatible = "fpc,fpc_spi", "mediatek,fingerprint";
 		reg = <0>;
 		fpc,enable-wakeup;
 		spi-max-frequency = <10000000>;
 		netlink-event = <31>;
+		vio28-supply = <&mt_pmic_vldo28_ldo_reg>;
 		fp_vldo28-supply = <&mt_pmic_vldo28_ldo_reg>;
+		fpc,rst_gpio = <&pio 160 0>;
+		fpc,irq_gpio = <&pio 7 0>;
 		pinctrl-names = "fpsensor_fpc_rst_low", "fpsensor_fpc_rst_high", "fpsensor_fpc_cs_low", "fpsensor_fpc_cs_high";
 		pinctrl-0 = <&fpsensor_fpc_rst_low>;
 		pinctrl-1 = <&fpsensor_fpc_rst_high>;
@@ -567,11 +570,21 @@
 		status = "okay";
 	};
 };
+&fingerprint_fpc {
+	fpc,enable-wakeup;
+	vio28-supply = <&mt_pmic_vldo28_ldo_reg>;
+	fpc,rst_gpio = <&pio 160 0>;
+	fpc,irq_gpio = <&pio 7 0>;
+	status = "okay";
+};
 &goodix_fp {
 	interrupt-parent = <&pio>;
 	interrupts = <7 IRQ_TYPE_EDGE_RISING 7 0>;
+	gf,gpio_irq = <&pio 7 0>;
 	int-gpios = <&pio 7 0>;
+	vio28-supply = <&mt_pmic_vldo28_ldo_reg>;
 	fp_vldo28-supply = <&mt_pmic_vldo28_ldo_reg>;
+	goodix_rst = <&pio 160 0>;
 	pinctrl-names = "fpsensor_goodix_rst_low", "fpsensor_goodix_rst_high", "fpsensor_goodix_cs_low", "fpsensor_goodix_cs_high";
 	pinctrl-0 = <&fpsensor_goodix_rst_low>;
 	pinctrl-1 = <&fpsensor_goodix_rst_high>;
