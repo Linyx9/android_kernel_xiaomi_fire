@@ -1934,23 +1934,37 @@ static DEVICE_ATTR_RW(battery_protection_mode);
 /* TN End modified by jirui.li/860702 20240814 CR/EKLAMU-1339 */
 
 /* TN Begin modified by jirui.li/860702 20240814 CR/EKLAMU-30 */
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER) || IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 static ssize_t turbo_power_mode_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
 	struct mtk_charger *pinfo = dev->driver_data;
 	int value = 0;
 	int chr_type = get_charger_type(pinfo);
+
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER)
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 	if ((chr_type == POWER_SUPPLY_TYPE_USB_QC3 || chr_type == POWER_SUPPLY_TYPE_USB_QC3P || chr_type == POWER_SUPPLY_TYPE_USB_PDC) ||
 	    (pinfo->pe50.apdo_cap.pdp > 15 && chr_type == POWER_SUPPLY_TYPE_USB_DCP)) {
+#else
+	if (chr_type == POWER_SUPPLY_TYPE_USB_QC3 || chr_type == POWER_SUPPLY_TYPE_USB_QC3P ||
+	    chr_type == POWER_SUPPLY_TYPE_USB_PDC) {
+#endif
 		turbo_power_mode = 1;
 	} else {
 		turbo_power_mode = 0;
 	}
+#endif
 
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 	if (!IS_ERR_OR_NULL(pinfo->current_alg) && pinfo->current_alg->alg_id == PE5_ID) {
-		turbo_power_mode = 1;
+		value = 1;
 	}
-	value = turbo_power_mode || turbo_test_mode;
+#endif
+
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER)
+	value = value || turbo_power_mode || turbo_test_mode;
+#endif
 	chr_info("%s value %d\n", __func__, value);
 	return sprintf(buf, "%d\n", value);
 }
@@ -1961,15 +1975,18 @@ static ssize_t turbo_power_mode_store(struct device *dev,
 	signed int temp;
 	if (kstrtoint(buf, 10, &temp) == 0) {
 		chr_info("%s %s turbo_power_mode\n", __func__, temp ? "enable" : "disable");
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER)
 		if (temp == 1)
 			turbo_test_mode = 1;
 		else
 			turbo_test_mode = 0;
+#endif
 	} else
 		chr_err("%s: format error!\n", __func__);
 	return size;
 }
 static DEVICE_ATTR_RW(turbo_power_mode);
+#endif
 /* TN End modified by jirui.li/860702 20240814 CR/EKLAMU-30 */
 /* TN Begin modified by jirui.li/860702 20240814 CR/EKLAMU-202 */
 static ssize_t demo_mode_limit_show(struct device *dev,
@@ -4308,7 +4325,7 @@ static void charger_check_status(struct mtk_charger *info)
 	struct battery_thermal_protection_data *thermal;
 	int uisoc = 0;
 /* TN Begin modified by xinjun.lu/860715 20241011 CR/EKLAMU-202 */
-#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 	bool devchg1_en = false;
 	int batt_ma = get_battery_current(info);
 	int vbat = get_battery_voltage(info);
@@ -4461,12 +4478,17 @@ static void charger_check_status(struct mtk_charger *info)
 		charging = false;
 #endif
 
-#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER)
+	bool turbo_active = turbo_charger_active;
+#else
+	bool turbo_active = false;
+#endif
 	charger_dev_is_enabled(info->chg1_dev, &chg_dev_chgen);
 	if (info->dvchg1_dev)
 		charger_dev_is_enabled(info->dvchg1_dev, &devchg1_en);
 
-	if (chg_dev_chgen && !devchg1_en && !turbo_charger_active) {
+	if (chg_dev_chgen && !devchg1_en && !turbo_active) {
 		if (info->pe50.pres_chrg_step != STEP_FULL_PE50) {
 			if (temperature < BATTERY_TEMP_LOW || temperature > BATTERY_TEMP_HIGH) {
 				target_fv = pe50_get_ffc_fv(info, temperature);
@@ -5015,7 +5037,9 @@ static int mtk_charger_plug_out(struct mtk_charger *info)
 	info->ext_chr_type = POWER_SUPPLY_TYPE_UNKNOWN;
 	sw_jeita_enter_1A = false;
 	sw_jeita_enter_cv2 = false;
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 	info->pe50.pres_chrg_step = STEP_NONE_PE50;
+#endif
 	charger_dev_enable_termination(info->chg1_dev, true);
 	info->ignore_current_check_time = 0;
 	info->aicl_check = true;
@@ -5831,9 +5855,11 @@ static int mtk_charger_setup_files(struct platform_device *pdev)
 		goto _out;
 /* TN End modified by jirui.li/860702 20240814 CR/EKLAMU-1339 */
 /* TN Begin modified by jirui.li/860702 20240814 CR/EKLAMU-30 */
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER) || IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 	ret = device_create_file(&(pdev->dev), &dev_attr_turbo_power_mode);
 	if (ret)
 		goto _out;
+#endif
 /* TN End modified by jirui.li/860702 20240814 CR/EKLAMU-30 */
 /* TN Begin modified by jirui.li/860702 20240814 CR/EKLAMU-202 */
 	ret = device_create_file(&(pdev->dev), &dev_attr_demo_mode_limit);
@@ -6182,7 +6208,9 @@ static int psy_charger_set_property(struct power_supply *psy,
 #if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
 		if (info->disable_thermal_current_limit) {
 			info->chg_data[idx].thermal_charging_current_limit = -1;
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER)
 			g_thermal_charging_current_limit = -1;
+#endif
 		}
 #endif
 /* TN End modified by xinjun.lu/860715 20240719 CR/EKLAMU-202 */

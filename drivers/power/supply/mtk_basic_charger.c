@@ -536,7 +536,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	}
 #endif
 
-#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 	if (info->pe50.pres_chrg_step == STEP_FULL_PE50) {
 		pdata->charging_current_limit = 0;
 	}
@@ -566,7 +566,9 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 		pdata->thermal_input_current_limit = -1;
 		pdata2->thermal_charging_current_limit = -1;
 		pdata2->thermal_input_current_limit = -1;
+#if IS_ENABLED(CONFIG_OEM_TURBO_CHARGER)
 		g_thermal_charging_current_limit = -1;
+#endif
 	}
 #endif
 /* TN End modified by xinjun.lu/860715 20240719 CR/EKLAMU-202 */
@@ -769,7 +771,7 @@ static int do_algorithm(struct mtk_charger *info)
 		}
 	} else
 #endif /* CONFIG_OEM_TURBO_CHARGER */
-#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER) && IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 	{
 		if (info->pe50.pres_chrg_step == STEP_FULL_PE50)
 			chg_done = true;
@@ -803,12 +805,16 @@ static int do_algorithm(struct mtk_charger *info)
 			}
 		} else
 #endif /* CONFIG_OEM_TURBO_CHARGER */
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 		{
 			if (info->pe50.pres_chrg_step == STEP_FULL_PE50) {
 				info->pe50.pres_chrg_step = STEP_NORM_PE50;
 				chg_done = false;
 			}
 		}
+#else
+		chg_done = false;
+#endif
 	}
 
 	/* step 2:Plug out recharging condition */
@@ -817,8 +823,10 @@ static int do_algorithm(struct mtk_charger *info)
 		if (info->pres_chrg_step != STEP_FULL)
 			chg_done = false;
 #endif
+#if IS_ENABLED(CONFIG_PE50_FFC_SUPPORT)
 		if (info->pe50.pres_chrg_step != STEP_FULL_PE50)
 			chg_done = false;
+#endif
 	}
 
 	chr_info("%s:soc=%d chg_done=%d is_chg_done=%d\n", __func__, uisoc, chg_done, info->is_chg_done);

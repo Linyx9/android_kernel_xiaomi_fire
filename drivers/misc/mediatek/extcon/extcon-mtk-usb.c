@@ -29,12 +29,12 @@
 #include "../../../../oem/devinfo/dev_info.h"
 #endif
 
-#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER) && IS_ENABLED(CONFIG_OEM_SWITCH_CHARGER)
 static struct charger_device *primary_chg = NULL;
 #if IS_ENABLED(CONFIG_OEM_CHARGER_PUMP)
 static struct charger_device *primary_dvchg = NULL;
 #endif /* CONFIG_OEM_CHARGER_PUMP */
-#endif /* CONFIG_OEM_TINNO_CHARGER */
+#endif /* CONFIG_OEM_TINNO_CHARGER && CONFIG_OEM_SWITCH_CHARGER */
 /* TN End modified by hao.jia/809321 20240712 CR/EKLAMU-202 */
 
 /* TN Begin modified by jirui.li/860702 20240724 CR/EKLAMU-834 */
@@ -316,7 +316,7 @@ fail:
 }
 
 /* TN Begin modified by hao.jia/809321 20240712 CR/EKLAMU-202 */
-#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER)
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER) && IS_ENABLED(CONFIG_OEM_SWITCH_CHARGER)
 static int mtk_usb_extcon_set_vbus_v1(struct mtk_extcon_info *extcon, bool is_on)
 {
 	struct device *dev = extcon->dev;
@@ -363,18 +363,17 @@ static int mtk_usb_extcon_set_vbus_v1(struct mtk_extcon_info *extcon, bool is_on
 
 	return 0;
 }
-#endif /* CONFIG_OEM_TINNO_CHARGER */
+#endif /* CONFIG_OEM_TINNO_CHARGER && CONFIG_OEM_SWITCH_CHARGER */
 
 static int mtk_usb_extcon_set_vbus(struct mtk_extcon_info *extcon,
 							bool is_on)
 {
-	int ret;
-#if IS_ENABLED(CONFIG_OEM_SWITCH_CHARGER)
+	int ret = 0;
+#if IS_ENABLED(CONFIG_OEM_TINNO_CHARGER) && IS_ENABLED(CONFIG_OEM_SWITCH_CHARGER)
 	ret = mtk_usb_extcon_set_vbus_v1(extcon, is_on);
 #else
 	struct regulator *vbus = extcon->vbus;
 	struct device *dev = extcon->dev;
-	int ret;
 
 	/* vbus is optional */
 	if (!vbus || extcon->vbus_on == is_on)
@@ -1041,4 +1040,3 @@ module_exit(mtk_usb_extcon_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("MediaTek Extcon USB Driver");
-
