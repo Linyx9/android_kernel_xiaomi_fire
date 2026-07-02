@@ -1,7 +1,7 @@
 #
 # Synaptics DSX touchscreen driver configuration
 #
-menuconfig TOUCHSCREEN_SYNAPTICS_DSX
+menuconfig TOUCHSCREEN_SYNAPTICS_DSX_96789
 	bool "Synaptics DSX touchscreen"
 	default y
 	help
@@ -10,18 +10,18 @@ menuconfig TOUCHSCREEN_SYNAPTICS_DSX
 
 	  If unsure, say N.
 
-if TOUCHSCREEN_SYNAPTICS_DSX
+if TOUCHSCREEN_SYNAPTICS_DSX_96789
 
 choice
-	default TOUCHSCREEN_SYNAPTICS_DSX_I2C
+	default TOUCHSCREEN_SYNAPTICS_DSX_96789_I2C
 	prompt "Synaptics DSX bus interface"
-config TOUCHSCREEN_SYNAPTICS_DSX_I2C
+config TOUCHSCREEN_SYNAPTICS_DSX_96789_I2C
 	bool "RMI over I2C"
 	depends on I2C
-config TOUCHSCREEN_SYNAPTICS_DSX_SPI
+config TOUCHSCREEN_SYNAPTICS_DSX_96789_SPI
 	bool "RMI over SPI"
 	depends on SPI_MASTER
-config TOUCHSCREEN_SYNAPTICS_DSX_RMI_HID_I2C
+config TOUCHSCREEN_SYNAPTICS_DSX_96789_RMI_HID_I2C
 	bool "HID over I2C"
 	depends on I2C
 endchoice
@@ -39,7 +39,7 @@ config TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 
 config TOUCHSCREEN_SYNAPTICS_DSX_RMI_DEV
 	tristate "Synaptics DSX RMI device module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 	help
 	  Say Y here to enable support for direct RMI register access.
 
@@ -50,7 +50,7 @@ config TOUCHSCREEN_SYNAPTICS_DSX_RMI_DEV
 
 config TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE
 	tristate "Synaptics DSX firmware update module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 	help
 	  Say Y here to enable support for doing firmware update.
 
@@ -61,7 +61,7 @@ config TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE
 
 config TOUCHSCREEN_SYNAPTICS_DSX_TEST_REPORTING
 	tristate "Synaptics DSX test reporting module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 	help
 	  Say Y here to enable support for retrieving production test reports.
 
@@ -72,7 +72,7 @@ config TOUCHSCREEN_SYNAPTICS_DSX_TEST_REPORTING
 
 config TOUCHSCREEN_SYNAPTICS_DSX_PROXIMITY
 	tristate "Synaptics DSX proximity module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 	help
 	  Say Y here to enable support for proximity functionality.
 	  If unsure, say N.
@@ -81,7 +81,7 @@ config TOUCHSCREEN_SYNAPTICS_DSX_PROXIMITY
 
 config TOUCHSCREEN_SYNAPTICS_DSX_ACTIVE_PEN
 	tristate "Synaptics DSX active pen module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 	help
 	  Say Y here to enable support for active pen functionality.
 	  If unsure, say N.
@@ -90,7 +90,7 @@ config TOUCHSCREEN_SYNAPTICS_DSX_ACTIVE_PEN
 
 config TOUCHSCREEN_SYNAPTICS_DSX_GESTURE
 	tristate "Synaptics DSX user defined gesture module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 	help
 	  Say Y here to enable support for user defined gesture functionality.
 	  If unsure, say N.
@@ -99,7 +99,7 @@ config TOUCHSCREEN_SYNAPTICS_DSX_GESTURE
 
 config TOUCHSCREEN_SYNAPTICS_DSX_VIDEO
 	tristate "Synaptics DSX video module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 	help
 	  Say Y here to enable support for video communication functionality.
 	  If unsure, say N.
@@ -108,7 +108,7 @@ config TOUCHSCREEN_SYNAPTICS_DSX_VIDEO
 
 config TOUCHSCREEN_SYNAPTICS_DSX_DEBUG
 	tristate "Synaptics DSX debug module"
-	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE_96789
 	help
 	  Say Y here to enable support for firmware debug functionality.
 	  If unsure, say N.
