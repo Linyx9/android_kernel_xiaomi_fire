@@ -6,6 +6,7 @@ package(
 
 
 load("//build/bazel_mgk_rules:mgk.bzl", "define_mgk")
+load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
 
 mgk_kmi_symbol_list = "//kernel-6.6:android/abi_gki_aarch64_mtk"
 
@@ -21,6 +22,14 @@ filegroup(
             # FIXME
             "Makefile.ext",
             "certs/mtk_signing_key.pem",
+            "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mediatek_v2:Kconfig",
+            "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mediatek_v2:mtk_drm_edp/Kconfig",
+            "//kernel_device_modules-6.6/drivers/memory/mediatek:Kconfig",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/btif:Kconfig",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/conn_md:Kconfig",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/conn_scp:Kconfig",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/connectivity:Kconfig",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/eccci:Kconfig",
         ],
 )
 filegroup(
@@ -29,6 +38,37 @@ filegroup(
             "include/dt-bindings/**",
             "include/dtc/**",
         ]),
+)
+
+filegroup(
+        name = "mgk_subpackage_sources",
+        srcs = [
+            "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mediatek_v2:sources",
+            "//kernel_device_modules-6.6/drivers/gpu/mediatek/gpueb:sources",
+            "//kernel_device_modules-6.6/drivers/gpu/mediatek/mt-plat:sources",
+            "//kernel_device_modules-6.6/drivers/memory/mediatek:sources",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/aee/aed:sources",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/btif:sources",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/conn_md:sources",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/conn_scp:sources",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/connectivity:sources",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/eccci:sources",
+        ],
+)
+
+ddk_headers(
+        name = "headers",
+        hdrs = glob([
+            "arch/arm64/include/**/*.h",
+            "drivers/misc/mediatek/include/**/*.h",
+            "include/**/*.h",
+        ]),
+        includes = [
+            "arch/arm64/include",
+            "drivers/misc/mediatek/include",
+            "drivers/misc/mediatek/include/mt-plat",
+            "include",
+        ],
 )
 
 # mgk_64_k66

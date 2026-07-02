@@ -1,0 +1,37 @@
+load("//build/bazel_mgk_rules:mgk_ko.bzl", "define_mgk_ko")
+load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+)
+
+exports_files([
+    "Kconfig",
+])
+
+filegroup(
+    name = "sources",
+    srcs = glob([
+        "**",
+    ], exclude = [
+        "BUILD.bazel",
+    ]),
+)
+
+define_mgk_ko(
+    name = "connadp",
+)
+
+ddk_headers(
+    name = "connadp_headers",
+    hdrs = glob([
+        "**/*.h",
+    ]),
+    includes = [
+        ".",
+        "common",
+        "power_throttling",
+    ],
+)

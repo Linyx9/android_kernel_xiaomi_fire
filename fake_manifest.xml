@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest>
+  <project name="build/bazel_mgk_rules" path="build/bazel_mgk_rules"/>
+  <project name="build/kernel" path="build/kernel"/>
   <project name="kernel-6.6" path="kernel-6.6"/>
+  <project name="kernel_device_modules-6.6" path="kernel_device_modules-6.6"/>
+  <project name="vendor/mediatek/kernel_modules/afs_common_utils" path="vendor/mediatek/kernel_modules/afs_common_utils"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/bt/linux_v2" path="vendor/mediatek/kernel_modules/connectivity/bt/linux_v2"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/bt/mt66xx" path="vendor/mediatek/kernel_modules/connectivity/bt/mt66xx"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/bt/mt76xx/sdio" path="vendor/mediatek/kernel_modules/connectivity/bt/mt76xx/sdio"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/common" path="vendor/mediatek/kernel_modules/connectivity/common"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/connfem" path="vendor/mediatek/kernel_modules/connectivity/connfem"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/conninfra" path="vendor/mediatek/kernel_modules/connectivity/conninfra"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/fmradio" path="vendor/mediatek/kernel_modules/connectivity/fmradio"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/gps" path="vendor/mediatek/kernel_modules/connectivity/gps"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/wlan/adaptor" path="vendor/mediatek/kernel_modules/connectivity/wlan/adaptor"/>
+  <project name="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m" path="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m"/>
+  <project name="vendor/mediatek/kernel_modules/gpu" path="vendor/mediatek/kernel_modules/gpu"/>
+  <project name="vendor/mediatek/kernel_modules/met_drv_v2" path="vendor/mediatek/kernel_modules/met_drv_v2"/>
+  <project name="vendor/mediatek/kernel_modules/met_drv_v3" path="vendor/mediatek/kernel_modules/met_drv_v3"/>
+  <project name="vendor/mediatek/kernel_modules/mtkcam" path="vendor/mediatek/kernel_modules/mtkcam"/>
+  <project name="vendor/mediatek/kernel_modules/udc" path="vendor/mediatek/kernel_modules/udc"/>
 </manifest>
