@@ -834,6 +834,7 @@ MAKE_ARGS=(
 	READELF=llvm-readelf
 	STRIP=llvm-strip
 	CROSS_COMPILE=aarch64-linux-gnu-
+	LOCALVERSION="${LOCALVERSION:-}"
 )
 MAKE_TARGETS=()
 if [[ -n "${BUILD_TARGETS:-}" ]]; then
