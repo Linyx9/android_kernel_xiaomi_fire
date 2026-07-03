@@ -5612,16 +5612,8 @@ skip_resume:
 	if (restore_backlight)
 		primary_display_last_normal_backlight = restore_backlight;
 
-	disp_lcm_set_backlight(pgc->plcm, NULL, level);
-	primary_display_aod_backlight_active = true;
+	primary_display_setbacklight_internal(level, false, true, false);
 	primary_display_restore_backlight_on_resume = true;
-
-	DISPCHECK("%s keep AOD stream alive, level=%d\n", __func__, level);
-	cmdqCoreSetEvent(CMDQ_SYNC_TOKEN_STREAM_EOF);
-	cmdqCoreSetEvent(CMDQ_SYNC_TOKEN_CABC_EOF);
-	cmdqCoreSetEvent(CMDQ_EVENT_MUTEX0_STREAM_EOF);
-	_primary_path_unlock(__func__);
-	return 0;
 
 	/* blocking flush before stop trigger loop */
 	_blocking_flush();
