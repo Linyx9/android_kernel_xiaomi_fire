@@ -12,6 +12,9 @@
 #
 # Makefile for the GenieZone KREE driver
 #
+
+ifneq ($(KERNELRELEASE),)
+
 GZ_SEC_STORAGE_UT := y
 
 ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/geniezone/include
@@ -20,6 +23,13 @@ ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/memory-ssmr
 ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/trusted_mem/public
 ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/trusted_mem/ssmr
 ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/dma-buf/heaps
+
+ifneq ($(COMMON_OUT_DIR),)
+DEVICE_MODULES_SYMVERS := $(COMMON_OUT_DIR)/$(notdir $(DEVICE_MODULES_PATH))
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/Module.symvers)
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/dma-buf/heaps/Module.symvers)
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/trusted_mem/Module.symvers)
+endif
 
 $(info ************  drivers/trusty/mtee-kree mk ************)
 
@@ -66,4 +76,13 @@ gz_tz_system-objs += tz_system.o mtee-kree/tz_mmap.o mtee-kree/kree_mem.o
 
 ifndef CONFIG_GRT_HYPERVISOR
   obj-$(CONFIG_MTK_ENABLE_GENIEZONE) += gz-trusty/
+endif
+
+else
+KERNELDIR ?= $(if $(KERNEL_SRC),$(KERNEL_SRC),/lib/modules/$(shell uname -r)/build)
+M ?= $(shell pwd)
+
+default: modules
+modules modules_install:
+	$(MAKE) -C $(KERNELDIR) O=$(O) M=$(M) $@
 endif

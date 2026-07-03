@@ -17,9 +17,6 @@ filegroup(
 
 define_mgk_ko(
     name = "mtk-cmdq-drv-ext",
-    deps = [
-        "//kernel_device_modules-6.6/drivers/misc/mediatek/mmp/src:mmprofile",
-    ],
     outs = [
         "cmdq-platform-mt6768.ko",
         "cmdq-sec-drv.ko",

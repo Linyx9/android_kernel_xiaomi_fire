@@ -32,6 +32,8 @@ filegroup(
             "//kernel_device_modules-6.6/drivers/misc/mediatek/conn_scp:Kconfig",
             "//kernel_device_modules-6.6/drivers/misc/mediatek/connectivity:Kconfig",
             "//kernel_device_modules-6.6/drivers/misc/mediatek/eccci:Kconfig",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/geniezone:Kconfig",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/geniezone:gz-trusty/Kconfig",
         ],
 )
 filegroup(
@@ -58,6 +60,7 @@ filegroup(
             "//kernel_device_modules-6.6/drivers/misc/mediatek/connectivity:sources",
             "//kernel_device_modules-6.6/drivers/misc/mediatek/cmdq/mailbox:sources",
             "//kernel_device_modules-6.6/drivers/misc/mediatek/eccci:sources",
+            "//kernel_device_modules-6.6/drivers/misc/mediatek/geniezone:sources",
             "//kernel_device_modules-6.6/drivers/misc/mediatek/mme/src:sources",
             "//kernel_device_modules-6.6/drivers/misc/mediatek/mmp/src:sources",
             "//kernel_device_modules-6.6/drivers/misc/mediatek/mtk-interconnect:sources",
