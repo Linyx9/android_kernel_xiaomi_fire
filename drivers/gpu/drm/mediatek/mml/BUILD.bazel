@@ -22,7 +22,9 @@ filegroup(
 define_mgk_ko(
     name = "mtk-mml",
     deps = [
+        "//kernel_device_modules-6.6/drivers/dma-buf/heaps:system_heap",
         "//kernel_device_modules-6.6/drivers/misc/mediatek/aee/aed:aee_aed",
+        "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mtk_sync:mtk_sync",
         "//kernel_device_modules-6.6/drivers/misc/mediatek/cmdq/mailbox:mtk-cmdq-drv-ext",
         "//kernel_device_modules-6.6/drivers/misc/mediatek/mme/src:mme",
         "//kernel_device_modules-6.6/drivers/misc/mediatek/mmp/src:mmprofile",

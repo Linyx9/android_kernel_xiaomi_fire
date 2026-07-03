@@ -168,7 +168,6 @@ obj-$(CONFIG_DRM_MEDIATEK_HDMI) += mediatek-drm-hdmi.o
 mediatek-drm-$(CONFIG_DRM_FBDEV_EMULATION) += mtk_drm_fbdev.o
 
 obj-$(CONFIG_DEVICE_MODULES_DRM_MEDIATEK) += mediatek-drm.o
-obj-$(CONFIG_DEVICE_MODULES_DRM_MEDIATEK) += mtk_sync.o
 
 obj-$(CONFIG_DEVICE_MODULES_DRM_MEDIATEK) += mtk_panel_ext.o
 obj-$(CONFIG_DEVICE_MODULES_DRM_MEDIATEK) += mtk_disp_notify.o

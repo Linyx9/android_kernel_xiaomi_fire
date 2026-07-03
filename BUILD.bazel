@@ -22,6 +22,7 @@ filegroup(
             # FIXME
             "Makefile.ext",
             "certs/mtk_signing_key.pem",
+            "//kernel_device_modules-6.6/drivers/dma-buf/heaps:Kconfig",
             "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mediatek_v2:Kconfig",
             "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mediatek_v2:mtk_drm_edp/Kconfig",
             "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mml:Kconfig",
@@ -47,8 +48,10 @@ filegroup(
 filegroup(
         name = "mgk_subpackage_sources",
         srcs = [
+            "//kernel_device_modules-6.6/drivers/dma-buf/heaps:sources",
             "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mediatek_v2:sources",
             "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mml:sources",
+            "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mtk_sync:sources",
             "//kernel_device_modules-6.6/drivers/gpu/mediatek/gpueb:sources",
             "//kernel_device_modules-6.6/drivers/gpu/mediatek/mt-plat:sources",
             "//kernel_device_modules-6.6/drivers/memory/mediatek:sources",
@@ -103,6 +106,16 @@ load("//kernel_device_modules-6.6:kernel/kleaf/mgk_64.bzl",
      "mgk_64_platform_device_user_modules"
 )
 
+
+# FIRE 6.6 local extra device module outs
+_fire_extra_module_outs = [
+    "drivers/dma-buf/heaps/mtk_heap_debug.ko",
+    "drivers/dma-buf/heaps/mtk_heap_refill.ko",
+    "drivers/dma-buf/heaps/mtk_sec_heap.ko",
+    "drivers/dma-buf/heaps/system_heap.ko",
+    "drivers/gpu/drm/mediatek/mtk_sync/mtk_sync.ko",
+]
+
 define_mgk(
     name = "mgk_64_k66",
     defconfig = mgk_64_defconfig,
@@ -114,7 +127,7 @@ define_mgk(
     common_eng_modules = mgk_64_common_eng_modules,
     common_userdebug_modules = mgk_64_common_userdebug_modules,
     common_user_modules = mgk_64_common_user_modules,
-    device_modules = mgk_64_device_modules,
+    device_modules = mgk_64_device_modules + _fire_extra_module_outs,
     platform_device_modules = mgk_64_platform_device_modules,
     device_eng_modules = mgk_64_device_eng_modules,
     platform_device_eng_modules = mgk_64_platform_device_eng_modules,
