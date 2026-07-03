@@ -16,9 +16,8 @@ filegroup(
 )
 
 define_mgk_ko(
-    name = "aee_aed",
+    name = "mrdump",
     outs = [
-        "aee_aed.ko",
-        "aee_rs.ko",
+        "mrdump.ko",
     ],
 )

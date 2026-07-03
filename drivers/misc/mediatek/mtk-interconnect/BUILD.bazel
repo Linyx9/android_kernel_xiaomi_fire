@@ -6,6 +6,10 @@ package(
     ],
 )
 
+exports_files([
+    "Kconfig",
+])
+
 filegroup(
     name = "sources",
     srcs = glob([
@@ -16,9 +20,8 @@ filegroup(
 )
 
 define_mgk_ko(
-    name = "aee_aed",
+    name = "mtk-icc-core",
     outs = [
-        "aee_aed.ko",
-        "aee_rs.ko",
+        "mtk-icc-core.ko",
     ],
 )

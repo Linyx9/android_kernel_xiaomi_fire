@@ -8,7 +8,6 @@ package(
 
 exports_files([
     "Kconfig",
-    "mtk_drm_edp/Kconfig",
 ])
 
 filegroup(
@@ -21,18 +20,15 @@ filegroup(
 )
 
 define_mgk_ko(
-    name = "mtk_disp_notify",
+    name = "mtk-mml",
     deps = [
-        "//kernel_device_modules-6.6/drivers/gpu/drm/mediatek/mml:mtk-mml",
-        "//kernel_device_modules-6.6/drivers/misc/mediatek/aee/mrdump:mrdump",
+        "//kernel_device_modules-6.6/drivers/misc/mediatek/aee/aed:aee_aed",
+        "//kernel_device_modules-6.6/drivers/misc/mediatek/cmdq/mailbox:mtk-cmdq-drv-ext",
         "//kernel_device_modules-6.6/drivers/misc/mediatek/mme/src:mme",
         "//kernel_device_modules-6.6/drivers/misc/mediatek/mmp/src:mmprofile",
+        "//kernel_device_modules-6.6/drivers/misc/mediatek/mtk-interconnect:mtk-icc-core",
     ],
     outs = [
-        "mediatek-drm.ko",
-        "mtk_disp_notify.ko",
-        "mtk_disp_sec.ko",
-        "mtk_panel_ext.ko",
-        "mtk_sync.ko",
+        "mtk-mml.ko",
     ],
 )
