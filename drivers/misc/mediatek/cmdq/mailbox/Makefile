@@ -1,4 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0
+ifneq ($(KERNELRELEASE),)
+
+ifneq ($(DEVICE_MODULES_PATH),)
+LINUXINCLUDE := -I$(DEVICE_MODULES_PATH)/include $(LINUXINCLUDE)
+endif
+
 #
 # Copyright (c) 2021 MediaTek Inc.
 #
@@ -50,72 +56,31 @@ mtk-cmdq-drv-ext-y := mtk-cmdq-mailbox-ext.o mtk-cmdq-helper-ext.o cmdq-util.o
 
 obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-test.o
 
+cmdq-platform := $(strip $(if $(MTK_PLATFORM),$(MTK_PLATFORM),$(subst ",,$(CONFIG_MTK_LEGACY_PLATFORM))))
+cmdq-platform-candidates := mt6833 mt6873 mt6853 mt6885 mt6893 mt6983 mt6879 mt6895 \
+                            mt6855 mt6985 mt6886 mt6897 mt6989 mt6878 mt6768 mt6761 \
+                            mt6991 mt6877 mt6765 mt6781 mt6899
+
 ifeq ($(CONFIG_MTK_CMDQ_MBOX_EXT), y)
 obj-$(CONFIG_MTK_CMDQ_MBOX_EXT_MT6768) += cmdq-platform-mt6768.o
 obj-$(CONFIG_MTK_CMDQ_MBOX_EXT_MT6761) += cmdq-platform-mt6761.o
 obj-$(CONFIG_MTK_CMDQ_MBOX_EXT_MT6765) += cmdq-platform-mt6765.o
 else
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6833.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6833.o
+ifneq ($(cmdq-platform),)
+ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-$(cmdq-platform).c),)
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-$(cmdq-platform).o
 endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6873.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6873.o
+else
+cmdq-platform-existing := $(foreach p,$(cmdq-platform-candidates),$(if $(wildcard $(srctree)/$(src)/cmdq-platform-$(p).c),cmdq-platform-$(p).o))
+obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += $(cmdq-platform-existing)
 endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6853.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6853.o
 endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6885.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6885.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6893.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6893.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6983.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6983.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6879.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6879.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6895.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6895.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6855.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6855.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6985.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6985.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6886.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6886.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6897.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6897.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6989.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6989.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6878.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6878.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6768.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6768.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6761.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6761.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6991.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6991.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6877.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6877.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6765.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6765.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6781.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6781.o
-endif
-ifneq ($(wildcard $(srctree)/$(src)/cmdq-platform-mt6899.c),)
-obj-$(CONFIG_MTK_CMDQ_MBOX_EXT) += cmdq-platform-mt6899.o
-endif
+
+else
+KERNELDIR ?= $(if $(KERNEL_SRC),$(KERNEL_SRC),/lib/modules/$(shell uname -r)/build)
+M ?= $(shell pwd)
+
+default: modules
+modules modules_install:
+	$(MAKE) -C $(KERNELDIR) O=$(O) M=$(M) $@
 endif

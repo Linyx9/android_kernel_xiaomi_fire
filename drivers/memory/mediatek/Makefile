@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0
+ifneq ($(KERNELRELEASE),)
+
 ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/include/
 ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/memory/mediatek/
+ccflags-y += -I$(DEVICE_MODULES_PATH)/include/
 
 obj-$(CONFIG_MTK_DRAMC)    += mtk_dramc.o
 mtk_dramc-objs	+= dramc.o dramc_bin.o
@@ -20,3 +23,11 @@ obj-$(CONFIG_MTK_EMI_MPU_TEST) += emi-mpu-test.o
 obj-$(CONFIG_MTK_EMI_MPU_TEST) += emi-mpu-test-v2.o
 endif
 
+else
+KERNELDIR ?= $(if $(KERNEL_SRC),$(KERNEL_SRC),/lib/modules/$(shell uname -r)/build)
+M ?= $(shell pwd)
+
+default: modules
+modules modules_install:
+	$(MAKE) -C $(KERNELDIR) O=$(O) M=$(M) $@
+endif

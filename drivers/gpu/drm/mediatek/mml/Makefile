@@ -1,4 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0
+ifneq ($(KERNELRELEASE),)
+
+ifneq ($(DEVICE_MODULES_PATH),)
+LINUXINCLUDE := -I$(DEVICE_MODULES_PATH)/include $(LINUXINCLUDE)
+endif
+
 #
 # Copyright (C) 2021 MediaTek Inc.
 #
@@ -31,6 +37,15 @@ ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/gpu/drm/mediatek/mediatek_v2 \
 
 ifneq ($(filter y m, $(CONFIG_MTK_MME_SUPPORT)),)
 ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/misc/mediatek/mme
+endif
+
+ifneq ($(COMMON_OUT_DIR),)
+DEVICE_MODULES_SYMVERS := $(COMMON_OUT_DIR)/$(notdir $(DEVICE_MODULES_PATH))
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/aee/aed/Module.symvers)
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/cmdq/mailbox/Module.symvers)
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/mme/src/Module.symvers)
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/mmp/src/Module.symvers)
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/mtk-interconnect/Module.symvers)
 endif
 
 obj-$(CONFIG_MTK_MML_LEGACY) := mtk-mml.o
@@ -143,5 +158,11 @@ ifeq ($(strip $(MGK_INTERNAL)),true)
 ccflags-y += -DMML_IR_SUPPORT
 endif
 
+else
+KERNELDIR ?= $(if $(KERNEL_SRC),$(KERNEL_SRC),/lib/modules/$(shell uname -r)/build)
+M ?= $(shell pwd)
 
-
+default: modules
+modules modules_install:
+	$(MAKE) -C $(KERNELDIR) O=$(O) M=$(M) $@
+endif

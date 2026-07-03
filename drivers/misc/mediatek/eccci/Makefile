@@ -11,6 +11,13 @@
 # See http://www.gnu.org/licenses/gpl-2.0.html for more details.
 #
 
+ifneq ($(KERNELRELEASE),)
+
+ifneq ($(COMMON_OUT_DIR),)
+DEVICE_MODULES_SYMVERS := $(COMMON_OUT_DIR)/$(notdir $(DEVICE_MODULES_PATH))
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/aee/mrdump/Module.symvers)
+endif
+
 ifeq ($(CONFIG_MTK_ECCCI_DRIVER), y)
 CCCI_OBJ=y
 else ifeq ($(CONFIG_MTK_ECCCI_DRIVER), m)
@@ -128,4 +135,13 @@ obj-$(CCCI_OBJ) += udc/
 
 endif
 
+endif
+
+else
+KERNELDIR ?= $(if $(KERNEL_SRC),$(KERNEL_SRC),/lib/modules/$(shell uname -r)/build)
+M ?= $(shell pwd)
+
+default: modules
+modules modules_install:
+	$(MAKE) -C $(KERNELDIR) O=$(O) M=$(M) $@
 endif
