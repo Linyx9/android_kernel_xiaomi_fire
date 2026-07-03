@@ -1,6 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0
+ifneq ($(KERNELRELEASE),)
 
-ccflags-y += -I$(srctree)/drivers/dma-buf/heaps
+ifneq ($(DEVICE_MODULES_PATH),)
+LINUXINCLUDE := -I$(DEVICE_MODULES_PATH)/include $(LINUXINCLUDE)
+endif
+
+ccflags-y += -I$(DEVICE_MODULES_PATH)/drivers/dma-buf/heaps
+
+ifneq ($(COMMON_OUT_DIR),)
+DEVICE_MODULES_SYMVERS := $(COMMON_OUT_DIR)/$(notdir $(DEVICE_MODULES_PATH))
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/Module.symvers)
+endif
 
 # system heap
 system_heap-objs := \
@@ -25,3 +35,12 @@ ifndef CONFIG_GRT_HYPERVISOR
 obj-$(CONFIG_MTK_TRUSTED_MEMORY_SUBSYSTEM)	+= mtk_sec_heap.o
 endif
 obj-$(CONFIG_DMABUF_HEAPS_DEBUG) += mtk_heap_debug.o
+
+else
+KERNELDIR ?= $(if $(KERNEL_SRC),$(KERNEL_SRC),/lib/modules/$(shell uname -r)/build)
+M ?= $(shell pwd)
+
+default: modules
+modules modules_install:
+	$(MAKE) -C $(KERNELDIR) O=$(O) M=$(M) $@
+endif
