@@ -30,6 +30,10 @@
 #include "aed.h"
 #include "mrdump_helper.h"
 
+#ifndef MTK_SIP_KERNEL_WDT
+#define MTK_SIP_KERNEL_WDT MTK_SIP_SMC_CMD(0x200)
+#endif
+
 #define BUFSIZE 128
 static int test_case;
 static int test_cpu;

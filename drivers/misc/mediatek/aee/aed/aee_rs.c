@@ -17,6 +17,92 @@
 
 #include "aed.h"
 
+#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
+static int aed_rs_dal_printf(const char *msg)
+{
+	int (*dal_printf)(const char *fmt, ...);
+	int ret;
+
+	dal_printf = symbol_get(DAL_Printf);
+	if (!dal_printf)
+		return -ENODEV;
+
+	ret = dal_printf("%s", msg);
+	symbol_put(DAL_Printf);
+
+	return ret;
+}
+
+static int aed_rs_dal_clean(unsigned int foreground, unsigned int background)
+{
+	int (*dal_set_color)(unsigned int fgColor, unsigned int bgColor);
+	int (*dal_clean)(void);
+	int ret;
+
+	dal_set_color = symbol_get(DAL_SetColor);
+	if (!dal_set_color)
+		return -ENODEV;
+
+	dal_clean = symbol_get(DAL_Clean);
+	if (!dal_clean) {
+		symbol_put(DAL_SetColor);
+		return -ENODEV;
+	}
+
+	ret = dal_set_color(foreground, background);
+	if (!ret)
+		ret = dal_clean();
+
+	symbol_put(DAL_Clean);
+	symbol_put(DAL_SetColor);
+
+	return ret;
+}
+
+static int aed_rs_dal_setcolor(unsigned int foreground, unsigned int background,
+			       enum DAL_COLOR screen_color)
+{
+	int (*dal_set_color)(unsigned int fgColor, unsigned int bgColor);
+	int (*dal_set_screen_color)(enum DAL_COLOR color);
+	int ret;
+
+	dal_set_color = symbol_get(DAL_SetColor);
+	if (!dal_set_color)
+		return -ENODEV;
+
+	dal_set_screen_color = symbol_get(DAL_SetScreenColor);
+	if (!dal_set_screen_color) {
+		symbol_put(DAL_SetColor);
+		return -ENODEV;
+	}
+
+	ret = dal_set_color(foreground, background);
+	if (!ret)
+		ret = dal_set_screen_color(screen_color);
+
+	symbol_put(DAL_SetScreenColor);
+	symbol_put(DAL_SetColor);
+
+	return ret;
+}
+#else
+static int aed_rs_dal_printf(const char *msg)
+{
+	return -ENODEV;
+}
+
+static int aed_rs_dal_clean(unsigned int foreground, unsigned int background)
+{
+	return -ENODEV;
+}
+
+static int aed_rs_dal_setcolor(unsigned int foreground, unsigned int background,
+			       int screen_color)
+{
+	return -ENODEV;
+}
+#endif
+
 
 static int aed_rs_open(struct inode *inode, struct file *filp)
 {
@@ -86,12 +172,10 @@ static long aedrs_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		/* Try to prevent overrun */
 		dal_show->msg[sizeof(dal_show->msg) - 1] = 0;
-#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
 		pr_debug("AEE CALL DAL_Printf now\n");
-		DAL_Printf("%s", dal_show->msg);
-#else
-		pr_info("AEE DAL_SHOW failed: drm module not enabled\n");
-#endif
+		ret = aed_rs_dal_printf(dal_show->msg);
+		if (ret)
+			pr_info("AEE DAL_SHOW failed: drm DAL not available\n");
 
  OUT:
 		kfree(dal_show);
@@ -104,15 +188,12 @@ static long aedrs_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		dal_setcolor.foreground = 0x00ff00;	/*green */
 		dal_setcolor.background = 0xff0000;	/*red */
 
-#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
 		pr_debug("AEE CALL DAL_SetColor now\n");
-		DAL_SetColor(dal_setcolor.foreground,
-				dal_setcolor.background);
 		pr_debug("AEE CALL DAL_Clean now\n");
-		DAL_Clean();
-#else
-		pr_info("AEE DAL_CLEAN failed: drm module not enabled\n");
-#endif
+		ret = aed_rs_dal_clean(dal_setcolor.foreground,
+				       dal_setcolor.background);
+		if (ret)
+			pr_info("AEE DAL_CLEAN failed: drm DAL not available\n");
 		break;
 	case AEEIOCTL_SETCOLOR:
 		if (copy_from_user(&dal_setcolor,
@@ -121,15 +202,13 @@ static long aedrs_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			ret = -EFAULT;
 			goto EXIT;
 		}
-#if IS_ENABLED(CONFIG_DEVICE_MODULES_DRM_MEDIATEK)
 		pr_debug("AEE CALL DAL_SetColor now\n");
-		DAL_SetColor(dal_setcolor.foreground,
-				dal_setcolor.background);
 		pr_debug("AEE CALL DAL_SetScreenColor now\n");
-		DAL_SetScreenColor(dal_setcolor.screencolor);
-#else
-		pr_info("AEE DAL_SETCOLOR failed: drm module not enabled\n");
-#endif
+		ret = aed_rs_dal_setcolor(dal_setcolor.foreground,
+					  dal_setcolor.background,
+					  dal_setcolor.screencolor);
+		if (ret)
+			pr_info("AEE DAL_SETCOLOR failed: drm DAL not available\n");
 		break;
 	default:
 		ret = -EINVAL;
