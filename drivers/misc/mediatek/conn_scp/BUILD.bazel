@@ -1,4 +1,5 @@
 load("//build/bazel_mgk_rules:mgk_ko.bzl", "define_mgk_ko")
+load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
 
 package(
     default_visibility = [
@@ -23,5 +24,15 @@ define_mgk_ko(
     name = "connscp",
     deps = [
         "//kernel_device_modules-6.6/drivers/misc/mediatek/connectivity:connadp",
+    ],
+)
+
+ddk_headers(
+    name = "conap_scp_headers",
+    hdrs = glob([
+        "conap_scp/**/*.h",
+    ]),
+    includes = [
+        "conap_scp",
     ],
 )
