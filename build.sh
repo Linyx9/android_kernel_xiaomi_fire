@@ -16,6 +16,7 @@ KLEAF_CCACHE_WRAPPER_DIR=${KLEAF_CCACHE_WRAPPER_DIR:-${CCACHE_DIR}/wrappers}
 KLEAF_CCACHE_ARGS=()
 if [[ -n "${CCACHE_EXEC}" ]]
 then
+  CCACHE_BASE_DIR=$(dirname "${CCACHE_DIR}")
   mkdir -p "${CCACHE_DIR}"
   mkdir -p "${KLEAF_CCACHE_WRAPPER_DIR}"
   ln -sf "${CCACHE_EXEC}" "${KLEAF_CCACHE_WRAPPER_DIR}/clang"
@@ -31,12 +32,19 @@ then
 	"--action_env=CCACHE_CPP2=${CCACHE_CPP2}"
 	"--action_env=CCACHE_NOHASHDIR=${CCACHE_NOHASHDIR}"
 	"--action_env=KLEAF_CCACHE_WRAPPER_DIR=${KLEAF_CCACHE_WRAPPER_DIR}"
+	"--host_action_env=CCACHE_EXEC=${CCACHE_EXEC}"
+	"--host_action_env=CCACHE_DIR=${CCACHE_DIR}"
+	"--host_action_env=CCACHE_MAXSIZE=${CCACHE_MAXSIZE}"
+	"--host_action_env=CCACHE_CPP2=${CCACHE_CPP2}"
+	"--host_action_env=CCACHE_NOHASHDIR=${CCACHE_NOHASHDIR}"
+	"--host_action_env=KLEAF_CCACHE_WRAPPER_DIR=${KLEAF_CCACHE_WRAPPER_DIR}"
 	"--define=CCACHE_EXEC=${CCACHE_EXEC}"
 	"--define=CCACHE_DIR=${CCACHE_DIR}"
 	"--define=CCACHE_MAXSIZE=${CCACHE_MAXSIZE}"
 	"--define=CCACHE_CPP2=${CCACHE_CPP2}"
 	"--define=CCACHE_NOHASHDIR=${CCACHE_NOHASHDIR}"
 	"--define=KLEAF_CCACHE_WRAPPER_DIR=${KLEAF_CCACHE_WRAPPER_DIR}"
+	"--sandbox_writable_path=${CCACHE_BASE_DIR}"
 	"--sandbox_writable_path=${CCACHE_DIR}"
   )
 fi
