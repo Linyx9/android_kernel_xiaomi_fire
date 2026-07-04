@@ -38,9 +38,6 @@ ddk_headers(
 
 define_mgk_ko(
     name = "ccci_md_all",
-    deps = [
-        "//kernel_device_modules-6.6/drivers/misc/mediatek/aee/mrdump:mrdump",
-    ],
     outs = [
         "ccci_auxadc.ko",
         "ccci_md_all.ko",

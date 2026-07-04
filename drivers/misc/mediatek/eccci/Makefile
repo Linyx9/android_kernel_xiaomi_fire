@@ -13,9 +13,11 @@
 
 ifneq ($(KERNELRELEASE),)
 
+LINUXINCLUDE := -I$(DEVICE_MODULES_PATH)/include $(LINUXINCLUDE)
+
 ifneq ($(COMMON_OUT_DIR),)
 DEVICE_MODULES_SYMVERS := $(COMMON_OUT_DIR)/$(notdir $(DEVICE_MODULES_PATH))
-KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/aee/mrdump/Module.symvers)
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/Module.symvers)
 endif
 
 ifeq ($(CONFIG_MTK_ECCCI_DRIVER), y)
