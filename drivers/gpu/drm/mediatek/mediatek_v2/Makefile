@@ -9,10 +9,7 @@ ccflags-y += -I$(DEVICE_MODULES_PATH)/include/
 
 ifneq ($(COMMON_OUT_DIR),)
 DEVICE_MODULES_SYMVERS := $(COMMON_OUT_DIR)/$(notdir $(DEVICE_MODULES_PATH))
-KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/gpu/drm/mediatek/mml/Module.symvers)
-KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/aee/mrdump/Module.symvers)
-KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/mme/src/Module.symvers)
-KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/drivers/misc/mediatek/mmp/src/Module.symvers)
+KBUILD_EXTRA_SYMBOLS += $(wildcard $(DEVICE_MODULES_SYMVERS)/Module.symvers)
 endif
 
 CFLAGS_mtk_layering_rule_base.o := -I$(DEVICE_MODULES_PATH)/drivers/gpu/drm/mediatek/mediatek_v2
