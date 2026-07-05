@@ -10,16 +10,15 @@
 #include "kd_imgsensor.h"
 
 struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
-	/*Below is commom sensor */
-	{S5KJNSSQ_SENSOR_ID, 0xA0, Common_read_region},
-	{GC08A8_SENSOR_ID,   0x62, gc08a8_read_region},
-	{OV08D10_SENSOR_ID,  0xA0, Common_read_region},
-	{SC820CS_SENSOR_ID,  0x6C, sc820cs_sunwin_read_region},
-	{SC820CS_SENSOR_ID,  0x20, sc820cs_sunwin_read_region},
-	{GC05A2_SENSOR_ID,   0x7E, gc05a2sub_read_region},
-	{SC520CS_SENSOR_ID,  0x6C, sc520cs_read_region},
-	{GC08A8SPY_SENSOR_ID,0x62, gc08a8spy_read_region},
-    /*  ADD before this line */
+	{S5KJNS_SUNNY_SENSOR_ID, 0xA2, Common_read_region},
+	{OV50D40_TRULY_SENSOR_ID, 0xA2, Common_read_region},
+	{IMX355_SUNNY_SENSOR_ID, 0xA0, Common_read_region},
+	{SC820CS_TRULY_SENSOR_ID, 0xA0, Common_read_region},
+	{S5KJNS_SUNNY_SENSOR_INDIA_ID, 0xA2, Common_read_region},
+	{OV50D40_TRULY_SENSOR_INDIA_ID, 0xA2, Common_read_region},
+	{IMX355_SUNNY_SENSOR_INDIA_ID, 0xA0, Common_read_region},
+	{SC820CS_TRULY_SENSOR_INDIA_ID, 0xA0, Common_read_region},
+	/*  ADD before this line */
 	{0, 0, 0}       /*end of list */
 };
 
@@ -32,5 +31,4 @@ unsigned int cam_cal_get_sensor_list(
 	*ppCamcalList = &g_camCalList[0];
 	return 0;
 }
-
 

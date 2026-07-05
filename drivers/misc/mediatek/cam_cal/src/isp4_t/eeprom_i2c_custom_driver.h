@@ -17,27 +17,4 @@ unsigned int Custom_read_region(struct i2c_client *client,
 				unsigned char *data,
 				unsigned int size);
 
-unsigned int gc08a8_read_region(struct i2c_client *client,
-				unsigned int addr,
-				unsigned char *data,
-				unsigned int size);
-
-unsigned int gc05a2sub_read_region(struct i2c_client *client,
-				unsigned int addr,
-				unsigned char *data,
-				unsigned int size);
-
-unsigned int sc520cs_read_region(struct i2c_client *client,
-				unsigned int addr,
-				unsigned char *data,
-				unsigned int size);
-unsigned int sc820cs_sunwin_read_region(struct i2c_client *client,
-				unsigned int addr,
-				unsigned char *data,
-				unsigned int size);
-unsigned int gc08a8spy_read_region(struct i2c_client *client,
-				unsigned int addr,
-				unsigned char *data,
-				unsigned int size);
-
 #endif				/* __CAM_CAL_LIST_H */

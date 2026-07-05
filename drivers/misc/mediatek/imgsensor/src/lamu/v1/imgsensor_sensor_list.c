@@ -15,6 +15,29 @@
  *     mediatek\custom\common\hal\imgsensor\src\sensorlist.cpp
  */
 struct IMGSENSOR_INIT_FUNC_LIST kdSensorList[MAX_NUM_OF_SUPPORT_SENSOR] = {
+	/* Fire / Heat */
+#if defined(S5KJNS_SUNNY_MIPI_RAW)
+	{S5KJNS_SUNNY_SENSOR_ID,
+	SENSOR_DRVNAME_S5KJNS_SUNNY_MIPI_RAW,
+	S5KJNS_SUNNY_MIPI_RAW_SensorInit},
+#endif
+#if defined(OV50D40_TRULY_MIPI_RAW)
+	{OV50D40_TRULY_SENSOR_ID,
+	SENSOR_DRVNAME_OV50D40_TRULY_MIPI_RAW,
+	OV50D40_TRULY_MIPI_RAW_SensorInit},
+#endif
+#if defined(SC820CS_TRULY_MIPI_RAW)
+	{SC820CS_TRULY_SENSOR_ID,
+	SENSOR_DRVNAME_SC820CS_TRULY_MIPI_RAW,
+	SC820CS_TRULY_MIPI_RAW_SensorInit},
+#endif
+#if defined(IMX355_SUNNY_MIPI_RAW)
+	{IMX355_SUNNY_SENSOR_ID,
+	SENSOR_DRVNAME_IMX355_SUNNY_MIPI_RAW,
+	IMX355_SUNNY_MIPI_RAW_SensorInit},
+#endif
+	/* Fire / Heat */
+
 	/*lamu*/
 #if defined(S5KJNSSQ_MIPI_RAW)
 	{S5KJNSSQ_SENSOR_ID,
@@ -57,4 +80,3 @@ struct IMGSENSOR_INIT_FUNC_LIST kdSensorList[MAX_NUM_OF_SUPPORT_SENSOR] = {
 	{0, {0}, NULL}, /* end of list */
 };
 /* e_add new sensor driver here */
-

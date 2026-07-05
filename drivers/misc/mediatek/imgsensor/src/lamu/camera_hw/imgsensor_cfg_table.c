@@ -144,6 +144,61 @@ struct IMGSENSOR_HW_POWER_SEQ platform_power_sequence[] = {
 
 /* Legacy design */
 struct IMGSENSOR_HW_POWER_SEQ sensor_power_sequence[] = {
+	/* Fire / Heat */
+#if defined(S5KJNS_SUNNY_MIPI_RAW)
+	{
+		SENSOR_DRVNAME_S5KJNS_SUNNY_MIPI_RAW,
+		{
+			{RST, Vol_Low, 0},
+			{DOVDD, Vol_1800, 0},
+			{DVDD, Vol_1100, 1},
+			{AVDD, Vol_2800, 0},
+			{RST, Vol_High, 1},
+			{SensorMCLK, Vol_High, 13},
+		},
+	},
+#endif
+#if defined(OV50D40_TRULY_MIPI_RAW)
+	{
+		SENSOR_DRVNAME_OV50D40_TRULY_MIPI_RAW,
+		{
+			{RST, Vol_Low, 0},
+			{AVDD, Vol_2800, 1},
+			{DOVDD, Vol_1800, 1},
+			{DVDD, Vol_1200, 1},
+			{SensorMCLK, Vol_High, 1},
+			{RST, Vol_High, 5},
+		},
+	},
+#endif
+#if defined(SC820CS_TRULY_MIPI_RAW)
+	{
+		SENSOR_DRVNAME_SC820CS_TRULY_MIPI_RAW,
+		{
+			{RST, Vol_Low, 1},
+			{DOVDD, Vol_1800, 1},
+			{DVDD, Vol_1200, 1},
+			{AVDD, Vol_2800, 1},
+			{RST, Vol_High, 4},
+			{SensorMCLK, Vol_High, 4},
+		},
+	},
+#endif
+#if defined(IMX355_SUNNY_MIPI_RAW)
+	{
+		SENSOR_DRVNAME_IMX355_SUNNY_MIPI_RAW,
+		{
+			{RST, Vol_Low, 1},
+			{DOVDD, Vol_1800, 1},
+			{DVDD, Vol_1200, 1},
+			{AVDD, Vol_2800, 1},
+			{SensorMCLK, Vol_High, 1},
+			{RST, Vol_High, 1},
+		},
+	},
+#endif
+	/* Fire / Heat */
+
 	/*lamu*/
 #if defined(S5KJNSSQ_MIPI_RAW)
 	{
@@ -243,4 +298,3 @@ struct IMGSENSOR_HW_POWER_SEQ sensor_power_sequence[] = {
 	/* add new sensor before this line */
 	{NULL,},
 };
-

@@ -14,6 +14,13 @@ struct IMGSENSOR_INIT_FUNC_LIST {
 	MUINT8    name[32];
 	MUINT32 (*init)(struct SENSOR_FUNCTION_STRUCT **pfFunc);
 };
+/* Fire / Heat */
+UINT32 S5KJNS_SUNNY_MIPI_RAW_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc);
+UINT32 OV50D40_TRULY_MIPI_RAW_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc);
+UINT32 SC820CS_TRULY_MIPI_RAW_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc);
+UINT32 IMX355_SUNNY_MIPI_RAW_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc);
+/* Fire / Heat */
+
 /* Lamu */
 UINT32 S5KJNSSQ_MIPI_RAW_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc);
 UINT32 GC08A8_MIPI_RAW_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc);
@@ -26,4 +33,3 @@ UINT32 GC05A2_MIPI_RAW_SensorInit(struct SENSOR_FUNCTION_STRUCT **pfFunc);
 extern struct IMGSENSOR_INIT_FUNC_LIST kdSensorList[];
 
 #endif
-

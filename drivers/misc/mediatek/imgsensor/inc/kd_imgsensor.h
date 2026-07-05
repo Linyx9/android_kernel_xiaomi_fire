@@ -123,6 +123,22 @@
 /************************************************************************
  *
  ************************************************************************/
+/* Fire / Heat */
+#define S5KJNS_SUNNY_SENSOR_ID                 0x38ef
+#define SENSOR_DRVNAME_S5KJNS_SUNNY_MIPI_RAW   "s5kjns_sunny_mipi_raw"
+#define OV50D40_TRULY_SENSOR_ID                0x565044
+#define SENSOR_DRVNAME_OV50D40_TRULY_MIPI_RAW  "ov50d40_truly_mipi_raw"
+#define IMX355_SUNNY_SENSOR_ID                 0x356
+#define SENSOR_DRVNAME_IMX355_SUNNY_MIPI_RAW   "imx355_sunny_mipi_raw"
+#define SC820CS_TRULY_SENSOR_ID                0xd155
+#define SENSOR_DRVNAME_SC820CS_TRULY_MIPI_RAW  "sc820cs_truly_mipi_raw"
+
+#define S5KJNS_SUNNY_SENSOR_INDIA_ID           (0x38ef + 1)
+#define OV50D40_TRULY_SENSOR_INDIA_ID          (0x565044 + 1)
+#define IMX355_SUNNY_SENSOR_INDIA_ID           (0x356 + 1)
+#define SC820CS_TRULY_SENSOR_INDIA_ID          (0xd155 + 1)
+/* Fire / Heat */
+
 /* Lamu */
 #define S5KJNSSQ_SENSOR_ID                      0x38EE
 #define SENSOR_DRVNAME_S5KJNSSQ_MIPI_RAW        "s5kjnssq_mipi_raw"
