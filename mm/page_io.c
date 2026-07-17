@@ -91,8 +91,10 @@ out:
 	unlock_page(page);
 	WRITE_ONCE(bio->bi_private, NULL);
 	bio_put(bio);
-	wake_up_process(waiter);
-	put_task_struct(waiter);
+	if (waiter) {
+		wake_up_process(waiter);
+		put_task_struct(waiter);
+	}
 }
 
 int generic_swapfile_activate(struct swap_info_struct *sis,
@@ -345,13 +347,15 @@ int swap_readpage(struct page *page, bool synchronous)
 		goto out;
 	}
 	disk = bio->bi_disk;
-	/*
-	 * Keep this task valid during swap readpage because the oom killer may
-	 * attempt to access it in the page fault retry time check.
-	 */
-	get_task_struct(current);
-	bio->bi_private = current;
 	bio_set_op_attrs(bio, REQ_OP_READ, 0);
+	/*
+	 * Keep this task valid during synchronous swap readpage because the oom
+	 * killer may attempt to access it in the page fault retry time check.
+	 */
+	if (synchronous) {
+		get_task_struct(current);
+		bio->bi_private = current;
+	}
 	count_vm_event(PSWPIN);
 	bio_get(bio);
 	qc = submit_bio(bio);
