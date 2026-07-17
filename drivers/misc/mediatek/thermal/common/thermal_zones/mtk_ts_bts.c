@@ -712,8 +712,8 @@ int mtkts_bts_get_hw_temp(void)
 		(tsdctm_thermal_get_ttj_on() == 0))
 		t_ret2 = wakeup_ta_algo(TA_CATMPLUS_TTJ);
 
-	if (t_ret2 < 0)
-		pr_notice("[Thermal/TZ/BTS]wakeup_ta_algo out of memory\n");
+	if (t_ret2 < 0 && t_ret2 != TA_ALGO_NOT_READY)
+		pr_notice("[Thermal/TZ/BTS]wakeup_ta_algo failed: %d\n", t_ret2);
 
 	bts_cur_temp = t_ret;
 

@@ -6,6 +6,8 @@
 #ifndef _MTK_THERMAL_PLATFORM_H
 #define _MTK_THERMAL_PLATFORM_H
 
+#include <linux/errno.h>
+
 #include <linux/thermal.h>
 
 extern
@@ -156,6 +158,8 @@ struct DCTM_T {
 
 extern struct DCTM_T thermal_dctm_t;
 /* --- DCTM parameters --- */
+
+#define TA_ALGO_NOT_READY	(-ENODEV)
 
 int wakeup_ta_algo(int flow_state);
 int ta_get_ttj(void);

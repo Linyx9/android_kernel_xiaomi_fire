@@ -1765,8 +1765,8 @@ static void mmdvfs_get_step_array_node(struct device *dev,
 		strncpy(ext_name, name, sizeof(ext_name)-1);
 		strncat(ext_name, "_ext",
 			sizeof(ext_name)-strlen(name)-1);
-		mmdvfs_get_step_node(dev,
-			ext_name, &step_configs[count]);
+		if (of_find_property(dev->of_node, ext_name, NULL))
+			mmdvfs_get_step_node(dev, ext_name, &step_configs[count]);
 		count++;
 	}
 	if (count != step_size)

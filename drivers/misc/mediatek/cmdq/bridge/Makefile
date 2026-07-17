@@ -9,4 +9,3 @@ ccflags-y += -I$(srctree)/drivers/misc/mediatek/mmp
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/spi_slave_drv
 
 obj-y += cmdq-bdg-mailbox.o
-obj-y += cmdq-bdg-test.o

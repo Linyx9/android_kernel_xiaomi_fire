@@ -1621,6 +1621,7 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 
 	cmdq-bdg-test {
 		compatible = "mediatek,cmdq-bdg-test";
+		status = "disabled";
 		mediatek,gce = <&gce_mbox_bdg>;
 		mboxes = <&gce_mbox_bdg 22 0 CMDQ_THR_PRIO_2>,
 			 <&gce_mbox_bdg 23 0 CMDQ_THR_PRIO_1>;
@@ -1643,6 +1644,7 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 #endif
 	ktf-cmdq-test {
 		compatible = "mediatek,ktf-cmdq-test";
+		status = "disabled";
 		mediatek,mailbox-gce = <&gce_mbox>;
 		mmsys_config = <&mmsys_config>;
 		mboxes = <&gce_mbox 8 0 CMDQ_THR_PRIO_1>,

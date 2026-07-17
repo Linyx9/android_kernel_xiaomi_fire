@@ -1541,7 +1541,7 @@ VOID osal_op_raise_signal(P_OSAL_OP pOp, INT32 result)
 INT32 osal_ftrace_print(const PINT8 str, ...)
 {
 	int ret = 0;
-#ifdef CONFIG_TRACING
+#if defined(CONFIG_TRACING) && defined(CONFIG_MTK_DEBUG_TRACER)
 	va_list args;
 	INT8 tempString[DBG_LOG_STR_SIZE];
 
@@ -1559,7 +1559,7 @@ INT32 osal_ftrace_print(const PINT8 str, ...)
 
 INT32 osal_ftrace_print_ctrl(INT32 flag)
 {
-#ifdef CONFIG_TRACING
+#if defined(CONFIG_TRACING) && defined(CONFIG_MTK_DEBUG_TRACER)
 	if (flag)
 		ftrace_flag = 1;
 	else

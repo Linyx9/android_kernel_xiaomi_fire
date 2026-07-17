@@ -568,6 +568,7 @@ do { \
  *
  ******************************************************************/
 #if KERNEL_VERSION(4, 19, 0) > CFG80211_VERSION_CODE
+#ifdef CONFIG_MTK_DEBUG_TRACER
 #define KERNEL_event_trace_printk(ip, fmt, args...)               \
 do {                                                       \
     __trace_printk_check_format(fmt, ##args);              \
@@ -581,6 +582,9 @@ do {                                                       \
      } else                                                \
         __trace_printk(ip, fmt, ##args);                   \
 } while (0)
+#else
+#define KERNEL_event_trace_printk(ip, fmt, args...) do { } while (0)
+#endif
 #endif
 /*******************************************************************************
 *                  F U N C T I O N   D E C L A R A T I O N S

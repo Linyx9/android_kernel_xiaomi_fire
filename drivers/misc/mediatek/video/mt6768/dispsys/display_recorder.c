@@ -521,10 +521,15 @@ static void mmp_kernel_trace_begin(char *name)
 
 void mmp_kernel_trace_counter(char *name, int count)
 {
+#if defined(CONFIG_TRACING) && defined(CONFIG_MTK_DEBUG_TRACER)
 	preempt_disable();
 	event_trace_printk(disp_get_tracing_mark(), "C|%d|%s|%d\n",
 		in_interrupt() ? -1 : current->tgid, name, count);
 	preempt_enable();
+#else
+	(void)name;
+	(void)count;
+#endif
 }
 
 static void mmp_kernel_trace_end(void)
@@ -1654,4 +1659,3 @@ int dprec_option_enabled(void)
 {
 	return _control.overall_switch;
 }
-

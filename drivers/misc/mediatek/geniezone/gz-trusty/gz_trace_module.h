@@ -7,7 +7,7 @@
 #ifndef _GZ_TRACE_MODULE_H_
 #define _GZ_TRACE_MODULE_H_
 
-#if IS_ENABLED(CONFIG_FTRACE)
+#if IS_ENABLED(CONFIG_FTRACE) && IS_ENABLED(CONFIG_MTK_DEBUG_TRACER)
 
 #include <linux/kallsyms.h>
 #include <linux/trace_events.h>

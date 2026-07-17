@@ -473,9 +473,8 @@ int wakeup_ta_algo(int flow_state)
 		}
 		return 0;
 	}
-	tsta_warn("[%s] error,g_tad_pid=0\n", __func__);
 	g_ta_status = g_ta_status | 0x00001000;
-	return -1;
+	return TA_ALGO_NOT_READY;
 }
 
 static int tsta_read_log(struct seq_file *m, void *v)

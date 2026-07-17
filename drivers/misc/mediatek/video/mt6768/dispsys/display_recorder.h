@@ -226,7 +226,7 @@ char *get_dprec_status_ptr(int buffer_idx);
 
 
 /* systrace utils functions */
-#ifdef CONFIG_TRACING
+#if defined(CONFIG_TRACING) && defined(CONFIG_MTK_DEBUG_TRACER)
 
 #include <linux/trace_events.h>
 unsigned long disp_get_tracing_mark(void);

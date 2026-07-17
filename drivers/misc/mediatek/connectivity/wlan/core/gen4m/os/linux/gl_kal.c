@@ -293,6 +293,7 @@ static uint8_t *apucCr4FwName[] = {
 /*----------------------------------------------------------------------------*/
 void tracing_mark_write(const char *fmt, ...)
 {
+#if defined(CONFIG_TRACING) && defined(CONFIG_MTK_DEBUG_TRACER)
 #define __BUFFER_SIZE 1024
 	va_list ap;
 	char buf[__BUFFER_SIZE];
@@ -308,6 +309,9 @@ void tracing_mark_write(const char *fmt, ...)
 #undef __BUFFER_SIZE
 
 	trace_printk("%s", buf);
+#else
+	(void)fmt;
+#endif
 }
 #endif
 

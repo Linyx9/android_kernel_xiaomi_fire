@@ -263,6 +263,7 @@ bool connectivity_export_spm_resource_req(unsigned int user,
  * event_trace_printk()
  *********************************************/
 #ifndef CONFIG_MACH_MT6739
+#ifdef CONFIG_MTK_DEBUG_TRACER
 #define KERNEL_event_trace_printk(ip, fmt, args...)               \
 do {                                                              \
 	__trace_printk_check_format(fmt, ##args);                 \
@@ -275,6 +276,9 @@ do {                                                              \
 	} else                                                    \
 		__trace_printk(ip, fmt, ##args);                  \
 } while (0)
+#else
+#define KERNEL_event_trace_printk(ip, fmt, args...) do { } while (0)
+#endif
 #endif
 /******************************************************************************
  * GPIO dump information

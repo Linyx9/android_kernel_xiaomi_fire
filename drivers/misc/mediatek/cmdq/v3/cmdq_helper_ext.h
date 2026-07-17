@@ -187,6 +187,7 @@ do {if (1) mmprofile_log_ex(args); } while (0);	\
 #endif
 
 /* CMDQ FTRACE */
+#if defined(CONFIG_TRACING) && defined(CONFIG_MTK_DEBUG_TRACER)
 #define CMDQ_TRACE_FORCE_BEGIN(fmt, args...) do { \
 	preempt_disable(); \
 	event_trace_printk(cmdq_get_tracing_mark(), \
@@ -199,6 +200,10 @@ do {if (1) mmprofile_log_ex(args); } while (0);	\
 	event_trace_printk(cmdq_get_tracing_mark(), "E\n"); \
 	preempt_enable(); \
 } while (0)
+#else
+#define CMDQ_TRACE_FORCE_BEGIN(fmt, args...) do { } while (0)
+#define CMDQ_TRACE_FORCE_END() do { } while (0)
+#endif
 
 
 #define CMDQ_SYSTRACE_BEGIN(fmt, args...) do { \

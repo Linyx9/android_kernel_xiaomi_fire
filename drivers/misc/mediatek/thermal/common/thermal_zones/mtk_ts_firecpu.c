@@ -655,8 +655,8 @@ int mtkts_cpum_get_hw_temp(void)
 	if ((tsatm_thermal_get_catm_type() == 2) &&
 		(tsdctm_thermal_get_ttj_on() == 0))
 		t_ret2 = wakeup_ta_algo(TA_CATMPLUS_TTJ);
-	if (t_ret2 < 0)
-		pr_notice("[Thermal/TZ/CPUM]wakeup_ta_algo out of memory\n");
+	if (t_ret2 < 0 && t_ret2 != TA_ALGO_NOT_READY)
+		pr_notice("[Thermal/TZ/CPUM]wakeup_ta_algo failed: %d\n", t_ret2);
 	cpum_cur_temp = t_ret;
 	if (t_ret > 40000)	/* abnormal high temp */
 		mtkts_cpum_printk("T_CPU=%d\n", t_ret);
