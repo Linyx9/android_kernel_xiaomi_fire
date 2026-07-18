@@ -472,7 +472,7 @@ require_command() {
 list_installed_clang() {
 	local directory found=0
 
-	[[ -d "$TOOLCHAIN_BASE" ]] || return
+	[[ -d "$TOOLCHAIN_BASE" ]] || return 0
 	while IFS= read -r directory; do
 		[[ -x "$directory/bin/clang" ]] || continue
 		basename "$directory"
@@ -814,7 +814,7 @@ if ((USE_CCACHE)); then
 	export CCACHE_DIR
 	export CCACHE_CPP2=yes
 	mkdir -p "$CCACHE_DIR"
-	ccache --max-size="${CCACHE_MAXSIZE:-10G}" >/dev/null
+	ccache --max-size="${CCACHE_MAXSIZE:-35G}" >/dev/null
 	compiler="ccache clang"
 fi
 
