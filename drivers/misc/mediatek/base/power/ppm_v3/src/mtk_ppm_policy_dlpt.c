@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#define DISABLE_DLPT_FEATURE
 /*
  * Copyright (c) 2020 MediaTek Inc.
  */
