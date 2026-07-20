@@ -755,9 +755,13 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 
 	memcpy(&new_policy, policy, sizeof(*policy));
 
+
 	ret = sscanf(buf, "%15s", str_governor);
 	if (ret != 1)
 		return -EINVAL;
+	/* Linyx-OC: lock governor to performance, ignore other requests */
+	if (strncmp(str_governor, "performance", sizeof("performance") - 1))
+		return count;
 
 	if (cpufreq_parse_governor(str_governor, &new_policy))
 		return -EINVAL;
